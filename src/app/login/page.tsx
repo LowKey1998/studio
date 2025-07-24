@@ -33,8 +33,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { auth, db } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { get, ref } from 'firebase/database';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { get, ref, set } from 'firebase/database';
 
 const loginSchema = z.object({
   role: z.enum(['admin', 'staff', 'student'], {
@@ -45,6 +45,32 @@ const loginSchema = z.object({
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+
+// Helper function to ensure the default admin exists
+const ensureAdminExists = async () => {
+  const adminRef = ref(db, 'users/admin');
+  const adminSnapshot = await get(adminRef);
+  if (!adminSnapshot.exists()) {
+    try {
+      // 1. Create user in Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
+      // 2. Store user in DB
+      await set(adminRef, {
+        uid: userCredential.user.uid,
+        email: 'admin@edutrack360.com',
+        role: 'admin',
+      });
+       // Sign out the user immediately after creation, so they have to log in.
+      await auth.signOut();
+    } catch (error: any) {
+        // If the admin already exists in Auth but not DB (e.g. from a failed previous attempt),
+        // this will fail. We can ignore this error for seeding purposes.
+        if(error.code !== 'auth/email-already-in-use') {
+            console.error("Failed to create default admin user:", error);
+        }
+    }
+  }
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -63,6 +89,9 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+        // Ensure the default admin exists before any login attempt
+        await ensureAdminExists();
+
       // Step 1: Look up the user's email in Realtime Database using their ID
       const userRef = ref(db, `users/${data.identifier}`);
       const userSnapshot = await get(userRef);
@@ -102,7 +131,7 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error("Login failed:", error);
       let errorMessage = 'An unexpected error occurred. Please try again.';
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.message.includes('not found')) {
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential' || error.message.includes('not found')) {
         errorMessage = 'Invalid ID or password.';
       } else if (error.message) {
         errorMessage = error.message;
