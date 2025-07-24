@@ -115,7 +115,7 @@ export default function LoginPage() {
                       <SelectContent>
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="student">Student</e_lab>
+                        <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
