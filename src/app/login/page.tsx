@@ -32,6 +32,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { auth, db } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { get, ref } from 'firebase/database';
 
 const loginSchema = z.object({
   role: z.enum(['admin', 'staff', 'student'], {
@@ -58,31 +61,61 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
-    // Mock login logic
-    console.log('Logging in with:', data);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // In a real app, you would have Firebase auth logic here.
-    // For now, we'll just show a toast and redirect.
-    
-    toast({
-      title: 'Login Successful',
-      description: `Welcome! You are logged in as ${data.role}.`,
-    });
 
-    // Redirect based on role
-    switch (data.role) {
-      case 'admin':
-        router.push('/admin/dashboard');
-        break;
-      case 'staff':
-        router.push('/staff/dashboard');
-        break;
-      case 'student':
-        router.push('/student/dashboard');
-        break;
+    try {
+      // Step 1: Look up the user's email in Realtime Database using their ID
+      const userRef = ref(db, `users/${data.identifier}`);
+      const userSnapshot = await get(userRef);
+
+      if (!userSnapshot.exists()) {
+        throw new Error('User ID not found.');
+      }
+      
+      const userData = userSnapshot.val();
+
+      if (userData.role !== data.role) {
+        throw new Error(`You are not registered as a(n) ${data.role}.`);
+      }
+
+      const email = userData.email;
+
+      // Step 2: Sign in with Firebase Auth
+      await signInWithEmailAndPassword(auth, email, data.password);
+      
+      toast({
+        title: 'Login Successful',
+        description: `Welcome! Redirecting to your dashboard...`,
+      });
+
+      // Step 3: Redirect based on role
+      switch (data.role) {
+        case 'admin':
+          router.push('/admin/dashboard');
+          break;
+        case 'staff':
+          router.push('/staff/dashboard');
+          break;
+        case 'student':
+          router.push('/student/dashboard');
+          break;
+      }
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.message.includes('not found')) {
+        errorMessage = 'Invalid ID or password.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Login Failed',
+        description: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
