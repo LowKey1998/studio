@@ -14,14 +14,17 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
-import { LogOut, LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, Briefcase, UserCheck } from 'lucide-react';
+import { LogOut, LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { get, ref } from 'firebase/database';
+import { Skeleton } from '../ui/skeleton';
 
-const menuItems = [
+const studentMenuItems = [
     { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/student/courses', label: 'Courses', icon: Library },
     { href: '/student/assignments', label: 'Assignments', icon: PenSquare },
@@ -34,6 +37,18 @@ const menuItems = [
     { href: '/student/attendance', label: 'Attendance', icon: BarChart2 },
   ];
 
+const staffMenuItems = [
+    { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/staff/profile', label: 'Profile', icon: User },
+    // Add more staff-specific items here
+];
+
+const adminMenuItems = [
+    { href: '/admin/dashboard', label: 'User Management', icon: User },
+    { href: '/admin/settings', label: 'Settings', icon: Settings },
+    // Add more admin-specific items here
+]
+
 export default function DashboardLayout({
   children,
 }: {
@@ -42,6 +57,47 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const { user, loading } = useAuth();
+  const [role, setRole] = React.useState<string | null>(null);
+  const [menuItems, setMenuItems] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const fetchUserRole = async () => {
+        if (user) {
+            // This is not efficient, but it's a simple way to get the ID
+            // In a real app, you'd want a more direct way to get the user's custom ID
+            const usersRef = ref(db, 'users');
+            const snapshot = await get(usersRef);
+            if (snapshot.exists()) {
+                const users = snapshot.val();
+                const foundUser = Object.entries(users).find(([id, userData]: [string, any]) => userData.uid === user.uid);
+                if(foundUser) {
+                    const userRole = foundUser[1].role;
+                    setRole(userRole);
+                    switch(userRole) {
+                        case 'student':
+                            setMenuItems(studentMenuItems);
+                            break;
+                        case 'staff':
+                            setMenuItems(staffMenuItems);
+                            break;
+                        case 'admin':
+                            setMenuItems(adminMenuItems);
+                            break;
+                        default:
+                            setMenuItems([]);
+                    }
+                }
+            }
+        }
+    };
+
+    if (!loading) {
+      fetchUserRole();
+    }
+  }, [user, loading]);
+
+
 
   const handleLogout = async () => {
     try {
@@ -61,6 +117,23 @@ export default function DashboardLayout({
     }
   };
 
+  const renderMenu = () => {
+    if (loading || !role) {
+        return Array.from({length: 8}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
+    }
+
+    return menuItems.map((item) => (
+      <SidebarMenuItem key={item.href}>
+        <Link href={item.href} passHref legacyBehavior>
+          <SidebarMenuButton isActive={pathname === item.href}>
+            <item.icon />
+            <span>{item.label}</span>
+          </SidebarMenuButton>
+        </Link>
+      </SidebarMenuItem>
+    ));
+  }
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -69,16 +142,7 @@ export default function DashboardLayout({
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            {menuItems.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <Link href={item.href} passHref legacyBehavior>
-                  <SidebarMenuButton isActive={pathname === item.href}>
-                    <item.icon />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </Link>
-              </SidebarMenuItem>
-            ))}
+            {renderMenu()}
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
