@@ -30,11 +30,11 @@ const studentMenuItems = [
     { href: '/student/assignments', label: 'Assignments', icon: PenSquare },
     { href: '/student/quizzes', label: 'Quizzes', icon: BookCheck },
     { href: '/student/registration', label: 'Registration', icon: UserCheck },
+    { href: '/student/attendance', label: 'Attendance', icon: BarChart2 },
     { href: '/student/library', label: 'Library', icon: Library },
     { href: '/student/resources', label: 'Resources', icon: FileText },
     { href: '/student/calendar', label: 'Calendar', icon: Calendar },
     { href: '/student/payments', label: 'Payments', icon: DollarSign },
-    { href: '/student/attendance', label: 'Attendance', icon: BarChart2 },
   ];
 
 const staffMenuItems = [
@@ -42,15 +42,14 @@ const staffMenuItems = [
     { href: '/staff/courses', label: 'Course Management', icon: BookOpenCheck },
     { href: '/staff/assignments', label: 'Assignments', icon: PenSquare },
     { href: '/staff/quizzes', label: 'Quiz Management', icon: BookCopy },
+    { href: '/staff/attendance', label: 'Attendance', icon: UserCheck },
     { href: '/staff/library', label: 'Library Management', icon: BookUp },
     { href: '/staff/resources', label: 'Resource Management', icon: UploadCloud },
-    // Add more staff-specific items here
 ];
 
 const adminMenuItems = [
     { href: '/admin/dashboard', label: 'User Management', icon: User },
     { href: '/admin/settings', label: 'Settings', icon: Settings },
-    // Add more admin-specific items here
 ]
 
 export default function DashboardLayout({
@@ -68,8 +67,6 @@ export default function DashboardLayout({
   React.useEffect(() => {
     const fetchUserRole = async () => {
         if (user) {
-            // This is not efficient, but it's a simple way to get the ID
-            // In a real app, you'd want a more direct way to get the user's custom ID
             const usersRef = ref(db, 'users');
             const snapshot = await get(usersRef);
             if (snapshot.exists()) {
