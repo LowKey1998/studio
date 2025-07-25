@@ -14,7 +14,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
-import { LogOut, LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck, Briefcase, BookUp, UploadCloud, BookOpenCheck, BookCopy, Users } from 'lucide-react';
+import { LogOut, User } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
@@ -23,35 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-
-const studentMenuItems = [
-    { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/student/courses', label: 'Courses', icon: Library },
-    { href: '/student/assignments', label: 'Assignments', icon: PenSquare },
-    { href: '/student/quizzes', label: 'Quizzes', icon: BookCheck },
-    { href: '/student/registration', label: 'Registration', icon: UserCheck },
-    { href: '/student/attendance', label: 'Attendance', icon: BarChart2 },
-    { href: '/student/library', label: 'Library', icon: Library },
-    { href: '/student/resources', label: 'Resources', icon: FileText },
-    { href: '/student/calendar', label: 'Calendar', icon: Calendar },
-    { href: '/student/payments', label: 'Payments', icon: DollarSign },
-  ];
-
-const staffMenuItems = [
-    { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/staff/courses', label: 'Course Management', icon: BookOpenCheck },
-    { href: '/staff/roster', label: 'Student Roster', icon: Users },
-    { href: '/staff/assignments', label: 'Assignments', icon: PenSquare },
-    { href: '/staff/quizzes', label: 'Quiz Management', icon: BookCopy },
-    { href: '/staff/attendance', label: 'Attendance', icon: UserCheck },
-    { href: '/staff/library', label: 'Library Management', icon: BookUp },
-    { href: '/staff/resources', label: 'Resource Management', icon: UploadCloud },
-];
-
-const adminMenuItems = [
-    { href: '/admin/dashboard', label: 'User Management', icon: User },
-    { href: '/admin/settings', label: 'Settings', icon: Settings },
-]
+import { adminMenuItems, staffMenuItems, studentMenuItems } from '@/lib/menu-items';
 
 export default function DashboardLayout({
   children,
@@ -63,7 +35,6 @@ export default function DashboardLayout({
   const { toast } = useToast();
   const { user, loading } = useAuth();
   const [role, setRole] = React.useState<string | null>(null);
-  const [menuItems, setMenuItems] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const fetchUserRole = async () => {
@@ -76,25 +47,15 @@ export default function DashboardLayout({
                 if(foundUser) {
                     const userRole = foundUser[1].role;
                     setRole(userRole);
-                    switch(userRole) {
-                        case 'student':
-                            setMenuItems(studentMenuItems);
-                            break;
-                        case 'staff':
-                            setMenuItems(staffMenuItems);
-                            break;
-                        case 'admin':
-                            setMenuItems(adminMenuItems);
-                            break;
-                        default:
-                            setMenuItems([]);
-                    }
+                } else {
+                    // If user is authenticated but not in DB, they might be mid-creation
+                    // or it's an error state. For now, we wait.
                 }
             }
         }
     };
 
-    if (!loading) {
+    if (!loading && user) {
       fetchUserRole();
     }
   }, [user, loading]);
@@ -121,7 +82,7 @@ export default function DashboardLayout({
 
   const renderMenu = () => {
     if (loading || !role) {
-        return Array.from({length: 8}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
+        return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
 
     const commonItems = [
