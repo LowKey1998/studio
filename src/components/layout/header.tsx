@@ -1,5 +1,8 @@
+"use client";
+
 import { UserNav } from '@/components/layout/user-nav';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { NotificationsPopover } from '@/components/notifications-popover';
 
 export function Header() {
   return (
@@ -11,7 +14,7 @@ export function Header() {
         </h1>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
-        {/* <NotificationsPopover /> */}
+        <NotificationsPopover />
         <UserNav />
       </div>
     </header>
