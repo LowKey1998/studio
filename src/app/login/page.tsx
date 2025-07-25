@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -50,21 +51,48 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 const ensureAdminExists = async () => {
   const adminRef = ref(db, 'users/admin');
   const adminSnapshot = await get(adminRef);
+  
   if (!adminSnapshot.exists()) {
     try {
-      // 1. Create user in Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
-      // 2. Store user in DB
-      await set(adminRef, {
-        uid: userCredential.user.uid,
-        email: 'admin@edutrack360.com',
-        role: 'admin',
-      });
-       // Sign out the user immediately after creation, so they have to log in.
-      await auth.signOut();
+      // 1. Create user in Auth if they don't exist
+      // We'll try to sign in first, if it fails, then we create the user.
+      try {
+        await signInWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
+      } catch (error: any) {
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+             const userCredential = await createUserWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
+             // 2. Store user in DB
+            await set(adminRef, {
+                uid: userCredential.user.uid,
+                email: 'admin@edutrack360.com',
+                role: 'admin',
+            });
+        } else {
+            // Rethrow other auth errors
+            throw error;
+        }
+      }
+
+      // If user exists in Auth but not DB, add to DB
+      if(!adminSnapshot.exists()) {
+          const user = auth.currentUser;
+          if (user && user.email === 'admin@edutrack360.com') {
+             await set(adminRef, {
+                uid: user.uid,
+                email: 'admin@edutrack360.com',
+                role: 'admin',
+            });
+          }
+      }
+
+       // Sign out the user immediately after creation/check, so they have to log in.
+      if (auth.currentUser) {
+        await auth.signOut();
+      }
+
     } catch (error: any) {
         // If the admin already exists in Auth but not DB (e.g. from a failed previous attempt),
-        // this will fail. We can ignore this error for seeding purposes.
+        // this might fail. We can ignore 'auth/email-already-in-use' during this seed process.
         if(error.code !== 'auth/email-already-in-use') {
             console.error("Failed to create default admin user:", error);
         }
