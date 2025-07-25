@@ -14,7 +14,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
-import { LogOut, LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck, Briefcase, BookUp, UploadCloud, BookOpenCheck, BookCopy } from 'lucide-react';
+import { LogOut, LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck, Briefcase, BookUp, UploadCloud, BookOpenCheck, BookCopy, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
@@ -40,6 +40,7 @@ const studentMenuItems = [
 const staffMenuItems = [
     { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/staff/courses', label: 'Course Management', icon: BookOpenCheck },
+    { href: '/staff/roster', label: 'Student Roster', icon: Users },
     { href: '/staff/assignments', label: 'Assignments', icon: PenSquare },
     { href: '/staff/quizzes', label: 'Quiz Management', icon: BookCopy },
     { href: '/staff/attendance', label: 'Attendance', icon: UserCheck },
