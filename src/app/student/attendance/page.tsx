@@ -13,7 +13,8 @@ import { format } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface AttendanceRecord {
-  id: string; // date
+  id: string; // composite key
+  date: string;
   status: 'present' | 'absent' | 'late';
   courseId: string;
   courseTitle: string;
@@ -26,9 +27,9 @@ interface Course {
 
 const AttendanceSkeleton = () => (
     <TableRow>
+        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
         <TableCell><Skeleton className="h-5 w-3/4" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-1/4" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-1/2" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
     </TableRow>
 )
 
@@ -39,32 +40,42 @@ export default function StudentAttendancePage() {
     const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = useState<string>('all');
     const [loading, setLoading] = useState(true);
+    const [studentId, setStudentId] = useState<string | null>(null);
+
+     useEffect(() => {
+        const fetchStudentId = async () => {
+            if (user) {
+                const usersRef = ref(db, 'users');
+                const snapshot = await get(usersRef);
+                if (snapshot.exists()) {
+                    const users = snapshot.val();
+                    const foundEntry = Object.entries(users).find(([, userData]: [string, any]) => userData.uid === user.uid);
+                    if (foundEntry) {
+                        setStudentId(foundEntry[0]);
+                    } else {
+                        setLoading(false);
+                    }
+                } else {
+                    setLoading(false);
+                }
+            } else if (!authLoading) {
+                setLoading(false);
+            }
+        };
+        fetchStudentId();
+    }, [user, authLoading]);
 
     useEffect(() => {
-        if (authLoading || !user) {
-            if (!authLoading) setLoading(false);
-            return;
-        }
+        if (!studentId) return;
 
+        let attendanceListener: any;
+        
         const fetchStudentData = async () => {
-            const usersRef = ref(db, 'users');
-            const usersSnapshot = await get(usersRef);
-            if (!usersSnapshot.exists()) {
-                setLoading(false);
-                return;
-            }
+            const studentRef = ref(db, `users/${studentId}`);
+            const studentSnapshot = await get(studentRef);
+            const studentData = studentSnapshot.val();
 
-            const users = usersSnapshot.val();
-            const studentEntry = Object.entries(users).find(([, u]: [string, any]) => u.uid === user.uid);
-            
-            if (!studentEntry) {
-                 setLoading(false);
-                 return;
-            }
-            const studentId = studentEntry[0];
-            const studentData = studentEntry[1];
-            
-            if (!studentData.enrolledCourses) {
+            if (!studentData?.enrolledCourses) {
                 setLoading(false);
                 return;
             }
@@ -74,11 +85,11 @@ export default function StudentAttendancePage() {
             const coursesSnapshot = await get(coursesRef);
             const allCourses = coursesSnapshot.val() || {};
             
-            const studentCourses = courseIds.map(id => ({ id, ...allCourses[id] }));
+            const studentCourses = courseIds.map(id => ({ id, title: allCourses[id]?.title || `Course ${id}` }));
             setEnrolledCourses(studentCourses);
 
             const attendanceRef = ref(db, 'attendance');
-            onValue(attendanceRef, (snapshot) => {
+            attendanceListener = onValue(attendanceRef, (snapshot) => {
                 const attendanceData = snapshot.val() || {};
                 const records: AttendanceRecord[] = [];
 
@@ -107,7 +118,14 @@ export default function StudentAttendancePage() {
 
         fetchStudentData();
 
-    }, [user, authLoading]);
+        return () => {
+            if (attendanceListener) {
+                const attendanceRef = ref(db, 'attendance');
+                off(attendanceRef, 'value', attendanceListener);
+            }
+        }
+
+    }, [studentId]);
 
     useEffect(() => {
         if (selectedCourse === 'all') {
@@ -130,13 +148,13 @@ export default function StudentAttendancePage() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <CardTitle>My Attendance</CardTitle>
               <CardDescription>A record of your attendance for all enrolled courses.</CardDescription>
             </div>
-             <div className="w-full max-w-xs">
-                <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+             <div className="w-full md:w-auto md:min-w-[250px]">
+                <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={loading}>
                     <SelectTrigger>
                         <SelectValue placeholder="Filter by course..." />
                     </SelectTrigger>
@@ -174,7 +192,7 @@ export default function StudentAttendancePage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={3} className="h-24 text-center">
-                    No attendance records found.
+                    No attendance records found for the selected course.
                   </TableCell>
                 </TableRow>
               )}
