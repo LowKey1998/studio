@@ -146,7 +146,7 @@ export default function DashboardLayout({
 
     return [...roleSpecificItems, ...commonItems].map((item) => (
       <SidebarMenuItem key={item.href}>
-        <Link href={item.href} passHref legacyBehavior>
+        <Link href={item.href}>
           <SidebarMenuButton isActive={pathname === item.href}>
             <item.icon />
             <span>{item.label}</span>
