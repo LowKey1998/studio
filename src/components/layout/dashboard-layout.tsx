@@ -41,6 +41,7 @@ const staffMenuItems = [
     { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/staff/profile', label: 'Profile', icon: User },
     { href: '/staff/courses', label: 'Course Management', icon: BookOpenCheck },
+    { href: '/staff/assignments', label: 'Assignments', icon: PenSquare },
     { href: '/staff/library', label: 'Library Management', icon: BookUp },
     { href: '/staff/resources', label: 'Resource Management', icon: UploadCloud },
     // Add more staff-specific items here
