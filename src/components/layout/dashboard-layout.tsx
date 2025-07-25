@@ -39,7 +39,6 @@ const studentMenuItems = [
 
 const staffMenuItems = [
     { href: '/staff/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/staff/profile', label: 'Profile', icon: User },
     { href: '/staff/courses', label: 'Course Management', icon: BookOpenCheck },
     { href: '/staff/assignments', label: 'Assignments', icon: PenSquare },
     { href: '/staff/quizzes', label: 'Quiz Management', icon: BookCopy },
@@ -127,7 +126,27 @@ export default function DashboardLayout({
         return Array.from({length: 8}).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
     }
 
-    return menuItems.map((item) => (
+    const commonItems = [
+        { href: '/profile', label: 'Profile', icon: User },
+    ];
+    
+    let roleSpecificItems = [];
+    switch(role) {
+        case 'student':
+            roleSpecificItems = studentMenuItems;
+            break;
+        case 'staff':
+            roleSpecificItems = staffMenuItems;
+            break;
+        case 'admin':
+            roleSpecificItems = adminMenuItems;
+            break;
+        default:
+            roleSpecificItems = [];
+    }
+
+
+    return [...roleSpecificItems, ...commonItems].map((item) => (
       <SidebarMenuItem key={item.href}>
         <Link href={item.href} passHref legacyBehavior>
           <SidebarMenuButton isActive={pathname === item.href}>
