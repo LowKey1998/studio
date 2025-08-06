@@ -37,56 +37,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const { toast } = useToast();
   const { user, userProfile, loading } = useAuth();
-  const [menuItems, setMenuItems] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    const fetchUserRoleAndPermissions = async () => {
-        if (user && userProfile) {
-            if (userProfile.role === 'Admin') {
-                setMenuItems(allMenuItems);
-            } else if (userProfile.role === 'Student') {
-                setMenuItems(studentMenuItems);
-            } else if (userProfile.role === 'Staff') {
-                const settingsRef = ref(db, 'settings/subRoles');
-                const settingsSnap = await get(settingsRef);
-                const subRolePermissions: Record<string, Record<string, boolean>> = settingsSnap.exists() ? settingsSnap.val() : {};
-
-                let accessibleRoutes = new Set<string>();
-                
-                // Add base staff items (e.g., leave application for everyone)
-                staffMenuItems.filter(item => item.roles.includes('*')).forEach(item => accessibleRoutes.add(item.href));
-
-                // Add items specific to the user's sub-roles
-                const userSubRoles = userProfile.subRoles || [];
-                userSubRoles.forEach(subRoleName => {
-                    const roleId = Object.keys(subRolePermissions).find(id => subRolePermissions[id].name === subRoleName);
-                    if (roleId && subRolePermissions[roleId].permissions) {
-                        Object.entries(subRolePermissions[roleId].permissions).forEach(([path, hasAccess]) => {
-                            if (hasAccess) {
-                                accessibleRoutes.add(path);
-                            }
-                        });
-                    }
-                });
-                
-                // Add items for the base "Lecturer" role if they have it
-                 if(userSubRoles.includes('Lecturer')){
-                    staffMenuItems.filter(item => item.roles.includes('Lecturer')).forEach(item => accessibleRoutes.add(item.href));
-                }
-                
-                const finalItems = allMenuItems.filter(item => accessibleRoutes.has(item.href));
-                setMenuItems(finalItems);
-            }
-        }
-    };
-
-    if (!loading && user) {
-      fetchUserRoleAndPermissions();
-    }
-  }, [user, userProfile, loading]);
-
-
-
+  
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -110,9 +61,24 @@ export default function DashboardLayout({
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
     
-    const itemsToRender = userProfile.role === 'Admin' 
-        ? allMenuItems 
-        : menuItems;
+    let itemsToRender: any[] = [];
+    
+    if (userProfile.role === 'Admin') {
+      itemsToRender = allMenuItems;
+    } else if (userProfile.role === 'Student') {
+      itemsToRender = studentMenuItems;
+    } else if (userProfile.role === 'Staff') {
+      // In a real app with permissions, you would filter staffMenuItems here based on sub-roles
+      // For now, we show all staff-related items.
+      const accessibleRoutes = new Set<string>();
+      staffMenuItems.forEach(item => {
+        // Grant access if it's a base item or if user has the specific sub-role
+        if (item.roles.includes('*') || item.roles.some(role => userProfile.subRoles?.includes(role))) {
+          accessibleRoutes.add(item.href);
+        }
+      });
+      itemsToRender = staffMenuItems.filter(item => accessibleRoutes.has(item.href));
+    }
 
     return itemsToRender.map((item) => (
       <SidebarMenuItem key={item.href}>
