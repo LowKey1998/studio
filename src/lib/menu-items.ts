@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -94,19 +94,19 @@ export const allMenuItems = [
       icon: Wallet,
       roles: ['Admin', 'Accountant'],
       items: [
-        { href: '/admin/finance/invoicing', label: 'Student Invoicing', icon: FileText },
-        { href: '/admin/finance/installments', label: 'Installment Plans', icon: Wallet },
+        { href: '/admin/payments', label: 'Student Payments', icon: FileText },
+        { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
         { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
         { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
         { href: '/admin/finance/scholarships', label: 'Scholarship Disbursement', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/finance/fees', label: 'Fees & Invoicing Setup', icon: HandCoins },
+        { href: '/admin/fees', label: 'Fees Setup', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
-        { href: '/admin/finance/cashflow', label: 'Cash Flow Analysis', icon: BarChart2 },
+        { href: '/admin/cashflow', label: 'Cash Flow Analysis', icon: BarChart2 },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
         { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
@@ -132,8 +132,11 @@ export const allMenuItems = [
       icon: Library,
       roles: ['Admin', 'Librarian'],
       items: [
-         { href: '/admin/library', label: 'Library Management', icon: Library },
+         { href: '/admin/library', label: 'Book Listing', icon: Library },
          { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp },
+         { href: '/admin/library/late-alerts', label: 'Late Alerts', icon: AlertTriangle },
+         { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner', icon: Barcode },
+         { href: '/admin/library/statistics', label: 'Library Statistics', icon: BarChart2 },
       ]
     },
      {
@@ -259,4 +262,5 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
