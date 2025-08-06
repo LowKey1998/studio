@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, studentMenuItems } from '@/lib/menu-items';
+import { allMenuItems, studentMenuItems, staffMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
 
@@ -68,32 +68,18 @@ export default function DashboardLayout({
     } else if (userProfile.role === 'Student') {
       itemsToRender = studentMenuItems;
     } else if (userProfile.role === 'Staff') {
-        const staffBaseMenu = [
-            { href: '/staff/courses', label: 'My Courses', icon: Library, roles: ['Lecturer'] },
-            { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheck, roles: ['Lecturer']},
-            { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, roles: ['Lecturer'] },
-            { href: '/staff/leave', label: 'My Leave', icon: Calendar, roles: ['*'] },
-        ];
-
-        const accessibleAdminRoutes = new Set<string>();
-        allMenuItems.forEach(item => {
-            if (item.roles && userProfile.subRoles?.some(subRole => item.roles.includes(subRole))) {
-                accessibleAdminRoutes.add(item.href);
-            }
+        itemsToRender = staffMenuItems.filter(item => {
+            if (item.roles.includes('*')) return true;
+            return userProfile.subRoles?.some(subRole => item.roles.includes(subRole));
         });
-
-        const additionalMenuItems = allMenuItems.filter(item => accessibleAdminRoutes.has(item.href));
-        const userStaffMenu = staffBaseMenu.filter(item => userProfile.subRoles?.includes(item.roles[0]) || item.roles[0] === '*');
-
-        itemsToRender = [...userStaffMenu, ...additionalMenuItems];
-
-        // Remove duplicates
-        itemsToRender = itemsToRender.filter((item, index, self) =>
-            index === self.findIndex((t) => (
-                t.href === item.href
-            ))
-        );
     }
+
+    // Remove duplicates, just in case
+     itemsToRender = itemsToRender.filter((item, index, self) =>
+        index === self.findIndex((t) => (
+            t.href === item.href
+        ))
+    );
 
     return itemsToRender.map((item) => (
       <SidebarMenuItem key={item.href}>
