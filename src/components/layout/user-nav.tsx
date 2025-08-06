@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ProfileDialog } from "../profile-dialog";
 
 export function UserNav() {
-  const { user, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
@@ -69,8 +69,8 @@ export function UserNav() {
         onClick={() => setIsProfileOpen(true)}
     >
         <Avatar className="h-10 w-10 border-2 border-transparent hover:border-primary transition-colors">
-        <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} data-ai-hint="profile picture" />
-        <AvatarFallback>{user.displayName ? getInitials(user.displayName) : user.email ? getInitials(user.email) : 'U'}</AvatarFallback>
+        <AvatarImage src={userProfile?.profilePictureUrl || undefined} alt={userProfile?.name || 'User'} data-ai-hint="profile picture" />
+        <AvatarFallback>{userProfile?.name ? getInitials(userProfile.name) : user.email ? getInitials(user.email) : 'U'}</AvatarFallback>
         </Avatar>
     </Button>
 

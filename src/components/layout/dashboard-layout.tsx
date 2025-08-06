@@ -25,11 +25,8 @@ import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, staffMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
+import type { UserProfile } from '@/hooks/use-auth';
 
-type UserData = {
-    role: 'Admin' | 'Staff' | 'Student';
-    subRoles?: string[];
-}
 
 export default function DashboardLayout({
   children,
@@ -39,54 +36,46 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, loading } = useAuth();
-  const [userData, setUserData] = React.useState<UserData | null>(null);
+  const { user, userProfile, loading } = useAuth();
   const [menuItems, setMenuItems] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const fetchUserRoleAndPermissions = async () => {
-        if (user) {
-            const userRef = ref(db, `users/${user.uid}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-                const data = snapshot.val() as UserData;
-                setUserData(data);
+        if (user && userProfile) {
+            if (userProfile.role === 'Admin') {
+                setMenuItems(allMenuItems);
+            } else if (userProfile.role === 'Student') {
+                setMenuItems(studentMenuItems);
+            } else if (userProfile.role === 'Staff') {
+                const settingsRef = ref(db, 'settings/subRoles');
+                const settingsSnap = await get(settingsRef);
+                const subRolePermissions: Record<string, Record<string, boolean>> = settingsSnap.exists() ? settingsSnap.val() : {};
 
-                if (data.role === 'Admin') {
-                    setMenuItems(allMenuItems);
-                } else if (data.role === 'Student') {
-                    setMenuItems(studentMenuItems);
-                } else if (data.role === 'Staff') {
-                    const settingsRef = ref(db, 'settings/subRoles');
-                    const settingsSnap = await get(settingsRef);
-                    const subRolePermissions: Record<string, Record<string, boolean>> = settingsSnap.exists() ? settingsSnap.val() : {};
+                let accessibleRoutes = new Set<string>();
+                
+                // Add base staff items (e.g., leave application for everyone)
+                staffMenuItems.filter(item => item.roles.includes('*')).forEach(item => accessibleRoutes.add(item.href));
 
-                    let accessibleRoutes = new Set<string>();
-                    
-                    // Add base staff items (e.g., leave application for everyone)
-                    staffMenuItems.filter(item => item.roles.includes('*')).forEach(item => accessibleRoutes.add(item.href));
-
-                    // Add items specific to the user's sub-roles
-                    const userSubRoles = data.subRoles || [];
-                    userSubRoles.forEach(subRoleName => {
-                        const roleId = Object.keys(subRolePermissions).find(id => subRolePermissions[id].name === subRoleName);
-                        if (roleId && subRolePermissions[roleId].permissions) {
-                            Object.entries(subRolePermissions[roleId].permissions).forEach(([path, hasAccess]) => {
-                                if (hasAccess) {
-                                    accessibleRoutes.add(path);
-                                }
-                            });
-                        }
-                    });
-                    
-                    // Add items for the base "Lecturer" role if they have it
-                     if(userSubRoles.includes('Lecturer')){
-                        staffMenuItems.filter(item => item.roles.includes('Lecturer')).forEach(item => accessibleRoutes.add(item.href));
+                // Add items specific to the user's sub-roles
+                const userSubRoles = userProfile.subRoles || [];
+                userSubRoles.forEach(subRoleName => {
+                    const roleId = Object.keys(subRolePermissions).find(id => subRolePermissions[id].name === subRoleName);
+                    if (roleId && subRolePermissions[roleId].permissions) {
+                        Object.entries(subRolePermissions[roleId].permissions).forEach(([path, hasAccess]) => {
+                            if (hasAccess) {
+                                accessibleRoutes.add(path);
+                            }
+                        });
                     }
-                    
-                    const finalItems = allMenuItems.filter(item => accessibleRoutes.has(item.href));
-                    setMenuItems(finalItems);
+                });
+                
+                // Add items for the base "Lecturer" role if they have it
+                 if(userSubRoles.includes('Lecturer')){
+                    staffMenuItems.filter(item => item.roles.includes('Lecturer')).forEach(item => accessibleRoutes.add(item.href));
                 }
+                
+                const finalItems = allMenuItems.filter(item => accessibleRoutes.has(item.href));
+                setMenuItems(finalItems);
             }
         }
     };
@@ -94,7 +83,7 @@ export default function DashboardLayout({
     if (!loading && user) {
       fetchUserRoleAndPermissions();
     }
-  }, [user, loading]);
+  }, [user, userProfile, loading]);
 
 
 
@@ -117,7 +106,7 @@ export default function DashboardLayout({
   };
 
   const renderMenu = () => {
-    if (loading || !userData) {
+    if (loading || !userProfile) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
 
