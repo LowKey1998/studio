@@ -24,6 +24,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
 import { adminMenuItems, staffMenuItems, studentMenuItems } from '@/lib/menu-items';
+import Logo from '../logo';
 
 export default function DashboardLayout({
   children,
@@ -39,18 +40,14 @@ export default function DashboardLayout({
   React.useEffect(() => {
     const fetchUserRole = async () => {
         if (user) {
-            const usersRef = ref(db, 'users');
-            const snapshot = await get(usersRef);
+            const userRef = ref(db, `users/${user.uid}`);
+            const snapshot = await get(userRef);
             if (snapshot.exists()) {
-                const users = snapshot.val();
-                const foundUser = Object.entries(users).find(([id, userData]: [string, any]) => userData.uid === user.uid);
-                if(foundUser) {
-                    const userRole = foundUser[1].role;
-                    setRole(userRole);
-                } else {
-                    // If user is authenticated but not in DB, they might be mid-creation
-                    // or it's an error state. For now, we wait.
-                }
+                const userRole = snapshot.val().role;
+                setRole(userRole);
+            } else {
+                // If user is authenticated but not in DB, they might be mid-creation
+                // or it's an error state. For now, we wait.
             }
         }
     };
@@ -84,20 +81,16 @@ export default function DashboardLayout({
     if (loading || !role) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
-
-    const commonItems = [
-        { href: '/profile', label: 'Profile', icon: User },
-    ];
     
     let roleSpecificItems = [];
     switch(role) {
-        case 'student':
+        case 'Student':
             roleSpecificItems = studentMenuItems;
             break;
-        case 'staff':
+        case 'Staff':
             roleSpecificItems = staffMenuItems;
             break;
-        case 'admin':
+        case 'Admin':
             roleSpecificItems = adminMenuItems;
             break;
         default:
@@ -105,10 +98,10 @@ export default function DashboardLayout({
     }
 
 
-    return [...roleSpecificItems, ...commonItems].map((item) => (
+    return [...roleSpecificItems].map((item) => (
       <SidebarMenuItem key={item.href}>
         <Link href={item.href}>
-          <SidebarMenuButton isActive={pathname === item.href}>
+          <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
             <item.icon />
             <span>{item.label}</span>
           </SidebarMenuButton>
@@ -121,7 +114,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <h1 className="text-2xl font-bold text-primary">EduTrack360</h1>
+          <Logo />
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
