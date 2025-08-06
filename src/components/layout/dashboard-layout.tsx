@@ -109,8 +109,12 @@ export default function DashboardLayout({
     if (loading || !userProfile) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
+    
+    const itemsToRender = userProfile.role === 'Admin' 
+        ? allMenuItems 
+        : menuItems;
 
-    return menuItems.map((item) => (
+    return itemsToRender.map((item) => (
       <SidebarMenuItem key={item.href}>
         <Link href={item.href}>
           <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
