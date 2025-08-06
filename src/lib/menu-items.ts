@@ -1,5 +1,5 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check } from 'lucide-react';
 
 export const allMenuItems = [
     { href: '/admin/dashboard', label: 'Dashboard & Analytics', icon: LayoutDashboard, roles: ['Admin'] },
@@ -25,6 +25,18 @@ export const allMenuItems = [
       ]
     },
      {
+      label: 'Exams & Results',
+      icon: PenSquare,
+      roles: ['Admin'],
+      items: []
+    },
+    {
+        label: 'Clinicals',
+        icon: Stethoscope,
+        roles: ['Admin'],
+        items: []
+    },
+     {
       label: 'E-Learning',
       icon: MonitorPlay,
       roles: ['Admin'],
@@ -42,12 +54,12 @@ export const allMenuItems = [
       ]
     },
     {
-        label: 'Student Life & Welfare',
+        label: 'Student Life',
         icon: Users2,
         roles: ['Admin'],
         items: []
     },
-     {
+    {
       label: 'Library',
       icon: Library,
       roles: ['Admin', 'Librarian'],
@@ -55,6 +67,12 @@ export const allMenuItems = [
          { href: '/admin/library', label: 'Library Management', icon: Library },
          { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp },
       ]
+    },
+     {
+        label: 'Parents',
+        icon: Users,
+        roles: ['Admin'],
+        items: []
     },
     {
         label: 'HR',
@@ -65,7 +83,64 @@ export const allMenuItems = [
              { href: '/admin/vacancies', label: 'Vacancies', icon: Building },
         ]
     },
+     {
+        label: 'Admin',
+        icon: Shield,
+        roles: ['Admin'],
+        items: [
+            { href: '/admin/users', label: 'User Management', icon: Users },
+            { href: '/admin/settings', label: 'System Settings', icon: Settings },
+        ]
+    },
     {
+        label: 'Integrations',
+        icon: Link,
+        roles: ['Admin'],
+        items: []
+    },
+     {
+        label: 'AI Modules',
+        icon: Beaker,
+        roles: ['Admin'],
+        items: []
+    },
+     {
+        label: 'Add-ons',
+        icon: Star,
+        roles: ['Admin'],
+        items: []
+    },
+     {
+        label: '(Clinicals, Practicums & Internships)',
+        icon: Stethoscope,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Research & Innovation',
+        icon: Telescope,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Community Engagement',
+        icon: Handshake,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Quality Assurance',
+        icon: Check,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Legal & Compliance',
+        icon: GitBranch,
+        roles: ['Admin'],
+        items: []
+    },
+     {
         label: 'Facilities & Estates',
         icon: Building,
         roles: ['Admin'],
@@ -77,34 +152,48 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: []
     },
-    {
-        label: 'Admin',
-        icon: Shield,
+     {
+        label: 'Partnerships',
+        icon: Handshake,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/users', label: 'User Management', icon: Users },
-            { href: '/admin/settings', label: 'System Settings', icon: Settings },
-        ]
+        items: []
+    },
+     {
+        label: 'Mentorship & Advising',
+        icon: UserCheckIcon,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Media & PR',
+        icon: Newspaper,
+        roles: ['Admin'],
+        items: []
+    },
+    {
+        label: 'Chaplaincy & Spiritual Life',
+        icon: Heart,
+        roles: ['Admin'],
+        items: []
     },
 ];
 
 export const staffBaseMenuItems = [
-    { href: '/staff/courses', label: 'My Courses', icon: Library },
-    { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheckIcon},
-    { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
-    { href: '/staff/leave', label: 'My Leave', icon: Calendar },
-    { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
-    { href: '/staff/library', label: 'Library', icon: Library },
+    { href: '/staff/courses', label: 'My Courses', icon: Library, roles: [] },
+    { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheckIcon, roles: ['Lecturer'] },
+    { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, roles: [] },
+    { href: '/staff/leave', label: 'My Leave', icon: Calendar, roles: [] },
+    { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar, roles: [] },
+    { href: '/staff/library', label: 'Library', icon: Library, roles: [] },
 ];
 
 export const studentMenuItems = [
-    { href: '/student/classes', label: 'My Classes', icon: Library },
-    { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
-    { href: '/student/payments', label: 'Payments & Invoices', icon: DollarSign },
-    { href: '/student/attendance', label: 'My Attendance', icon: Hand },
-    { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
-    { href: '/student/library', label: 'Library', icon: BookUp },
-    { href: '/student/leave', label: 'Request Absence', icon: Calendar },
-    { href: '/student/resources', label: 'Resources', icon: FileText },
+    { href: '/student/classes', label: 'My Classes', icon: Library, roles: [] },
+    { href: '/student/registration', label: 'Registration', icon: UserCheckIcon, roles: [] },
+    { href: '/student/payments', label: 'Payments & Invoices', icon: DollarSign, roles: [] },
+    { href: '/student/attendance', label: 'My Attendance', icon: Hand, roles: [] },
+    { href: '/student/timetable', label: 'My Timetable', icon: Calendar, roles: [] },
+    { href: '/student/library', label: 'Library', icon: BookUp, roles: [] },
+    { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
+    { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
-
