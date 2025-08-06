@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Zap } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -276,7 +276,12 @@ export const allMenuItems = [
         label: 'Facilities & Estates',
         icon: Building,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
+            { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: ClipboardList },
+            { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: Sparkles },
+            { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
+        ]
     },
     {
         label: 'Transport',
@@ -342,3 +347,4 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
