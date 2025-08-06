@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, studentMenuItems, staffMenuItems } from '@/lib/menu-items';
+import { allMenuItems, studentMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
 
@@ -68,7 +68,12 @@ export default function DashboardLayout({
     } else if (userProfile.role.toLowerCase() === 'student') {
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
-        itemsToRender = staffMenuItems
+        const staffSpecificItems = allMenuItems.filter(item => {
+            if (!item.roles) return false;
+            // Grant access if a user's subRole is included in the item's roles array
+            return userProfile.subRoles?.some(subRole => item.roles!.includes(subRole));
+        });
+        itemsToRender = [...staffBaseMenuItems, ...staffSpecificItems];
     }
 
     return itemsToRender.map((item) => (

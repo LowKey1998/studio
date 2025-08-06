@@ -139,8 +139,9 @@ export default function UserManagementPage() {
     
     // Sub-role management state
     const [isSubRoleDialogOpen, setIsSubRoleDialogOpen] = React.useState(false);
-    const [newSubRoleName, setNewSubRoleName] = React.useState('');
+    const [isPermissionDialogOpen, setIsPermissionDialogOpen] = React.useState(false);
     const [editingSubRole, setEditingSubRole] = React.useState<SubRole | null>(null);
+    const [newSubRoleName, setNewSubRoleName] = React.useState('');
     const [permissions, setPermissions] = React.useState<Record<string, boolean>>({});
 
 
@@ -183,16 +184,20 @@ export default function UserManagementPage() {
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
-                get(ref(db, 'settings/subRoles'))
+                get(child(ref(db), 'settings/subRoles'))
             ]);
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
-            if (subRolesSnap.exists()) {
-                const subRolesData = subRolesSnap.val();
-                setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
-            } else { setAvailableSubRoles([]) }
+            
+            const subRolesRef = ref(db, 'settings/subRoles');
+            onValue(subRolesRef, (snapshot) => {
+                 if (subRolesSnap.exists()) {
+                    const subRolesData = subRolesSnap.val();
+                    setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
+                } else { setAvailableSubRoles([]) }
+            });
 
 
         } catch (error) {
@@ -336,10 +341,11 @@ export default function UserManagementPage() {
             setNewSubRoleName(role.name);
             setPermissions(role.permissions || {});
         } else {
-            setEditingSubRole({} as SubRole); // Use an empty object to signify creation mode
+            setEditingSubRole(null);
             setNewSubRoleName('');
             setPermissions({});
         }
+        setIsPermissionDialogOpen(true);
     }
 
     const handleSaveSubRole = async () => {
@@ -354,8 +360,7 @@ export default function UserManagementPage() {
                 await push(ref(db, 'settings/subRoles'), roleData);
                 toast({title: 'Sub-role created'});
             }
-            fetchInitialData(); // Refresh list
-            setEditingSubRole(null);
+            setIsPermissionDialogOpen(false);
         } catch (e: any) {
             toast({variant: 'destructive', title: 'Failed to save sub-role.'})
         } finally { setLoading(false); }
@@ -367,7 +372,6 @@ export default function UserManagementPage() {
         try {
             await remove(ref(db, `settings/subRoles/${id}`));
             toast({title: 'Sub-role deleted'});
-            fetchInitialData(); // Refresh list
         } catch(e) {
              toast({variant: 'destructive', title: 'Failed to delete sub-role.'})
         } finally { setLoading(false); }
@@ -472,7 +476,7 @@ export default function UserManagementPage() {
         </Dialog>
     </Card>
 
-    <Dialog open={!!editingSubRole} onOpenChange={(open) => !open && setEditingSubRole(null)}>
+    <Dialog open={isPermissionDialogOpen} onOpenChange={(open) => {if(!open) setEditingSubRole(null); setIsPermissionDialogOpen(open);}}>
         <DialogContent className="max-w-2xl">
             <DialogHeader>
                 <DialogTitle>{editingSubRole?.id ? `Edit ${editingSubRole.name}` : "Create New Sub-Role"}</DialogTitle>
@@ -482,7 +486,7 @@ export default function UserManagementPage() {
                 <Input placeholder="Role Name, e.g., Bursar" value={newSubRoleName} onChange={(e) => setNewSubRoleName(e.target.value)} />
                 <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
                     {['Admin', 'Staff'].map(roleType => {
-                        const itemsForRole = allMenuItems.filter(item => (item.roles || []).includes(roleType));
+                        const itemsForRole = allMenuItems.filter(item => item.roles?.includes(roleType));
                         if(itemsForRole.length === 0) return null;
                         return (
                             <AccordionItem key={roleType} value={roleType}>
@@ -502,10 +506,11 @@ export default function UserManagementPage() {
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Save Role"}</Button>
+                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 animate-spin"/> : "Save Role"}</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
     </>
   );
 }
+
