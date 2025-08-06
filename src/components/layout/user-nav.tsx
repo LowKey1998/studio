@@ -1,6 +1,7 @@
 
 "use client";
 
+import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,11 +18,13 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { ProfileDialog } from "../profile-dialog";
 
 export function UserNav() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const [isProfileOpen, setIsProfileOpen] = React.useState(false);
 
   const handleLogout = async () => {
     try {
@@ -59,6 +62,7 @@ export function UserNav() {
 
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -79,7 +83,7 @@ export function UserNav() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => router.push('/profile')}>
+          <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
             <UserIcon className="mr-2 h-4 w-4" />
             <span>Profile</span>
           </DropdownMenuItem>
@@ -95,5 +99,13 @@ export function UserNav() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    {user && (
+      <ProfileDialog
+        isOpen={isProfileOpen}
+        onOpenChange={setIsProfileOpen}
+        userId={user.uid}
+      />
+    )}
+    </>
   );
 }
