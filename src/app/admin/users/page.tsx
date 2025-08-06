@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -47,7 +48,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { onAuthStateChanged } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
-import { allMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 
 
 type User = {
@@ -483,13 +484,20 @@ export default function UserManagementPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
                 <Input placeholder="Role Name, e.g., Bursar" value={newSubRoleName} onChange={(e) => setNewSubRoleName(e.target.value)} />
-                <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
-                    {allMenuItems.filter(item => item.roles.some(r => r !== 'Admin')).map(item => (
-                        <div key={item.href} className="flex items-center gap-2 border p-2 rounded-md">
-                            <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [item.href]: !prev[item.href]}))}/>
-                            <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
-                        </div>
-                    ))}
+                <Accordion type="multiple" defaultValue={['Academics', 'Finance', 'Library', 'HR']} className="w-full">
+                {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
+                    <AccordionItem value={item.label} key={item.label}>
+                        <AccordionTrigger>{item.label}</AccordionTrigger>
+                        <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                            {item.items?.map(subItem => (
+                                <div key={subItem.href} className="flex items-center gap-2">
+                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [subItem.href]: !prev[subItem.href]}))}/>
+                                    <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
+                                </div>
+                            ))}
+                        </AccordionContent>
+                    </AccordionItem>
+                ))}
                 </Accordion>
             </div>
             <DialogFooter>
@@ -501,3 +509,4 @@ export default function UserManagementPage() {
     </>
   );
 }
+
