@@ -69,17 +69,11 @@ export default function DashboardLayout({
       itemsToRender = studentMenuItems;
     } else if (userProfile.role === 'Staff') {
         itemsToRender = staffMenuItems.filter(item => {
+            if (!item.roles) return true; // Items for all staff
             if (item.roles.includes('*')) return true;
             return userProfile.subRoles?.some(subRole => item.roles.includes(subRole));
         });
     }
-
-    // Remove duplicates, just in case
-     itemsToRender = itemsToRender.filter((item, index, self) =>
-        index === self.findIndex((t) => (
-            t.href === item.href
-        ))
-    );
 
     return itemsToRender.map((item) => (
       <SidebarMenuItem key={item.href}>
