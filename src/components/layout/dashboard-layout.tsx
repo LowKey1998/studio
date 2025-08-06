@@ -86,6 +86,7 @@ export default function DashboardLayout({
                             <AccordionItem value={item.label} key={item.label} className="border-none">
                                 <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
                                     <div className="flex items-center gap-2">
+                                        <item.icon className="h-4 w-4" />
                                         <span>{item.label}</span>
                                     </div>
                                 </AccordionTrigger>
