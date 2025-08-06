@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -94,10 +94,22 @@ export const allMenuItems = [
       icon: Wallet,
       roles: ['Admin', 'Accountant'],
       items: [
-        { href: '/admin/payments', label: 'Payments Overview', icon: DollarSign },
-        { href: '/admin/cashflow', label: 'Cash Flow', icon: BarChart2 },
-        { href: '/admin/payment-plans', label: 'Payment Plans', icon: Wallet },
-        { href: '/admin/fees', label: 'Fee Management', icon: HandCoins },
+        { href: '/admin/finance/invoicing', label: 'Student Invoicing', icon: FileText },
+        { href: '/admin/finance/installments', label: 'Installment Plans', icon: Wallet },
+        { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
+        { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
+        { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
+        { href: '/admin/finance/scholarships', label: 'Scholarship Disbursement', icon: GraduationCap },
+        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
+        { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
+        { href: '/admin/finance/fees', label: 'Fees & Invoicing Setup', icon: HandCoins },
+        { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
+        { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
+        { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
+        { href: '/admin/finance/cashflow', label: 'Cash Flow Analysis', icon: BarChart2 },
+        { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
+        { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
+        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
       ]
     },
     {
@@ -238,3 +250,4 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
