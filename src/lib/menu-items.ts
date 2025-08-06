@@ -135,7 +135,7 @@ export const allMenuItems = [
          { href: '/admin/library', label: 'Book Listing', icon: Library },
          { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp },
          { href: '/admin/library/late-alerts', label: 'Late Alerts', icon: AlertTriangle },
-         { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner', icon: Barcode },
+         { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner Integration', icon: Barcode },
          { href: '/admin/library/statistics', label: 'Library Statistics', icon: BarChart2 },
       ]
     },
@@ -179,7 +179,7 @@ export const allMenuItems = [
             { href: '/admin/integrations/sms', label: 'SMS API', icon: MessageSquare },
             { href: '/admin/integrations/biometric', label: 'Biometric Attendance', icon: Hand },
             { href: '/admin/integrations/teveta', label: 'TEVETA XML Export', icon: FileUp },
-            { href: '/admin/integrations/compliance', label: 'Compliance Upload', icon: Shield },
+            { href: '/admin/integrations/compliance', label: 'HEA/NMCZ/HPCZ Compliance Upload', icon: Shield },
         ]
     },
      {
@@ -254,7 +254,12 @@ export const allMenuItems = [
         label: 'Quality Assurance',
         icon: Check,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/qa/audit-reports', label: 'Internal Audit Reports', icon: FileText },
+            { href: '/admin/qa/accreditation', label: 'Accreditation Tracker', icon: Check },
+            { href: '/admin/qa/kpi-dashboard', label: 'KPI Dashboard', icon: BarChart2 },
+            { href: '/admin/qa/course-eval', label: 'Course Evaluation', icon: MessageSquare },
+        ]
     },
     {
         label: 'Legal & Compliance',
@@ -332,11 +337,3 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
-
-
-
-
-
-
-
-
