@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -116,7 +116,16 @@ export const allMenuItems = [
         label: 'Student Life',
         icon: Users2,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/student-life/hostel-allocation', label: 'Hostel Allocation', icon: Home },
+            { href: '/admin/student-life/medical-deferrals', label: 'Medical Deferrals', icon: Stethoscope },
+            { href: '/admin/student-life/leave-of-absence', label: 'Leave of Absence', icon: Calendar },
+            { href: '/admin/student-life/complaints', label: 'Complaint Submissions', icon: ShieldAlert },
+            { href: '/admin/student-life/events', label: 'Event Calendar', icon: Calendar },
+            { href: '/admin/student-life/clubs', label: 'Clubs & Associations', icon: Users },
+            { href: '/admin/student-life/mental-health', label: 'Mental Health Logs', icon: HeartPulse },
+            { href: '/admin/student-life/welfare-reports', label: 'Welfare Reports', icon: FileText },
+        ]
     },
     {
       label: 'Library',
