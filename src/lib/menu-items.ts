@@ -1,8 +1,21 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown } from 'lucide-react';
 
 export const allMenuItems = [
-    { href: '/admin/dashboard', label: 'Dashboard & Analytics', icon: LayoutDashboard, roles: ['Admin'] },
+    {
+      label: 'Dashboard & Analytics',
+      icon: LayoutDashboard,
+      roles: ['Admin'],
+      items: [
+        { href: '/admin/dashboard', label: 'Overview Dashboard', icon: LayoutDashboard },
+        { href: '/admin/dashboard/enrollment', label: 'Enrollment Statistics', icon: Users2 },
+        { href: '/admin/dashboard/defaulters', label: 'Defaulter Analysis', icon: UserX },
+        { href: '/admin/dashboard/attendance', label: 'Attendance Monitoring', icon: CheckCircle2 },
+        { href: '/admin/dashboard/risk-alerts', label: 'Academic Risk Alerts', icon: AlertTriangle },
+        { href: '/admin/dashboard/financial-kpis', label: 'Financial KPIs', icon: DollarSign },
+        { href: '/admin/dashboard/dropout-trends', label: 'Dropout Trends', icon: TrendingDown },
+      ]
+    },
     {
       label: 'Admissions',
       icon: Newspaper,

@@ -14,7 +14,7 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, UserX } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
@@ -74,7 +74,7 @@ export default function DashboardLayout({
         
         const filteredAdminItems = allMenuItems.map(category => {
             if (!category.items) {
-                // Handle top-level items if any are defined for staff but not in a category
+                // This handles top-level items that might not be in a category
                 return allowedHrefs.includes(category.href) ? category : null;
             }
             
@@ -89,64 +89,52 @@ export default function DashboardLayout({
 
         itemsToRender = [...staffBaseMenuItems, ...filteredAdminItems];
     }
-
-    if (userProfile.role.toLowerCase() === 'admin' || userProfile.role.toLowerCase() === 'staff') {
-        const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
-        return (
-             <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
-                {itemsToRender.map((item) => {
-                    if(item.items) {
-                        return (
-                            <AccordionItem value={item.label} key={item.label} className="border-none">
-                                <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm font-medium">
-                                    <div className="flex items-center gap-2">
-                                        <item.icon className="h-4 w-4" />
-                                        <span>{item.label}</span>
-                                    </div>
-                                </AccordionTrigger>
-                                <AccordionContent className="pl-4">
-                                     <SidebarMenu>
-                                        {item.items.map((subItem: any) => (
-                                            <SidebarMenuItem key={subItem.href}>
-                                                <Link href={subItem.href}>
-                                                <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
-                                                    {subItem.icon && <subItem.icon />}
-                                                    <span>{subItem.label}</span>
-                                                </SidebarMenuButton>
-                                                </Link>
-                                            </SidebarMenuItem>
-                                        ))}
-                                    </SidebarMenu>
-                                </AccordionContent>
-                            </AccordionItem>
-                        )
-                    }
-                    // Render base menu items for staff that are not in a category
+    
+    const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+    
+    return (
+        <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
+            {itemsToRender.map((item) => {
+                if(item.items) {
                     return (
-                        <SidebarMenuItem key={item.href}>
-                            <Link href={item.href}>
-                            <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
-                                <item.icon />
-                                <span>{item.label}</span>
-                            </SidebarMenuButton>
-                            </Link>
-                        </SidebarMenuItem>
-                    );
-                })}
-            </Accordion>
-        )
-    }
-
-    return itemsToRender.map((item) => (
-      <SidebarMenuItem key={item.href}>
-        <Link href={item.href}>
-          <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
-            <item.icon />
-            <span>{item.label}</span>
-          </SidebarMenuButton>
-        </Link>
-      </SidebarMenuItem>
-    ));
+                        <AccordionItem value={item.label} key={item.label} className="border-none">
+                            <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
+                                <div className="flex items-center gap-2">
+                                    <item.icon className="h-4 w-4" />
+                                    <span>{item.label}</span>
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pl-4">
+                                 <SidebarMenu>
+                                    {item.items.map((subItem: any) => (
+                                        <SidebarMenuItem key={subItem.href}>
+                                            <Link href={subItem.href}>
+                                            <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
+                                                {subItem.icon && <subItem.icon />}
+                                                <span>{subItem.label}</span>
+                                            </SidebarMenuButton>
+                                            </Link>
+                                        </SidebarMenuItem>
+                                    ))}
+                                </SidebarMenu>
+                            </AccordionContent>
+                        </AccordionItem>
+                    )
+                }
+                // Render base menu items for staff that are not in a category
+                 return (
+                    <SidebarMenuItem key={item.href || item.label}>
+                         <Link href={item.href}>
+                        <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
+                            <item.icon />
+                            <span>{item.label}</span>
+                        </SidebarMenuButton>
+                        </Link>
+                    </SidebarMenuItem>
+                );
+            })}
+        </Accordion>
+    )
   }
 
   return (
