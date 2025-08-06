@@ -71,10 +71,10 @@ export default function DashboardLayout({
     } else if (userProfile.role.toLowerCase() === 'staff') {
         const staffPermissions = userProfile.permissions || {};
         const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
-
+        
         const filteredAdminItems = allMenuItems.map(category => {
             if (!category.items) {
-                // Handle top-level items if any are defined for staff
+                // Handle top-level items if any are defined for staff but not in a category
                 return allowedHrefs.includes(category.href) ? category : null;
             }
             
@@ -85,20 +85,20 @@ export default function DashboardLayout({
             }
             
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean); // Ensure no null values are in the array
 
         itemsToRender = [...staffBaseMenuItems, ...filteredAdminItems];
     }
 
     if (userProfile.role.toLowerCase() === 'admin' || userProfile.role.toLowerCase() === 'staff') {
-        const defaultOpen = allMenuItems.find(item => item.items?.some(sub => pathname.startsWith(sub.href)))?.label;
+        const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
         return (
              <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
-                {itemsToRender.map((item, index) => {
+                {itemsToRender.map((item) => {
                     if(item.items) {
                         return (
                             <AccordionItem value={item.label} key={item.label} className="border-none">
-                                <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
+                                <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm font-medium">
                                     <div className="flex items-center gap-2">
                                         <item.icon className="h-4 w-4" />
                                         <span>{item.label}</span>
@@ -110,7 +110,7 @@ export default function DashboardLayout({
                                             <SidebarMenuItem key={subItem.href}>
                                                 <Link href={subItem.href}>
                                                 <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
-                                                    <subItem.icon />
+                                                    {subItem.icon && <subItem.icon />}
                                                     <span>{subItem.label}</span>
                                                 </SidebarMenuButton>
                                                 </Link>
