@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save } from 'lucide-react';
+import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth, storage } from '@/lib/firebase';
 import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
@@ -206,20 +206,24 @@ export default function SettingsPage() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <Input placeholder="Role Name, e.g., Bursar" value={roleName} onChange={(e) => setRoleName(e.target.value)} />
-                        <Accordion type="multiple" defaultValue={['Admin', 'Accountant', 'Librarian', 'Registrar', 'HR']} className="w-full">
-                            {['Admin', 'Accountant', 'Librarian', 'Registrar', 'HR'].map(roleType => (
-                                <AccordionItem key={roleType} value={roleType}>
-                                    <AccordionTrigger>{roleType} Permissions</AccordionTrigger>
-                                    <AccordionContent className="space-y-2">
-                                        {allMenuItems.filter(item => item.roles.includes(roleType)).map(item => (
-                                            <div key={item.href} className="flex items-center gap-2">
-                                                <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => handlePermissionChange(item.href)}/>
-                                                <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
-                                            </div>
-                                        ))}
-                                    </AccordionContent>
-                                </AccordionItem>
-                            ))}
+                        <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
+                            {['Admin', 'Staff'].map(roleType => {
+                                const itemsForRole = allMenuItems.filter(item => (item.roles || []).includes(roleType));
+                                if(itemsForRole.length === 0) return null;
+                                return (
+                                    <AccordionItem key={roleType} value={roleType}>
+                                        <AccordionTrigger>{roleType} Permissions</AccordionTrigger>
+                                        <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                                            {itemsForRole.map(item => (
+                                                <div key={item.href} className="flex items-center gap-2">
+                                                    <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => handlePermissionChange(item.href)}/>
+                                                    <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
+                                                </div>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                )
+                            })}
                         </Accordion>
                     </div>
                     <DialogFooter>

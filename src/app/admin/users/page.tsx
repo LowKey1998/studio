@@ -24,7 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2 } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -47,6 +47,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { onAuthStateChanged } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
+import { allMenuItems } from '@/lib/menu-items';
 
 
 type User = {
@@ -90,6 +91,7 @@ type Intake = {
 type SubRole = {
     id: string;
     name: string;
+    permissions: Record<string, boolean>;
 }
 
 const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
@@ -138,6 +140,8 @@ export default function UserManagementPage() {
     // Sub-role management state
     const [isSubRoleDialogOpen, setIsSubRoleDialogOpen] = React.useState(false);
     const [newSubRoleName, setNewSubRoleName] = React.useState('');
+    const [editingRole, setEditingRole] = React.useState<SubRole | null>(null);
+    const [permissions, setPermissions] = React.useState<Record<string, boolean>>({});
 
 
     const [loading, setLoading] = React.useState(false);
@@ -326,16 +330,34 @@ export default function UserManagementPage() {
         return allCourses.filter(c => prog.courseIds![c.id]);
     }, [programme, allProgrammes, allCourses]);
 
-    const handleCreateSubRole = async () => {
+    const openEditSubRoleDialog = (role: SubRole | null) => {
+        if(role) {
+            setEditingRole(role);
+            setNewSubRoleName(role.name);
+            setPermissions(role.permissions || {});
+        } else {
+            setEditingRole(null);
+            setNewSubRoleName('');
+            setPermissions({});
+        }
+    }
+
+    const handleSaveSubRole = async () => {
         if (!newSubRoleName.trim()) { toast({variant: 'destructive', title: 'Sub-role name cannot be empty.'}); return; }
         setLoading(true);
         try {
-            await push(ref(db, 'settings/subRoles'), { name: newSubRoleName.trim() });
-            toast({title: 'Sub-role created'});
-            setNewSubRoleName('');
+            const roleData = { name: newSubRoleName.trim(), permissions };
+            if (editingRole) {
+                await update(ref(db, `settings/subRoles/${editingRole.id}`), roleData);
+                toast({title: 'Sub-role updated'});
+            } else {
+                await push(ref(db, 'settings/subRoles'), roleData);
+                toast({title: 'Sub-role created'});
+            }
             fetchInitialData(); // Refresh list
+            openEditSubRoleDialog(null);
         } catch (e: any) {
-            toast({variant: 'destructive', title: 'Failed to create sub-role.'})
+            toast({variant: 'destructive', title: 'Failed to save sub-role.'})
         } finally { setLoading(false); }
     }
     
@@ -363,23 +385,27 @@ export default function UserManagementPage() {
                     <DialogTrigger asChild>
                         <Button variant="outline">Sub-Roles</Button>
                     </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>Manage Sub-Roles</DialogTitle></DialogHeader>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Manage Sub-Roles</DialogTitle>
+                             <DialogDescription>
+                                Create and configure sub-roles for staff members.
+                            </DialogDescription>
+                        </DialogHeader>
                         <div className='py-4 space-y-4'>
-                            <div className="flex gap-2">
-                                <Input placeholder="New sub-role name..." value={newSubRoleName} onChange={e => setNewSubRoleName(e.target.value)} />
-                                <Button onClick={handleCreateSubRole} disabled={loading}>{loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}</Button>
-                            </div>
+                           <Button size="sm" className="w-full" onClick={() => openEditSubRoleDialog(null)}>Create New Sub-Role</Button>
                             <div className="max-h-60 overflow-y-auto space-y-2">
                                 {availableSubRoles.map(sr => (
                                     <div key={sr.id} className="flex justify-between items-center rounded-md border p-2">
                                         <span>{sr.name}</span>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteSubRole(sr.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                         <div className="flex gap-1">
+                                            <Button variant="ghost" size="icon" onClick={() => openEditSubRoleDialog(sr)}><Pencil className="h-4 w-4"/></Button>
+                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteSubRole(sr.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        <DialogFooter><Button onClick={() => setIsSubRoleDialogOpen(false)}>Done</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
@@ -445,8 +471,41 @@ export default function UserManagementPage() {
             </form></DialogContent>
         </Dialog>
     </Card>
+
+    <Dialog open={!!editingRole} onOpenChange={() => openEditSubRoleDialog(null)}>
+        <DialogContent className="max-w-2xl">
+            <DialogHeader>
+                <DialogTitle>{editingRole ? `Edit ${editingRole.name}` : "Create New Sub-Role"}</DialogTitle>
+                <DialogDescription>Define the name and permissions for this staff sub-role.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <Input placeholder="Role Name, e.g., Bursar" value={newSubRoleName} onChange={(e) => setNewSubRoleName(e.target.value)} />
+                <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
+                    {['Admin', 'Staff'].map(roleType => {
+                        const itemsForRole = allMenuItems.filter(item => (item.roles || []).includes(roleType));
+                        if(itemsForRole.length === 0) return null;
+                        return (
+                            <AccordionItem key={roleType} value={roleType}>
+                                <AccordionTrigger>{roleType} Permissions</AccordionTrigger>
+                                <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                                    {itemsForRole.map(item => (
+                                        <div key={item.href} className="flex items-center gap-2">
+                                            <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [item.href]: !prev[item.href]}))}/>
+                                            <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
+                                        </div>
+                                    ))}
+                                </AccordionContent>
+                            </AccordionItem>
+                        )
+                    })}
+                </Accordion>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 animate-spin"/> : "Save Role"}</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }
-
-    
