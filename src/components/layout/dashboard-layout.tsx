@@ -23,8 +23,13 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { adminMenuItems, staffMenuItems, studentMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
+
+type UserData = {
+    role: 'Admin' | 'Staff' | 'Student';
+    subRoles?: string[];
+}
 
 export default function DashboardLayout({
   children,
@@ -35,25 +40,50 @@ export default function DashboardLayout({
   const router = useRouter();
   const { toast } = useToast();
   const { user, loading } = useAuth();
-  const [role, setRole] = React.useState<string | null>(null);
+  const [userData, setUserData] = React.useState<UserData | null>(null);
+  const [menuItems, setMenuItems] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchUserRoleAndPermissions = async () => {
         if (user) {
             const userRef = ref(db, `users/${user.uid}`);
             const snapshot = await get(userRef);
             if (snapshot.exists()) {
-                const userRole = snapshot.val().role;
-                setRole(userRole);
-            } else {
-                // If user is authenticated but not in DB, they might be mid-creation
-                // or it's an error state. For now, we wait.
+                const data = snapshot.val() as UserData;
+                setUserData(data);
+
+                if (data.role === 'Admin') {
+                    setMenuItems(allMenuItems);
+                } else if (data.role === 'Student') {
+                    setMenuItems(studentMenuItems);
+                } else if (data.role === 'Staff') {
+                     // Start with base staff items (e.g., leave application for everyone)
+                    const baseItems = staffMenuItems.filter(item => item.roles.includes('*'));
+
+                    // Add items specific to the user's sub-roles
+                    const userSubRoles = data.subRoles || [];
+                    const subRoleItems = staffMenuItems.filter(item => 
+                        item.roles.some(role => userSubRoles.includes(role))
+                    );
+                    
+                    // Also include items for the base "Lecturer" role if they have it
+                     if(userSubRoles.includes('Lecturer')){
+                        const lecturerItems = staffMenuItems.filter(item => item.roles.includes('Lecturer'));
+                        subRoleItems.push(...lecturerItems);
+                    }
+                    
+                    const finalItems = [...baseItems, ...subRoleItems];
+                    const uniqueItems = Array.from(new Set(finalItems.map(item => item.href)))
+                                          .map(href => finalItems.find(item => item.href === href));
+
+                    setMenuItems(uniqueItems as any[]);
+                }
             }
         }
     };
 
     if (!loading && user) {
-      fetchUserRole();
+      fetchUserRoleAndPermissions();
     }
   }, [user, loading]);
 
@@ -78,27 +108,11 @@ export default function DashboardLayout({
   };
 
   const renderMenu = () => {
-    if (loading || !role) {
+    if (loading || !userData) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
-    
-    let roleSpecificItems = [];
-    switch(role) {
-        case 'Student':
-            roleSpecificItems = studentMenuItems;
-            break;
-        case 'Staff':
-            roleSpecificItems = staffMenuItems;
-            break;
-        case 'Admin':
-            roleSpecificItems = adminMenuItems;
-            break;
-        default:
-            roleSpecificItems = [];
-    }
 
-
-    return [...roleSpecificItems].map((item) => (
+    return menuItems.map((item) => (
       <SidebarMenuItem key={item.href}>
         <Link href={item.href}>
           <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
