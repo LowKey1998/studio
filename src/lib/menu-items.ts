@@ -1,5 +1,6 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2 } from 'lucide-react';
+
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -35,6 +36,13 @@ export const allMenuItems = [
         { href: '/admin/course-paths', label: 'Course Paths', icon: Route },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
+        { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
+        { href: '/admin/academics/lecturer-allocation', label: 'Lecturer Allocation', icon: UserPlus },
+        { href: '/admin/academics/teaching-load', label: 'Teaching Load Balance', icon: Scale },
+        { href: '/admin/academics/assessment-setup', label: 'Continous Assessment Setup', icon: ClipboardEdit },
+        { href: '/admin/academics/final-exam-setup', label: 'Final Exam Setup', icon: PenSquare },
+        { href: '/admin/academics/curriculum-mapping', label: 'Curriculum Mapping', icon: Map },
+        { href: '/admin/academics/policies', label: 'Academic Policies Upload', icon: FileUp },
       ]
     },
      {
