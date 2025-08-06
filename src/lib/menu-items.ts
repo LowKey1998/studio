@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -49,7 +49,16 @@ export const allMenuItems = [
       label: 'Exams & Results',
       icon: PenSquare,
       roles: ['Admin'],
-      items: []
+      items: [
+        { href: '/admin/exams/ca-entry', label: 'CA Entry', icon: ClipboardEdit },
+        { href: '/admin/exams/final-exam-entry', label: 'Final Exam Entry', icon: PenSquare },
+        { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
+        { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
+        { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
+        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper },
+        { href: '/admin/exams/result-publishing', label: 'Result Publishing', icon: Upload },
+        { href: '/admin/exams/student-appeals', label: 'Student Appeals Tracking', icon: Search },
+      ]
     },
     {
         label: 'Clinicals',
@@ -122,12 +131,6 @@ export const allMenuItems = [
      {
         label: 'AI Modules',
         icon: Beaker,
-        roles: ['Admin'],
-        items: []
-    },
-     {
-        label: 'Add-ons',
-        icon: Star,
         roles: ['Admin'],
         items: []
     },
@@ -218,3 +221,4 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
