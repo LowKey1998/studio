@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useNotifications } from "@/hooks/use-notifications";
@@ -34,7 +35,7 @@ export function NotificationsPopover() {
         <Button variant="ghost" size="icon" className="relative h-10 w-10">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">
+            <span className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
               {unreadCount}
             </span>
           )}
