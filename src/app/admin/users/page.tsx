@@ -358,56 +358,56 @@ export default function UserManagementPage() {
       <CardHeader className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
-            <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
-                <DialogContent className="sm:max-w-lg"><form onSubmit={handleCreateUser}><DialogHeader><DialogTitle className="font-headline">Create New User</DialogTitle><DialogDescription>A unique User ID will be generated automatically.</DialogDescription></DialogHeader>
-                        <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-4 pr-4">
-                            <div className="space-y-1"><Label>Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
-                            <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
-                            <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
-                            <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
-                            <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
-                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
-                                <div className="flex items-center justify-between">
-                                    <Label>Sub-Roles</Label>
-                                    <Dialog open={isSubRoleDialogOpen} onOpenChange={setIsSubRoleDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button variant="outline" size="sm">Create/Manage</Button>
-                                        </DialogTrigger>
-                                        <DialogContent onInteractOutside={e => e.preventDefault()}>
-                                            <DialogHeader><DialogTitle>Manage Sub-Roles</DialogTitle></DialogHeader>
-                                            <div className='py-4 space-y-4'>
-                                                <div className="flex gap-2">
-                                                    <Input placeholder="New sub-role name..." value={newSubRoleName} onChange={e => setNewSubRoleName(e.target.value)} />
-                                                    <Button onClick={handleCreateSubRole} disabled={loading}>{loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}</Button>
-                                                </div>
-                                                <div className="max-h-60 overflow-y-auto space-y-2">
-                                                    {availableSubRoles.map(sr => (
-                                                        <div key={sr.id} className="flex justify-between items-center rounded-md border p-2">
-                                                            <span>{sr.name}</span>
-                                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteSubRole(sr.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <DialogFooter><Button onClick={() => setIsSubRoleDialogOpen(false)}>Done</Button></DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
-                                </div>
-                            </div>)}
-                            {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
-                                <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
-                                <div className="flex items-center space-x-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student</Label></div>
-                                {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
-                            </div>)}
+            <div className='flex gap-2'>
+                 <Dialog open={isSubRoleDialogOpen} onOpenChange={setIsSubRoleDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline">Sub-Roles</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>Manage Sub-Roles</DialogTitle></DialogHeader>
+                        <div className='py-4 space-y-4'>
+                            <div className="flex gap-2">
+                                <Input placeholder="New sub-role name..." value={newSubRoleName} onChange={e => setNewSubRoleName(e.target.value)} />
+                                <Button onClick={handleCreateSubRole} disabled={loading}>{loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}</Button>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto space-y-2">
+                                {availableSubRoles.map(sr => (
+                                    <div key={sr.id} className="flex justify-between items-center rounded-md border p-2">
+                                        <span>{sr.name}</span>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteSubRole(sr.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Create User'}</Button></DialogFooter>
-                    </form></DialogContent>
-            </Dialog>
+                        <DialogFooter><Button onClick={() => setIsSubRoleDialogOpen(false)}>Done</Button></DialogFooter>
+                    </DialogContent>
+                </Dialog>
+                <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
+                    <DialogContent className="sm:max-w-lg"><form onSubmit={handleCreateUser}><DialogHeader><DialogTitle className="font-headline">Create New User</DialogTitle><DialogDescription>A unique User ID will be generated automatically.</DialogDescription></DialogHeader>
+                            <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-4 pr-4">
+                                <div className="space-y-1"><Label>Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
+                                {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
+                                    <Label>Sub-Roles</Label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                    </div>
+                                </div>)}
+                                {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
+                                    <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                    <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                    <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
+                                    <div className="flex items-center space-x-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student</Label></div>
+                                    {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
+                                </div>)}
+                            </div>
+                            <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Create User'}</Button></DialogFooter>
+                        </form></DialogContent>
+                </Dialog>
+            </div>
         </div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:max-w-xs"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search by name, ID, or email..." className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
@@ -448,3 +448,5 @@ export default function UserManagementPage() {
     </>
   );
 }
+
+    
