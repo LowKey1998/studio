@@ -265,7 +265,12 @@ export const allMenuItems = [
         label: 'Legal & Compliance',
         icon: GitBranch,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/legal/case-management', label: 'Case Management', icon: Briefcase },
+            { href: '/admin/legal/contract-repository', label: 'Contract Repository', icon: FileText },
+            { href: '/admin/legal/disciplinary-logs', label: 'Student Disciplinary Logs', icon: UserX },
+            { href: '/admin/legal/policy-uploads', label: 'Policy Uploads', icon: FileUp },
+        ]
     },
      {
         label: 'Facilities & Estates',
