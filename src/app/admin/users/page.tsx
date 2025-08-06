@@ -24,7 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,7 +37,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue } from 'firebase/database';
+import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove } from 'firebase/database';
 import { app, auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -87,13 +87,16 @@ type Intake = {
     name: string;
 }
 
+type SubRole = {
+    id: string;
+    name: string;
+}
+
 const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
   Admin: 'default',
   Staff: 'secondary',
   Student: 'outline',
 };
-
-const availableSubRoles = ["Lecturer", "Librarian", "Accountant", "Registrar", "HR"];
 
 export default function UserManagementPage() {
     const [open, setOpen] = React.useState(false);
@@ -125,11 +128,16 @@ export default function UserManagementPage() {
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
+    const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
 
 
     // State for filtering and searching
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
+    
+    // Sub-role management state
+    const [isSubRoleDialogOpen, setIsSubRoleDialogOpen] = React.useState(false);
+    const [newSubRoleName, setNewSubRoleName] = React.useState('');
 
 
     const [loading, setLoading] = React.useState(false);
@@ -167,15 +175,20 @@ export default function UserManagementPage() {
                 setTableLoading(false);
             })
 
-            const [programmesSnap, coursesSnap, intakesSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, subRolesSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
-                get(child(ref(db), 'intakes'))
+                get(child(ref(db), 'intakes')),
+                get(ref(db, 'settings/subRoles'))
             ]);
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
+            if (subRolesSnap.exists()) {
+                const subRolesData = subRolesSnap.val();
+                setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
+            } else { setAvailableSubRoles([]) }
 
 
         } catch (error) {
@@ -193,8 +206,8 @@ export default function UserManagementPage() {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
     };
     
-    const handleSubRoleChange = (subRole: string, setRoles: React.Dispatch<React.SetStateAction<string[]>>) => {
-        setRoles(prev => prev.includes(subRole) ? prev.filter(r => r !== subRole) : [...prev, subRole]);
+    const handleSubRoleChange = (subRoleName: string, setRoles: React.Dispatch<React.SetStateAction<string[]>>) => {
+        setRoles(prev => prev.includes(subRoleName) ? prev.filter(r => r !== subRoleName) : [...prev, subRoleName]);
     };
 
 
@@ -313,8 +326,34 @@ export default function UserManagementPage() {
         return allCourses.filter(c => prog.courseIds![c.id]);
     }, [programme, allProgrammes, allCourses]);
 
+    const handleCreateSubRole = async () => {
+        if (!newSubRoleName.trim()) { toast({variant: 'destructive', title: 'Sub-role name cannot be empty.'}); return; }
+        setLoading(true);
+        try {
+            await push(ref(db, 'settings/subRoles'), { name: newSubRoleName.trim() });
+            toast({title: 'Sub-role created'});
+            setNewSubRoleName('');
+            fetchInitialData(); // Refresh list
+        } catch (e: any) {
+            toast({variant: 'destructive', title: 'Failed to create sub-role.'})
+        } finally { setLoading(false); }
+    }
+    
+    const handleDeleteSubRole = async (id: string) => {
+        if (!window.confirm("Are you sure? This action cannot be undone.")) return;
+        setLoading(true);
+        try {
+            await remove(ref(db, `settings/subRoles/${id}`));
+            toast({title: 'Sub-role deleted'});
+            fetchInitialData(); // Refresh list
+        } catch(e) {
+             toast({variant: 'destructive', title: 'Failed to delete sub-role.'})
+        } finally { setLoading(false); }
+    }
+
 
   return (
+    <>
     <Card className="shadow-lg">
       <CardHeader className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -327,7 +366,37 @@ export default function UserManagementPage() {
                             <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
                             <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
                             <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
-                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3"><Label>Sub-Roles</Label><div className="grid grid-cols-2 gap-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem}`} checked={subRoles.includes(subRoleItem)} onCheckedChange={() => handleSubRoleChange(subRoleItem, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem}`} className="font-normal">{subRoleItem}</Label></div>))}</div></div>)}
+                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
+                                <div className="flex items-center justify-between">
+                                    <Label>Sub-Roles</Label>
+                                    <Dialog open={isSubRoleDialogOpen} onOpenChange={setIsSubRoleDialogOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" size="sm">Create/Manage</Button>
+                                        </DialogTrigger>
+                                        <DialogContent onInteractOutside={e => e.preventDefault()}>
+                                            <DialogHeader><DialogTitle>Manage Sub-Roles</DialogTitle></DialogHeader>
+                                            <div className='py-4 space-y-4'>
+                                                <div className="flex gap-2">
+                                                    <Input placeholder="New sub-role name..." value={newSubRoleName} onChange={e => setNewSubRoleName(e.target.value)} />
+                                                    <Button onClick={handleCreateSubRole} disabled={loading}>{loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Add'}</Button>
+                                                </div>
+                                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                                    {availableSubRoles.map(sr => (
+                                                        <div key={sr.id} className="flex justify-between items-center rounded-md border p-2">
+                                                            <span>{sr.name}</span>
+                                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteSubRole(sr.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <DialogFooter><Button onClick={() => setIsSubRoleDialogOpen(false)}>Done</Button></DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                </div>
+                            </div>)}
                             {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
                                 <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                 <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
@@ -370,11 +439,12 @@ export default function UserManagementPage() {
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-email" className="text-right">Email</Label><Input id="edit-email" value={editingUser?.email || ''} className="col-span-3" disabled /></div>
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-name" className="text-right">Name</Label><Input id="edit-name" value={editName} onChange={e => setEditName(e.target.value)} className="col-span-3" disabled={loading}/></div>
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-role" className="text-right">Role</Label><Select onValueChange={setEditRole} value={editRole} disabled={loading}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="Student">Student</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Admin">Admin</SelectItem></SelectContent></Select></div>
-                    {editRole === 'Staff' && (<div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem}`} checked={editSubRoles.includes(subRoleItem)} onCheckedChange={() => handleSubRoleChange(subRoleItem, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem}`} className="font-normal">{subRoleItem}</Label></div>))}</div></div>)}
+                    {editRole === 'Staff' && (<div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>)}
                 </div>
                 <DialogFooter><DialogClose asChild><Button variant="outline" type="button" onClick={() => setIsEditOpen(false)}>Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Update User'}</Button></DialogFooter>
             </form></DialogContent>
         </Dialog>
     </Card>
+    </>
   );
 }
