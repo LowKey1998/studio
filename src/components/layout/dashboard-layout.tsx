@@ -69,14 +69,28 @@ export default function DashboardLayout({
     } else if (userProfile.role.toLowerCase() === 'student') {
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
-        const staffSpecificItems = allMenuItems.flatMap(item => item.items ? item.items : [item]).filter(item => {
-             if (!item.roles || !userProfile.subRoles) return false;
-            return userProfile.subRoles?.some(subRole => item.roles!.includes(subRole));
-        });
-        itemsToRender = [...staffBaseMenuItems, ...staffSpecificItems];
+        const staffPermissions = userProfile.permissions || {};
+        const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
+
+        const filteredAdminItems = allMenuItems.map(category => {
+            if (!category.items) {
+                // Handle top-level items if any are defined for staff
+                return allowedHrefs.includes(category.href) ? category : null;
+            }
+            
+            const filteredSubItems = category.items.filter(subItem => allowedHrefs.includes(subItem.href));
+            
+            if (filteredSubItems.length > 0) {
+                return { ...category, items: filteredSubItems };
+            }
+            
+            return null;
+        }).filter(Boolean);
+
+        itemsToRender = [...staffBaseMenuItems, ...filteredAdminItems];
     }
 
-    if (userProfile.role.toLowerCase() === 'admin') {
+    if (userProfile.role.toLowerCase() === 'admin' || userProfile.role.toLowerCase() === 'staff') {
         const defaultOpen = allMenuItems.find(item => item.items?.some(sub => pathname.startsWith(sub.href)))?.label;
         return (
              <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
@@ -107,6 +121,7 @@ export default function DashboardLayout({
                             </AccordionItem>
                         )
                     }
+                    // Render base menu items for staff that are not in a category
                     return (
                         <SidebarMenuItem key={item.href}>
                             <Link href={item.href}>

@@ -13,7 +13,14 @@ export type UserProfile = {
   profilePictureUrl?: string;
   role: 'Admin' | 'Staff' | 'Student';
   subRoles?: string[];
+  permissions?: Record<string, boolean>; // Aggregated permissions
 } | null;
+
+export type SubRole = {
+  id: string;
+  name: string;
+  permissions: Record<string, boolean>;
+};
 
 
 export function useAuth() {
@@ -25,11 +32,29 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        const userRef = ref(db, `users/${user.uid}`);
         try {
-            const snapshot = await get(userRef);
-            if(snapshot.exists()){
-                setUserProfile({ uid: user.uid, ...snapshot.val() });
+            const userRef = ref(db, `users/${user.uid}`);
+            const settingsRef = ref(db, 'settings/subRoles');
+            
+            const [userSnapshot, settingsSnapshot] = await Promise.all([get(userRef), get(settingsRef)]);
+
+            if(userSnapshot.exists()){
+                const profileData = userSnapshot.val();
+                let aggregatedPermissions: Record<string, boolean> = {};
+
+                // If user is staff and has sub-roles, aggregate permissions
+                if (profileData.role === 'Staff' && profileData.subRoles && settingsSnapshot.exists()) {
+                    const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
+                    const userSubRoleNames = profileData.subRoles || [];
+                    
+                    Object.values(allSubRoles).forEach(roleDetail => {
+                        if (userSubRoleNames.includes(roleDetail.name)) {
+                            aggregatedPermissions = { ...aggregatedPermissions, ...roleDetail.permissions };
+                        }
+                    });
+                }
+
+                setUserProfile({ uid: user.uid, ...profileData, permissions: aggregatedPermissions });
             } else {
                 setUserProfile(null);
             }
