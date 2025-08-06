@@ -57,26 +57,35 @@ export default function DashboardLayout({
                 } else if (data.role === 'Student') {
                     setMenuItems(studentMenuItems);
                 } else if (data.role === 'Staff') {
-                     // Start with base staff items (e.g., leave application for everyone)
-                    const baseItems = staffMenuItems.filter(item => item.roles.includes('*'));
+                    const settingsRef = ref(db, 'settings/subRoles');
+                    const settingsSnap = await get(settingsRef);
+                    const subRolePermissions: Record<string, Record<string, boolean>> = settingsSnap.exists() ? settingsSnap.val() : {};
+
+                    let accessibleRoutes = new Set<string>();
+                    
+                    // Add base staff items (e.g., leave application for everyone)
+                    staffMenuItems.filter(item => item.roles.includes('*')).forEach(item => accessibleRoutes.add(item.href));
 
                     // Add items specific to the user's sub-roles
                     const userSubRoles = data.subRoles || [];
-                    const subRoleItems = staffMenuItems.filter(item => 
-                        item.roles.some(role => userSubRoles.includes(role))
-                    );
+                    userSubRoles.forEach(subRoleName => {
+                        const roleId = Object.keys(subRolePermissions).find(id => subRolePermissions[id].name === subRoleName);
+                        if (roleId && subRolePermissions[roleId].permissions) {
+                            Object.entries(subRolePermissions[roleId].permissions).forEach(([path, hasAccess]) => {
+                                if (hasAccess) {
+                                    accessibleRoutes.add(path);
+                                }
+                            });
+                        }
+                    });
                     
-                    // Also include items for the base "Lecturer" role if they have it
+                    // Add items for the base "Lecturer" role if they have it
                      if(userSubRoles.includes('Lecturer')){
-                        const lecturerItems = staffMenuItems.filter(item => item.roles.includes('Lecturer'));
-                        subRoleItems.push(...lecturerItems);
+                        staffMenuItems.filter(item => item.roles.includes('Lecturer')).forEach(item => accessibleRoutes.add(item.href));
                     }
                     
-                    const finalItems = [...baseItems, ...subRoleItems];
-                    const uniqueItems = Array.from(new Set(finalItems.map(item => item.href)))
-                                          .map(href => finalItems.find(item => item.href === href));
-
-                    setMenuItems(uniqueItems as any[]);
+                    const finalItems = allMenuItems.filter(item => accessibleRoutes.has(item.href));
+                    setMenuItems(finalItems);
                 }
             }
         }
