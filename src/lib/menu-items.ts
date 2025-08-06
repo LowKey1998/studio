@@ -54,22 +54,6 @@ export const allMenuItems = [
     { href: '/admin/settings', label: 'System Settings', icon: Settings, roles: ['Admin'] },
 ];
 
-
-export const staffMenuItems = [
-    { href: '/staff/courses', label: 'My Courses', icon: Library, roles: ['Lecturer'] },
-    { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheck, roles: ['Lecturer']},
-    { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, roles: ['Lecturer'] },
-    { href: '/staff/leave', label: 'My Leave', icon: Calendar, roles: ['*'] }, // All staff can apply for leave
-    
-    // Sub-role specific pages, paths must match a key from allMenuItems
-    { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, roles: ['Registrar'] },
-    { href: '/admin/registration-management', label: 'Manage Registration', icon: UserCheck, roles: ['Registrar'] },
-    { href: '/admin/payments', label: 'Payments Overview', icon: DollarSign, roles: ['Accountant'] },
-    { href: '/admin/cashflow', label: 'Cash Flow', icon: BarChart2, roles: ['Accountant'] },
-    { href: '/admin/library', label: 'Manage Library', icon: Library, roles: ['Librarian'] },
-    { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp, roles: ['Librarian'] },
-  ];
-
 export const studentMenuItems = [
     { href: '/student/classes', label: 'My Classes', icon: Library },
     { href: '/student/registration', label: 'Registration', icon: UserCheck },
