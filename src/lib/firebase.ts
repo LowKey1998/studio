@@ -1,6 +1,7 @@
+
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getDatabase } from "firebase/database";
+import { getDatabase, ref, push, set, serverTimestamp, get } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 
@@ -20,5 +21,36 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 const storage = getStorage(app);
 const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+
+/**
+ * Creates a notification for a specific user.
+ * @param userId - The UID of the user to notify.
+ * @param message - The notification message.
+ * @param link - The URL the notification should link to.
+ */
+export const createNotification = async (userId: string, message: string, link: string) => {
+  const notificationRef = push(ref(db, `notifications/${userId}`));
+  await set(notificationRef, {
+    message,
+    link,
+    timestamp: serverTimestamp(),
+    read: false,
+  });
+};
+
+/**
+ * Retrieves all user IDs for students and staff.
+ * @returns A promise that resolves to an array of user IDs.
+ */
+export const getAllStudentAndStaffIds = async (): Promise<string[]> => {
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
+    if (snapshot.exists()) {
+        const users = snapshot.val();
+        return Object.keys(users).filter(uid => users[uid].role === 'Student' || users[uid].role === 'Staff');
+    }
+    return [];
+};
+
 
 export { app, auth, db, storage, messaging };

@@ -140,7 +140,7 @@ export default function UserManagementPage() {
     // Sub-role management state
     const [isSubRoleDialogOpen, setIsSubRoleDialogOpen] = React.useState(false);
     const [newSubRoleName, setNewSubRoleName] = React.useState('');
-    const [editingRole, setEditingRole] = React.useState<SubRole | null>(null);
+    const [editingSubRole, setEditingSubRole] = React.useState<SubRole | null>(null);
     const [permissions, setPermissions] = React.useState<Record<string, boolean>>({});
 
 
@@ -332,11 +332,11 @@ export default function UserManagementPage() {
 
     const openEditSubRoleDialog = (role: SubRole | null) => {
         if(role) {
-            setEditingRole(role);
+            setEditingSubRole(role);
             setNewSubRoleName(role.name);
             setPermissions(role.permissions || {});
         } else {
-            setEditingRole(null);
+            setEditingSubRole({} as SubRole); // Use an empty object to signify creation mode
             setNewSubRoleName('');
             setPermissions({});
         }
@@ -347,15 +347,15 @@ export default function UserManagementPage() {
         setLoading(true);
         try {
             const roleData = { name: newSubRoleName.trim(), permissions };
-            if (editingRole) {
-                await update(ref(db, `settings/subRoles/${editingRole.id}`), roleData);
+            if (editingSubRole && editingSubRole.id) {
+                await update(ref(db, `settings/subRoles/${editingSubRole.id}`), roleData);
                 toast({title: 'Sub-role updated'});
             } else {
                 await push(ref(db, 'settings/subRoles'), roleData);
                 toast({title: 'Sub-role created'});
             }
             fetchInitialData(); // Refresh list
-            openEditSubRoleDialog(null);
+            setEditingSubRole(null);
         } catch (e: any) {
             toast({variant: 'destructive', title: 'Failed to save sub-role.'})
         } finally { setLoading(false); }
@@ -472,10 +472,10 @@ export default function UserManagementPage() {
         </Dialog>
     </Card>
 
-    <Dialog open={!!editingRole} onOpenChange={() => openEditSubRoleDialog(null)}>
+    <Dialog open={!!editingSubRole} onOpenChange={(open) => !open && setEditingSubRole(null)}>
         <DialogContent className="max-w-2xl">
             <DialogHeader>
-                <DialogTitle>{editingRole ? `Edit ${editingRole.name}` : "Create New Sub-Role"}</DialogTitle>
+                <DialogTitle>{editingSubRole?.id ? `Edit ${editingSubRole.name}` : "Create New Sub-Role"}</DialogTitle>
                 <DialogDescription>Define the name and permissions for this staff sub-role.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -502,7 +502,7 @@ export default function UserManagementPage() {
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 animate-spin"/> : "Save Role"}</Button>
+                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Save Role"}</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
