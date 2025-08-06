@@ -172,7 +172,15 @@ export const allMenuItems = [
         label: 'Integrations',
         icon: Link,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/integrations/momo', label: 'MoMo/Airtel Payment API', icon: Wallet },
+            { href: '/admin/integrations/paystack', label: 'Paystack API', icon: Wallet },
+            { href: '/admin/integrations/whatsapp', label: 'Whatsapp Messaging', icon: MessageSquare },
+            { href: '/admin/integrations/sms', label: 'SMS API', icon: MessageSquare },
+            { href: '/admin/integrations/biometric', label: 'Biometric Attendance', icon: Hand },
+            { href: '/admin/integrations/teveta', label: 'TEVETA XML Export', icon: FileUp },
+            { href: '/admin/integrations/compliance', label: 'Compliance Upload', icon: Shield },
+        ]
     },
      {
         label: 'AI Modules',
@@ -267,6 +275,7 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
 
