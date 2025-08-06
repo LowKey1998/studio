@@ -315,7 +315,11 @@ export const allMenuItems = [
         label: 'Chaplaincy & Spiritual Life',
         icon: Heart,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
+            { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
+            { href: '/admin/chaplaincy/chaplain-logs', label: 'Chaplain Logs', icon: Book },
+        ]
     },
     {
         label: 'Add-ons',
@@ -351,5 +355,6 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
