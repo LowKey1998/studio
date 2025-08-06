@@ -32,9 +32,11 @@ export default function RootPage() {
             } else if (role === 'Student') {
               router.replace('/student/classes');
             } else {
+              // Fallback if role is not defined
               router.replace('/login');
             }
           } else {
+            // User is authenticated but no data in DB, redirect to login
             router.replace('/login');
           }
         } catch (error) {
