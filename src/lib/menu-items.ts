@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -226,6 +226,25 @@ export const allMenuItems = [
         ]
     },
     {
+        label: 'Innovation',
+        icon: Beaker,
+        roles: ['Admin'],
+        items: [
+            { href: '/admin/innovation/project-submissions', label: 'Innovation Project Submissions', icon: FileUp },
+            { href: '/admin/innovation/prototype-showcase', label: 'Prototype Showcase', icon: GalleryVertical },
+            { href: '/admin/innovation/incubator-access', label: 'Innovation Incubator Access', icon: KeyRound },
+            { href: '/admin/innovation/mentorship-matching', label: 'Mentorship Matching', icon: UserCheckIcon },
+            { href: '/admin/innovation/evaluation-committee', label: 'Innovation Evaluation Committee', icon: Users2 },
+            { href: '/admin/innovation/pitch-deck-repository', label: 'Pitch Deck Repository', icon: FileText },
+            { href: '/admin/innovation/ip-tracker', label: 'Intellectual Property Registration Tracker', icon: Shield },
+            { href: '/admin/innovation/events-calendar', label: 'Innovation Events Calendar', icon: Calendar },
+            { href: '/admin/innovation/investor-matching', label: 'Investor Matching Tools', icon: Handshake },
+            { href: '/admin/innovation/hackathon-logs', label: 'Hackathon Participation Logs', icon: Book },
+            { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration & Team Building Portal', icon: Users },
+        ]
+    },
+    {
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
@@ -313,6 +332,7 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
 
