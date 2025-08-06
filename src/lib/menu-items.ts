@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -78,7 +78,16 @@ export const allMenuItems = [
       label: 'E-Learning',
       icon: MonitorPlay,
       roles: ['Admin'],
-      items: []
+      items: [
+        { href: '/admin/e-learning/pdf-upload', label: 'PDF Upload', icon: FileUp },
+        { href: '/admin/e-learning/video-lectures', label: 'Video Lectures', icon: Video },
+        { href: '/admin/e-learning/powerpoint-slides', label: 'PowerPoint Slides', icon: FileText },
+        { href: '/admin/e-learning/online-quizzes', label: 'Online Quizzes', icon: FileQuestion },
+        { href: '/admin/e-learning/assignments-upload', label: 'Assignments Upload', icon: Upload },
+        { href: '/admin/e-learning/discussion-forums', label: 'Discussion Forums', icon: MessageSquare },
+        { href: '/admin/e-learning/scorm-integration', label: 'SCORM Tools Integration', icon: GitBranch },
+        { href: '/admin/e-learning/moodle-sync', label: 'Moodle Synchronization', icon: RefreshCw },
+      ]
     },
     {
       label: 'Finance',
