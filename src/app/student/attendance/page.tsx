@@ -1,205 +1,196 @@
 
-"use client";
-
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { db } from '@/lib/firebase';
-import { ref, onValue, off, get } from 'firebase/database';
-import { useAuth } from '@/hooks/use-auth';
+'use client';
+import * as React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ChevronRight, Info, Hand, CheckCircle, XCircle, Clock } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
-import { format } from 'date-fns';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
+import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 
-interface AttendanceRecord {
-  id: string; // composite key
-  date: string;
-  status: 'present' | 'absent' | 'late';
-  courseId: string;
-  courseTitle: string;
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+};
+
+type AttendanceSummary = {
+    course: Course;
+    present: number;
+    absent: number;
+    late: number;
+    total: number;
+    percentage: number;
 }
-
-interface Course {
-  id: string;
-  title: string;
-}
-
-const AttendanceSkeleton = () => (
-    <TableRow>
-        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-3/4" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-    </TableRow>
-)
 
 export default function StudentAttendancePage() {
-    const { user, loading: authLoading } = useAuth();
-    const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
-    const [filteredAttendance, setFilteredAttendance] = useState<AttendanceRecord[]>([]);
-    const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
-    const [selectedCourse, setSelectedCourse] = useState<string>('all');
-    const [loading, setLoading] = useState(true);
-    const [studentId, setStudentId] = useState<string | null>(null);
+    const [attendanceSummaries, setAttendanceSummaries] = React.useState<AttendanceSummary[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
+    const { toast } = useToast();
 
-     useEffect(() => {
-        const fetchStudentId = async () => {
-            if (user) {
-                const usersRef = ref(db, 'users');
-                const snapshot = await get(usersRef);
-                if (snapshot.exists()) {
-                    const users = snapshot.val();
-                    const foundEntry = Object.entries(users).find(([, userData]: [string, any]) => userData.uid === user.uid);
-                    if (foundEntry) {
-                        setStudentId(foundEntry[0]);
-                    } else {
-                        setLoading(false);
-                    }
-                } else {
-                    setLoading(false);
-                }
-            } else if (!authLoading) {
-                setLoading(false);
-            }
-        };
-        fetchStudentId();
-    }, [user, authLoading]);
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) {
+            setCurrentUser(user);
+          } else {
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      }, []);
 
-    useEffect(() => {
-        if (!studentId) return;
-
-        let attendanceListener: any;
-        
-        const fetchStudentData = async () => {
-            const studentRef = ref(db, `users/${studentId}`);
-            const studentSnapshot = await get(studentRef);
-            const studentData = studentSnapshot.val();
-
-            if (!studentData?.enrolledCourses) {
+    const fetchAttendanceData = React.useCallback(async () => {
+        if (!currentUser) return;
+        setLoading(true);
+        try {
+            const registrationsSnapshot = await get(ref(db, `registrations/${currentUser.uid}`));
+            if (!registrationsSnapshot.exists()) {
+                setAttendanceSummaries([]);
                 setLoading(false);
                 return;
             }
-
-            const courseIds = Object.keys(studentData.enrolledCourses);
-            const coursesRef = ref(db, 'courses');
-            const coursesSnapshot = await get(coursesRef);
-            const allCourses = coursesSnapshot.val() || {};
             
-            const studentCourses = courseIds.map(id => ({ id, title: allCourses[id]?.title || `Course ${id}` }));
-            setEnrolledCourses(studentCourses);
-
-            const attendanceRef = ref(db, 'attendance');
-            attendanceListener = onValue(attendanceRef, (snapshot) => {
-                const attendanceData = snapshot.val() || {};
-                const records: AttendanceRecord[] = [];
-
-                studentCourses.forEach(course => {
-                    if (attendanceData[course.id]) {
-                        Object.entries(attendanceData[course.id]).forEach(([date, dateRecords]: [string, any]) => {
-                             if(dateRecords[studentId]) {
-                                records.push({
-                                    id: `${course.id}-${date}`,
-                                    date: date,
-                                    status: dateRecords[studentId].status,
-                                    courseId: course.id,
-                                    courseTitle: course.title,
-                                });
-                             }
-                        });
-                    }
-                });
-                
-                const sortedRecords = records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                setAllAttendance(sortedRecords);
-                setFilteredAttendance(sortedRecords);
-                setLoading(false);
+            const allCourseIds = new Set<string>();
+            Object.values(registrationsSnapshot.val()).forEach((reg: any) => {
+                if (reg.status === 'Completed') {
+                     reg.courses.forEach((id: string) => allCourseIds.add(id));
+                }
             });
-        };
-
-        fetchStudentData();
-
-        return () => {
-            if (attendanceListener) {
-                const attendanceRef = ref(db, 'attendance');
-                off(attendanceRef, 'value', attendanceListener);
+            
+            if (allCourseIds.size === 0) {
+                 setAttendanceSummaries([]);
+                 setLoading(false);
+                 return;
             }
+
+            const [coursesSnapshot, attendanceSnapshot] = await Promise.all([
+                get(ref(db, 'courses')),
+                get(ref(db, 'attendance'))
+            ]);
+
+            const summaries: AttendanceSummary[] = [];
+            const allCourses = coursesSnapshot.val() || {};
+            const allAttendance = attendanceSnapshot.val() || {};
+            
+            for (const courseId of Array.from(allCourseIds)) {
+                const courseAttendance = allAttendance[courseId];
+                let present = 0, absent = 0, late = 0;
+                let totalLectures = 0;
+                
+                if (courseAttendance) {
+                    totalLectures = Object.keys(courseAttendance).length;
+                    Object.values(courseAttendance).forEach((dailyRecord: any) => {
+                        const status = dailyRecord[currentUser.uid];
+                        if (status === 'Present') present++;
+                        else if (status === 'Absent') absent++;
+                        else if (status === 'Late') late++;
+                    });
+                }
+                const totalMarked = present + absent + late;
+                const percentage = totalMarked > 0 ? ((present + late) / totalMarked) * 100 : -1; // Use -1 to indicate no records for this student
+                
+                summaries.push({
+                    course: {
+                        id: courseId,
+                        name: allCourses[courseId]?.name || "Unknown Course",
+                        code: allCourses[courseId]?.code || "N/A"
+                    },
+                    present, absent, late, total: totalLectures, percentage
+                });
+            }
+            setAttendanceSummaries(summaries);
+
+        } catch (error) {
+            console.error("Error fetching attendance data:", error);
+            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your attendance data." });
+        } finally {
+            setLoading(false);
         }
+    }, [currentUser, toast]);
 
-    }, [studentId]);
 
-    useEffect(() => {
-        if (selectedCourse === 'all') {
-            setFilteredAttendance(allAttendance);
-        } else {
-            setFilteredAttendance(allAttendance.filter(rec => rec.courseId === selectedCourse));
+    React.useEffect(() => {
+        if (currentUser) {
+            fetchAttendanceData();
         }
-    }, [selectedCourse, allAttendance]);
+    }, [currentUser, fetchAttendanceData]);
+    
+    return (
+        <div className="space-y-6">
+            <Card className="shadow-lg border-0">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">My Attendance</CardTitle>
+                    <CardDescription>An overview of your attendance record for each course.</CardDescription>
+                </CardHeader>
+            </Card>
 
-    const getStatusBadgeVariant = (status: string) => {
-        switch(status) {
-            case 'present': return 'default';
-            case 'late': return 'secondary';
-            case 'absent': return 'destructive';
-            default: return 'outline';
-        }
-    }
-
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>My Attendance</CardTitle>
-              <CardDescription>A record of your attendance for all enrolled courses.</CardDescription>
-            </div>
-             <div className="w-full md:w-auto md:min-w-[250px]">
-                <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={loading}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Filter by course..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Courses</SelectItem>
-                        {enrolledCourses.map(course => (
-                            <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Course</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => <AttendanceSkeleton key={i} />)
-              ) : filteredAttendance.length > 0 ? (
-                filteredAttendance.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">{format(new Date(record.date), 'PPP')}</TableCell>
-                      <TableCell>{record.courseTitle}</TableCell>
-                      <TableCell>
-                          <Badge variant={getStatusBadgeVariant(record.status)} className="capitalize">{record.status}</Badge>
-                      </TableCell>
-                    </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={3} className="h-24 text-center">
-                    No attendance records found for the selected course.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
+            {loading ? (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                        <Card key={index} className="shadow-md">
+                            <CardHeader><Skeleton className="h-6 w-2/3" /></CardHeader>
+                            <CardContent className="space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-5 w-1/2" /></CardContent>
+                            <CardFooter><Skeleton className="h-10 w-full" /></CardFooter>
+                        </Card>
+                    ))}
+                </div>
+            ) : attendanceSummaries.length > 0 ? (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {attendanceSummaries.map((summary) => (
+                    <Card key={summary.course.id} className="flex flex-col justify-between shadow-lg">
+                        <CardHeader>
+                            <CardTitle className="font-headline">{summary.course.name}</CardTitle>
+                            <CardDescription>{summary.course.code}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {summary.percentage >= 0 ? (
+                                <div>
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-sm font-medium text-muted-foreground">Attendance Rate</span>
+                                        <span className="font-bold text-lg">{summary.percentage.toFixed(0)}%</span>
+                                    </div>
+                                    <Progress value={summary.percentage} />
+                                </div>
+                            ) : (
+                                <div className="text-center text-sm text-muted-foreground py-2">
+                                    No attendance marked as yet.
+                                </div>
+                            )}
+                             <div className="flex justify-around text-xs text-muted-foreground pt-2">
+                                <div className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-500" />Present: {summary.present}</div>
+                                <div className="flex items-center gap-1"><XCircle className="h-3 w-3 text-red-500" />Absent: {summary.absent}</div>
+                                <div className="flex items-center gap-1"><Clock className="h-3 w-3 text-orange-500" />Late: {summary.late}</div>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                        <Button asChild className="w-full">
+                            <Link href={`/student/attendance/${summary.course.id}`}>
+                                View Details <ChevronRight className="ml-2 h-4 w-4" />
+                            </Link>
+                        </Button>
+                        </CardFooter>
+                    </Card>
+                    ))}
+                </div>
+            ) : (
+                <Card>
+                    <CardContent className="pt-6">
+                        <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>No Attendance Records</AlertTitle>
+                            <AlertDescription>
+                                No attendance has been marked for your courses yet, or you are not fully enrolled in any courses.
+                            </AlertDescription>
+                        </Alert>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
+    );
 }

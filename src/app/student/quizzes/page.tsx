@@ -1,149 +1,61 @@
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { FileQuestion, HelpCircle, Clock, ChevronRight } from "lucide-react";
 
-"use client";
+const quizzes = [
+  { title: "Calculus II - Chapter 3 Quiz", course: "MATH-201", questions: 15, timeLimit: "30 mins", status: "Not Started" },
+  { title: "Physics: Midterm Review", course: "PHY-102", questions: 25, timeLimit: "45 mins", status: "Not Started" },
+  { title: "Literary Devices Pop Quiz", course: "ENG-301", questions: 10, timeLimit: "15 mins", status: "Completed", score: "8/10" },
+  { title: "Roman Republic Knowledge Check", course: "HIST-210", questions: 20, timeLimit: "20 mins", status: "Not Started" },
+  { title: "Data Structures: Big O Notation", course: "CS-450", questions: 12, timeLimit: "25 mins", status: "Completed", score: "12/12" },
+];
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Loader2, PlayCircle } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { ref, onValue, off } from 'firebase/database';
-import { Skeleton } from '@/components/ui/skeleton';
-
-interface Quiz {
-  id: string;
-  title: string;
-  courseId: string;
-  timeLimit: number;
-  description: string;
-}
-
-interface Course {
-    id: string;
-    title: string;
-}
-
-interface EnrichedQuiz extends Quiz {
-    courseTitle: string;
-}
-
-const QuizSkeleton = () => (
-    <TableRow>
-        <TableCell><Skeleton className="h-5 w-3/4" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-1/2" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-        <TableCell><Skeleton className="h-10 w-28" /></TableCell>
-    </TableRow>
-)
-
-export default function StudentQuizzesPage() {
-    const [quizzes, setQuizzes] = useState<EnrichedQuiz[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const quizzesRef = ref(db, 'quizzes');
-        const coursesRef = ref(db, 'courses');
-
-        let coursesData: { [key: string]: Course } = {};
-
-        const coursesListener = onValue(coursesRef, (snapshot) => {
-            coursesData = snapshot.val() || {};
-            // Rerun the quizzes listener if it already ran to enrich the data
-            if(!loading) {
-                onValue(quizzesRef, (quizSnapshot) => {
-                    const quizzesData = quizSnapshot.val();
-                    if (quizzesData && coursesData) {
-                        const enrichedList = Object.keys(quizzesData).map(key => {
-                            const quiz = { id: key, ...quizzesData[key]};
-                            return {
-                                ...quiz,
-                                courseTitle: coursesData[quiz.courseId]?.title || 'Unknown Course'
-                            }
-                        });
-                        setQuizzes(enrichedList);
-                    } else {
-                        setQuizzes([]);
-                    }
-                    setLoading(false);
-                }, { onlyOnce: true });
-            }
-        });
-
-        const quizzesListener = onValue(quizzesRef, (snapshot) => {
-            const quizzesData = snapshot.val();
-            if (quizzesData && Object.keys(coursesData).length > 0) {
-                 const enrichedList = Object.keys(quizzesData).map(key => {
-                    const quiz = { id: key, ...quizzesData[key]};
-                    return {
-                        ...quiz,
-                        courseTitle: coursesData[quiz.courseId]?.title || 'Unknown Course'
-                    }
-                });
-                setQuizzes(enrichedList);
-            } else if (!quizzesData) {
-                 setQuizzes([]);
-            }
-            setLoading(false);
-        });
-
-        return () => {
-            off(quizzesRef, 'value', quizzesListener);
-            off(coursesRef, 'value', coursesListener);
-        };
-    }, [loading]);
-
-
+export default function QuizzesPage() {
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>My Quizzes</CardTitle>
-          <CardDescription>Here is a list of your available quizzes.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Course</TableHead>
-                <TableHead>Time Limit</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 4 }).map((_, i) => <QuizSkeleton key={i} />)
-              ) : quizzes.length > 0 ? (
-                quizzes
-                 .map((quiz) => (
-                    <TableRow key={quiz.id}>
-                      <TableCell className="font-medium">{quiz.title}</TableCell>
-                      <TableCell>{quiz.courseTitle}</TableCell>
-                      <TableCell>
-                          <Badge variant="secondary">
-                            {quiz.timeLimit} minutes
-                          </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button>
-                           <PlayCircle className="mr-2 h-4 w-4" />
-                            Start Quiz
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center">
-                    No quizzes found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
+       <Card className="shadow-lg border-0">
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Quizzes & Exams</CardTitle>
+            <CardDescription>Test your knowledge. Select a quiz to begin.</CardDescription>
+          </CardHeader>
       </Card>
+      
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {quizzes.map((quiz, index) => (
+          <Card key={index} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
+            <CardHeader>
+              <CardTitle className="font-headline">{quiz.title}</CardTitle>
+              <CardDescription>{quiz.course}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-around text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="h-4 w-4" />
+                  <span>{quiz.questions} Questions</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span>{quiz.timeLimit}</span>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between items-center bg-muted/50 px-6 py-4">
+              {quiz.status === 'Completed' ? (
+                <div className="font-semibold">
+                  <p className="text-sm text-muted-foreground">Score</p>
+                  <p className="text-lg text-primary">{quiz.score}</p>
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-muted-foreground">Not Started</p>
+              )}
+              <Button disabled={quiz.status === 'Completed'}>
+                {quiz.status === 'Completed' ? 'View Results' : 'Start Quiz'}
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

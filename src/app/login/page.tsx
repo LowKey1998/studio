@@ -1,251 +1,189 @@
 
-"use client";
+'use client';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { ref, get, child } from "firebase/database";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
-import Link from 'next/link';
-import { auth, db } from '@/lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { get, ref, set } from 'firebase/database';
-
-const loginSchema = z.object({
-  role: z.enum(['admin', 'staff', 'student'], {
-    required_error: 'Please select a role.',
-  }),
-  identifier: z.string().min(1, 'Please enter your ID'),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-
-// Helper function to ensure the default admin exists
-const ensureAdminExists = async () => {
-  const adminRef = ref(db, 'users/admin');
-  const adminSnapshot = await get(adminRef);
-  
-  if (!adminSnapshot.exists()) {
-    try {
-      // 1. Create user in Auth if they don't exist
-      // We'll try to sign in first, if it fails, then we create the user.
-      try {
-        await signInWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
-      } catch (error: any) {
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-             const userCredential = await createUserWithEmailAndPassword(auth, 'admin@edutrack360.com', 'password');
-             // 2. Store user in DB
-            await set(adminRef, {
-                uid: userCredential.user.uid,
-                email: 'admin@edutrack360.com',
-                role: 'admin',
-            });
-        } else {
-            // Rethrow other auth errors
-            throw error;
-        }
-      }
-
-      // If user exists in Auth but not DB, add to DB
-      if(!adminSnapshot.exists()) {
-          const user = auth.currentUser;
-          if (user && user.email === 'admin@edutrack360.com') {
-             await set(adminRef, {
-                uid: user.uid,
-                email: 'admin@edutrack360.com',
-                role: 'admin',
-            });
-          }
-      }
-
-       // Sign out the user immediately after creation/check, so they have to log in.
-      if (auth.currentUser) {
-        await auth.signOut();
-      }
-
-    } catch (error: any) {
-        // If the admin already exists in Auth but not DB (e.g. from a failed previous attempt),
-        // this might fail. We can ignore 'auth/email-already-in-use' during this seed process.
-        if(error.code !== 'auth/email-already-in-use') {
-            console.error("Failed to create default admin user:", error);
-        }
-    }
-  }
-};
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import Logo from "@/components/logo";
+import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function LoginPage() {
+  const [userId, setUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
 
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      identifier: '',
-      password: '',
-    },
-  });
-
-  const onSubmit = async (data: LoginFormValues) => {
-    setIsLoading(true);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!role || !userId || !password) {
+      toast({
+        variant: "destructive",
+        title: "Missing Fields",
+        description: "Please fill out all fields to log in.",
+      });
+      return;
+    }
+    setLoading(true);
 
     try {
-        // Ensure the default admin exists before any login attempt
-        await ensureAdminExists();
+      // 1. Find the user's data in Realtime DB by their ID
+      const usersRef = ref(db, 'users');
+      const snapshot = await get(usersRef);
 
-      // Step 1: Look up the user's email in Realtime Database using their ID
-      const userRef = ref(db, `users/${data.identifier}`);
-      const userSnapshot = await get(userRef);
-
-      if (!userSnapshot.exists()) {
-        throw new Error('User ID not found.');
+      if (!snapshot.exists()) {
+        throw new Error("Invalid User ID or password.");
       }
       
-      const userData = userSnapshot.val();
+      const usersData = snapshot.val();
+      let userRecord = null;
+      let firebaseUid = null;
 
-      if (userData.role !== data.role) {
-        throw new Error(`You are not registered as a(n) ${data.role}.`);
+      for (const uid in usersData) {
+        if (usersData[uid].id === userId.trim()) {
+          userRecord = usersData[uid];
+          firebaseUid = uid;
+          break;
+        }
       }
 
-      const email = userData.email;
+      if (!userRecord || !firebaseUid) {
+          throw new Error("Invalid User ID or password.");
+      }
 
-      // Step 2: Sign in with Firebase Auth
-      await signInWithEmailAndPassword(auth, email, data.password);
+      // 2. Check if the user is disabled in the database
+      if (userRecord.status === 'disabled') {
+        throw new Error("Your account has been disabled. Please contact administration.");
+      }
+
+      // 3. Extract email from the found user
+      const userEmail = userRecord.email;
+
+      if (!userEmail) {
+        throw new Error("User data is incomplete.");
+      }
       
-      toast({
-        title: 'Login Successful',
-        description: `Welcome! Redirecting to your dashboard...`,
-      });
+      // 4. Authenticate with Firebase Auth using the retrieved email
+      const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
+      const user = userCredential.user;
 
-      // Step 3: Redirect based on role
-      switch (data.role) {
-        case 'admin':
-          router.push('/admin/dashboard');
-          break;
-        case 'staff':
-          router.push('/staff/dashboard');
-          break;
-        case 'student':
-          router.push('/student/dashboard');
-          break;
+      // 5. Verify role from Realtime Database
+      const dbRoleRef = ref(db, `users/${user.uid}/role`);
+      const dbRoleSnapshot = await get(dbRoleRef);
+      
+      const userRole = dbRoleSnapshot.val();
+
+      if (!dbRoleSnapshot.exists() || userRole.toLowerCase() !== role) {
+        await auth.signOut(); // Sign out if roles don't match
+        throw new Error(`You are not authorized to log in as a${role === 'admin' ? 'n' : ''} ${role}.`);
       }
+      
+      // 6. Redirect based on role
+      toast({ variant: 'success', title: 'Login Successful', description: 'Welcome back!' });
+      if (role === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (role === 'staff') {
+        router.push('/staff/courses');
+      } else {
+        router.push('/student/classes');
+      }
+
     } catch (error: any) {
       console.error("Login failed:", error);
-      let errorMessage = 'An unexpected error occurred. Please try again.';
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential' || error.message.includes('not found')) {
-        errorMessage = 'Invalid ID or password.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
       toast({
-        variant: 'destructive',
-        title: 'Login Failed',
-        description: errorMessage,
+        variant: "destructive",
+        title: "Login Failed",
+        description: error.message || "Invalid User ID or password. Please try again.",
       });
-    } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-secondary">
-      <Card className="mx-auto w-full max-w-sm">
-        <CardHeader>
-          <Link href="/" className="mb-4 text-center text-2xl font-bold text-primary">
-            EduTrack360
-          </Link>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>
-            Select your role and enter your credentials to access your account.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Role</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a role" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <div className="inline-block">
+            <Logo />
+          </div>
+        </div>
+        <Card className="shadow-2xl">
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
+            <CardDescription>Select your role and enter your credentials to access your dashboard.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={handleLogin}>
+               <div className="space-y-2">
+                <Label htmlFor="role">Log in as</Label>
+                 <Select onValueChange={setRole} value={role} disabled={loading}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="staff">Staff</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="identifier"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter your ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Login
+                    </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="userId">User ID</Label>
+                <Input
+                  id="userId"
+                  type="text"
+                  placeholder="STU-001"
+                  required
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <Label htmlFor="password">Password</Label>
+                  <Link href="#" className="ml-auto inline-block text-sm underline">
+                    Forgot your password?
+                  </Link>
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+             
+              <Button type="submit" className="w-full !mt-6" disabled={loading}>
+                {loading ? 'Logging in...' : 'Log in'}
               </Button>
             </form>
-          </Form>
-        </CardContent>
-      </Card>
+            <div className="mt-4 text-center text-sm">
+              Don&apos;t have an account?{" "}
+              <Link href="#" className="underline">
+                Contact administration
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
-  );
+  )
 }

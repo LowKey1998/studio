@@ -1,192 +1,62 @@
 
-"use client";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { FileQuestion, HelpCircle, Clock, ChevronRight } from "lucide-react";
 
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { Loader2, BookCopy } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { ref, set, push, onValue, off } from 'firebase/database';
-import { Textarea } from '@/components/ui/textarea';
+const quizzes = [
+  { title: "Calculus II - Chapter 3 Quiz", course: "MATH-201", questions: 15, timeLimit: "30 mins", status: "Not Started" },
+  { title: "Physics: Midterm Review", course: "PHY-102", questions: 25, timeLimit: "45 mins", status: "Not Started" },
+  { title: "Literary Devices Pop Quiz", course: "ENG-301", questions: 10, timeLimit: "15 mins", status: "Completed", score: "8/10" },
+  { title: "Roman Republic Knowledge Check", course: "HIST-210", questions: 20, timeLimit: "20 mins", status: "Not Started" },
+  { title: "Data Structures: Big O Notation", course: "CS-450", questions: 12, timeLimit: "25 mins", status: "Completed", score: "12/12" },
+];
 
-const addQuizSchema = z.object({
-  title: z.string().min(1, 'Title is required.'),
-  courseId: z.string({ required_error: 'Please select a course.' }),
-  timeLimit: z.coerce.number().min(1, 'Time limit must be at least 1 minute.'),
-  description: z.string().optional(),
-});
-
-type AddQuizFormValues = z.infer<typeof addQuizSchema>;
-
-interface Course {
-    id: string;
-    title: string;
-}
-
-export default function QuizManagementPage() {
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-  const [courses, setCourses] = useState<Course[]>([]);
-
-  const form = useForm<AddQuizFormValues>({
-    resolver: zodResolver(addQuizSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-    },
-  });
-
-  useEffect(() => {
-    const coursesRef = ref(db, 'courses');
-    const listener = onValue(coursesRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            const courseList = Object.keys(data).map(key => ({
-                id: key,
-                title: data[key].title
-            }));
-            setCourses(courseList);
-        }
-    });
-    return () => off(coursesRef, 'value', listener);
-  }, []);
-
-  const onSubmit = async (data: AddQuizFormValues) => {
-    setIsLoading(true);
-
-    try {
-      const quizzesRef = ref(db, 'quizzes');
-      const newQuizRef = push(quizzesRef); 
-      
-      await set(newQuizRef, {
-        ...data,
-      });
-
-      toast({
-        title: 'Quiz Added Successfully',
-        description: `The quiz "${data.title}" has been created.`,
-      });
-      form.reset();
-
-    } catch (error: any) {
-      console.error("Failed to add quiz:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Failed to Add Quiz',
-        description: 'An unexpected error occurred. Please try again.',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+export default function QuizzesPage() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quiz Management</CardTitle>
-        <CardDescription>Create and configure quizzes for your courses.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-md">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quiz Title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Chapter 1 Review" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+    <div className="space-y-6">
+       <Card className="shadow-lg border-0">
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Quizzes & Exams</CardTitle>
+            <CardDescription>Manage and create quizzes for your courses.</CardDescription>
+          </CardHeader>
+      </Card>
+      
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {quizzes.map((quiz, index) => (
+          <Card key={index} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
+            <CardHeader>
+              <CardTitle className="font-headline">{quiz.title}</CardTitle>
+              <CardDescription>{quiz.course}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-around text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="h-4 w-4" />
+                  <span>{quiz.questions} Questions</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span>{quiz.timeLimit}</span>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between items-center bg-muted/50 px-6 py-4">
+              {quiz.status === 'Completed' ? (
+                <div className="font-semibold">
+                  <p className="text-sm text-muted-foreground">Score</p>
+                  <p className="text-lg text-primary">{quiz.score}</p>
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-muted-foreground">Not Started</p>
               )}
-            />
-             <FormField
-              control={form.control}
-              name="courseId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Course</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a course" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {courses.length > 0 ? (
-                        courses.map(course => (
-                            <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="loading" disabled>Loading courses...</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="timeLimit"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Time Limit (minutes)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="e.g., 60" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-             <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Instructions or details about the quiz..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BookCopy className="mr-2 h-4 w-4" />}
-              Create Quiz
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+              <Button>
+                Manage Quiz
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+    </div>
   );
 }
