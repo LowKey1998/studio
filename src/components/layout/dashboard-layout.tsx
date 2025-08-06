@@ -26,6 +26,7 @@ import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, studentMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 
 
 export default function DashboardLayout({
@@ -55,7 +56,7 @@ export default function DashboardLayout({
       });
     }
   };
-
+  
   const renderMenu = () => {
     if (loading || !userProfile) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
@@ -68,12 +69,56 @@ export default function DashboardLayout({
     } else if (userProfile.role.toLowerCase() === 'student') {
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
-        const staffSpecificItems = allMenuItems.filter(item => {
-            if (!item.roles || !userProfile.subRoles) return false;
-            // Grant access if a user's subRole is included in the item's roles array
+        const staffSpecificItems = allMenuItems.flatMap(item => item.items ? item.items : [item]).filter(item => {
+             if (!item.roles || !userProfile.subRoles) return false;
             return userProfile.subRoles?.some(subRole => item.roles!.includes(subRole));
         });
         itemsToRender = [...staffBaseMenuItems, ...staffSpecificItems];
+    }
+
+    if (userProfile.role.toLowerCase() === 'admin') {
+        const defaultOpen = allMenuItems.find(item => item.items?.some(sub => pathname.startsWith(sub.href)))?.label;
+        return (
+             <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
+                {itemsToRender.map((item, index) => {
+                    if(item.items) {
+                        return (
+                            <AccordionItem value={item.label} key={item.label} className="border-none">
+                                <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <item.icon /> <span>{item.label}</span>
+                                    </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="pl-4">
+                                     <SidebarMenu>
+                                        {item.items.map((subItem: any) => (
+                                            <SidebarMenuItem key={subItem.href}>
+                                                <Link href={subItem.href}>
+                                                <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
+                                                    <subItem.icon />
+                                                    <span>{subItem.label}</span>
+                                                </SidebarMenuButton>
+                                                </Link>
+                                            </SidebarMenuItem>
+                                        ))}
+                                    </SidebarMenu>
+                                </AccordionContent>
+                            </AccordionItem>
+                        )
+                    }
+                    return (
+                        <SidebarMenuItem key={item.href}>
+                            <Link href={item.href}>
+                            <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
+                                <item.icon />
+                                <span>{item.label}</span>
+                            </SidebarMenuButton>
+                            </Link>
+                        </SidebarMenuItem>
+                    );
+                })}
+            </Accordion>
+        )
     }
 
     return itemsToRender.map((item) => (
