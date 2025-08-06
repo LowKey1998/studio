@@ -180,11 +180,10 @@ export default function UserManagementPage() {
                 setTableLoading(false);
             })
 
-            const [programmesSnap, coursesSnap, intakesSnap, subRolesSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
-                get(child(ref(db), 'settings/subRoles'))
             ]);
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
@@ -193,8 +192,8 @@ export default function UserManagementPage() {
             
             const subRolesRef = ref(db, 'settings/subRoles');
             onValue(subRolesRef, (snapshot) => {
-                 if (subRolesSnap.exists()) {
-                    const subRolesData = subRolesSnap.val();
+                 if (snapshot.exists()) {
+                    const subRolesData = snapshot.val();
                     setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
                 } else { setAvailableSubRoles([]) }
             });
@@ -485,23 +484,12 @@ export default function UserManagementPage() {
             <div className="grid gap-4 py-4">
                 <Input placeholder="Role Name, e.g., Bursar" value={newSubRoleName} onChange={(e) => setNewSubRoleName(e.target.value)} />
                 <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
-                    {['Admin', 'Staff'].map(roleType => {
-                        const itemsForRole = allMenuItems.filter(item => item.roles?.includes(roleType));
-                        if(itemsForRole.length === 0) return null;
-                        return (
-                            <AccordionItem key={roleType} value={roleType}>
-                                <AccordionTrigger>{roleType} Permissions</AccordionTrigger>
-                                <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
-                                    {itemsForRole.map(item => (
-                                        <div key={item.href} className="flex items-center gap-2">
-                                            <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [item.href]: !prev[item.href]}))}/>
-                                            <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
-                                        </div>
-                                    ))}
-                                </AccordionContent>
-                            </AccordionItem>
-                        )
-                    })}
+                    {allMenuItems.filter(item => item.roles.some(r => r !== 'Admin')).map(item => (
+                        <div key={item.href} className="flex items-center gap-2 border p-2 rounded-md">
+                            <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [item.href]: !prev[item.href]}))}/>
+                            <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
+                        </div>
+                    ))}
                 </Accordion>
             </div>
             <DialogFooter>
@@ -513,4 +501,3 @@ export default function UserManagementPage() {
     </>
   );
 }
-

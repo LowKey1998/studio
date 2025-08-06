@@ -69,7 +69,7 @@ export default function DashboardLayout({
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
         const staffSpecificItems = allMenuItems.filter(item => {
-            if (!item.roles) return false;
+            if (!item.roles || !userProfile.subRoles) return false;
             // Grant access if a user's subRole is included in the item's roles array
             return userProfile.subRoles?.some(subRole => item.roles!.includes(subRole));
         });
