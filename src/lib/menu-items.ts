@@ -94,7 +94,7 @@ export const allMenuItems = [
       icon: Wallet,
       roles: ['Admin', 'Accountant'],
       items: [
-        { href: '/admin/payments', label: 'Student Payments', icon: FileText },
+        { href: '/admin/payments', label: 'Student Invoicing', icon: FileText },
         { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
         { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
@@ -102,7 +102,7 @@ export const allMenuItems = [
         { href: '/admin/finance/scholarships', label: 'Scholarship Disbursement', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/fees', label: 'Fees Setup', icon: HandCoins },
+        { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
@@ -151,7 +151,7 @@ export const allMenuItems = [
         roles: ['Admin', 'HR'],
         items: [
              { href: '/admin/leave-approvals', label: 'Leave Approvals', icon: UserCheckIcon },
-             { href: '/admin/vacancies', label: 'Vacancies', icon: Building },
+             { href: '/admin/vacancies', label: 'Vacancies', icon: Briefcase },
              { href: '/admin/hr/onboarding', label: 'Digital Onboarding', icon: UserPlus },
              { href: '/admin/hr/payroll', label: 'Payroll Processing', icon: Wallet },
              { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
@@ -210,7 +210,20 @@ export const allMenuItems = [
         label: 'Research & Innovation',
         icon: Telescope,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/research/registration', label: 'Research Project Registration', icon: FileText },
+            { href: '/admin/research/supervisor-allocation', label: 'Supervisor Allocation', icon: Users2 },
+            { href: '/admin/research/proposal-submission', label: 'Proposal Submission Workflow', icon: GitBranch },
+            { href: '/admin/research/ethics-reviews', label: 'Ethics Committee Reviews', icon: Shield },
+            { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
+            { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
+            { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
+            { href: '/admin/research/progress-reports', label: 'Research Progress Reports', icon: BarChart2 },
+            { href: '/admin/research/conferences', label: 'Conference Participation Records', icon: Calendar },
+            { href: '/admin/research/grants', label: 'Grant Applications Management', icon: FileText },
+            { href: '/admin/research/showcase', label: 'Innovation Showcase Submissions', icon: Star },
+            { href: '/admin/research/analytics', label: 'Research Output Analytics', icon: BarChart2 },
+        ]
     },
     {
         label: 'Community Engagement',
@@ -300,6 +313,7 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
 
