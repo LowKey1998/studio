@@ -192,7 +192,19 @@ export const allMenuItems = [
         label: '(Clinicals, Practicums & Internships)',
         icon: Stethoscope,
         roles: ['Admin'],
-        items: []
+        items: [
+            { href: '/admin/practicums/rotation-planning', label: 'Rotation Planning', icon: GitBranch },
+            { href: '/admin/practicums/preceptor-login', label: 'Preceptor Login', icon: User },
+            { href: '/admin/practicums/ward-logbooks', label: 'Ward Logbooks', icon: Book },
+            { href: '/admin/practicums/community-placement', label: 'Community Placement', icon: MapPin },
+            { href: '/admin/practicums/feedback-forms', label: 'Feedback Forms', icon: MessageSquare },
+            { href: '/admin/practicums/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
+            { href: '/admin/practicums/clinical-assessment', label: 'Clinical Assessment Reports', icon: ClipboardEdit },
+            { href: '/admin/practicums/internship-agreements', label: 'Internship Agreements', icon: Handshake },
+            { href: '/admin/practicums/institution-matching', label: 'Institution-Field Matching', icon: Building },
+            { href: '/admin/practicums/supervisory-feedback', label: 'Supervisory Feedback', icon: MessageSquare },
+            { href: '/admin/practicums/reflective-journals', label: 'Reflective Journal Logs', icon: Book },
+        ]
     },
     {
         label: 'Research & Innovation',
@@ -288,6 +300,7 @@ export const studentMenuItems = [
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
 
