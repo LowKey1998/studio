@@ -10,8 +10,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { Notification } from "@/lib/types";
 
-const notificationIcons = {
+const notificationIcons: Record<Notification['type'], React.ReactNode> = {
   success: <Check className="h-5 w-5 text-green-500" />,
   error: <X className="h-5 w-5 text-red-500" />,
   warning: <AlertTriangle className="h-5 w-5 text-yellow-500" />,
@@ -28,6 +31,14 @@ export function NotificationsPopover() {
     markAsRead,
     markAllAsRead,
   } = useNotifications();
+  const router = useRouter();
+
+  const handleNotificationClick = (notification: Notification) => {
+    markAsRead(notification.id);
+    if (notification.link) {
+      router.push(notification.link);
+    }
+  };
 
   return (
     <Popover>
@@ -84,14 +95,14 @@ export function NotificationsPopover() {
                   notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      onClick={() => markAsRead(notification.id)}
+                      onClick={() => handleNotificationClick(notification)}
                       className={cn(
                         "flex items-start gap-3 rounded-lg p-3 transition-colors hover:bg-secondary/50 cursor-pointer",
                         !notification.isRead && "bg-secondary"
                       )}
                     >
                       <div className="mt-1">
-                        {notificationIcons[notification.type]}
+                        {notificationIcons[notification.type] || notificationIcons.info}
                       </div>
                       <div className="flex-1">
                         <p className="text-sm">{notification.message}</p>
@@ -115,8 +126,8 @@ export function NotificationsPopover() {
             </ScrollArea>
             <Separator />
             <div className="p-2">
-                <Button variant="ghost" size="sm" className="w-full">
-                    View all notifications
+                <Button variant="ghost" size="sm" className="w-full" asChild>
+                    <Link href="/student/notifications">View all notifications</Link>
                 </Button>
             </div>
           </CardContent>

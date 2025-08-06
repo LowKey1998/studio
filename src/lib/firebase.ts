@@ -4,6 +4,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase, ref, push, set, serverTimestamp, get } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
+import type { Notification } from "./types";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -27,12 +28,14 @@ const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
  * @param userId - The UID of the user to notify.
  * @param message - The notification message.
  * @param link - The URL the notification should link to.
+ * @param type - The type of notification for styling.
  */
-export const createNotification = async (userId: string, message: string, link: string) => {
+export const createNotification = async (userId: string, message: string, link: string, type: Notification['type'] = 'info') => {
   const notificationRef = push(ref(db, `notifications/${userId}`));
   await set(notificationRef, {
     message,
     link,
+    type,
     timestamp: serverTimestamp(),
     read: false,
   });
@@ -51,6 +54,23 @@ export const getAllStudentAndStaffIds = async (): Promise<string[]> => {
     }
     return [];
 };
+
+/**
+ * Retrieves all registrar user IDs.
+ * @returns A promise that resolves to an array of user IDs.
+ */
+export const getRegistrarIds = async (): Promise<string[]> => {
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
+    if (snapshot.exists()) {
+        const users = snapshot.val();
+        return Object.keys(users).filter(uid => 
+            (users[uid].role === 'Admin') || 
+            (users[uid].role === 'Staff' && users[uid].subRoles?.includes('Registrar'))
+        );
+    }
+    return [];
+}
 
 
 export { app, auth, db, storage, messaging };

@@ -182,7 +182,8 @@ export default function StudentLeavePage() {
             await createNotification(
                 selectedCourse.lecturerId,
                 `${userData.name} requested absence for ${selectedCourse.name} on ${format(leaveDate, 'PPP')}.`,
-                '/staff/leave-approvals'
+                '/staff/leave-approvals',
+                'info'
             );
 
             toast({ variant: 'success', title: 'Request Submitted', description: 'Your request for absence has been sent to your lecturer.' });
