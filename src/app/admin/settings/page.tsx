@@ -101,7 +101,7 @@ export default function SettingsPage() {
                 await update(ref(db, `settings/subRoles/${editingRole.id}`), roleData);
                 toast({ title: 'Role Updated' });
             } else {
-                await push(ref(db, 'settings/subRoles'), roleData);
+                await push(ref(db, `settings/subRoles`), roleData);
                 toast({ title: 'Role Created' });
             }
             setIsRoleDialogOpen(false);
@@ -206,32 +206,35 @@ export default function SettingsPage() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <Input placeholder="Role Name, e.g., Bursar" value={roleName} onChange={(e) => setRoleName(e.target.value)} />
-                        <Accordion type="multiple" defaultValue={['Admin', 'Staff']} className="w-full">
-                            {['Admin', 'Staff'].map(roleType => {
-                                const itemsForRole = allMenuItems.filter(item => (item.roles || []).includes(roleType));
-                                if(itemsForRole.length === 0) return null;
+                        <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
+                            {allMenuItems.map(item => {
+                                if (!item.items || item.items.length === 0) {
+                                    return null;
+                                }
                                 return (
-                                    <AccordionItem key={roleType} value={roleType}>
-                                        <AccordionTrigger>{roleType} Permissions</AccordionTrigger>
+                                    <AccordionItem value={item.label} key={item.label}>
+                                        <AccordionTrigger>{item.label}</AccordionTrigger>
                                         <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
-                                            {itemsForRole.map(item => (
-                                                <div key={item.href} className="flex items-center gap-2">
-                                                    <Checkbox id={item.href} checked={!!permissions[item.href]} onCheckedChange={() => handlePermissionChange(item.href)}/>
-                                                    <Label htmlFor={item.href} className="font-normal">{item.label}</Label>
+                                            {item.items.map(subItem => (
+                                                <div key={subItem.href} className="flex items-center gap-2">
+                                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => handlePermissionChange(subItem.href)}/>
+                                                    <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
                                                 </div>
                                             ))}
                                         </AccordionContent>
                                     </AccordionItem>
-                                )
+                                );
                             })}
                         </Accordion>
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                        <Button onClick={handleSaveRole} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 animate-spin"/> : "Save Role"}</Button>
+                        <Button onClick={handleSaveRole} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Save Role"}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
         </form>
     );
 }
+
+    
