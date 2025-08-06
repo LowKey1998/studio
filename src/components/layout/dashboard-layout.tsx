@@ -63,16 +63,12 @@ export default function DashboardLayout({
     
     let itemsToRender: any[] = [];
     
-    if (userProfile.role === 'Admin') {
+    if (userProfile.role.toLowerCase() === 'admin') {
       itemsToRender = allMenuItems;
-    } else if (userProfile.role === 'Student') {
+    } else if (userProfile.role.toLowerCase() === 'student') {
       itemsToRender = studentMenuItems;
-    } else if (userProfile.role === 'Staff') {
-        itemsToRender = staffMenuItems.filter(item => {
-            if (!item.roles) return true; // Items for all staff
-            if (item.roles.includes('*')) return true;
-            return userProfile.subRoles?.some(subRole => item.roles.includes(subRole));
-        });
+    } else if (userProfile.role.toLowerCase() === 'staff') {
+        itemsToRender = staffMenuItems
     }
 
     return itemsToRender.map((item) => (
