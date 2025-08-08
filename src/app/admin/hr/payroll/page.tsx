@@ -135,6 +135,37 @@ export default function PayrollPage() {
             setActionLoading(null);
         }
     };
+    
+    const handleExportCsv = () => {
+        const headers = ["Staff ID", "Name", "Role", "Base Salary (ZMW)", "Deductions (ZMW)", "Net Pay (ZMW)"];
+        const csvRows = [headers.join(',')];
+
+        staffList.forEach(staff => {
+            const payroll = calculatePayroll(staff);
+            const row = [
+                staff.id,
+                `"${staff.name}"`,
+                `"${staff.subRoles?.join(', ') || staff.role}"`,
+                payroll.grossSalary.toFixed(2),
+                payroll.deductions.toFixed(2),
+                payroll.netPay.toFixed(2)
+            ];
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `payroll_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
 
 
     return (
@@ -145,7 +176,7 @@ export default function PayrollPage() {
                     <CardTitle className="font-headline text-2xl">Staff Payroll</CardTitle>
                     <CardDescription>View and manage monthly payroll for all staff members.</CardDescription>
                 </div>
-                <Button disabled>
+                <Button onClick={handleExportCsv} disabled={loading || staffList.length === 0}>
                     <Download className="mr-2 h-4 w-4" />
                     Export as CSV
                 </Button>
