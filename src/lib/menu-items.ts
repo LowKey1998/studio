@@ -106,7 +106,6 @@ export const allMenuItems = [
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
-        { href: '/admin/cashflow', label: 'Cash Flow Analysis', icon: BarChart2 },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
         { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
