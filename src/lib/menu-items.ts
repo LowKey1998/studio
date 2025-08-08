@@ -307,12 +307,34 @@ export const staffBaseMenuItems = [
 ];
 
 export const studentMenuItems = [
-    { href: '/student/classes', label: 'My Classes', icon: Library, roles: [] },
-    { href: '/student/registration', label: 'Registration', icon: UserCheckIcon, roles: [] },
-    { href: '/student/payments', label: 'Payments &amp; Invoices', icon: DollarSign, roles: [] },
-    { href: '/student/attendance', label: 'My Attendance', icon: Hand, roles: [] },
-    { href: '/student/timetable', label: 'My Timetable', icon: Calendar, roles: [] },
-    { href: '/student/library', label: 'Library', icon: BookUp, roles: [] },
-    { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
-    { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
+    {
+        label: 'Academics',
+        icon: GraduationCap,
+        roles: ['Student'],
+        items: [
+            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
+            { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
+            { href: '/student/attendance', label: 'My Attendance', icon: Hand },
+            { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
+        ]
+    },
+    {
+        label: 'Finances',
+        icon: DollarSign,
+        roles: ['Student'],
+        items: [
+             { href: '/student/payments', label: 'Payments & Invoices', icon: Wallet },
+        ]
+    },
+    {
+        label: 'Campus Life',
+        icon: Building,
+        roles: ['Student'],
+        items: [
+            { href: '/student/library', label: 'Library', icon: BookUp },
+            { href: '/student/leave', label: 'Request Absence', icon: Calendar },
+            { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
+            { href: '/student/resources', label: 'Resources', icon: FileText },
+        ]
+    }
   ];
