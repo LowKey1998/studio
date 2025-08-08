@@ -230,9 +230,9 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
-            { href: '/admin/facilities/assets', label: 'Classroom &amp; Lab Assets', icon: ClipboardList },
+            { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: ClipboardList },
             { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: Sparkles },
-            { href: '/admin/facilities/utilities', label: 'ZESCO &amp; Water Reports', icon: FileText },
+            { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
         ]
     },
     {
@@ -279,7 +279,7 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/addons/alumni', label: 'EduConnect360-Alumni', icon: Users2 },
-            { href: '/admin/addons/portal', label: 'Job &amp; Internal Portal', icon: Briefcase },
+            { href: '/admin/addons/portal', label: 'Job & Internal Portal', icon: Briefcase },
             { href: '/admin/addons/multi-campus', label: 'Multi-Campus Managment', icon: Building },
             { href: '/admin/addons/quickbooks', label: 'Quickbooks Integration', icon: Link },
             { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
@@ -297,14 +297,32 @@ export const allMenuItems = [
     },
 ];
 
-export const staffBaseMenuItems = [
-    { href: '/staff/courses', label: 'My Courses', icon: Library, roles: [] },
-    { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheckIcon, roles: ['Lecturer'] },
-    { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, roles: [] },
-    { href: '/staff/leave', label: 'My Leave', icon: Calendar, roles: [] },
-    { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar, roles: [] },
-    { href: '/staff/library', label: 'Library', icon: Library, roles: [] },
-];
+export const staffMenuItems = [
+    {
+      label: 'Academics',
+      icon: GraduationCap,
+      items: [
+        { href: '/staff/courses', label: 'My Courses', icon: Library, permission: 'Lecturer' },
+        { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheckIcon, permission: 'Lecturer' },
+        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
+      ],
+    },
+    {
+      label: 'Leave & Timetable',
+      icon: Calendar,
+      items: [
+        { href: '/staff/leave', label: 'My Leave', icon: Calendar },
+        { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
+      ]
+    },
+    {
+      label: 'General',
+      icon: Settings,
+      items: [
+        { href: '/staff/library', label: 'Library', icon: Library },
+      ]
+    }
+  ];
 
 export const studentMenuItems = [
     {

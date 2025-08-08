@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, studentMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
+import { allMenuItems, studentMenuItems, staffMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
@@ -72,9 +72,19 @@ export default function DashboardLayout({
         const staffPermissions = userProfile.permissions || {};
         const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
         
-        const filteredAdminItems = allMenuItems.map(category => {
+        const baseStaffItems = staffMenuItems.map(category => {
+            const filteredSubItems = category.items.filter(subItem => 
+                !subItem.permission || (userProfile.subRoles && userProfile.subRoles.includes(subItem.permission))
+            );
+            
+            if (filteredSubItems.length > 0) {
+                return { ...category, items: filteredSubItems };
+            }
+            return null;
+        }).filter(Boolean);
+        
+        const assignedAdminItems = allMenuItems.map(category => {
             if (!category.items) {
-                // This handles top-level items that might not be in a category
                 return allowedHrefs.includes(category.href) ? category : null;
             }
             
@@ -85,9 +95,9 @@ export default function DashboardLayout({
             }
             
             return null;
-        }).filter(Boolean); // Ensure no null values are in the array
+        }).filter(Boolean);
 
-        itemsToRender = [...staffBaseMenuItems, ...filteredAdminItems];
+        itemsToRender = [...baseStaffItems, ...assignedAdminItems];
     }
     
     const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
@@ -95,7 +105,7 @@ export default function DashboardLayout({
     return (
         <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
             {itemsToRender.map((item) => {
-                if(item.items) {
+                if(item.items && item.items.length > 0) {
                     return (
                         <AccordionItem value={item.label} key={item.label} className="border-none">
                             <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
@@ -121,17 +131,7 @@ export default function DashboardLayout({
                         </AccordionItem>
                     )
                 }
-                // Render base menu items for staff that are not in a category
-                 return (
-                    <SidebarMenuItem key={item.href || item.label}>
-                         <Link href={item.href}>
-                        <SidebarMenuButton isActive={pathname.startsWith(item.href)}>
-                            <item.icon />
-                            <span>{item.label}</span>
-                        </SidebarMenuButton>
-                        </Link>
-                    </SidebarMenuItem>
-                );
+                 return null;
             })}
         </Accordion>
     )
