@@ -1,15 +1,36 @@
 
+'use client';
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { PlusCircle } from 'lucide-react';
 
 export default function RotationPlanningPage() {
+    const [date, setDate] = React.useState<Date | undefined>(new Date());
+
     return (
         <Card>
-            <CardHeader>
-                <CardTitle>Rotation Planning</CardTitle>
-                <CardDescription>This page will be used for planning and scheduling student clinical rotations across different wards and departments. It will feature a calendar-based interface to manage allocations and avoid conflicts.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle>Rotation Planning</CardTitle>
+                    <CardDescription>Plan and schedule student clinical rotations across different wards and departments.</CardDescription>
+                </div>
+                <Button><PlusCircle className="mr-2 h-4 w-4"/> Schedule Rotation</Button>
             </CardHeader>
             <CardContent>
-                <p>Functionality to be implemented.</p>
+                <div className="flex justify-center">
+                 <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={setDate}
+                    className="rounded-md border"
+                />
+                </div>
+                 <div className="mt-4">
+                    <h3 className="font-semibold">Rotations for {date ? date.toLocaleDateString() : 'selected date'}:</h3>
+                    <p className="text-sm text-muted-foreground mt-2">No rotations scheduled for this date.</p>
+                </div>
             </CardContent>
         </Card>
     );
