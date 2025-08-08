@@ -278,9 +278,9 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
-            { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: ClipboardList },
+            { href: '/admin/facilities/assets', label: 'Classroom &amp; Lab Assets', icon: ClipboardList },
             { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: Sparkles },
-            { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
+            { href: '/admin/facilities/utilities', label: 'ZESCO &amp; Water Reports', icon: FileText },
         ]
     },
     {
@@ -327,7 +327,7 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/addons/alumni', label: 'EduConnect360-Alumni', icon: Users2 },
-            { href: '/admin/addons/portal', label: 'Job & Internal Portal', icon: Briefcase },
+            { href: '/admin/addons/portal', label: 'Job &amp; Internal Portal', icon: Briefcase },
             { href: '/admin/addons/multi-campus', label: 'Multi-Campus Managment', icon: Building },
             { href: '/admin/addons/quickbooks', label: 'Quickbooks Integration', icon: Link },
             { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
@@ -348,13 +348,14 @@ export const staffBaseMenuItems = [
 export const studentMenuItems = [
     { href: '/student/classes', label: 'My Classes', icon: Library, roles: [] },
     { href: '/student/registration', label: 'Registration', icon: UserCheckIcon, roles: [] },
-    { href: '/student/payments', label: 'Payments & Invoices', icon: DollarSign, roles: [] },
+    { href: '/student/payments', label: 'Payments &amp; Invoices', icon: DollarSign, roles: [] },
     { href: '/student/attendance', label: 'My Attendance', icon: Hand, roles: [] },
     { href: '/student/timetable', label: 'My Timetable', icon: Calendar, roles: [] },
     { href: '/student/library', label: 'Library', icon: BookUp, roles: [] },
     { href: '/student/leave', label: 'Request Absence', icon: Calendar, roles: [] },
     { href: '/student/resources', label: 'Resources', icon: FileText, roles: [] },
   ];
+
 
 
 
