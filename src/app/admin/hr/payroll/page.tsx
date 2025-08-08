@@ -205,6 +205,10 @@ export default function PayrollPage() {
             <DialogContent className="max-w-3xl p-0">
                 {selectedStaff && (
                     <>
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Payslip for {selectedStaff.staff.name}</DialogTitle>
+                        <DialogDescription>A detailed view of the payslip for {selectedStaff.staff.name} for the current month.</DialogDescription>
+                    </DialogHeader>
                     <div className="bg-gray-100">
                         <PayslipContent staff={selectedStaff.staff} payroll={selectedStaff.payroll}/>
                     </div>
