@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -159,53 +159,6 @@ export const allMenuItems = [
              { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
         ]
     },
-     {
-        label: 'Admin',
-        icon: Shield,
-        roles: ['Admin'],
-        items: [
-            { href: '/admin/users', label: 'User Management', icon: Users },
-            { href: '/admin/settings', label: 'System Settings', icon: Settings },
-        ]
-    },
-    {
-        label: 'Integrations',
-        icon: Link,
-        roles: ['Admin'],
-        items: [
-            { href: '/admin/integrations/momo', label: 'MoMo/Airtel Payment API', icon: Wallet },
-            { href: '/admin/integrations/paystack', label: 'Paystack API', icon: Wallet },
-            { href: '/admin/integrations/whatsapp', label: 'Whatsapp Messaging', icon: MessageSquare },
-            { href: '/admin/integrations/sms', label: 'SMS API', icon: MessageSquare },
-            { href: '/admin/integrations/biometric', label: 'Biometric Attendance', icon: Hand },
-            { href: '/admin/integrations/teveta', label: 'TEVETA XML Export', icon: FileUp },
-            { href: '/admin/integrations/compliance', label: 'HEA/NMCZ/HPCZ Compliance Upload', icon: Shield },
-        ]
-    },
-     {
-        label: 'AI Modules',
-        icon: Beaker,
-        roles: ['Admin'],
-        items: []
-    },
-     {
-        label: '(Clinicals, Practicums & Internships)',
-        icon: Stethoscope,
-        roles: ['Admin'],
-        items: [
-            { href: '/admin/practicums/rotation-planning', label: 'Rotation Planning', icon: GitBranch },
-            { href: '/admin/practicums/preceptor-login', label: 'Preceptor Login', icon: User },
-            { href: '/admin/practicums/ward-logbooks', label: 'Ward Logbooks', icon: Book },
-            { href: '/admin/practicums/community-placement', label: 'Community Placement', icon: MapPin },
-            { href: '/admin/practicums/feedback-forms', label: 'Feedback Forms', icon: MessageSquare },
-            { href: '/admin/practicums/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
-            { href: '/admin/practicums/clinical-assessment', label: 'Clinical Assessment Reports', icon: ClipboardEdit },
-            { href: '/admin/practicums/internship-agreements', label: 'Internship Agreements', icon: Handshake },
-            { href: '/admin/practicums/institution-matching', label: 'Institution-Field Matching', icon: Building },
-            { href: '/admin/practicums/supervisory-feedback', label: 'Supervisory Feedback', icon: MessageSquare },
-            { href: '/admin/practicums/reflective-journals', label: 'Reflective Journal Logs', icon: Book },
-        ]
-    },
     {
         label: 'Research & Innovation',
         icon: Telescope,
@@ -227,7 +180,7 @@ export const allMenuItems = [
     },
     {
         label: 'Innovation',
-        icon: Beaker,
+        icon: Lightbulb,
         roles: ['Admin'],
         items: [
             { href: '/admin/innovation/project-submissions', label: 'Innovation Project Submissions', icon: FileUp },
@@ -332,6 +285,15 @@ export const allMenuItems = [
             { href: '/admin/addons/quickbooks', label: 'Quickbooks Integration', icon: Link },
             { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
             { href: '/admin/addons/mobile-app', label: 'Edutrack360 Mobile App', icon: Smartphone },
+        ]
+    },
+     {
+        label: 'Admin',
+        icon: Shield,
+        roles: ['Admin'],
+        items: [
+            { href: '/admin/users', label: 'User Management', icon: Users },
+            { href: '/admin/settings', label: 'System Settings', icon: Settings },
         ]
     },
 ];
