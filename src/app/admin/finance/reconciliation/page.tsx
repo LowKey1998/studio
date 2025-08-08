@@ -1,24 +1,31 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2 } from "lucide-react";
+'use client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Upload } from "lucide-react";
 
 export default function ReconciliationPage() {
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Bank Reconciliation</CardTitle>
-                <CardDescription>This module will facilitate the reconciliation of bank statements with the system's transaction records, helping to ensure financial accuracy.</CardDescription>
+                <CardDescription>Facilitate the reconciliation of bank statements with the system's transaction records.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertTitle>Coming Soon!</AlertTitle>
-                    <AlertDescription>
-                        This feature is currently under development.
-                    </AlertDescription>
-                </Alert>
+            <CardContent className="space-y-4">
+                <div className="space-y-1">
+                    <Label htmlFor="statement-upload">Upload Bank Statement (CSV, OFX)</Label>
+                    <Input id="statement-upload" type="file" />
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="statement-balance">Statement Closing Balance</Label>
+                    <Input id="statement-balance" type="number" placeholder="Enter balance from statement" />
+                </div>
             </CardContent>
+             <CardFooter>
+                <Button>Run Reconciliation</Button>
+            </CardFooter>
         </Card>
     );
 }

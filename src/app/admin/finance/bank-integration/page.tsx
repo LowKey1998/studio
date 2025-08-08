@@ -1,24 +1,31 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2 } from "lucide-react";
+'use client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Save } from "lucide-react";
 
 export default function BankIntegrationPage() {
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Bank API Integration</CardTitle>
-                <CardDescription>This page will manage the integration with bank APIs to automate transaction fetching and streamline reconciliation processes.</CardDescription>
+                <CardDescription>Manage the integration with bank APIs to automate transaction fetching and streamline reconciliation processes.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertTitle>Coming Soon!</AlertTitle>
-                    <AlertDescription>
-                        This feature is currently under development.
-                    </AlertDescription>
-                </Alert>
+            <CardContent className="space-y-4">
+                <div className="space-y-1">
+                    <Label htmlFor="api-key">API Key</Label>
+                    <Input id="api-key" type="password" placeholder="Enter your bank's API key" />
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="api-secret">API Secret</Label>
+                    <Input id="api-secret" type="password" placeholder="Enter your bank's API secret" />
+                </div>
             </CardContent>
+            <CardFooter>
+                 <Button><Save className="mr-2 h-4 w-4"/>Save Configuration</Button>
+            </CardFooter>
         </Card>
     );
 }
