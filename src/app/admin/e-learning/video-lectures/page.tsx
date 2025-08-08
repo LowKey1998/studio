@@ -1,0 +1,20 @@
+
+'use client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Video } from "lucide-react";
+
+export default function VideoLecturesPage() {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Video Lectures</CardTitle>
+                <CardDescription>Manage and link to video lecture content.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">This page will provide an interface to upload video files or link to external video platforms (like YouTube or Vimeo) for lecture recordings.</p>
+                <Button disabled><Video className="mr-2 h-4 w-4" /> Add Video Lecture</Button>
+            </CardContent>
+        </Card>
+    );
+}
