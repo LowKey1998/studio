@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -59,7 +60,7 @@ export default function PayrollPage() {
             return;
         }
         
-        if (!(userData.role === 'Staff' && userData.subRoles?.includes('Accountant'))) {
+        if (!(userData.role === 'Staff' && userData.subRoles?.includes('HR'))) {
              setLoading(false);
              return;
         }
@@ -107,7 +108,7 @@ export default function PayrollPage() {
         );
     }
     
-    if (!userData || !(userData.role === 'Staff' && userData.subRoles?.includes('Accountant'))) {
+    if (!userData || !(userData.role === 'Staff' && userData.subRoles?.includes('HR'))) {
         return (
             <Card>
                 <CardContent className="pt-6">
@@ -115,7 +116,7 @@ export default function PayrollPage() {
                         <Info className="h-4 w-4" />
                         <AlertTitle>Access Denied</AlertTitle>
                         <AlertDescription>
-                            You do not have permission to view the payroll page. This feature is restricted to Accountants.
+                            You do not have permission to view the payroll page. This feature is restricted to HR personnel.
                         </AlertDescription>
                     </Alert>
                 </CardContent>
