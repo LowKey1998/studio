@@ -135,8 +135,8 @@ export const allMenuItems = [
          { href: '/admin/library', label: 'Book Listing', icon: Library },
          { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp },
          { href: '/admin/library/late-alerts', label: 'Late Alerts', icon: AlertTriangle },
-         { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner Integration', icon: Barcode },
-         { href: '/admin/library/statistics', label: 'Library Statistics', icon: BarChart2 },
+         { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner', icon: Barcode },
+         { href: '/admin/library/statistics', label: 'Statistics', icon: BarChart2 },
       ]
     },
      {
