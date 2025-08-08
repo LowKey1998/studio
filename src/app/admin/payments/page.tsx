@@ -28,6 +28,7 @@ type StudentPaymentInfo = {
     status: 'Paid' | 'Pending' | 'Overdue';
     programmeId: string | null;
     semester: string | null;
+    invoiceId: string;
 };
 
 type Transaction = {
@@ -135,6 +136,7 @@ export default function PaymentsManagementPage() {
                             balance: 0,
                             programmeId: reg.programmeId,
                             semester: semester,
+                            invoiceId: reg.invoiceId,
                         };
                     }
                     
@@ -207,6 +209,7 @@ export default function PaymentsManagementPage() {
             await set(txRef, {
                 transactionId: newTxId,
                 userId: selectedStudent.userId,
+                invoiceId: selectedStudent.invoiceId,
                 amount: amount,
                 currency: 'ZMW',
                 status: 'successful',
@@ -267,11 +270,12 @@ export default function PaymentsManagementPage() {
         
         filteredData.forEach(p => {
             const programmeName = programmes.find(prog => prog.id === p.programmeId)?.name || 'N/A';
+            const semesterName = semesters.find(sem => sem.id === p.semester)?.name || 'N/A';
             const row = [
                 p.studentId,
                 p.studentName,
                 programmeName,
-                p.semester,
+                semesterName,
                 p.totalDue.toFixed(2),
                 p.totalPaid.toFixed(2),
                 p.balance.toFixed(2),
@@ -388,7 +392,7 @@ export default function PaymentsManagementPage() {
                         </div>
                          <div className="flex-1 min-w-[200px]">
                              <Label htmlFor="semester-filter">Filter by Semester</Label>
-                            <Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select>
+                            <Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
