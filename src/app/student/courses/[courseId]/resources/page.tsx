@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Link as LinkIcon, Upload, Folder } from "lucide-react";
+import { Download, Link as LinkIcon, Upload, Folder, Video, FileText } from "lucide-react";
 import { db, auth } from '@/lib/firebase';
 import { ref, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -14,7 +15,7 @@ type Resource = {
     id: string; 
     title: string; 
     description: string; 
-    type: 'file' | 'link'; 
+    type: 'file' | 'link' | 'video' | 'video-link' | 'powerpoint' | 'pdf';
     url: string; 
     fileName?: string;
 };
@@ -54,6 +55,23 @@ export default function StudentResourcesPage() {
         return () => unsubscribe();
     }, [courseId, currentUser]);
     
+    const getIcon = (type: string) => {
+        switch(type) {
+            case 'pdf':
+            case 'file':
+                return <FileText className="h-5 w-5" />;
+            case 'video':
+            case 'video-link':
+                return <Video className="h-5 w-5" />;
+            case 'powerpoint':
+                return <FileText className="h-5 w-5" />; // Could use a different icon if available
+            case 'link':
+                return <LinkIcon className="h-5 w-5" />;
+            default:
+                return <Folder className="h-5 w-5" />;
+        }
+    };
+    
     if(loading) {
         return (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -70,7 +88,7 @@ export default function StudentResourcesPage() {
                     <Card key={resource.id} className="flex flex-col shadow-lg">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                {resource.type === 'file' ? <Upload className="h-5 w-5"/> : <LinkIcon className="h-5 w-5"/>}
+                                {getIcon(resource.type)}
                                 {resource.title}
                             </CardTitle>
                             <CardDescription>{resource.description}</CardDescription>
@@ -84,7 +102,7 @@ export default function StudentResourcesPage() {
                             <Button asChild className="w-full">
                                 <a href={resource.url} target="_blank" rel="noopener noreferrer" download={resource.fileName}>
                                 <Download className="mr-2 h-4 w-4" />
-                                {resource.type === 'file' ? 'Download' : 'Open Link'}
+                                {resource.type === 'link' || resource.type === 'video-link' ? 'Open Link' : 'Download'}
                                 </a>
                             </Button>
                         </CardFooter>

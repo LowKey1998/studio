@@ -5,9 +5,9 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink } from "lucide-react";
+import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink, GraduationCap } from "lucide-react";
 import { db, auth, storage } from '@/lib/firebase';
-import { ref as dbRef, onValue, set, update } from 'firebase/database';
+import { ref as dbRef, onValue, set, update, get } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -51,6 +51,7 @@ export default function StudentCourseAssignmentsPage() {
     const [selectedFiles, setSelectedFiles] = React.useState<Record<string, File | null>>({});
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<any>(null);
+    const [courseData, setCourseData] = React.useState<any>(null);
     const { toast } = useToast();
 
     const fileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
@@ -70,6 +71,9 @@ export default function StudentCourseAssignmentsPage() {
     
     React.useEffect(() => {
         if (!currentUser || !courseId) return;
+
+        const courseRef = dbRef(db, `courses/${courseId}`);
+        get(courseRef).then(snap => { if(snap.exists()) setCourseData(snap.val()) });
         
         const assignmentsRef = dbRef(db, `assignments/${courseId}`);
         const unsubscribe = onValue(assignmentsRef, (snapshot) => {
@@ -100,14 +104,14 @@ export default function StudentCourseAssignmentsPage() {
     }, [courseId, currentUser]);
     
     const handleCreateAndLinkDoc = async (assignment: Assignment) => {
-        if (!currentUser || !userData) return;
+        if (!currentUser || !userData || !courseData) return;
         setActionLoading(assignment.id);
         try {
             const { documentUrl } = await createGoogleDoc({
                 userId: currentUser.uid,
                 courseId,
                 assignmentId: assignment.id,
-                assignmentTitle: assignment.title,
+                assignmentTitle: `${courseData.code}: ${assignment.title}`,
             });
 
             const submissionRef = dbRef(db, `assignments/${courseId}/${assignment.id}/submissions/${currentUser.uid}`);
@@ -223,7 +227,7 @@ export default function StudentCourseAssignmentsPage() {
                                                 disabled={!!actionLoading}
                                                 className="flex-1"
                                             >
-                                                <LinkIcon className="mr-2 h-4 w-4" /> Start with Google Docs
+                                                <GraduationCap className="mr-2 h-4 w-4" /> Start with Google Docs
                                             </Button>
                                             <input 
                                                 type="file" 
