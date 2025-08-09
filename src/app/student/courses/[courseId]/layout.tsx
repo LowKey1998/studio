@@ -8,7 +8,7 @@ import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, Users, ClipboardCheck, Hand } from 'lucide-react';
+import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, Users, ClipboardCheck, Hand, Calendar } from 'lucide-react';
 
 type Course = {
     name: string;
@@ -40,6 +40,7 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
         { name: 'Course Path', href: `/student/courses/${courseId}`, icon: <Route/>, exact: true },
         { name: 'Assignments', href: `/student/courses/${courseId}/assignments`, icon: <BookMarked/> },
         { name: 'Resources', href: `/student/courses/${courseId}/resources`, icon: <Folder/> },
+        { name: 'Schedule', href: `/student/courses/${courseId}/schedule`, icon: <Calendar /> },
         { name: 'Attendance', href: `/student/courses/${courseId}/attendance`, icon: <Hand /> },
         { name: 'Participants', href: `/student/courses/${courseId}/participants`, icon: <Users/> },
         { name: 'Messages', href: `/student/courses/${courseId}/messages`, icon: <MessageSquare/> },
