@@ -170,11 +170,7 @@ export const allMenuItems = [
             { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
             { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
             { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
-            { href: '/admin/research/progress-reports', label: 'Research Progress Reports', icon: BarChart2 },
-            { href: '/admin/research/conferences', label: 'Conference Participation Records', icon: Calendar },
             { href: '/admin/research/grants', label: 'Grant Applications Management', icon: FileText },
-            { href: '/admin/research/showcase', label: 'Innovation Showcase Submissions', icon: Star },
-            { href: '/admin/research/analytics', label: 'Research Output Analytics', icon: BarChart2 },
         ]
     },
     {
@@ -357,4 +353,5 @@ export const studentMenuItems = [
     }
   ];
 
+export const staffBaseMenuItems = staffMenuItems;
     
