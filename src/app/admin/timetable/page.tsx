@@ -41,7 +41,7 @@ export default function TimetableManagementPage() {
     const [saving, setSaving] = React.useState(false);
     
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState<string>('');
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>('');
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = React.useState<string>('');
     
@@ -63,20 +63,23 @@ export default function TimetableManagementPage() {
                 const data = snapshot.val();
                 const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
                 setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
-                if (!selectedSemester && list.length > 0) {
-                    setSelectedSemester(list[0].name);
+                if (!selectedSemesterId && list.length > 0) {
+                    setSelectedSemesterId(list[0].id);
                 }
             }
              setLoading(false);
         });
         return () => unsubscribe();
-    }, [selectedSemester]);
+    }, [selectedSemesterId]);
 
     const fetchCoursesForSemester = React.useCallback(async () => {
+        if (!selectedSemesterId) return;
+        const selectedSemester = semesters.find(s => s.id === selectedSemesterId);
         if (!selectedSemester) return;
+
         setLoading(true);
         try {
-            const offeringsRef = ref(db, `semesterOfferings/${selectedSemester}/courseIds`);
+            const offeringsRef = ref(db, `semesterOfferings/${selectedSemester.name}/courseIds`);
             const offeringsSnap = await get(offeringsRef);
             if (!offeringsSnap.exists()) {
                 setCourses([]);
@@ -104,18 +107,18 @@ export default function TimetableManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedSemester, toast]);
+    }, [selectedSemesterId, semesters, toast]);
     
     React.useEffect(() => {
         fetchCoursesForSemester();
-    }, [selectedSemester, fetchCoursesForSemester]);
+    }, [selectedSemesterId, fetchCoursesForSemester]);
 
      React.useEffect(() => {
-        if (!selectedCourse || !selectedSemester) {
+        if (!selectedCourse || !selectedSemesterId) {
             setTimetable([]);
             return;
         }
-        const timetableRef = ref(db, `timetables/${selectedSemester}/${selectedCourse}`);
+        const timetableRef = ref(db, `timetables/${selectedSemesterId}/${selectedCourse}`);
         const unsubscribe = onValue(timetableRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
@@ -125,7 +128,7 @@ export default function TimetableManagementPage() {
             }
         });
         return () => unsubscribe();
-    }, [selectedCourse, selectedSemester]);
+    }, [selectedCourse, selectedSemesterId]);
     
     const resetForm = () => {
         setDay('');
@@ -141,7 +144,7 @@ export default function TimetableManagementPage() {
         }
         setSaving(true);
         try {
-            const timetableRef = ref(db, `timetables/${selectedSemester}/${selectedCourse}`);
+            const timetableRef = ref(db, `timetables/${selectedSemesterId}/${selectedCourse}`);
             const newEntryRef = push(timetableRef);
             await set(newEntryRef, { day, startTime, endTime, venue });
             toast({ title: 'Timetable Entry Added' });
@@ -157,7 +160,7 @@ export default function TimetableManagementPage() {
     const handleDeleteEntry = async (entryId: string) => {
         if (!confirm('Are you sure you want to delete this timetable entry?')) return;
         try {
-            const entryRef = ref(db, `timetables/${selectedSemester}/${selectedCourse}/${entryId}`);
+            const entryRef = ref(db, `timetables/${selectedSemesterId}/${selectedCourse}/${entryId}`);
             await remove(entryRef);
             toast({ title: 'Entry deleted' });
         } catch (error: any) {
@@ -176,13 +179,13 @@ export default function TimetableManagementPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-1">
                         <Label htmlFor="semester-select">Select Semester</Label>
-                        <Select value={selectedSemester} onValueChange={setSelectedSemester}>
+                        <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
                             <SelectTrigger id="semester-select">
                                 <SelectValue placeholder="Select a semester..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {semesters.map(s => (
-                                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
