@@ -32,7 +32,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
-        { href: '/admin/courses', label: 'Courses', icon: BookCopy },
+        { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Course Paths', icon: Route },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
@@ -356,3 +356,5 @@ export const studentMenuItems = [
         ]
     }
   ];
+
+    
