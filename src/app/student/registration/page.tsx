@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle } from 'lucide-react';
+import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -57,7 +57,7 @@ type Invoice = {
     lateFee?: number;
     paymentPlan: string;
     dateCreated: string;
-    semester: string;
+    semester: string; // Semester Name
     semesterId: string;
     courses: string[];
     optionalFees: string[];
@@ -107,6 +107,10 @@ type GroupedCourses = {
     [year: string]: Course[];
 }
 
+type RegistrationPolicy = {
+    lateRegistrationFee: number;
+}
+
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
     if (i === 2) return '2nd';
@@ -138,6 +142,7 @@ export default function RegistrationPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [selectedPaymentPlanId, setSelectedPaymentPlanId] = React.useState<string>('');
+    const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
 
     const [existingRegistration, setExistingRegistration] = React.useState<Registration | null>(null);
     const [registeredCourses, setRegisteredCourses] = React.useState<Course[]>([]);
@@ -165,6 +170,7 @@ export default function RegistrationPage() {
     React.useEffect(() => {
         const programmesRef = ref(db, 'programmes');
         const paymentPlansRef = ref(db, 'settings/paymentPlans');
+        const regPolicyRef = ref(db, 'settings/registrationPolicy');
 
         const unsubProgrammes = onValue(programmesRef, (snapshot) => {
              if (snapshot.exists()) {
@@ -179,10 +185,16 @@ export default function RegistrationPage() {
                 setAllPaymentPlans(plans);
             } else { setAllPaymentPlans([]) }
         })
+        const unsubRegPolicy = onValue(regPolicyRef, (snapshot) => {
+            if(snapshot.exists()) {
+                setRegistrationPolicy(snapshot.val());
+            }
+        });
         
         return () => {
             unsubProgrammes();
             unsubPaymentPlans();
+            unsubRegPolicy();
         };
     },[]);
 
@@ -345,38 +357,41 @@ export default function RegistrationPage() {
     // Update available payment plans when semester changes
     React.useEffect(() => {
         const semester = openSemesters.find(s => s.id === selectedSemesterId);
-        if (semester && semester.paymentPlanIds && allPaymentPlans.length > 0) {
-            const planIds = Object.keys(semester.paymentPlanIds);
-            
-            get(ref(db, 'calendarEvents')).then(eventsSnapshot => {
-                const eventMap = new Map<string, boolean>();
-                if(eventsSnapshot.exists()){
-                    Object.values(eventsSnapshot.val()).forEach((event: any) => eventMap.set(event.title.trim(), true));
-                }
+        if (semester) {
+             setSemesterOptionalFees(semester.optionalFees ? Object.keys(semester.optionalFees).map(id => ({ id, ...semester.optionalFees![id] })) : []);
+             setSemesterMandatoryFees(semester.mandatoryFees ? Object.values(semester.mandatoryFees) : []);
 
-                const plansForSemester = allPaymentPlans
-                    .filter(p => planIds.includes(p.id) && !p.archived)
-                    .filter(plan => {
-                        for(let i = 0; i < plan.installments; i++) {
-                            const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
-                            if (!eventMap.has(deadlineTitle)) {
-                                return false;
+            if (semester.paymentPlanIds && allPaymentPlans.length > 0) {
+                const planIds = Object.keys(semester.paymentPlanIds);
+                get(ref(db, 'calendarEvents')).then(eventsSnapshot => {
+                    const eventMap = new Map<string, boolean>();
+                    if(eventsSnapshot.exists()){
+                        Object.values(eventsSnapshot.val()).forEach((event: any) => eventMap.set(event.title.trim(), true));
+                    }
+
+                    const plansForSemester = allPaymentPlans
+                        .filter(p => planIds.includes(p.id) && !p.archived)
+                        .filter(plan => {
+                            for(let i = 0; i < plan.installments; i++) {
+                                const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
+                                if (!eventMap.has(deadlineTitle)) {
+                                    return false;
+                                }
                             }
-                        }
-                        return true;
-                    });
+                            return true;
+                        });
 
-                setSemesterPaymentPlans(plansForSemester);
-                if (plansForSemester.length > 0) {
-                    setSelectedPaymentPlanId(plansForSemester[0].id);
-                } else {
-                    setSelectedPaymentPlanId('');
-                }
-            });
-
-        } else {
-            setSemesterPaymentPlans([]);
-            setSelectedPaymentPlanId('');
+                    setSemesterPaymentPlans(plansForSemester);
+                    if (plansForSemester.length > 0) {
+                        setSelectedPaymentPlanId(plansForSemester[0].id);
+                    } else {
+                        setSelectedPaymentPlanId('');
+                    }
+                });
+            } else {
+                setSemesterPaymentPlans([]);
+                setSelectedPaymentPlanId('');
+            }
         }
     }, [selectedSemesterId, openSemesters, allPaymentPlans]);
 
@@ -466,15 +481,20 @@ export default function RegistrationPage() {
             setSubmitting(false);
         }
     };
+    
+    const selectedSemester = openSemesters.find(s => s.id === selectedSemesterId);
+    const isLateRegistration = selectedSemester?.lateRegistrationActive ?? false;
+    const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
     const {tuitionCost, feesCost, totalCost, payableAmount} = React.useMemo(() => {
         const tuition = selectedCourses.reduce((acc, courseId) => acc + (allCourses.find(c => c.id === courseId)?.cost || 0), 0);
         const optional = selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0);
         const mandatory = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
+        const lateFee = isLateRegistration ? lateFeeAmount : 0;
 
-        const total = tuition + optional + mandatory;
+        const total = tuition + optional + mandatory + lateFee;
         
-        const payableBase = applyScholarship ? optional + mandatory : total;
+        const payableBase = applyScholarship ? optional + mandatory + lateFee : total;
         
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
         const firstInstallmentMultiplier = selectedPlan ? (selectedPlan.installmentPercentages?.[0] || 100) / 100 : 1;
@@ -482,7 +502,7 @@ export default function RegistrationPage() {
         const payable = payableBase * firstInstallmentMultiplier;
 
         return { tuitionCost: tuition, feesCost: optional, totalCost: total, payableAmount: payable };
-    }, [selectedCourses, allCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship]);
+    }, [selectedCourses, allCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
     if (loading) {
          return <div className="space-y-6"><Card className="shadow-lg"><CardHeader><Skeleton className="h-8 w-1/2" /><Skeleton className="h-4 w-3/4" /></CardHeader><CardContent><div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => (<div key={i} className="flex items-center gap-4 p-2"><Skeleton className="h-5 w-5" /><Skeleton className="h-5 w-full" /></div>))}</div></CardContent></Card></div>
@@ -537,6 +557,15 @@ export default function RegistrationPage() {
                         <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></div>
                         <div className="space-y-1"><Label htmlFor="programme-select">Select Programme</Label><Select value={selectedProgramme} onValueChange={setSelectedProgramme} disabled={!selectedSemesterId}><SelectTrigger id="programme-select"><SelectValue placeholder="Select a programme..." /></SelectTrigger><SelectContent>{programmes.map(p => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent></Select></div>
                     </div>
+                    {isLateRegistration && (
+                         <Alert variant="destructive">
+                            <ShieldAlert className="h-4 w-4" />
+                            <AlertTitle>Late Registration</AlertTitle>
+                            <AlertDescription>
+                                This is a late registration. A non-refundable penalty fee of <strong>ZMW {lateFeeAmount.toFixed(2)}</strong> will be added to your invoice.
+                            </AlertDescription>
+                        </Alert>
+                    )}
                     {selectedProgramme ? ( <>
                         <Accordion type="multiple" defaultValue={Object.keys(groupedCourses)} className="w-full">
                            {Object.entries(groupedCourses).map(([year, courses]) => (
@@ -554,7 +583,7 @@ export default function RegistrationPage() {
                     <div className="w-full space-y-4">
                          <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div><div className="flex items-end pb-1"><div className="flex items-center gap-2"><Checkbox id="scholarship" checked={applyScholarship} onCheckedChange={(checked) => setApplyScholarship(checked as boolean)} /><Label htmlFor="scholarship">Apply for Scholarship (100% tuition waiver)</Label></div></div></div>
                         <Separator />
-                        <div className="space-y-1 text-right text-sm"><div className="flex justify-between"><span>Tuition Cost:</span> <span>ZMW {tuitionCost.toFixed(2)}</span></div>{semesterMandatoryFees.map(fee => (<div key={fee.id} className="flex justify-between"><span>Mandatory Fee: {fee.name}</span> <span>ZMW {fee.amount.toFixed(2)}</span></div>))}<div className="flex justify-between"><span>Optional Fees:</span> <span>ZMW {feesCost.toFixed(2)}</span></div><Separator className="my-1"/><div className="flex justify-between font-bold"><span>Total Invoice Value:</span> <span>ZMW {totalCost.toFixed(2)}</span></div>{applyScholarship && <div className="flex justify-between font-bold text-blue-600"><span>Scholarship Applied:</span> <span>- ZMW {tuitionCost.toFixed(2)}</span></div>}</div>
+                        <div className="space-y-1 text-right text-sm w-full"><div className="flex justify-between"><span>Tuition Cost:</span> <span>ZMW {tuitionCost.toFixed(2)}</span></div>{semesterMandatoryFees.map(fee => (<div key={fee.id} className="flex justify-between"><span>Mandatory Fee: {fee.name}</span> <span>ZMW {fee.amount.toFixed(2)}</span></div>))}<div className="flex justify-between"><span>Optional Fees:</span> <span>ZMW {feesCost.toFixed(2)}</span></div>{isLateRegistration && <div className="flex justify-between text-destructive"><span>Late Registration Fee:</span> <span>ZMW {lateFeeAmount.toFixed(2)}</span></div>}<Separator className="my-1"/><div className="flex justify-between font-bold"><span>Total Invoice Value:</span> <span>ZMW {totalCost.toFixed(2)}</span></div>{applyScholarship && <div className="flex justify-between font-bold text-blue-600"><span>Scholarship Applied:</span> <span>- ZMW {tuitionCost.toFixed(2)}</span></div>}</div>
                         <Alert variant={applyScholarship ? 'default' : 'destructive'} className={applyScholarship ? 'bg-blue-50 border-blue-200 text-blue-800' : ''}><DollarSign className={applyScholarship ? 'text-blue-700' : ''} /><AlertTitle className={applyScholarship ? 'text-blue-900' : ''}>Amount Due for First Installment</AlertTitle><AlertDescription className={applyScholarship ? 'text-blue-700' : ''}>Your initial amount payable is ZMW {payableAmount.toFixed(2)}.{applyScholarship && " Your scholarship application will be reviewed. If not approved, the standard tuition amount will become due."}</AlertDescription></Alert>
                     </div>
                     <Button onClick={handleRegister} disabled={submitting || loading || selectedCourses.length === 0} size="lg" className="mt-4">{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{submitting ? 'Submitting...' : 'Submit for Approval'}</Button>
