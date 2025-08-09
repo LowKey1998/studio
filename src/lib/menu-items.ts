@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -99,7 +99,7 @@ export const allMenuItems = [
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
         { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
         { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
-        { href: '/admin/finance/scholarships', label: 'Scholarship Disbursement', icon: GraduationCap },
+        { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
         { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
@@ -293,6 +293,44 @@ export const allMenuItems = [
     },
 ];
 
+export const studentMenuItems = [
+    {
+        label: 'Academics',
+        icon: GraduationCap,
+        items: [
+            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
+            { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
+            { href: '/student/attendance', label: 'My Attendance', icon: Hand },
+            { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
+        ]
+    },
+    {
+        label: 'Finances',
+        icon: DollarSign,
+        items: [
+             { href: '/student/payments', label: 'Payments & Invoices', icon: Wallet },
+        ]
+    },
+    {
+        label: 'Campus Life',
+        icon: Building,
+        items: [
+            { href: '/student/library', label: 'Library', icon: BookUp },
+            { href: '/student/leave', label: 'Request Absence', icon: Calendar },
+            { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
+            { href: '/student/resources', label: 'Resources', icon: FileText },
+        ]
+    },
+     {
+        label: 'Innovation',
+        icon: Lightbulb,
+        items: [
+            { href: '/student/innovation/idea-board', label: 'Idea Board', icon: Newspaper },
+            { href: '/student/innovation/my-projects', label: 'My Projects', icon: Briefcase },
+        ]
+    }
+  ];
+
 export const staffMenuItems = [
     {
       label: 'Academics',
@@ -320,38 +358,6 @@ export const staffMenuItems = [
     }
   ];
 
-export const studentMenuItems = [
-    {
-        label: 'Academics',
-        icon: GraduationCap,
-        roles: ['Student'],
-        items: [
-            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
-            { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
-            { href: '/student/attendance', label: 'My Attendance', icon: Hand },
-            { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
-        ]
-    },
-    {
-        label: 'Finances',
-        icon: DollarSign,
-        roles: ['Student'],
-        items: [
-             { href: '/student/payments', label: 'Payments & Invoices', icon: Wallet },
-        ]
-    },
-    {
-        label: 'Campus Life',
-        icon: Building,
-        roles: ['Student'],
-        items: [
-            { href: '/student/library', label: 'Library', icon: BookUp },
-            { href: '/student/leave', label: 'Request Absence', icon: Calendar },
-            { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
-            { href: '/student/resources', label: 'Resources', icon: FileText },
-        ]
-    }
-  ];
-
 export const staffBaseMenuItems = staffMenuItems;
     
+

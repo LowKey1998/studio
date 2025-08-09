@@ -21,18 +21,10 @@ type Scholarship = {
     name: string;
     description: string;
     donor?: string;
-    studentIds?: Record<string, boolean>; // UID -> true
 };
 
-type AppUser = {
-    uid: string;
-    id: string;
-    name: string;
-}
-
-export default function ScholarshipDisbursementPage() {
+export default function ScholarshipManagementPage() {
     const [scholarships, setScholarships] = React.useState<Scholarship[]>([]);
-    const [allUsers, setAllUsers] = React.useState<AppUser[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
 
@@ -42,7 +34,6 @@ export default function ScholarshipDisbursementPage() {
     const [name, setName] = React.useState('');
     const [description, setDescription] = React.useState('');
     const [donor, setDonor] = React.useState('');
-    const [selectedStudents, setSelectedStudents] = React.useState<Record<string, boolean>>({});
 
     const { toast } = useToast();
 
@@ -58,15 +49,6 @@ export default function ScholarshipDisbursementPage() {
             setLoading(false);
         });
         
-        const fetchUsers = async () => {
-             const usersSnap = await get(ref(db, 'users'));
-             if (usersSnap.exists()) {
-                const usersData = usersSnap.val();
-                setAllUsers(Object.keys(usersData).map(uid => ({ uid, ...usersData[uid] })));
-            }
-        }
-        fetchUsers();
-
         return () => unsub();
     }, []);
     
@@ -74,7 +56,6 @@ export default function ScholarshipDisbursementPage() {
         setName('');
         setDescription('');
         setDonor('');
-        setSelectedStudents({});
         setEditingScholarship(null);
     };
 
@@ -85,7 +66,7 @@ export default function ScholarshipDisbursementPage() {
         }
         setSaving(true);
         try {
-            const data = { name, description, donor, studentIds: selectedStudents };
+            const data = { name, description, donor };
             if (editingScholarship) {
                 await set(ref(db, `scholarships/${editingScholarship.id}`), data);
                 toast({ title: 'Scholarship Updated' });
@@ -108,7 +89,6 @@ export default function ScholarshipDisbursementPage() {
             setName(scholarship.name);
             setDescription(scholarship.description);
             setDonor(scholarship.donor || '');
-            setSelectedStudents(scholarship.studentIds || {});
         } else {
             resetForm();
         }
@@ -116,7 +96,7 @@ export default function ScholarshipDisbursementPage() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you sure?")) return;
+        if (!window.confirm("Are you sure? This will remove the scholarship program.")) return;
         await remove(ref(db, `scholarships/${id}`));
         toast({ title: 'Scholarship Deleted' });
     }
@@ -126,7 +106,7 @@ export default function ScholarshipDisbursementPage() {
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle>Scholarship Management</CardTitle>
-                    <CardDescription>Create scholarship programs and assign students to them.</CardDescription>
+                    <CardDescription>Create and manage scholarship programs. Student assignment is handled during registration approval.</CardDescription>
                 </div>
                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild><Button onClick={() => openDialog(null)}><PlusCircle className="mr-2 h-4"/>New Scholarship</Button></DialogTrigger>
@@ -136,16 +116,6 @@ export default function ScholarshipDisbursementPage() {
                             <div className="space-y-1"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
                             <div className="space-y-1"><Label>Description</Label><Textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
                              <div className="space-y-1"><Label>Donor / Sponsor (Optional)</Label><Input value={donor} onChange={e => setDonor(e.target.value)} /></div>
-                             <div className="space-y-2"><Label>Assign Students</Label>
-                                <div className="max-h-60 overflow-y-auto border rounded-md p-2 space-y-2">
-                                    {allUsers.filter(u => u.role === 'Student').map(student => (
-                                        <div key={student.uid} className="flex items-center gap-2">
-                                            <Checkbox id={student.uid} checked={selectedStudents[student.uid]} onCheckedChange={checked => setSelectedStudents(prev => ({...prev, [student.uid]: !!checked}))}/>
-                                            <Label htmlFor={student.uid} className="font-normal">{student.name} ({student.id})</Label>
-                                        </div>
-                                    ))}
-                                </div>
-                             </div>
                         </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -156,14 +126,14 @@ export default function ScholarshipDisbursementPage() {
             </CardHeader>
             <CardContent>
                  <Table>
-                    <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Donor</TableHead><TableHead>Assigned Students</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Donor</TableHead><TableHead>Description</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
                     <TableBody>
                         {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-24"/></TableCell></TableRow> :
                          scholarships.map(s => (
                             <TableRow key={s.id}>
                                 <TableCell className="font-medium">{s.name}</TableCell>
                                 <TableCell>{s.donor}</TableCell>
-                                <TableCell>{Object.keys(s.studentIds || {}).length}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{s.description}</TableCell>
                                 <TableCell className="text-right">
                                     <Button variant="ghost" size="sm" onClick={() => openDialog(s)}>Edit</Button>
                                     <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
