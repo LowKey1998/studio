@@ -11,20 +11,10 @@ export default function DiscussionForumsPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Discussion Forums</CardTitle>
-                <CardDescription>Create and moderate course-specific discussion forums.</CardDescription>
+                <CardDescription>This feature is now managed within each course page for staff and students.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <Label>Course</Label>
-                    <Select>
-                        <SelectTrigger><SelectValue placeholder="Select a course..." /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="loading">Loading courses...</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <p className="text-sm text-muted-foreground">This module will allow for threaded discussions where students and lecturers can interact, ask questions, and collaborate.</p>
-                <Button disabled><MessageSquare className="mr-2 h-4 w-4" /> New Forum</Button>
+                 <p className="text-sm text-muted-foreground">To view or manage a discussion forum, please navigate to the desired course via the "My Courses" page for staff or "My Classes" for students, and select the "Messages" tab.</p>
             </CardContent>
         </Card>
     );

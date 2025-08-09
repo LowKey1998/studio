@@ -36,12 +36,12 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
     }, [courseId]);
 
     const navItems = [
-        { name: 'Assignments', href: `/staff/courses/${courseId}/assignments`, icon: <BookMarked/> },
-        { name: 'Resources', href: `/staff/courses/${courseId}/resources`, icon: <Folder/> },
-        { name: 'Course Path', href: `/staff/courses/${courseId}/path`, icon: <Route/> },
-        { name: 'Attendance', href: `/staff/courses/${courseId}/attendance`, icon: <Hand /> },
-        { name: 'Assessment', href: `/staff/courses/${courseId}/assessment`, icon: <ClipboardEdit/> },
-        { name: 'Messages', href: `/staff/courses/${courseId}/messages`, icon: <MessageSquare/> },
+        { name: 'Assignments', href: `/staff/courses/${courseId}/assignments` },
+        { name: 'Resources', href: `/staff/courses/${courseId}/resources` },
+        { name: 'Course Path', href: `/staff/courses/${courseId}/path` },
+        { name: 'Attendance', href: `/staff/courses/${courseId}/attendance` },
+        { name: 'Assessment', href: `/staff/courses/${courseId}/assessment` },
+        { name: 'Messages', href: `/staff/courses/${courseId}/messages` },
     ];
     
     const checkActive = (href: string) => {
@@ -80,7 +80,7 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
                     return (
                         <Link key={item.name} href={item.href} passHref>
                             <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap ${isActive ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-                                {React.cloneElement(item.icon, { className: 'h-4 w-4' })} {item.name}
+                                {item.name}
                             </button>
                         </Link>
                     )

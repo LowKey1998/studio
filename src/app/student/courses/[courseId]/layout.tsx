@@ -48,7 +48,10 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
     ];
     
     const checkActive = (href: string, exact?: boolean) => {
-        if (exact) return pathname === href;
+        if (exact) {
+            // Check for exact match or if it's the base course page
+            return pathname === href || pathname === `/student/courses/${courseId}`;
+        }
         return pathname.startsWith(href);
     }
 
