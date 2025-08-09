@@ -1,24 +1,240 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2 } from "lucide-react";
+'use client';
+import * as React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { db } from '@/lib/firebase';
+import { ref, get, set, onValue, update } from 'firebase/database';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+
+type Student = {
+    uid: string;
+    id: string; 
+    name: string;
+};
+
+type Semester = {
+    id: string;
+    name: string;
+    status: 'Open' | 'Closed' | 'Archived';
+}
+
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+};
+
+type AssessmentScores = {
+    assignment1?: { score: number };
+    quiz1?: { score: number };
+    midterm?: { score: number };
+    finalExam?: { score: number };
+};
+
+type GradeResult = {
+    student: Student;
+    caScore: number | null;
+    finalExamScore: number | null;
+    finalMark: number | null;
+    grade: string;
+};
+
+type GradeApprovalStatus = 'Pending' | 'Approved';
 
 export default function GradeApprovalPage() {
+    const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [courses, setCourses] = React.useState<Course[]>([]);
+    const [selectedCourse, setSelectedCourse] = React.useState('');
+    const [gradeResults, setGradeResults] = React.useState<GradeResult[]>([]);
+    const [gradeStatus, setGradeStatus] = React.useState<GradeApprovalStatus>('Pending');
+    const [gradingScale, setGradingScale] = React.useState<any[]>([]);
+
+    const [loading, setLoading] = React.useState(true);
+    const [loadingGrades, setLoadingGrades] = React.useState(false);
+    const [saving, setSaving] = React.useState(false);
+    const { toast } = useToast();
+
+    // Fetch semesters
+    React.useEffect(() => {
+        const semestersRef = ref(db, 'semesters');
+        const unsub = onValue(semestersRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                const list = Object.keys(data).map(id => ({ id, ...data[id] })).filter(s => s.status !== 'Archived');
+                setSemesters(list.sort((a,b) => b.name.localeCompare(a.name)));
+                if(list.length > 0) setSelectedSemester(list[0].id);
+            }
+             setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+     // Fetch courses for selected semester
+    React.useEffect(() => {
+        if (!selectedSemester) return;
+        setLoading(true);
+        const fetchCourses = async () => {
+            const regsSnap = await get(ref(db, 'registrations'));
+            const coursesSnap = await get(ref(db, 'courses'));
+            if (!regsSnap.exists() || !coursesSnap.exists()) {
+                setCourses([]); setLoading(false); return;
+            }
+            const allCourses = coursesSnap.val();
+            
+            const coursesInSemester = new Set<string>();
+            Object.values(regsSnap.val()).forEach((userRegs: any) => {
+                 if (userRegs[selectedSemester]) {
+                    userRegs[selectedSemester].courses.forEach((cid: string) => coursesInSemester.add(cid));
+                }
+            });
+            
+            setCourses(Array.from(coursesInSemester).map(cid => ({ id: cid, ...allCourses[cid] })).sort((a, b) => a.name.localeCompare(b.name)));
+            setLoading(false);
+        };
+        fetchCourses();
+    }, [selectedSemester]);
+
+    // Fetch grades for selected course
+    React.useEffect(() => {
+        if (!selectedCourse) {
+            setGradeResults([]);
+            return;
+        }
+
+        const fetchGrades = async () => {
+            setLoadingGrades(true);
+            try {
+                // Fetch status
+                const statusRef = ref(db, `gradeStatus/${selectedSemester}/${selectedCourse}`);
+                const statusSnap = await get(statusRef);
+                setGradeStatus(statusSnap.exists() ? statusSnap.val() : 'Pending');
+
+                // Fetch data
+                const [allUsersSnap, allRegsSnap, allAssessmentsSnap, gradingScaleSnap] = await Promise.all([
+                    get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, 'assessments')), get(ref(db, 'settings/gradingScale'))
+                ]);
+
+                if (!allUsersSnap.exists() || !allRegsSnap.exists() || !allAssessmentsSnap.exists() || !gradingScaleSnap.exists()) {
+                    setGradeResults([]); return;
+                }
+                const allUsers = allUsersSnap.val();
+                const allRegistrations = allRegsSnap.val();
+                const courseAssessments = allAssessmentsSnap.val()[selectedCourse] || {};
+                const scale = Object.values(gradingScaleSnap.val());
+                setGradingScale(scale);
+
+                const enrolledStudentUids: string[] = [];
+                for (const userId in allRegistrations) {
+                    const semesterReg = allRegistrations[userId][selectedSemester];
+                    if (semesterReg && semesterReg.courses.includes(selectedCourse) && (semesterReg.status === 'Completed')) {
+                        enrolledStudentUids.push(userId);
+                    }
+                }
+                
+                const results: GradeResult[] = enrolledStudentUids.map(uid => {
+                    const scores: AssessmentScores = courseAssessments[uid] || {};
+                    let caScores: number[] = [];
+                    if(scores.assignment1?.score) caScores.push(scores.assignment1.score);
+                    if(scores.quiz1?.score) caScores.push(scores.quiz1.score);
+                    if(scores.midterm?.score) caScores.push(scores.midterm.score);
+
+                    const caScore = caScores.length > 0 ? caScores.reduce((a,b) => a + b, 0) / caScores.length : null;
+                    const finalExamScore = scores.finalExam?.score ?? null;
+
+                    let finalMark: number | null = null;
+                    if(caScore !== null && finalExamScore !== null){
+                        finalMark = (caScore * 0.4) + (finalExamScore * 0.6);
+                    }
+                    
+                    const grade = scale.find(g => finalMark! >= g.minScore && finalMark! <= g.maxScore)?.grade || 'F';
+                    
+                    return { student: { uid, id: allUsers[uid].id, name: allUsers[uid].name }, caScore, finalExamScore, finalMark, grade };
+                });
+
+                setGradeResults(results);
+
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoadingGrades(false);
+            }
+        }
+        fetchGrades();
+
+    }, [selectedCourse, selectedSemester]);
+
+    const handleApprove = async () => {
+        setSaving(true);
+        try {
+            await set(ref(db, `gradeStatus/${selectedSemester}/${selectedCourse}`), 'Approved');
+            toast({ title: "Grades Approved" });
+            setGradeStatus('Approved');
+        } catch(e) {
+            toast({ variant: 'destructive', title: 'Approval Failed' });
+        } finally {
+            setSaving(false);
+        }
+    }
+
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Grade Approval Workflow</CardTitle>
-                <CardDescription>This page will manage the workflow for grade approvals. Lecturers will submit grades, which will then appear here for review and approval by the Head of Department or other designated authorities before being finalized.</CardDescription>
+                <CardDescription>Review and approve final grades before they are published to students.</CardDescription>
+                <div className="grid md:grid-cols-2 gap-4 pt-4">
+                    <div className="space-y-1">
+                        <Label>Semester</Label>
+                        <Select value={selectedSemester} onValueChange={setSelectedSemester}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{semesters.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+                    </div>
+                     <div className="space-y-1">
+                        <Label>Course</Label>
+                        <Select value={selectedCourse} onValueChange={setSelectedCourse}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                    </div>
+                </div>
             </CardHeader>
             <CardContent>
-                 <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertTitle>Coming Soon!</AlertTitle>
-                    <AlertDescription>
-                        This feature is currently under development.
-                    </AlertDescription>
-                </Alert>
+                {loadingGrades ? <Skeleton className="h-64"/> : gradeResults.length > 0 ? (
+                <>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold">Final Grades for {courses.find(c=>c.id === selectedCourse)?.name}</h3>
+                    <Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge>
+                </div>
+                <Table>
+                    <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Final Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                    {gradeResults.map(res => (
+                        <TableRow key={res.student.uid}>
+                            <TableCell>{res.student.name}</TableCell>
+                            <TableCell>{res.student.id}</TableCell>
+                            <TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell>
+                            <TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell>
+                            <TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell>
+                             <TableCell className="font-bold">{res.finalMark ? res.grade : 'N/A'}</TableCell>
+                        </TableRow>
+                    ))}
+                    </TableBody>
+                </Table>
+                </>
+                ) : <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>No Results</AlertTitle><AlertDescription>No results available for this course, or no students are enrolled.</AlertDescription></Alert>}
             </CardContent>
+            {gradeResults.length > 0 && (
+                <CardFooter className="flex justify-end">
+                    <Button onClick={handleApprove} disabled={saving || gradeStatus === 'Approved'}>
+                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        {gradeStatus === 'Approved' ? <><CheckCircle2 className="mr-2 h-4"/>Approved</> : 'Approve All Grades'}
+                    </Button>
+                </CardFooter>
+            )}
         </Card>
     );
 }
+
