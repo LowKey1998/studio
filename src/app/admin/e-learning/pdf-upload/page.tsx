@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Loader2, Link as LinkIcon, Trash2 } from "lucide-react";
+import { Upload, Loader2, Link as LinkIcon, Trash2, Download } from "lucide-react";
 import { db, storage } from '@/lib/firebase';
 import { ref, onValue, set, push, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -122,7 +122,11 @@ export default function PdfUploadPage() {
                                 <div key={res.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted">
                                     <span>{res.title}</span>
                                     <div className="flex gap-2">
-                                        <Button asChild variant="ghost" size="icon"><a href={res.url} target="_blank" rel="noopener noreferrer"><LinkIcon className="h-4 w-4"/></a></Button>
+                                        <Button asChild variant="outline" size="sm">
+                                            <a href={res.url} target="_blank" rel="noopener noreferrer">
+                                                <Download className="mr-2 h-4"/>Download
+                                            </a>
+                                        </Button>
                                         <Button variant="ghost" size="icon" onClick={() => handleDelete(res.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                     </div>
                                 </div>
