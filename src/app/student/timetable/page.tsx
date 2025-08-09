@@ -14,6 +14,7 @@ type TimetableEntry = {
     venue: string;
     courseCode: string;
     courseName: string;
+    semesterName: string;
 };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -31,7 +32,10 @@ export default function StudentTimetablePage() {
     }, []);
 
     React.useEffect(() => {
-        if (!currentUser) return;
+        if (!currentUser) {
+            setLoading(false);
+            return;
+        };
 
         const fetchTimetable = async () => {
             setLoading(true);
@@ -42,9 +46,9 @@ export default function StudentTimetablePage() {
                 const enrolledCourseIds = new Set<string>();
                 if (regsSnap.exists()) {
                     const regsData = regsSnap.val();
-                    for (const semester in regsData) {
-                        if (regsData[semester].status === 'Completed') {
-                            regsData[semester].courses.forEach((id: string) => enrolledCourseIds.add(id));
+                    for (const semesterId in regsData) {
+                        if (regsData[semesterId].status === 'Completed') {
+                            regsData[semesterId].courses.forEach((id: string) => enrolledCourseIds.add(id));
                         }
                     }
                 }
@@ -55,25 +59,28 @@ export default function StudentTimetablePage() {
                     return;
                 }
 
-                // Get all timetables and filter
-                const [coursesSnap, timetablesSnap] = await Promise.all([
+                // Get all timetables, courses, and semesters and filter
+                const [coursesSnap, timetablesSnap, semestersSnap] = await Promise.all([
                     get(ref(db, 'courses')),
-                    get(ref(db, 'timetables'))
+                    get(ref(db, 'timetables')),
+                    get(ref(db, 'semesters'))
                 ]);
                 
                 const allEntries: TimetableEntry[] = [];
-                if (timetablesSnap.exists() && coursesSnap.exists()) {
+                if (timetablesSnap.exists() && coursesSnap.exists() && semestersSnap.exists()) {
                     const allTimetables = timetablesSnap.val();
                     const allCourses = coursesSnap.val();
+                    const allSemesters = semestersSnap.val();
 
-                    for (const semester in allTimetables) {
-                        for (const courseId in allTimetables[semester]) {
+                    for (const semesterId in allTimetables) {
+                        for (const courseId in allTimetables[semesterId]) {
                             if (enrolledCourseIds.has(courseId)) {
                                 const courseCode = allCourses[courseId]?.code || 'N/A';
                                 const courseName = allCourses[courseId]?.name || 'Unknown Course';
-                                const entries = allTimetables[semester][courseId];
+                                const semesterName = allSemesters[semesterId]?.name || 'Unknown Semester';
+                                const entries = allTimetables[semesterId][courseId];
                                 for (const entryId in entries) {
-                                    allEntries.push({ ...entries[entryId], courseCode, courseName });
+                                    allEntries.push({ ...entries[entryId], courseCode, courseName, semesterName });
                                 }
                             }
                         }
@@ -100,7 +107,7 @@ export default function StudentTimetablePage() {
         <Card>
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">My Weekly Timetable</CardTitle>
-                <CardDescription>Your consolidated class schedule for the week.</CardDescription>
+                <CardDescription>Your consolidated class schedule for the week across all enrolled semesters.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
@@ -117,7 +124,7 @@ export default function StudentTimetablePage() {
                                         .map((entry, index) => (
                                             <div key={index} className="p-2 rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
                                                 <p className="font-bold text-sm text-primary">{entry.courseName}</p>
-                                                <p className="text-xs text-primary/80">{entry.courseCode}</p>
+                                                <p className="text-xs text-primary/80">{entry.courseCode} ({entry.semesterName})</p>
                                                 <p className="text-xs text-primary/80">{entry.startTime} - {entry.endTime}</p>
                                                 <p className="text-xs text-primary/80">Venue: {entry.venue}</p>
                                             </div>
@@ -131,4 +138,3 @@ export default function StudentTimetablePage() {
         </Card>
     );
 }
-
