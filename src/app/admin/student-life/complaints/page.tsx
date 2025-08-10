@@ -5,13 +5,47 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { db } from '@/lib/firebase';
+import { onValue, ref, update } from 'firebase/database';
+import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const mockComplaints = [
-    { id: 1, student: 'Grace Field', type: 'Academic', date: '2023-11-15', status: 'Pending Review' },
-    { id: 2, student: 'Henry Ives', type: 'Facility', date: '2023-11-10', status: 'Resolved' },
-];
+type Complaint = {
+    id: string;
+    studentName: string;
+    studentId: string;
+    type: string;
+    date: string;
+    details: string;
+    status: 'Pending Review' | 'In Progress' | 'Resolved';
+};
 
 export default function ComplaintsPage() {
+    const [complaints, setComplaints] = React.useState<Complaint[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const { toast } = useToast();
+
+    React.useEffect(() => {
+        const complaintsRef = ref(db, 'complaints');
+        const unsub = onValue(complaintsRef, (snapshot) => {
+            const data = snapshot.val() || {};
+            setComplaints(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.date.localeCompare(a.date)));
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    const handleUpdateStatus = async (id: string, status: Complaint['status']) => {
+        try {
+            await update(ref(db, `complaints/${id}`), { status });
+            toast({ title: 'Status Updated' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to update status' });
+        }
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -25,18 +59,34 @@ export default function ComplaintsPage() {
                             <TableHead>Student</TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Date</TableHead>
+                            <TableHead>Details</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {mockComplaints.map(c => (
+                        {loading ? <TableRow><TableCell colSpan={6}><Skeleton className="h-24"/></TableCell></TableRow> :
+                         complaints.map(c => (
                              <TableRow key={c.id}>
-                                <TableCell>{c.student}</TableCell>
+                                <TableCell>{c.studentName} ({c.studentId})</TableCell>
                                 <TableCell>{c.type}</TableCell>
-                                <TableCell>{c.date}</TableCell>
-                                <TableCell><Badge variant={c.status === 'Resolved' ? 'default' : 'secondary'}>{c.status}</Badge></TableCell>
-                                <TableCell className="text-right"><Button variant="outline" size="sm">View</Button></TableCell>
+                                <TableCell>{format(new Date(c.date), 'PPP')}</TableCell>
+                                <TableCell className="max-w-xs truncate">{c.details}</TableCell>
+                                <TableCell>
+                                    <Select value={c.status} onValueChange={(val) => handleUpdateStatus(c.id, val as Complaint['status'])}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Pending Review">Pending Review</SelectItem>
+                                            <SelectItem value="In Progress">In Progress</SelectItem>
+                                            <SelectItem value="Resolved">Resolved</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                     <Badge variant={c.status === 'Resolved' ? 'default' : 'secondary'}>{c.status}</Badge>
+                                </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
