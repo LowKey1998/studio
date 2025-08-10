@@ -81,7 +81,7 @@ export default function CoursePathsPage() {
         const newSemesterCourses: Record<string, Course[]> = {};
         const assignedCourseIds = new Set<string>();
 
-        if (currentPath) {
+        if (currentPath && currentPath.semesters) {
             setNumYears(Math.ceil(Object.keys(currentPath.semesters).length / 2) || 4);
             for (const semesterNum in currentPath.semesters) {
                 const semesterCourseIds = currentPath.semesters[semesterNum].courses;
