@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +41,7 @@ export default function KPIDashboardPage() {
                             axisLine={false}
                         />
                          <YAxis
-                           tickFormatter={(value) => `${value}%`
+                           tickFormatter={(value) => `${value}%`}
                          />
                         <Tooltip content={<ChartTooltipContent />} />
                         <Legend />
