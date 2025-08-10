@@ -151,7 +151,7 @@ export const allMenuItems = [
          { href: '/admin/library/statistics', label: 'Statistics', icon: BarChart2 },
       ]
     },
-     {
+    {
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
