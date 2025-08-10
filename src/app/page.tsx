@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/logo';
@@ -11,8 +12,13 @@ export default function LandingPage() {
   const { user } = useAuth();
   const router = useRouter();
 
+  React.useEffect(() => {
+    if (user) {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
+
   if (user) {
-    router.replace('/dashboard');
     return null; // or a loading spinner
   }
 
