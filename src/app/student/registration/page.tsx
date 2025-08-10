@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle } from 'lucide-react';
+import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -20,7 +20,7 @@ import { auth, db, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, set, child, push, remove, onValue, query, equalTo, orderByChild } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info, Star } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -30,6 +30,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 
 
 type Course = {
@@ -54,6 +55,7 @@ type UserData = {
     name: string;
     programmeId: string;
     intakeId: string;
+    year: number;
 };
 
 type Invoice = {
@@ -103,7 +105,7 @@ type Semester = {
     paymentPlanIds?: Record<string, boolean>;
     mandatoryFees?: Record<string, Fee>;
     optionalFees?: Record<string, Fee>;
-}
+};
 
 type Programme = {
     id: string;
@@ -139,6 +141,7 @@ function SortableCourseItem({ course }: { course: Course }) {
 
 export default function RegistrationPage() {
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
+    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [semesterOptionalFees, setSemesterOptionalFees] = React.useState<Fee[]>([]);
     const [semesterMandatoryFees, setSemesterMandatoryFees] = React.useState<Fee[]>([]);
     
@@ -189,12 +192,12 @@ export default function RegistrationPage() {
         const paymentPlansRef = ref(db, 'settings/paymentPlans');
         const regPolicyRef = ref(db, 'settings/registrationPolicy');
         const coursesRef = ref(db, 'courses');
+        const coursePathsRef = ref(db, 'coursePaths');
 
         const unsubPaymentPlans = onValue(paymentPlansRef, (snapshot) => {
-            if (snapshot.exists()) {
-                setAllPaymentPlans(Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })));
-            } else { setAllPaymentPlans([]) }
-        })
+            if (snapshot.exists()) setAllPaymentPlans(Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })));
+            else setAllPaymentPlans([]);
+        });
         const unsubRegPolicy = onValue(regPolicyRef, (snapshot) => {
             if(snapshot.exists()) setRegistrationPolicy(snapshot.val());
         });
@@ -204,11 +207,16 @@ export default function RegistrationPage() {
                 setAllCourses(Object.keys(coursesData).map(id => ({id, ...coursesData[id]})));
             }
         });
+         const unsubCoursePaths = onValue(coursePathsRef, (snapshot) => {
+            if (snapshot.exists()) setAllCoursePaths(Object.values(snapshot.val()));
+            else setAllCoursePaths([]);
+        });
         
         return () => {
             unsubPaymentPlans();
             unsubRegPolicy();
             unsubCourses();
+            unsubCoursePaths();
         };
     },[]);
 
@@ -241,12 +249,9 @@ export default function RegistrationPage() {
         setLoading(true);
         try {
             const registrationRef = ref(db, `registrations/${user.uid}/${selectedSemesterId}`);
-            
-            const [regSnap, settingsSnap, invoiceSnap, usersSnap] = await Promise.all([
+            const [regSnap, invoiceSnap] = await Promise.all([
                 get(registrationRef),
-                get(ref(db, 'settings')),
-                get(ref(db, `invoices/${user.uid}`)),
-                get(ref(db, 'users'))
+                get(ref(db, `invoices/${user.uid}`))
             ]);
 
             const regData = regSnap.exists() ? regSnap.val() : null;
@@ -263,7 +268,7 @@ export default function RegistrationPage() {
                  const semesterOfferingsSnap = await get(ref(db, `semesterOfferings/${openSemesters.find(s => s.id === selectedSemesterId)?.name}/courseIds`));
                  const availableCourseIds = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : [];
                  
-                 setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id)));
+                 setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id) && c.year === uData.year));
                  setSelectedCourses([]);
             }
         } catch (error) {
@@ -442,6 +447,21 @@ export default function RegistrationPage() {
         return { tuitionCost: tuition, feesCost: optional + mandatory, totalCost: total, payableAmount: payable };
     }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
+    const recommendedCourseIds = React.useMemo(() => {
+        if (!userData || !selectedSemesterData) return [];
+        const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
+        if(!path) return [];
+        
+        // This is a simplification. A real implementation would need to know which semester of study this is (e.g., Year 2, Sem 1)
+        // For now, we'll just check against the student's overall year.
+        const semesterKeys = Object.keys(path.semesters);
+        const relevantSemesterKey = semesterKeys[ (userData.year - 1) * 2 ] || semesterKeys[ (userData.year - 1) * 2 + 1 ];
+        if (relevantSemesterKey && path.semesters[Number(relevantSemesterKey)]) {
+            return path.semesters[Number(relevantSemesterKey)].courses;
+        }
+        return [];
+    }, [userData, selectedSemesterData, allCoursePaths]);
+
     if (loading) {
         return (
             <div className="space-y-6">
@@ -503,7 +523,10 @@ export default function RegistrationPage() {
                                         {availableCourses.map((course) => (
                                             <TableRow key={course.id}>
                                                 <TableCell><Checkbox id={`course-${course.id}`} checked={selectedCourses.some(c => c.id === course.id)} onCheckedChange={() => handleSelectCourse(course.id)}/></TableCell>
-                                                <TableCell><Label htmlFor={`course-${course.id}`}>{course.name} ({course.code})</Label></TableCell>
+                                                <TableCell>
+                                                    <Label htmlFor={`course-${course.id}`}>{course.name} ({course.code})</Label>
+                                                    {recommendedCourseIds.includes(course.id) && <Badge variant="secondary" className="ml-2">Recommended</Badge>}
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                      </TableBody>
