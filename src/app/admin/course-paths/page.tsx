@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, DragStartEvent, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -49,7 +49,6 @@ export default function CoursePathsPage() {
     const [numYears, setNumYears] = React.useState(4);
     const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({});
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
-    const [activeId, setActiveId] = React.useState<string | null>(null);
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
@@ -153,130 +152,89 @@ export default function CoursePathsPage() {
         return null;
     };
 
-    const handleDragStart = (event: DragStartEvent) => {
-        setActiveId(event.active.id as string);
-    };
-
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        setActiveId(null);
-    
+
         if (!over) {
             return;
         }
-    
-        const activeContainerId = findContainer(active.id as string);
-        const overContainerId = (over.data.current?.type === 'container' ? over.id : findContainer(over.id as string)) as string;
-    
-        if (!activeContainerId || !overContainerId) {
+
+        const activeId = active.id as string;
+        const overId = over.id as string;
+
+        if (activeId === overId) {
             return;
         }
-    
-        if (activeContainerId === overContainerId) {
+
+        const activeContainer = findContainer(activeId);
+        const overContainer = findContainer(overId) || overId;
+
+        if (!activeContainer || !overContainer) {
+            return;
+        }
+        
+        const activeItem = courses.find(c => c.id === activeId);
+        if (!activeItem) return;
+
+        if (activeContainer === overContainer) {
             // Reordering within the same container
-            if (activeContainerId === 'available') {
-                setAvailableCourses(items => {
-                    const oldIndex = items.findIndex(c => c.id === active.id);
-                    const newIndex = items.findIndex(c => c.id === over.id);
-                    return arrayMove(items, oldIndex, newIndex);
+            if (activeContainer === 'available') {
+                setAvailableCourses(prev => {
+                    const oldIndex = prev.findIndex(item => item.id === activeId);
+                    const newIndex = prev.findIndex(item => item.id === overId);
+                    return arrayMove(prev, oldIndex, newIndex);
                 });
             } else {
-                setSemesterCourses(items => {
-                    const oldIndex = items[activeContainerId].findIndex(c => c.id === active.id);
-                    const newIndex = items[activeContainerId].findIndex(c => c.id === over.id);
-                    const newItems = { ...items };
-                    newItems[activeContainerId] = arrayMove(items[activeContainerId], oldIndex, newIndex);
-                    return newItems;
+                setSemesterCourses(prev => {
+                    const oldIndex = prev[activeContainer].findIndex(item => item.id === activeId);
+                    const newIndex = prev[activeContainer].findIndex(item => item.id === overId);
+                    const newSemesterCourseList = arrayMove(prev[activeContainer], oldIndex, newIndex);
+                    return {
+                        ...prev,
+                        [activeContainer]: newSemesterCourseList,
+                    };
                 });
             }
         } else {
-            // Moving between containers
-            let movedItem: Course | undefined;
-            
-            // Start transaction-like update
-            let nextAvailable = [...availableCourses];
-            let nextSemesters = { ...semesterCourses };
-    
-            // Remove from source
-            if (activeContainerId === 'available') {
-                const index = nextAvailable.findIndex(c => c.id === active.id);
-                if (index > -1) {
-                    [movedItem] = nextAvailable.splice(index, 1);
-                }
+            // Moving to a different container
+            let sourceItems: Course[];
+            let destinationItems: Course[];
+
+            // Get source items and update source state
+            if (activeContainer === 'available') {
+                sourceItems = [...availableCourses];
+                setAvailableCourses(sourceItems.filter(item => item.id !== activeId));
             } else {
-                const index = nextSemesters[activeContainerId].findIndex(c => c.id === active.id);
-                 if (index > -1) {
-                    [movedItem] = nextSemesters[activeContainerId].splice(index, 1);
-                }
+                sourceItems = [...(semesterCourses[activeContainer] || [])];
+                setSemesterCourses(prev => ({
+                    ...prev,
+                    [activeContainer]: sourceItems.filter(item => item.id !== activeId),
+                }));
             }
-    
-            if (!movedItem) return;
-    
-            // Add to destination
-            if (overContainerId === 'available') {
-                const overIndex = nextAvailable.findIndex(c => c.id === over.id);
-                if (overIndex > -1) {
-                    nextAvailable.splice(overIndex, 0, movedItem);
-                } else {
-                    nextAvailable.push(movedItem);
-                }
+
+            // Get destination items and update destination state
+            if (overContainer === 'available') {
+                destinationItems = [...availableCourses];
+                 setAvailableCourses(prev => {
+                    const overIndex = prev.findIndex(item => item.id === overId);
+                    const newIndex = overIndex >= 0 ? overIndex : prev.length;
+                    return [...prev.slice(0, newIndex), activeItem, ...prev.slice(newIndex)];
+                });
             } else {
-                 if (!nextSemesters[overContainerId]) {
-                    nextSemesters[overContainerId] = [];
-                }
-                const overIndex = nextSemesters[overContainerId].findIndex(c => c.id === over.id);
-                if (overIndex > -1) {
-                    nextSemesters[overContainerId].splice(overIndex, 0, movedItem);
-                } else {
-                    nextSemesters[overContainerId].push(movedItem);
-                }
+                destinationItems = [...(semesterCourses[overContainer] || [])];
+                setSemesterCourses(prev => {
+                    const newDestinationItems = [...(prev[overContainer] || [])];
+                    const overIndex = newDestinationItems.findIndex(item => item.id === overId);
+                    const newIndex = overIndex >= 0 ? overIndex : newDestinationItems.length;
+                    newDestinationItems.splice(newIndex, 0, activeItem);
+                    return {
+                        ...prev,
+                        [overContainer]: newDestinationItems,
+                    };
+                });
             }
-    
-            setAvailableCourses(nextAvailable);
-            setSemesterCourses(nextSemesters);
         }
     };
-    
-    const handleDragOver = (event: DragOverEvent) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-    
-        const activeContainerId = findContainer(active.id as string);
-        const overContainerId = (over.data.current?.type === 'container' ? over.id : findContainer(over.id as string)) as string;
-    
-        if (!activeContainerId || !overContainerId || activeContainerId === overContainerId) {
-            return;
-        }
-    
-        const activeItem = courses.find(c => c.id === active.id)!;
-    
-        setAvailableCourses(prevAvailable => {
-            let newAvailable = [...prevAvailable];
-            let newSemesterItems = { ...semesterCourses };
-    
-            // Remove from source
-            if (activeContainerId === 'available') {
-                newAvailable = newAvailable.filter(c => c.id !== active.id);
-            } else {
-                newSemesterItems[activeContainerId] = newSemesterItems[activeContainerId].filter(c => c.id !== active.id);
-            }
-    
-            // Add to destination
-            if (overContainerId === 'available') {
-                 const overIndex = newAvailable.findIndex(c => c.id === over.id);
-                 newAvailable.splice(overIndex !== -1 ? overIndex : newAvailable.length, 0, activeItem);
-            } else {
-                if (!newSemesterItems[overContainerId]) {
-                    newSemesterItems[overContainerId] = [];
-                }
-                const overIndex = newSemesterItems[overContainerId].findIndex(c => c.id === over.id);
-                newSemesterItems[overContainerId].splice(overIndex !== -1 ? overIndex : newSemesterItems[overContainerId].length, 0, activeItem);
-            }
-    
-            setSemesterCourses(newSemesterItems);
-            return newAvailable;
-        });
-    }
 
 
     return (
@@ -331,7 +289,7 @@ export default function CoursePathsPage() {
                                     <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                                 {selectedIntake && selectedProgramme ? (
-                                    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                                    <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                                     <div className="grid md:grid-cols-3 gap-4">
                                         <div className="md:col-span-2 space-y-4">
                                             {Array.from({ length: numYears }).map((_, yearIndex) => (
