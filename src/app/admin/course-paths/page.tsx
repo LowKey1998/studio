@@ -50,6 +50,7 @@ export default function CoursePathsPage() {
     const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({});
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
+    const [targetSemester, setTargetSemester] = React.useState('');
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
@@ -142,6 +143,7 @@ export default function CoursePathsPage() {
     };
     
     const findContainer = (id: string) => {
+        if (id === 'available') return 'available';
         if (availableCourses.some(c => c.id === id)) {
             return 'available';
         }
@@ -153,13 +155,35 @@ export default function CoursePathsPage() {
         return null;
     };
     
+    const handleAddCourseToSemester = (courseId: string) => {
+        if (!targetSemester) {
+            toast({
+                variant: 'destructive',
+                title: 'No Target Semester',
+                description: 'Please select a semester from the dropdown above the "Available Courses" list.',
+            });
+            return;
+        }
+
+        const courseToAdd = availableCourses.find(c => c.id === courseId);
+        if (!courseToAdd) return;
+
+        setAvailableCourses(prev => prev.filter(c => c.id !== courseId));
+        setSemesterCourses(prev => {
+            const newSemesters = { ...prev };
+            const targetList = newSemesters[targetSemester] ? [...newSemesters[targetSemester]] : [];
+            targetList.push(courseToAdd);
+            newSemesters[targetSemester] = targetList;
+            return newSemesters;
+        });
+    };
+
     const handleDragStart = (event: DragStartEvent) => {
         const { active } = event;
         const activeId = active.id as string;
         const course = courses.find((c) => c.id === activeId);
         setActiveCourse(course || null);
     }
-
 
     const handleDragEnd = (event: DragEndEvent) => {
         setActiveCourse(null);
@@ -168,55 +192,42 @@ export default function CoursePathsPage() {
         if (!over) return;
         
         const activeId = active.id as string;
-        const overId = over.id as string;
-
+        
         const activeContainer = findContainer(activeId);
-        const overContainer = findContainer(overId) || overId;
+        const overContainer = findContainer(over.id as string) || over.id as string;
 
-        if (!activeContainer || !overContainer || activeId === overId) return;
+        if (!activeContainer || !overContainer || activeContainer === overContainer) return;
         
         const activeItem = courses.find(c => c.id === activeId);
         if(!activeItem) return;
 
-        setSemesterCourses(prevSemesters => {
-            const newSemesters = { ...prevSemesters };
-            const newAvailable = [...availableCourses];
+        const newAvailable = [...availableCourses];
+        const newSemesters = {...semesterCourses};
 
-            // Remove from source
-            if (activeContainer === 'available') {
-                const activeIndex = newAvailable.findIndex(c => c.id === activeId);
-                newAvailable.splice(activeIndex, 1);
-            } else {
-                const sourceSemCourses = newSemesters[activeContainer] ? [...newSemesters[activeContainer]] : [];
-                const activeIndex = sourceSemCourses.findIndex(c => c.id === activeId);
-                if (activeIndex > -1) {
-                    sourceSemCourses.splice(activeIndex, 1);
-                    newSemesters[activeContainer] = sourceSemCourses;
-                }
+        // Remove from source
+        if(activeContainer === 'available') {
+            const index = newAvailable.findIndex(c => c.id === activeId);
+            if (index > -1) newAvailable.splice(index, 1);
+        } else {
+            const sourceSemCourses = newSemesters[activeContainer] ? [...newSemesters[activeContainer]] : [];
+            const index = sourceSemCourses.findIndex(c => c.id === activeId);
+            if (index > -1) {
+                sourceSemCourses.splice(index, 1);
+                newSemesters[activeContainer] = sourceSemCourses;
             }
+        }
 
-            // Add to destination
-            if (overContainer === 'available') {
-                 const overIndex = newAvailable.findIndex(c => c.id === overId);
-                 if (overIndex > -1) {
-                     newAvailable.splice(overIndex, 0, activeItem);
-                 } else {
-                     newAvailable.push(activeItem);
-                 }
-            } else {
-                 const destSemCourses = newSemesters[overContainer] ? [...newSemesters[overContainer]] : [];
-                 const overIndex = destSemCourses.findIndex(c => c.id === overId);
-                 if (overIndex > -1) {
-                    destSemCourses.splice(overIndex, 0, activeItem);
-                 } else {
-                     destSemCourses.push(activeItem);
-                 }
-                 newSemesters[overContainer] = destSemCourses;
-            }
+        // Add to destination
+        if (overContainer === 'available') {
+            newAvailable.push(activeItem);
+        } else {
+            const destSemCourses = newSemesters[overContainer] ? [...newSemesters[overContainer]] : [];
+            destSemCourses.push(activeItem);
+            newSemesters[overContainer] = destSemCourses;
+        }
 
-            setAvailableCourses(newAvailable);
-            return newSemesters;
-        });
+        setAvailableCourses(newAvailable);
+        setSemesterCourses(newSemesters);
     };
 
 
@@ -279,7 +290,7 @@ export default function CoursePathsPage() {
                                                 <div key={yearIndex} className="space-y-4 p-4 border rounded-lg">
                                                     <div className="flex justify-between items-center">
                                                         <h3 className="font-bold text-xl">Year {yearIndex + 1}</h3>
-                                                        <Button variant="ghost" size="icon" onClick={() => setNumYears(prev => Math.max(1, prev-1))} disabled={numYears <= 1}><MinusCircle className="h-5 w-5 text-destructive"/></Button>
+                                                        {yearIndex === numYears - 1 && <Button variant="ghost" size="icon" onClick={() => setNumYears(prev => Math.max(1, prev-1))} disabled={numYears <= 1}><MinusCircle className="h-5 w-5 text-destructive"/></Button>}
                                                     </div>
                                                     <div className="grid md:grid-cols-2 gap-4">
                                                         <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} />
@@ -292,7 +303,13 @@ export default function CoursePathsPage() {
                                             </div>
                                         </div>
                                         <div className="md:col-span-1">
-                                            <AvailableCoursesColumn courses={availableCourses} />
+                                            <AvailableCoursesColumn 
+                                                courses={availableCourses}
+                                                targetSemester={targetSemester}
+                                                setTargetSemester={setTargetSemester}
+                                                onAddCourse={handleAddCourseToSemester}
+                                                numYears={numYears}
+                                            />
                                         </div>
                                     </div>
                                     <DragOverlay>
@@ -313,17 +330,22 @@ export default function CoursePathsPage() {
 }
 
 // --- Draggable Course Item Component ---
-function DraggableCourseItem({ id, course }: { id: string, course?: Course | null}) {
+function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Course | null, onAdd?: () => void}) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     if (!course) return null;
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={cn("p-2 border rounded-md bg-card flex items-center gap-2 touch-none", isDragging && "opacity-50")}>
-            <GripVertical className="h-5 w-5 text-muted-foreground"/>
-            <div>
+        <div ref={setNodeRef} style={style} className={cn("p-2 border rounded-md bg-card flex items-center gap-2 touch-none", isDragging && "opacity-50")}>
+            <button {...attributes} {...listeners} className="cursor-grab p-1"><GripVertical className="h-5 w-5 text-muted-foreground"/></button>
+            <div className="flex-grow">
                 <p className="text-sm font-medium">{course.name}</p>
                 <p className="text-xs text-muted-foreground">{course.code}</p>
             </div>
+            {onAdd && (
+                <Button variant="ghost" size="icon" onClick={onAdd} className="h-8 w-8">
+                    <PlusCircle className="h-4 w-4 text-primary"/>
+                </Button>
+            )}
         </div>
     )
 }
@@ -345,15 +367,38 @@ function SemesterColumn({ semesterNum, courses, year }: { semesterNum: number, c
 }
 
 // --- Available Courses Column Component ---
-function AvailableCoursesColumn({ courses }: { courses: Course[] }) {
+function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, onAddCourse, numYears }: {
+    courses: Course[];
+    targetSemester: string;
+    setTargetSemester: (id: string) => void;
+    onAddCourse: (courseId: string) => void;
+    numYears: number;
+}) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
     return (
         <Card ref={setNodeRef}>
-            <CardHeader><CardTitle>Available Courses</CardTitle></CardHeader>
+            <CardHeader>
+                <CardTitle>Available Courses</CardTitle>
+                <div className="pt-2 space-y-1">
+                    <Label htmlFor="target-semester">Target Semester</Label>
+                    <Select value={targetSemester} onValueChange={setTargetSemester}>
+                        <SelectTrigger id="target-semester">
+                            <SelectValue placeholder="Select semester to add to..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                             {Array.from({ length: numYears * 2 }).map((_, i) => (
+                                 <SelectItem key={i + 1} value={String(i + 1)}>
+                                    Year {Math.floor(i / 2) + 1}, Semester { (i % 2) + 1 }
+                                 </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </CardHeader>
             <CardContent className="max-h-[600px] overflow-y-auto space-y-2">
                 <SortableContext id="available" items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
                     <div className="space-y-2">
-                         {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} />)}
+                         {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} onAdd={() => onAddCourse(course.id)} />)}
                          {courses.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">All courses assigned.</p>}
                     </div>
                 </SortableContext>
@@ -361,3 +406,6 @@ function AvailableCoursesColumn({ courses }: { courses: Course[] }) {
         </Card>
     )
 }
+
+
+    
