@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect } from 'react';
 
 // This page is now a layout with tabs, so we redirect the base route
-// to the first tab, which is assignments.
+// to the first tab, which is the course path.
 export default function RedirectPage() {
     const router = useRouter();
     const params = useParams();

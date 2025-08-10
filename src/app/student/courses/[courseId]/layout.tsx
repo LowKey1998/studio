@@ -37,7 +37,7 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
     }, [courseId]);
 
     const navItems = [
-        { name: 'Course Path', href: `/student/courses/${courseId}`, icon: <Route/>, exact: true },
+        { name: 'Course Path', href: `/student/courses/${courseId}/path`, icon: <Route/> },
         { name: 'Assignments', href: `/student/courses/${courseId}/assignments`, icon: <BookMarked/> },
         { name: 'Resources', href: `/student/courses/${courseId}/resources`, icon: <Folder/> },
         { name: 'Schedule', href: `/student/courses/${courseId}/schedule`, icon: <Calendar /> },
@@ -47,12 +47,9 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
         { name: 'Results', href: `/student/courses/${courseId}/results`, icon: <ClipboardCheck/> },
     ];
     
-    const checkActive = (href: string, exact?: boolean) => {
-        if (exact) {
-            // Check for exact match or if it's the base course page
-            return pathname === href || pathname === `/student/courses/${courseId}`;
-        }
-        return pathname.startsWith(href);
+    const checkActive = (href: string) => {
+        // More robust check for active tab
+        return pathname === href || (pathname === `/student/courses/${courseId}` && href.endsWith('/path'));
     }
 
     if (loading) {
@@ -79,7 +76,7 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
 
              <nav className="flex border-b overflow-x-auto">
                  {navItems.map((item) => {
-                    const isActive = checkActive(item.href, item.exact);
+                    const isActive = checkActive(item.href);
                     return (
                         <Link key={item.name} href={item.href} passHref>
                             <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap ${isActive ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
