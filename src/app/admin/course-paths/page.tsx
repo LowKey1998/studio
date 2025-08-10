@@ -142,11 +142,11 @@ export default function CoursePathsPage() {
     };
     
     const findContainer = (id: string) => {
-        if (id === 'available') {
+        if (availableCourses.some(c => c.id === id)) {
             return 'available';
         }
         for (const semesterId in semesterCourses) {
-            if (semesterId === id || semesterCourses[semesterId]?.some(c => c.id === id)) {
+            if (semesterCourses[semesterId]?.some(c => c.id === id)) {
                 return semesterId;
             }
         }
@@ -160,53 +160,96 @@ export default function CoursePathsPage() {
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         setActiveId(null);
-        if (!over) return;
     
-        const activeContainer = findContainer(active.id as string);
-        const overContainer = findContainer(over.id as string);
-    
-        if (!activeContainer || !overContainer || active.id === over.id) {
+        if (!over) {
             return;
         }
     
-        const item = courses.find(c => c.id === active.id);
-        if (!item) return;
-
-        const newSemesterCourses = { ...semesterCourses };
-        const newAvailableCourses = [...availableCourses];
+        const activeContainerId = findContainer(active.id as string);
+        const overContainerId = (over.data.current?.type === 'container' ? over.id : findContainer(over.id as string)) as string;
     
-        // Remove from source
-        if (activeContainer === 'available') {
-            const index = newAvailableCourses.findIndex(c => c.id === active.id);
-            if(index > -1) newAvailableCourses.splice(index, 1);
-        } else {
-            const index = newSemesterCourses[activeContainer]?.findIndex(c => c.id === active.id);
-            if(index > -1) newSemesterCourses[activeContainer].splice(index, 1);
+        if (!activeContainerId || !overContainerId || active.id === over.id) {
+            return;
         }
     
-        // Add to destination
-        if (overContainer === 'available') {
-             const overIndex = newAvailableCourses.findIndex(c => c.id === over.id);
-            if (overIndex !== -1) {
-                newAvailableCourses.splice(overIndex, 0, item);
-            } else {
-                newAvailableCourses.push(item);
-            }
-        } else {
-            if (!newSemesterCourses[overContainer]) {
-                newSemesterCourses[overContainer] = [];
-            }
-            const overIndex = newSemesterCourses[overContainer].findIndex(c => c.id === over.id);
-            if (overIndex !== -1) {
-                newSemesterCourses[overContainer].splice(overIndex, 0, item);
-            } else {
-                newSemesterCourses[overContainer].push(item);
-            }
-        }
+        const activeItem = courses.find(c => c.id === active.id)!;
     
-        setSemesterCourses(newSemesterCourses);
-        setAvailableCourses(newAvailableCourses);
+        setAvailableCourses(prevAvailable => {
+            let newAvailable = [...prevAvailable];
+            let newSemesterItems = { ...semesterCourses };
+    
+            // Remove from source
+            if (activeContainerId === 'available') {
+                newAvailable = newAvailable.filter(c => c.id !== active.id);
+            } else {
+                newSemesterItems[activeContainerId] = newSemesterItems[activeContainerId].filter(c => c.id !== active.id);
+            }
+    
+            // Add to destination
+            if (overContainerId === 'available') {
+                const overIndex = newAvailable.findIndex(c => c.id === over.id);
+                if (overIndex !== -1) {
+                    newAvailable.splice(overIndex, 0, activeItem);
+                } else {
+                    newAvailable.push(activeItem);
+                }
+            } else {
+                if (!newSemesterItems[overContainerId]) {
+                    newSemesterItems[overContainerId] = [];
+                }
+                const overIndex = newSemesterItems[overContainerId].findIndex(c => c.id === over.id);
+                if (overIndex !== -1) {
+                    newSemesterItems[overContainerId].splice(overIndex, 0, activeItem);
+                } else {
+                    newSemesterItems[overContainerId].push(activeItem);
+                }
+            }
+    
+            setSemesterCourses(newSemesterItems);
+            return newAvailable;
+        });
     };
+    
+    const handleDragOver = (event: DragOverEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+    
+        const activeContainerId = findContainer(active.id as string);
+        const overContainerId = (over.data.current?.type === 'container' ? over.id : findContainer(over.id as string)) as string;
+    
+        if (!activeContainerId || !overContainerId || activeContainerId === overContainerId) {
+            return;
+        }
+    
+        const activeItem = courses.find(c => c.id === active.id)!;
+    
+        setAvailableCourses(prevAvailable => {
+            let newAvailable = [...prevAvailable];
+            let newSemesterItems = { ...semesterCourses };
+    
+            // Remove from source
+            if (activeContainerId === 'available') {
+                newAvailable = newAvailable.filter(c => c.id !== active.id);
+            } else {
+                newSemesterItems[activeContainerId] = newSemesterItems[activeContainerId].filter(c => c.id !== active.id);
+            }
+    
+            // Add to destination
+            if (overContainerId === 'available') {
+                 const overIndex = newAvailable.findIndex(c => c.id === over.id);
+                 newAvailable.splice(overIndex !== -1 ? overIndex : newAvailable.length, 0, activeItem);
+            } else {
+                if (!newSemesterItems[overContainerId]) {
+                    newSemesterItems[overContainerId] = [];
+                }
+                const overIndex = newSemesterItems[overContainerId].findIndex(c => c.id === over.id);
+                newSemesterItems[overContainerId].splice(overIndex !== -1 ? overIndex : newSemesterItems[overContainerId].length, 0, activeItem);
+            }
+    
+            setSemesterCourses(newSemesterItems);
+            return newAvailable;
+        });
+    }
 
 
     return (
@@ -261,7 +304,7 @@ export default function CoursePathsPage() {
                                     <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                                 {selectedIntake && selectedProgramme ? (
-                                    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                                    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                                     <div className="grid md:grid-cols-3 gap-4">
                                         <div className="md:col-span-2 space-y-4">
                                             {Array.from({ length: numYears }).map((_, yearIndex) => (
@@ -334,11 +377,11 @@ function SemesterColumn({ semesterNum, courses, year }: { semesterNum: number, c
 function AvailableCoursesColumn({ courses }: { courses: Course[] }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
     return (
-        <Card>
+        <Card ref={setNodeRef}>
             <CardHeader><CardTitle>Available Courses</CardTitle></CardHeader>
             <CardContent className="max-h-[600px] overflow-y-auto space-y-2">
                 <SortableContext id="available" items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
-                    <div ref={setNodeRef} className="space-y-2">
+                    <div className="space-y-2">
                          {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} />)}
                          {courses.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">All courses assigned.</p>}
                     </div>
