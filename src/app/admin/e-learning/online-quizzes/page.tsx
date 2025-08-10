@@ -37,6 +37,7 @@ type Quiz = {
     title: string;
     description: string;
     courseId: string;
+    semesterId: string;
 };
 
 type Course = {
@@ -51,11 +52,19 @@ type Programme = {
     courseIds?: Record<string, boolean>;
 };
 
+type Semester = {
+    id: string;
+    name: string;
+    status: 'Open' | 'Closed' | 'Archived';
+};
+
 
 export default function OnlineQuizzesPage() {
     const [quizzes, setQuizzes] = React.useState<Quiz[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
+    const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [selectedSemester, setSelectedSemester] = React.useState('');
     const [selectedProgramme, setSelectedProgramme] = React.useState('');
     const [selectedCourse, setSelectedCourse] = React.useState('');
     const [loading, setLoading] = React.useState(true);
@@ -67,6 +76,7 @@ export default function OnlineQuizzesPage() {
         const quizzesRef = ref(db, 'quizzes');
         const coursesRef = ref(db, 'courses');
         const programmesRef = ref(db, 'programmes');
+        const semestersRef = ref(db, 'semesters');
 
         const unsubQuizzes = onValue(quizzesRef, (snapshot) => {
             if (snapshot.exists()) {
@@ -95,11 +105,22 @@ export default function OnlineQuizzesPage() {
                 setProgrammes([]);
             }
         });
+        
+        const unsubSemesters = onValue(semestersRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+                setSemesters(list.filter(s => s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name)));
+            } else {
+                setSemesters([]);
+            }
+        });
 
         return () => {
             unsubQuizzes();
             unsubCourses();
             unsubProgrammes();
+            unsubSemesters();
         }
     }, []);
     
@@ -109,7 +130,7 @@ export default function OnlineQuizzesPage() {
             return;
         }
         setIsCreateDialogOpen(false);
-        router.push(`/admin/quizzes/builder?courseId=${selectedCourse}`);
+        router.push(`/admin/quizzes/builder?courseId=${selectedCourse}&semesterId=${selectedSemester}`);
     };
 
     const handleDelete = async (quizId: string) => {
@@ -144,12 +165,27 @@ export default function OnlineQuizzesPage() {
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Select Course</DialogTitle>
-                            <DialogDescription>Choose the course this quiz will belong to.</DialogDescription>
+                            <DialogDescription>Choose the semester, programme, and course this quiz will belong to.</DialogDescription>
                         </DialogHeader>
                         <div className="py-4 space-y-4">
                              <div className="space-y-1">
+                                <Label htmlFor="semester-select">Semester</Label>
+                                <Select value={selectedSemester} onValueChange={setSelectedSemester}>
+                                    <SelectTrigger id="semester-select">
+                                        <SelectValue placeholder="Select a semester..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {semesters.map(semester => (
+                                            <SelectItem key={semester.id} value={semester.id}>
+                                                {semester.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                             <div className="space-y-1">
                                 <Label htmlFor="programme-select">Programme</Label>
-                                <Select value={selectedProgramme} onValueChange={setSelectedProgramme}>
+                                <Select value={selectedProgramme} onValueChange={setSelectedProgramme} disabled={!selectedSemester}>
                                     <SelectTrigger id="programme-select">
                                         <SelectValue placeholder="Select a programme..." />
                                     </SelectTrigger>

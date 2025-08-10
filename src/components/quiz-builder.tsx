@@ -40,6 +40,7 @@ type Quiz = {
     shuffleQuestions: boolean;
     sections: Section[];
     courseId: string | null;
+    semesterId: string | null;
 };
 
 const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, removeQuestion, updateOption, addOption, removeOption, setCorrectAnswer }: {
@@ -88,7 +89,7 @@ const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, remo
     );
 };
 
-export default function QuizBuilder({ quizId, courseId }: { quizId?: string, courseId?: string | null }) {
+export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?: string, courseId?: string | null, semesterId?: string | null }) {
     const [quiz, setQuiz] = React.useState<Quiz>({
         title: '',
         description: '',
@@ -97,6 +98,7 @@ export default function QuizBuilder({ quizId, courseId }: { quizId?: string, cou
         shuffleQuestions: true,
         sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }],
         courseId: courseId || null,
+        semesterId: semesterId || null,
     });
     const [loading, setLoading] = React.useState(!!quizId);
     const [saving, setSaving] = React.useState(false);
@@ -215,6 +217,9 @@ export default function QuizBuilder({ quizId, courseId }: { quizId?: string, cou
             const quizToSave = {...quiz};
             if(!quizId && courseId) {
                 quizToSave.courseId = courseId;
+            }
+            if(!quizId && semesterId) {
+                quizToSave.semesterId = semesterId;
             }
 
             const quizRef = quizId ? ref(db, `quizzes/${quizId}`) : push(ref(db, 'quizzes'));
