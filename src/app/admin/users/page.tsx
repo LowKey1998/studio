@@ -125,6 +125,8 @@ export default function UserManagementPage() {
     const [editName, setEditName] = React.useState('');
     const [editRole, setEditRole] = React.useState('');
     const [editSubRoles, setEditSubRoles] = React.useState<string[]>([]);
+    const [editProgramme, setEditProgramme] = React.useState('');
+    const [editIntake, setEditIntake] = React.useState('');
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Data for dialogs
@@ -270,7 +272,13 @@ export default function UserManagementPage() {
     };
 
     const handleOpenEditDialog = (user: User) => {
-        setEditingUser(user); setEditName(user.name); setEditRole(user.role); setEditSubRoles(user.subRoles || []); setIsEditOpen(true);
+        setEditingUser(user); 
+        setEditName(user.name); 
+        setEditRole(user.role); 
+        setEditSubRoles(user.subRoles || []); 
+        setEditProgramme(user.programmeId || '');
+        setEditIntake(user.intakeId || '');
+        setIsEditOpen(true);
     };
     
     const handleToggleUserStatus = async (user: User) => {
@@ -292,7 +300,15 @@ export default function UserManagementPage() {
         setLoading(true);
         try {
             const userRef = ref(db, `users/${editingUser.uid}`);
-            const updatedUserData: Partial<User> = { name: editName, role: editRole, subRoles: editRole === 'Staff' ? editSubRoles : [] };
+            const updatedUserData: Partial<User> = { name: editName, role: editRole };
+             if (editRole === 'Staff') {
+                updatedUserData.subRoles = editSubRoles;
+             }
+             if (editRole === 'Student') {
+                updatedUserData.intakeId = editIntake;
+                updatedUserData.programmeId = editProgramme;
+             }
+
             await update(userRef, updatedUserData);
             await set(ref(db, `userRoles/${editingUser.uid}`), { role: editRole.toLowerCase() });
             let action = `updated the profile for '${editName}' (**${editingUser.id}**).`;
@@ -300,6 +316,10 @@ export default function UserManagementPage() {
             if(editingUser.name !== editName) changes.push(`Name changed to '${editName}'`);
             if(editingUser.role !== editRole) changes.push(`Role changed from ${editingUser.role} to ${editRole}`);
             if(JSON.stringify(editingUser.subRoles || []) !== JSON.stringify(editSubRoles)) changes.push(`Sub-roles changed to '${editSubRoles.join(', ')}'`);
+            if (editRole === 'Student') {
+                 if (editingUser.intakeId !== editIntake) changes.push(`Intake updated`);
+                 if (editingUser.programmeId !== editProgramme) changes.push(`Programme updated`);
+            }
             if(changes.length > 0) action += ` Details: ${changes.join('. ')}.`;
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action, timestamp: serverTimestamp() });
@@ -473,11 +493,17 @@ export default function UserManagementPage() {
                         <>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="edit-intake" className="text-right">Intake</Label>
-                                <Input id="edit-intake" value={allIntakes.find(i => i.id === editingUser?.intakeId)?.name || 'N/A'} className="col-span-3" disabled />
+                                <Select onValueChange={setEditIntake} value={editIntake} disabled={loading}>
+                                    <SelectTrigger className="col-span-3"><SelectValue placeholder="Select an intake" /></SelectTrigger>
+                                    <SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                </Select>
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="edit-programme" className="text-right">Programme</Label>
-                                <Input id="edit-programme" value={allProgrammes.find(p => p.id === editingUser?.programmeId)?.name || 'N/A'} className="col-span-3" disabled />
+                                <Select onValueChange={setEditProgramme} value={editProgramme} disabled={loading}>
+                                    <SelectTrigger className="col-span-3"><SelectValue placeholder="Select a programme" /></SelectTrigger>
+                                    <SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                </Select>
                             </div>
                         </>
                     )}
@@ -521,6 +547,7 @@ export default function UserManagementPage() {
     </>
   );
 }
+
 
 
 
