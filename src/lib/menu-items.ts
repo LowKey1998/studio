@@ -1,6 +1,6 @@
 
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -24,6 +24,19 @@ export const allMenuItems = [
       items: [
         { href: '/admin/registration-management', label: 'Registration Setup', icon: Settings },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
+        { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
+        { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
+        { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2 },
+        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
+        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
+        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
+        { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
+        { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
+        { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
+        { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
+        { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase },
+        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload },
+        { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send },
       ]
     },
     {
@@ -303,6 +316,7 @@ export const studentMenuItems = [
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
+            { href: '/student/courses/results', label: 'My Results', icon: ClipboardCheck },
         ]
     },
     {
@@ -371,8 +385,3 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
-
-
-
-
-
