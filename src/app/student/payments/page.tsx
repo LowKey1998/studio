@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
 import { Loader2, Receipt, History, DollarSign, AlertCircle, Download, GraduationCap, Trash2, Banknote, ChevronDown } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { format, parseISO, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -454,6 +454,7 @@ export default function PaymentsPage() {
             );
     
             toast({ title: 'Payment Successful', description: 'Your payment has been recorded.' });
+            processData(); // Re-process data to update UI instantly
     
         } catch(error) {
             console.error("Error updating database after payment:", error);
@@ -581,7 +582,7 @@ export default function PaymentsPage() {
                                                         {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (<TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>))}
                                                         {semester?.optionalFees && (invoices[0].optionalFees || []).map(feeId => (<TableRow key={feeId}><TableCell>Optional Fee: {semester.optionalFees[feeId]?.name || "Unknown"}</TableCell><TableCell className="text-right">{(semester.optionalFees[feeId]?.amount || 0).toFixed(2)}</TableCell></TableRow>))}
                                                         {invoices[0].lateFee && invoices[0].lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{invoices[0].lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                        <TableRow className="font-bold bg-muted/50"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {totalAmount.toFixed(2)}</TableCell></TableRow>
+                                                        <TableRow className="font-bold bg-muted/50"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {( (invoiceDetails?.totalTuition || 0) + (invoiceDetails?.totalMandatoryFees || 0) + (invoiceDetails?.totalOptionalFees || 0) + (invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
                                                         {invoices[0].applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoices[0].totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
                                                         <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {payableAmount.toFixed(2)}</TableCell></TableRow>
                                                         <TableRow className="font-bold"><TableCell>Payment Plan</TableCell><TableCell className="text-right">{invoices[0].paymentPlan}</TableCell></TableRow>
