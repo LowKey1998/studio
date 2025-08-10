@@ -15,7 +15,7 @@ type Quiz = {
     id: string;
     title: string;
     description: string;
-    timeLimit: number;
+    endTime?: string;
     sections: any[];
     courseId: string;
     semesterId: string;
@@ -158,10 +158,12 @@ export default function QuizzesPage() {
                         <HelpCircle className="h-4 w-4" />
                         <span>{totalQuestions} Questions</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        <span>{quiz.timeLimit} mins</span>
-                        </div>
+                        {quiz.endTime && (
+                            <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                <span>Ends: {new Date(quiz.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                        )}
                     </div>
                     </CardContent>
                     <CardFooter className="flex justify-between items-center bg-muted/50 px-6 py-4">
@@ -173,7 +175,7 @@ export default function QuizzesPage() {
                     ) : (
                         <p className="text-sm font-semibold text-muted-foreground">Not Started</p>
                     )}
-                    <Button asChild disabled={isCompleted}>
+                    <Button asChild disabled={isCompleted && quiz.submission?.score === undefined}>
                             <Link href={`/student/quizzes/${quiz.id}`}>
                                 {isCompleted ? 'View Results' : 'Start Quiz'}
                                 <ChevronRight className="ml-2 h-4 w-4" />

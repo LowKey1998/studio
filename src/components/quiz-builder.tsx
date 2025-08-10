@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -36,8 +35,8 @@ type Section = {
 type Quiz = {
     title: string;
     description: string;
-    timeLimit: number; // in minutes
     startTime?: string;
+    endTime?: string;
     isMultipleChoiceOnly: boolean;
     shuffleQuestions: boolean;
     sections: Section[];
@@ -95,8 +94,8 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
     const [quiz, setQuiz] = React.useState<Quiz>({
         title: '',
         description: '',
-        timeLimit: 30,
         startTime: '',
+        endTime: '',
         isMultipleChoiceOnly: false,
         shuffleQuestions: true,
         sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }],
@@ -320,7 +319,7 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                     <Textarea placeholder="Quiz Description" value={quiz.description} onChange={e => handleQuizChange('description', e.target.value)} />
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div><Label>Start Time</Label><Input type="datetime-local" value={quiz.startTime} onChange={e => handleQuizChange('startTime', e.target.value)}/></div>
-                        <div><Label>Time Limit (minutes)</Label><Input type="number" value={quiz.timeLimit} onChange={e => handleQuizChange('timeLimit', Number(e.target.value))}/></div>
+                        <div><Label>End Time</Label><Input type="datetime-local" value={quiz.endTime} onChange={e => handleQuizChange('endTime', e.target.value)}/></div>
                         <div className="flex items-end gap-4">
                             <div className="flex items-center space-x-2"><Switch id="shuffle" checked={quiz.shuffleQuestions} onCheckedChange={c => handleQuizChange('shuffleQuestions', c)}/><Label htmlFor="shuffle">Shuffle Questions</Label></div>
                             <div className="flex items-center space-x-2"><Switch id="mc-only" checked={quiz.isMultipleChoiceOnly} onCheckedChange={c => handleQuizChange('isMultipleChoiceOnly', c)}/><Label htmlFor="mc-only">Auto-Grade</Label></div>

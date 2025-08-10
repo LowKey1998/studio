@@ -28,7 +28,7 @@ type Question = {
 type Quiz = {
     title: string;
     startTime?: string;
-    timeLimit: number;
+    endTime?: string;
     shuffleQuestions: boolean;
     isMultipleChoiceOnly: boolean;
     sections: { title: string; questions: Question[] }[];
@@ -60,7 +60,6 @@ export default function TakeQuizPage() {
     const [finalScore, setFinalScore] = React.useState(0);
     const { toast } = useToast();
 
-    // Timer state
     const [timeLeft, setTimeLeft] = React.useState<number | null>(null);
 
     React.useEffect(() => {
@@ -81,7 +80,7 @@ export default function TakeQuizPage() {
                 const [quizSnapshot, submissionSnapshot] = await Promise.all([get(quizRef), get(submissionRef)]);
 
                 if (quizSnapshot.exists()) {
-                    const quizData = quizSnapshot.val();
+                    const quizData: Quiz = quizSnapshot.val();
                     setQuiz(quizData);
 
                     let questions = quizData.sections.flatMap((s: any) => s.questions || []);
@@ -102,23 +101,18 @@ export default function TakeQuizPage() {
                             }
                             return;
                         }
-
                         setAnswers(submissionData.answers || {});
-                        
-                        if (submissionData.startTime) {
-                            const elapsedSeconds = differenceInSeconds(new Date(), parseISO(submissionData.startTime));
-                            const remaining = quizData.timeLimit * 60 - elapsedSeconds;
-                            setTimeLeft(remaining > 0 ? remaining : 0);
-                        } else {
-                            // If submission exists but no start time, start it now
-                             await set(ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/startTime`), new Date().toISOString());
-                             setTimeLeft(quizData.timeLimit * 60);
-                        }
                     } else {
-                        // First time taking the quiz, set start time
-                        await set(submissionRef, { answers: {}, status: 'in-progress', startTime: new Date().toISOString() });
-                        setTimeLeft(quizData.timeLimit * 60);
+                        await set(submissionRef, { answers: {}, status: 'in-progress' });
                     }
+
+                    if (quizData.endTime) {
+                         const remaining = differenceInSeconds(parseISO(quizData.endTime), new Date());
+                         setTimeLeft(remaining > 0 ? remaining : 0);
+                    } else {
+                        setTimeLeft(null); // No time limit
+                    }
+
                 }
             } catch (error: any) {
                 console.error(error);
@@ -130,7 +124,6 @@ export default function TakeQuizPage() {
         fetchQuizAndSubmission();
     }, [quizId, currentUser, router, toast]);
 
-     // Timer countdown effect
     const handleSubmit = React.useCallback(async (isAutoSubmit = false) => {
         if(!currentUser || submitting) return;
         setSubmitting(true);
@@ -153,7 +146,7 @@ export default function TakeQuizPage() {
                  toast({ title: "Submission Received!", description: "Your quiz has been submitted for grading." });
                  router.push('/student/quizzes');
             }
-            await set(submissionRef, submissionData);
+            await update(submissionRef, submissionData);
             if (isAutoSubmit) {
                 toast({ variant: "destructive", title: "Time's Up!", description: "Your quiz has been automatically submitted." });
             }
@@ -166,7 +159,7 @@ export default function TakeQuizPage() {
 
     React.useEffect(() => {
         if (timeLeft === null || timeLeft <= 0 || submitting || showResults) {
-            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true); // Auto-submit when timer reaches 0
+            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true);
             return;
         }
         const intervalId = setInterval(() => {
@@ -187,16 +180,17 @@ export default function TakeQuizPage() {
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     const quizNotStarted = quiz?.startTime && differenceInSeconds(parseISO(quiz.startTime), new Date()) > 0;
-    
-    if(quizNotStarted) {
+    const quizEnded = quiz?.endTime && differenceInSeconds(parseISO(quiz.endTime), new Date()) <= 0;
+
+    if(quizNotStarted || quizEnded) {
         return (
              <Card className="max-w-2xl mx-auto text-center">
                 <CardHeader>
                     <CardTitle>{quiz?.title}</CardTitle>
-                    <CardDescription>This quiz is not yet available.</CardDescription>
+                    <CardDescription>This quiz is not currently available.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p>It will become available on {quiz?.startTime && format(parseISO(quiz.startTime), 'PPP p')}.</p>
+                    <p>{quizEnded ? "The deadline for this quiz has passed." : `It will become available on ${quiz?.startTime && parseISO(quiz.startTime).toLocaleString()}.`}</p>
                 </CardContent>
              </Card>
         )
