@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { syncExpenseToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 
 type Expense = {
     id: string;
@@ -72,14 +73,22 @@ export default function ExpenseTrackingPage() {
         setSaving(true);
         try {
             const newExpenseRef = push(ref(db, 'expenses'));
-            await set(newExpenseRef, {
+            const expenseData = {
                 date,
                 category,
                 description,
                 amount: parseFloat(amount),
                 vendor
-            });
+            };
+            await set(newExpenseRef, expenseData);
             toast({ title: 'Expense Recorded' });
+
+            await syncExpenseToQuickbooks({
+                expenseId: newExpenseRef.key!,
+                ...expenseData
+            });
+            toast({ title: 'Synced to QuickBooks' });
+
             setIsDialogOpen(false);
             resetForm();
         } catch (e: any) {

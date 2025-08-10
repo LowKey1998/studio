@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -61,6 +62,7 @@ export default function PaymentsManagementPage() {
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [optionalFees, setOptionalFees] = React.useState<OptionalFee[]>([]);
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
 
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -84,13 +86,14 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, optionalFeesSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, optionalFeesSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'optionalFees')),
+                get(ref(db, 'settings/integrations/quickbooks'))
             ]);
             
             if (programmesSnap.exists()) {
@@ -101,6 +104,9 @@ export default function PaymentsManagementPage() {
             }
             if (optionalFeesSnap.exists()) {
                 setOptionalFees(Object.keys(optionalFeesSnap.val()).map(id => ({ id, ...optionalFeesSnap.val()[id]})));
+            }
+            if (settingsSnap.exists()) {
+                setIsQuickBooksEnabled(settingsSnap.val().enabled);
             }
 
 
@@ -217,6 +223,17 @@ export default function PaymentsManagementPage() {
                 method: paymentMethod,
                 recordedBy: 'Admin/Accountant',
             });
+            
+            if (isQuickBooksEnabled) {
+                await syncInvoiceToQuickbooks({
+                    invoiceId: selectedStudent.invoiceId,
+                    studentName: selectedStudent.studentName,
+                    amount: amount,
+                    date: new Date().toISOString(),
+                    description: `Payment via ${paymentMethod}`
+                });
+                toast({ title: 'Synced to QuickBooks', description: 'Payment was successfully synced.' });
+            }
 
             await createNotification(
                 selectedStudent.userId,
