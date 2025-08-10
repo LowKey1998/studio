@@ -170,71 +170,71 @@ export default function CoursePathsPage() {
         const activeContainerId = findContainer(active.id as string);
         const overContainerId = findContainer(over.id as string);
     
-        if (!activeContainerId || !overContainerId) return;
+        if (!activeContainerId || !overContainerId || !active.id) return;
     
-        const activeId = active.id as string;
-        const overId = over.id as string;
-
         if (activeContainerId === overContainerId) {
             // Reordering within the same container
             if (activeContainerId === 'available') {
                 setAvailableCourses(prev => {
-                    const oldIndex = prev.findIndex(c => c.id === activeId);
-                    const newIndex = prev.findIndex(c => c.id === overId);
-                    return arrayMove(prev, oldIndex, newIndex);
+                    const oldIndex = prev.findIndex(c => c.id === active.id);
+                    const newIndex = prev.findIndex(c => c.id === over.id);
+                    return oldIndex !== -1 && newIndex !== -1 ? arrayMove(prev, oldIndex, newIndex) : prev;
                 });
             } else {
                 setSemesterCourses(prev => {
                     const newSemesters = { ...prev };
-                    const semesterCourses = newSemesters[activeContainerId] || [];
-                    const oldIndex = semesterCourses.findIndex(c => c.id === activeId);
-                    const newIndex = semesterCourses.findIndex(c => c.id === overId);
-                    newSemesters[activeContainerId] = arrayMove(semesterCourses, oldIndex, newIndex);
+                    const semesterCoursesList = newSemesters[activeContainerId] || [];
+                    const oldIndex = semesterCoursesList.findIndex(c => c.id === active.id);
+                    const newIndex = semesterCoursesList.findIndex(c => c.id === over.id);
+                    if(oldIndex !== -1 && newIndex !== -1) {
+                       newSemesters[activeContainerId] = arrayMove(semesterCoursesList, oldIndex, newIndex);
+                    }
                     return newSemesters;
                 });
             }
         } else {
             // Moving between different containers
-            const movedItem = courses.find(c => c.id === activeId);
+            const movedItem = courses.find(c => c.id === active.id);
             if (!movedItem) return;
 
-            // Remove from source
-            if (activeContainerId === 'available') {
-                setAvailableCourses(prev => prev.filter(c => c.id !== activeId));
-            } else {
-                setSemesterCourses(prev => {
-                    const newSemesters = { ...prev };
-                    newSemesters[activeContainerId] = newSemesters[activeContainerId]?.filter(c => c.id !== activeId) || [];
+            // Start state update transaction
+            setAvailableCourses(prevAvailable => {
+                 setSemesterCourses(prevSemesters => {
+                    let newAvailable = [...prevAvailable];
+                    const newSemesters = { ...prevSemesters };
+
+                    // Remove from source
+                    if (activeContainerId === 'available') {
+                        newAvailable = newAvailable.filter(c => c.id !== active.id);
+                    } else {
+                        newSemesters[activeContainerId] = newSemesters[activeContainerId]?.filter(c => c.id !== active.id) || [];
+                    }
+
+                    // Add to destination
+                    if (overContainerId === 'available') {
+                        const overIndex = newAvailable.findIndex(item => item.id === over.id);
+                        if (overIndex > -1) {
+                            newAvailable.splice(overIndex, 0, movedItem);
+                        } else {
+                            newAvailable.push(movedItem);
+                        }
+                    } else {
+                        const destinationCourses = newSemesters[overContainerId] || [];
+                        const overIndex = destinationCourses.findIndex(item => item.id === over.id);
+                        if (overIndex > -1) {
+                            destinationCourses.splice(overIndex, 0, movedItem);
+                        } else {
+                            destinationCourses.push(movedItem);
+                        }
+                         newSemesters[overContainerId] = destinationCourses;
+                    }
+
+                    // Return the new semester state for the inner setter
                     return newSemesters;
                 });
-            }
-
-            // Add to destination
-            if (overContainerId === 'available') {
-                 setAvailableCourses(prev => {
-                    const overIndex = prev.findIndex(item => item.id === overId);
-                    if (overIndex > -1) {
-                         const newItems = [...prev];
-                         newItems.splice(overIndex, 0, movedItem);
-                         return newItems;
-                    }
-                    return [...prev, movedItem];
-                 });
-            } else {
-                 setSemesterCourses(prev => {
-                    const newSemesters = { ...prev };
-                    const destinationCourses = newSemesters[overContainerId] || [];
-                    const overIndex = destinationCourses.findIndex(item => item.id === overId);
-
-                    if (overIndex > -1) { // Dropped on an item
-                        destinationCourses.splice(overIndex, 0, movedItem);
-                    } else { // Dropped on the container itself
-                        destinationCourses.push(movedItem);
-                    }
-                    newSemesters[overContainerId] = destinationCourses;
-                    return newSemesters;
-                 });
-            }
+                // Return the new available courses state for the outer setter
+                return newAvailable;
+            });
         }
     };
     
