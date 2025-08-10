@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -484,7 +485,7 @@ export default function RegistrationPage() {
                                 <CardFooter className="justify-between">
                                     <Button asChild variant="secondary"><Link href="/student/payments">Go to Payments</Link></Button>
                                     {(existingRegistration.status === 'Pending Approval' || existingRegistration.status === 'Pending Payment') && (
-                                        <Button variant="destructive" onClick={handleCancelRegistration} disabled={submitting}>{submitting ? <Loader2 className="mr-2 h-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}Cancel Registration</Button>
+                                        <Button variant="destructive" onClick={handleCancelRegistration} disabled={submitting}>{submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}Cancel Registration</Button>
                                     )}
                                 </CardFooter>
                             </Card>
