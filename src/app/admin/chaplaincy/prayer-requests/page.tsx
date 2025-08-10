@@ -17,6 +17,7 @@ type PrayerRequest = {
     details: string;
     submittedAt: number;
     prayedFor?: boolean;
+    studentName?: string; // Added to show who submitted it
 };
 
 export default function PrayerRequestsPage() {
@@ -56,8 +57,12 @@ export default function PrayerRequestsPage() {
                             <Card key={req.id}>
                                 <CardHeader className="flex flex-row justify-between items-start">
                                     <div>
-                                        <CardTitle className="text-lg">Request for {req.isAnonymous ? 'Anonymous' : req.requestFor}</CardTitle>
-                                        <CardDescription>{formatDistanceToNow(new Date(req.submittedAt), { addSuffix: true })}</CardDescription>
+                                        <CardTitle className="text-lg">Request for {req.requestFor}</CardTitle>
+                                        <CardDescription>
+                                            Submitted by: {req.isAnonymous ? 'Anonymous' : req.studentName || 'Unknown Student'}
+                                            <span className="mx-2">&middot;</span>
+                                            {formatDistanceToNow(new Date(req.submittedAt), { addSuffix: true })}
+                                        </CardDescription>
                                     </div>
                                     {req.prayedFor ? (
                                         <Badge variant="default"><Check className="mr-1 h-4 w-4"/> Prayed For</Badge>
