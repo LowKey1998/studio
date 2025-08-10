@@ -300,7 +300,7 @@ export default function RegistrationPage() {
         const semester = openSemesters.find(s => s.id === selectedSemesterId);
         if (semester) {
              setSemesterOptionalFees(semester.optionalFees ? Object.keys(semester.optionalFees).map(id => ({ id, ...semester.optionalFees![id] })) : []);
-             setSemesterMandatoryFees(semester.mandatoryFees ? Object.values(semester.mandatoryFees) : []);
+             setSemesterMandatoryFees(semester.mandatoryFees ? Object.keys(semester.mandatoryFees).map(id => ({ id, ...semester.mandatoryFees![id] })) : []);
 
             if (semester.paymentPlanIds && allPaymentPlans.length > 0) {
                 const planIds = Object.keys(semester.paymentPlanIds);
@@ -571,7 +571,7 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                            {semesterMandatoryFees.map(fee => (
+                            {semesterMandatoryFees.map((fee) => (
                                 <div key={fee.id} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
