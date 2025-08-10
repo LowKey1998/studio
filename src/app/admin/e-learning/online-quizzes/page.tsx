@@ -45,9 +45,18 @@ type Course = {
     code: string;
 };
 
+type Programme = {
+    id: string;
+    name: string;
+    courseIds?: Record<string, boolean>;
+};
+
+
 export default function OnlineQuizzesPage() {
     const [quizzes, setQuizzes] = React.useState<Quiz[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
+    const [programmes, setProgrammes] = React.useState<Programme[]>([]);
+    const [selectedProgramme, setSelectedProgramme] = React.useState('');
     const [selectedCourse, setSelectedCourse] = React.useState('');
     const [loading, setLoading] = React.useState(true);
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
@@ -57,6 +66,7 @@ export default function OnlineQuizzesPage() {
     React.useEffect(() => {
         const quizzesRef = ref(db, 'quizzes');
         const coursesRef = ref(db, 'courses');
+        const programmesRef = ref(db, 'programmes');
 
         const unsubQuizzes = onValue(quizzesRef, (snapshot) => {
             if (snapshot.exists()) {
@@ -77,9 +87,19 @@ export default function OnlineQuizzesPage() {
             }
         });
 
+        const unsubProgrammes = onValue(programmesRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                setProgrammes(Object.keys(data).map(id => ({ id, ...data[id] })));
+            } else {
+                setProgrammes([]);
+            }
+        });
+
         return () => {
             unsubQuizzes();
             unsubCourses();
+            unsubProgrammes();
         }
     }, []);
     
@@ -102,6 +122,14 @@ export default function OnlineQuizzesPage() {
         }
     };
     
+    const filteredCourses = React.useMemo(() => {
+        if (!selectedProgramme) return [];
+        const programme = programmes.find(p => p.id === selectedProgramme);
+        if (!programme || !programme.courseIds) return [];
+        const courseIds = Object.keys(programme.courseIds);
+        return courses.filter(c => courseIds.includes(c.id));
+    }, [selectedProgramme, programmes, courses]);
+
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -118,20 +146,37 @@ export default function OnlineQuizzesPage() {
                             <DialogTitle>Select Course</DialogTitle>
                             <DialogDescription>Choose the course this quiz will belong to.</DialogDescription>
                         </DialogHeader>
-                        <div className="py-4">
-                            <Label htmlFor="course-select">Course</Label>
-                            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                                <SelectTrigger id="course-select">
-                                    <SelectValue placeholder="Select a course..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {courses.map(course => (
-                                        <SelectItem key={course.id} value={course.id}>
-                                            {course.name} ({course.code})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        <div className="py-4 space-y-4">
+                             <div className="space-y-1">
+                                <Label htmlFor="programme-select">Programme</Label>
+                                <Select value={selectedProgramme} onValueChange={setSelectedProgramme}>
+                                    <SelectTrigger id="programme-select">
+                                        <SelectValue placeholder="Select a programme..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {programmes.map(programme => (
+                                            <SelectItem key={programme.id} value={programme.id}>
+                                                {programme.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="course-select">Course</Label>
+                                <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={!selectedProgramme}>
+                                    <SelectTrigger id="course-select">
+                                        <SelectValue placeholder="Select a course..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {filteredCourses.map(course => (
+                                            <SelectItem key={course.id} value={course.id}>
+                                                {course.name} ({course.code})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
