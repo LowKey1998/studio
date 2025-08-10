@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil } from 'lucide-react';
+import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth, storage } from '@/lib/firebase';
 import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
@@ -25,6 +25,7 @@ type Institution = { name: string; logoUrl?: string; }
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
+type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }};
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
 
@@ -37,6 +38,7 @@ export default function SettingsPage() {
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
+    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false } });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     
     // Dialog State
@@ -61,6 +63,7 @@ export default function SettingsPage() {
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
                 setOverduePolicy(data.overduePolicy || 'doNothing');
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
+                setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false } });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
             }
              setLoading(false);
@@ -143,6 +146,7 @@ export default function SettingsPage() {
                 paymentMethods: paymentMethods,
                 overduePolicy: overduePolicy,
                 registrationPolicy: registrationPolicy,
+                integrations: integrations,
             });
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -192,6 +196,32 @@ export default function SettingsPage() {
 
             <Card className="shadow-lg"><CardHeader><CardTitle className="font-headline text-2xl">Financial Policy</CardTitle><CardDescription>Configure payment methods and rules for registrations.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">{loading ? (Array.from({ length: 2 }).map((_, i) => (<div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Skeleton className="h-5 w-32" /><div className="sm:col-span-2"> <Skeleton className="h-10 w-full max-w-sm" /> </div></div>))) : (<><div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="late-fee">Late Registration Fee (ZMW)</Label><div className="sm:col-span-2"><Input id="late-fee" type="number" value={registrationPolicy.lateRegistrationFee} onChange={(e) => setRegistrationPolicy({ lateRegistrationFee: Number(e.target.value)})} className="max-w-sm" disabled={saving}/></div></div><div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="flutterwave-switch">Flutterwave Payments</Label><div className="sm:col-span-2"><Switch id="flutterwave-switch" checked={paymentMethods.flutterwave.enabled} onCheckedChange={(checked) => setPaymentMethods(p => ({...p, flutterwave: {enabled: checked}}))} disabled={saving} /><p className="text-xs text-muted-foreground mt-1"> {paymentMethods.flutterwave.enabled ? 'Students can pay online via Mobile Money.' : 'Online payments are currently disabled.'} </p></div></div><div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start"><div className="space-y-1"><Label>Overdue Payment Rule</Label><p className="text-xs text-muted-foreground">Define what action the system should take automatically when a student misses a payment deadline.</p></div><div className="sm:col-span-2"><RadioGroup value={overduePolicy} onValueChange={(v) => setOverduePolicy(v as OverduePolicy)} className="space-y-2"><div className="border p-3 rounded-md has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"><div className="flex items-center space-x-2"><RadioGroupItem value="doNothing" id="doNothing" /><Label htmlFor="doNothing" className="font-semibold flex items-center gap-2"><BadgeInfo/> Do Nothing (Manual Follow-up)</Label></div><p className="text-xs text-muted-foreground ml-6">The system will take no action. Staff must manually follow up on overdue payments.</p></div><div className="border p-3 rounded-md has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"><div className="flex items-center space-x-2"><RadioGroupItem value="suspendAccess" id="suspendAccess" /><Label htmlFor="suspendAccess" className="font-semibold flex items-center gap-2"><ShieldAlert/> Suspend Student Portal Access</Label></div><p className="text-xs text-muted-foreground ml-6">The student's account will be automatically disabled, preventing login until the payment is made or their status is manually reactivated by an admin.</p></div></RadioGroup></div></div></>)}</CardContent>
+            </Card>
+            
+            <Card id="integrations" className="shadow-lg">
+                <CardHeader><CardTitle className="font-headline text-2xl">Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                        <Label>QuickBooks</Label>
+                        <div className="sm:col-span-2 space-y-2">
+                           <div className="flex items-center space-x-2">
+                                <Switch id="quickbooks-switch" checked={integrations.quickbooks.enabled} onCheckedChange={(checked) => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, enabled: checked}}))} disabled={saving} />
+                                <Label htmlFor="quickbooks-switch">{integrations.quickbooks.enabled ? "Enabled" : "Disabled"}</Label>
+                           </div>
+                           <Input placeholder="QuickBooks API Key" value={integrations.quickbooks.apiKey || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, apiKey: e.target.value}}))} disabled={saving || !integrations.quickbooks.enabled}/>
+                        </div>
+                    </div>
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                        <Label>Sage</Label>
+                        <div className="sm:col-span-2 space-y-2">
+                           <div className="flex items-center space-x-2">
+                                <Switch id="sage-switch" checked={integrations.sage.enabled} onCheckedChange={(checked) => setIntegrations(p => ({...p, sage: {...p.sage, enabled: checked}}))} disabled={saving} />
+                                <Label htmlFor="sage-switch">{integrations.sage.enabled ? "Enabled" : "Disabled"}</Label>
+                           </div>
+                           <Input placeholder="Sage API Key" value={integrations.sage.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage.enabled}/>
+                        </div>
+                    </div>
+                </CardContent>
             </Card>
 
             <Card className="shadow-lg"><CardHeader><CardTitle className="font-headline text-2xl">Leave Policy</CardTitle><CardDescription>Configure settings for staff leave applications.</CardDescription></CardHeader><CardContent className="space-y-6">{loading ? (<div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Skeleton className="h-5 w-32" /><div className="sm:col-span-2"><Skeleton className="h-10 w-full max-w-sm" /></div></div>) : (<div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="max-leave-days">Max Leave Days per Request</Label><div className="sm:col-span-2"><Input id="max-leave-days" name="maxDays" type="number" value={leavePolicy.maxDays} onChange={(e) => setLeavePolicy({ maxDays: Number(e.target.value)})} className="max-w-sm" disabled={saving}/></div></div>)}</CardContent></Card>
