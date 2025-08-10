@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -49,6 +49,7 @@ export default function CoursePathsPage() {
     const [numYears, setNumYears] = React.useState(4);
     const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({});
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
+    const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
@@ -151,89 +152,71 @@ export default function CoursePathsPage() {
         }
         return null;
     };
+    
+    const handleDragStart = (event: DragStartEvent) => {
+        const { active } = event;
+        const activeId = active.id as string;
+        const course = courses.find((c) => c.id === activeId);
+        setActiveCourse(course || null);
+    }
+
 
     const handleDragEnd = (event: DragEndEvent) => {
+        setActiveCourse(null);
         const { active, over } = event;
 
-        if (!over) {
-            return;
-        }
-
+        if (!over) return;
+        
         const activeId = active.id as string;
         const overId = over.id as string;
-
-        if (activeId === overId) {
-            return;
-        }
 
         const activeContainer = findContainer(activeId);
         const overContainer = findContainer(overId) || overId;
 
-        if (!activeContainer || !overContainer) {
-            return;
-        }
+        if (!activeContainer || !overContainer || activeId === overId) return;
         
         const activeItem = courses.find(c => c.id === activeId);
-        if (!activeItem) return;
+        if(!activeItem) return;
 
-        if (activeContainer === overContainer) {
-            // Reordering within the same container
-            if (activeContainer === 'available') {
-                setAvailableCourses(prev => {
-                    const oldIndex = prev.findIndex(item => item.id === activeId);
-                    const newIndex = prev.findIndex(item => item.id === overId);
-                    return arrayMove(prev, oldIndex, newIndex);
-                });
-            } else {
-                setSemesterCourses(prev => {
-                    const oldIndex = prev[activeContainer].findIndex(item => item.id === activeId);
-                    const newIndex = prev[activeContainer].findIndex(item => item.id === overId);
-                    const newSemesterCourseList = arrayMove(prev[activeContainer], oldIndex, newIndex);
-                    return {
-                        ...prev,
-                        [activeContainer]: newSemesterCourseList,
-                    };
-                });
-            }
-        } else {
-            // Moving to a different container
-            let sourceItems: Course[];
-            let destinationItems: Course[];
+        setSemesterCourses(prevSemesters => {
+            const newSemesters = { ...prevSemesters };
+            const newAvailable = [...availableCourses];
 
-            // Get source items and update source state
+            // Remove from source
             if (activeContainer === 'available') {
-                sourceItems = [...availableCourses];
-                setAvailableCourses(sourceItems.filter(item => item.id !== activeId));
+                const activeIndex = newAvailable.findIndex(c => c.id === activeId);
+                newAvailable.splice(activeIndex, 1);
             } else {
-                sourceItems = [...(semesterCourses[activeContainer] || [])];
-                setSemesterCourses(prev => ({
-                    ...prev,
-                    [activeContainer]: sourceItems.filter(item => item.id !== activeId),
-                }));
+                const sourceSemCourses = newSemesters[activeContainer] ? [...newSemesters[activeContainer]] : [];
+                const activeIndex = sourceSemCourses.findIndex(c => c.id === activeId);
+                if (activeIndex > -1) {
+                    sourceSemCourses.splice(activeIndex, 1);
+                    newSemesters[activeContainer] = sourceSemCourses;
+                }
             }
 
-            // Get destination items and update destination state
+            // Add to destination
             if (overContainer === 'available') {
-                destinationItems = [...availableCourses];
-                 setAvailableCourses(prev => {
-                    const overIndex = prev.findIndex(item => item.id === overId);
-                    const newIndex = overIndex >= 0 ? overIndex : prev.length;
-                    return [...prev.slice(0, newIndex), activeItem, ...prev.slice(newIndex)];
-                });
+                 const overIndex = newAvailable.findIndex(c => c.id === overId);
+                 if (overIndex > -1) {
+                     newAvailable.splice(overIndex, 0, activeItem);
+                 } else {
+                     newAvailable.push(activeItem);
+                 }
             } else {
-                destinationItems = [...(semesterCourses[overContainer] || [])];
-                setSemesterCourses(prev => {
-                    const newDestinationItems = [...(prev[overContainer] || [])];
-                    const overIndex = newDestinationItems.findIndex(item => item.id === overId);
-                    const newIndex = overIndex >= 0 ? overIndex : newDestinationItems.length;
-                    newDestinationItems.splice(newIndex, 0, activeItem);
-                    return {
-                        ...prev,
-                        [overContainer]: newDestinationItems,
-                    };
-                });
+                 const destSemCourses = newSemesters[overContainer] ? [...newSemesters[overContainer]] : [];
+                 const overIndex = destSemCourses.findIndex(c => c.id === overId);
+                 if (overIndex > -1) {
+                    destSemCourses.splice(overIndex, 0, activeItem);
+                 } else {
+                     destSemCourses.push(activeItem);
+                 }
+                 newSemesters[overContainer] = destSemCourses;
             }
-        }
+
+            setAvailableCourses(newAvailable);
+            return newSemesters;
+        });
     };
 
 
@@ -289,7 +272,7 @@ export default function CoursePathsPage() {
                                     <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                                 </div>
                                 {selectedIntake && selectedProgramme ? (
-                                    <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                                    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                                     <div className="grid md:grid-cols-3 gap-4">
                                         <div className="md:col-span-2 space-y-4">
                                             {Array.from({ length: numYears }).map((_, yearIndex) => (
@@ -312,6 +295,9 @@ export default function CoursePathsPage() {
                                             <AvailableCoursesColumn courses={availableCourses} />
                                         </div>
                                     </div>
+                                    <DragOverlay>
+                                        {activeCourse ? <DraggableCourseItem id={activeCourse.id} course={activeCourse} /> : null}
+                                    </DragOverlay>
                                     </DndContext>
                                 ) : <Alert><Info className="h-4 w-4"/><AlertTitle>Select Intake & Programme</AlertTitle><AlertDescription>Please select an intake and a programme to begin building a course path.</AlertDescription></Alert>}
                             </CardContent>
