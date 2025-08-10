@@ -25,9 +25,6 @@ export function NotificationsPopover() {
   const {
     notifications,
     unreadCount,
-    summary,
-    isLoadingSummary,
-    summarize,
     markAsRead,
     markAllAsRead,
   } = useNotifications();
@@ -64,31 +61,6 @@ export function NotificationsPopover() {
             )}
           </CardHeader>
           <CardContent className="p-0">
-            {unreadCount > 0 && (
-              <div className="p-4 border-b">
-                 <Button
-                  className="w-full bg-gradient-to-r from-orange-400 to-amber-500 text-white hover:opacity-90 transition-opacity"
-                  onClick={summarize}
-                  disabled={isLoadingSummary}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  {isLoadingSummary ? "Summarizing..." : "Summarize with AI"}
-                </Button>
-              </div>
-            )}
-           
-            {isLoadingSummary && <div className="p-4 text-sm text-center text-muted-foreground">Generating summary...</div>}
-            
-            {summary && (
-              <div className="p-4 border-b bg-secondary/50">
-                 <h4 className="font-semibold text-sm mb-2 flex items-center">
-                    <Sparkles className="h-4 w-4 mr-2 text-accent" />
-                    AI Summary
-                </h4>
-                <p className="text-sm text-muted-foreground">{summary}</p>
-              </div>
-            )}
-
             <ScrollArea className="h-80">
               <div className="p-2">
                 {notifications.length > 0 ? (
