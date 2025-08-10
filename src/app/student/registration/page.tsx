@@ -566,8 +566,47 @@ export default function RegistrationPage() {
                     <div className="w-full space-y-4">
                          <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div><div className="flex items-end pb-1"><div className="flex items-center gap-2"><Checkbox id="scholarship" checked={applyScholarship} onCheckedChange={(checked) => setApplyScholarship(checked as boolean)} /><Label htmlFor="scholarship">Apply for Scholarship (100% tuition waiver)</Label></div></div></div>
                         <Separator />
-                        <div className="space-y-1 text-right text-sm w-full"><div className="flex justify-between"><span>Tuition Cost:</span> <span>ZMW {tuitionCost.toFixed(2)}</span></div>{semesterMandatoryFees.map(fee => (<div key={fee.id} className="flex justify-between"><span>Mandatory Fee: {fee.name}</span> <span>ZMW {fee.amount.toFixed(2)}</span></div>))}<div className="flex justify-between"><span>Optional Fees:</span> <span>ZMW {selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0).toFixed(2)}</span></div>{isLateRegistration && <div className="flex justify-between text-destructive"><span>Late Registration Fee:</span> <span>ZMW {lateFeeAmount.toFixed(2)}</span></div>}<Separator className="my-1"/><div className="flex justify-between font-bold"><span>Total Invoice Value:</span> <span>ZMW {totalCost.toFixed(2)}</span></div>{applyScholarship && <div className="flex justify-between font-bold text-blue-600"><span>Scholarship Applied:</span> <span>- ZMW {tuitionCost.toFixed(2)}</span></div>}</div>
-                        <Alert variant={applyScholarship ? 'default' : 'destructive'} className={applyScholarship ? 'bg-blue-50 border-blue-200 text-blue-800' : ''}><DollarSign className={applyScholarship ? 'text-blue-700' : ''} /><AlertTitle className={applyScholarship ? 'text-blue-900' : ''}>Amount Due for First Installment</AlertTitle><AlertDescription className={applyScholarship ? 'text-blue-700' : ''}>Your initial amount payable is ZMW {payableAmount.toFixed(2)}.{applyScholarship && " Your scholarship application will be reviewed. If not approved, the standard tuition amount will become due."}</AlertDescription></Alert>
+                        <div className="space-y-1 text-right text-sm w-full">
+                            <div className="flex justify-between">
+                                <span>Tuition Cost:</span>
+                                <span>ZMW {tuitionCost.toFixed(2)}</span>
+                            </div>
+                            {semesterMandatoryFees.map(fee => (
+                                <div key={fee.id} className="flex justify-between">
+                                    <span>Mandatory Fee: {fee.name}</span>
+                                    <span>ZMW {fee.amount.toFixed(2)}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between">
+                                <span>Optional Fees:</span>
+                                <span>ZMW {selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0).toFixed(2)}</span>
+                            </div>
+                            {isLateRegistration && 
+                                <div className="flex justify-between text-destructive">
+                                    <span>Late Registration Fee:</span> 
+                                    <span>ZMW {lateFeeAmount.toFixed(2)}</span>
+                                </div>
+                            }
+                            <Separator className="my-1"/>
+                            <div className="flex justify-between font-bold">
+                                <span>Total Invoice Value:</span>
+                                <span>ZMW {totalCost.toFixed(2)}</span>
+                            </div>
+                            {applyScholarship && 
+                                <div className="flex justify-between font-bold text-blue-600">
+                                    <span>Scholarship Applied:</span>
+                                    <span>- ZMW {tuitionCost.toFixed(2)}</span>
+                                </div>
+                            }
+                        </div>
+                        <Alert variant={applyScholarship ? 'default' : 'destructive'} className={applyScholarship ? 'bg-blue-50 border-blue-200 text-blue-800' : ''}>
+                            <DollarSign className={applyScholarship ? 'text-blue-700' : ''} />
+                            <AlertTitle className={applyScholarship ? 'text-blue-900' : ''}>Amount Due for First Installment</AlertTitle>
+                            <AlertDescription className={applyScholarship ? 'text-blue-700' : ''}>
+                                Your initial amount payable is ZMW {payableAmount.toFixed(2)}.
+                                {applyScholarship && " Your scholarship application will be reviewed. If not approved, the standard tuition amount will become due."}
+                            </AlertDescription>
+                        </Alert>
                     </div>
                     <Button onClick={handleRegister} disabled={submitting || loading || selectedCourses.length === 0} size="lg" className="mt-4">{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{submitting ? 'Submitting...' : 'Submit for Approval'}</Button>
                 </CardFooter>
