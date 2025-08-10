@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -85,4 +84,3 @@ export default function VacanciesPage() {
         </div>
     );
 }
-
