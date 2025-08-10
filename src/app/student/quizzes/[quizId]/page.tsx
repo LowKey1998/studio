@@ -80,7 +80,8 @@ export default function TakeQuizPage() {
                 const quizData = snapshot.val();
                 setQuiz(quizData);
                 setTimeLeft(quizData.timeLimit * 60); // Initialize timer
-                let questions = quizData.sections.flatMap((s: any) => s.questions);
+                
+                let questions = quizData.sections.flatMap((s: any) => s.questions || []);
                 if (quizData.shuffleQuestions) {
                     questions = shuffleArray(questions);
                 }
@@ -92,27 +93,7 @@ export default function TakeQuizPage() {
     }, [quizId]);
 
      // Timer countdown effect
-    React.useEffect(() => {
-        if (timeLeft === null || timeLeft <= 0 || submitting || showResults) {
-            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true); // Auto-submit when timer reaches 0
-            return;
-        }
-        const intervalId = setInterval(() => {
-            setTimeLeft(timeLeft - 1);
-        }, 1000);
-        return () => clearInterval(intervalId);
-    }, [timeLeft, submitting, showResults]);
-
-    const handleAnswerChange = (questionId: string, answer: string) => {
-        const newAnswers = { ...answers, [questionId]: answer };
-        setAnswers(newAnswers);
-        if(currentUser){
-            const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers`);
-            set(answerRef, newAnswers);
-        }
-    };
-
-    const handleSubmit = async (isAutoSubmit = false) => {
+    const handleSubmit = React.useCallback(async (isAutoSubmit = false) => {
         if(!currentUser || submitting) return;
         setSubmitting(true);
         const submissionRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}`);
@@ -142,6 +123,26 @@ export default function TakeQuizPage() {
             toast({ variant: 'destructive', title: 'Submission Failed', description: error.message });
         } finally {
             setSubmitting(false);
+        }
+    }, [allQuestions, answers, currentUser, quiz?.isMultipleChoiceOnly, quizId, router, submitting, toast]);
+
+    React.useEffect(() => {
+        if (timeLeft === null || timeLeft <= 0 || submitting || showResults) {
+            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true); // Auto-submit when timer reaches 0
+            return;
+        }
+        const intervalId = setInterval(() => {
+            setTimeLeft(timeLeft - 1);
+        }, 1000);
+        return () => clearInterval(intervalId);
+    }, [timeLeft, submitting, showResults, handleSubmit]);
+
+    const handleAnswerChange = (questionId: string, answer: string) => {
+        const newAnswers = { ...answers, [questionId]: answer };
+        setAnswers(newAnswers);
+        if(currentUser){
+            const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers`);
+            set(answerRef, newAnswers);
         }
     };
     
