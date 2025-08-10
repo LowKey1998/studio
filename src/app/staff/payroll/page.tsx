@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { DollarSign, Download, Info, Mail, Link as LinkIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { sendPayslipEmail } from '@/ai/flows/send-payslip-email';
 import { syncPayrollToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncPayrollToSage } from '@/ai/flows/sync-to-sage';
 import { format } from 'date-fns';
 
 type StaffMember = {
@@ -40,6 +41,7 @@ export default function PayrollPage() {
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<any>(null); // For subRoles check
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -56,9 +58,13 @@ export default function PayrollPage() {
           }
         });
         
-        const settingsRef = ref(db, 'settings/integrations/quickbooks/enabled');
+        const settingsRef = ref(db, 'settings/integrations');
         const unsubSettings = onValue(settingsRef, (snapshot) => {
-            setIsQuickBooksEnabled(snapshot.val() === true);
+            if (snapshot.exists()) {
+                const integrations = snapshot.val();
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled);
+                setIsSageEnabled(integrations.sage?.enabled);
+            }
         });
 
         return () => {
@@ -128,7 +134,7 @@ export default function PayrollPage() {
     }
     
     const handleSyncToQuickBooks = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
-         setActionLoading(`sync-${staff.uid}`);
+         setActionLoading(`sync-qb-${staff.uid}`);
         try {
             const currentMonth = format(new Date(), 'MMMM yyyy');
             await syncPayrollToQuickbooks({
@@ -146,6 +152,27 @@ export default function PayrollPage() {
              setActionLoading(null);
         }
     }
+    
+    const handleSyncToSage = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
+         setActionLoading(`sync-sage-${staff.uid}`);
+        try {
+            const currentMonth = format(new Date(), 'MMMM yyyy');
+            await syncPayrollToSage({
+                staffName: staff.name,
+                staffId: staff.id,
+                month: currentMonth,
+                grossSalary: staff.baseSalary,
+                deductions: payroll.deductions,
+                netPay: payroll.netPay,
+            });
+            toast({ title: 'Payroll Synced', description: `Payroll for ${staff.name} has been synced to Sage.` });
+        } catch (e: any) {
+             toast({ variant: 'destructive', title: 'Sync Failed', description: e.message });
+        } finally {
+             setActionLoading(null);
+        }
+    }
+
 
     if (loading) {
          return (
@@ -216,12 +243,17 @@ export default function PayrollPage() {
                                     <TableCell className="text-right text-red-600">{payroll.deductions.toFixed(2)}</TableCell>
                                     <TableCell className="text-right font-bold">{payroll.netPay.toFixed(2)}</TableCell>
                                     <TableCell className="text-right flex gap-2 justify-end">
-                                        <Button variant="outline" size="sm" onClick={() => handleSendPayslip(staff, payroll)} disabled={!!actionLoading}>
+                                        <Button variant="outline" size="icon" onClick={() => handleSendPayslip(staff, payroll)} disabled={!!actionLoading}>
                                            {actionLoading === `payslip-${staff.uid}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Mail className="h-4 w-4"/>}
                                         </Button>
                                          {isQuickBooksEnabled && (
-                                            <Button variant="outline" size="sm" onClick={() => handleSyncToQuickBooks(staff, payroll)} disabled={!!actionLoading}>
-                                                {actionLoading === `sync-${staff.uid}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <LinkIcon className="h-4 w-4"/>}
+                                            <Button variant="outline" size="icon" onClick={() => handleSyncToQuickBooks(staff, payroll)} disabled={!!actionLoading} title="Sync to QuickBooks">
+                                                {actionLoading === `sync-qb-${staff.uid}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <LinkIcon className="h-4 w-4"/>}
+                                            </Button>
+                                        )}
+                                        {isSageEnabled && (
+                                            <Button variant="outline" size="icon" onClick={() => handleSyncToSage(staff, payroll)} disabled={!!actionLoading} title="Sync to Sage">
+                                                {actionLoading === `sync-sage-${staff.uid}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <LinkIcon className="h-4 w-4"/>}
                                             </Button>
                                         )}
                                     </TableCell>

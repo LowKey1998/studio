@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -63,6 +64,7 @@ export default function PaymentsManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [optionalFees, setOptionalFees] = React.useState<OptionalFee[]>([]);
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -93,7 +95,7 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'optionalFees')),
-                get(ref(db, 'settings/integrations/quickbooks'))
+                get(ref(db, 'settings/integrations'))
             ]);
             
             if (programmesSnap.exists()) {
@@ -106,7 +108,9 @@ export default function PaymentsManagementPage() {
                 setOptionalFees(Object.keys(optionalFeesSnap.val()).map(id => ({ id, ...optionalFeesSnap.val()[id]})));
             }
             if (settingsSnap.exists()) {
-                setIsQuickBooksEnabled(settingsSnap.val().enabled);
+                const integrations = settingsSnap.val();
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled);
+                setIsSageEnabled(integrations.sage?.enabled);
             }
 
 
@@ -224,15 +228,21 @@ export default function PaymentsManagementPage() {
                 recordedBy: 'Admin/Accountant',
             });
             
+            const syncData = {
+                invoiceId: selectedStudent.invoiceId,
+                studentName: selectedStudent.studentName,
+                amount: amount,
+                date: new Date().toISOString(),
+                description: `Payment via ${paymentMethod}`
+            };
+
             if (isQuickBooksEnabled) {
-                await syncInvoiceToQuickbooks({
-                    invoiceId: selectedStudent.invoiceId,
-                    studentName: selectedStudent.studentName,
-                    amount: amount,
-                    date: new Date().toISOString(),
-                    description: `Payment via ${paymentMethod}`
-                });
+                await syncInvoiceToQuickbooks(syncData);
                 toast({ title: 'Synced to QuickBooks', description: 'Payment was successfully synced.' });
+            }
+            if (isSageEnabled) {
+                await syncInvoiceToSage(syncData);
+                toast({ title: 'Synced to Sage', description: 'Payment was successfully synced.' });
             }
 
             await createNotification(

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, onValue, set, push, remove } from 'firebase/database';
+import { ref, onValue, set, push, remove, get } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { syncExpenseToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncExpenseToSage } from '@/ai/flows/sync-to-sage';
 
 type Expense = {
     id: string;
@@ -40,6 +41,9 @@ export default function ExpenseTrackingPage() {
     const [description, setDescription] = React.useState('');
     const [amount, setAmount] = React.useState('');
     const [vendor, setVendor] = React.useState('');
+    
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -54,7 +58,20 @@ export default function ExpenseTrackingPage() {
             }
             setLoading(false);
         });
-        return () => unsub();
+
+        const settingsRef = ref(db, 'settings/integrations');
+        const unsubSettings = onValue(settingsRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const integrations = snapshot.val();
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled);
+                setIsSageEnabled(integrations.sage?.enabled);
+            }
+        });
+
+        return () => {
+            unsub();
+            unsubSettings();
+        };
     }, []);
 
     const resetForm = () => {
@@ -83,11 +100,16 @@ export default function ExpenseTrackingPage() {
             await set(newExpenseRef, expenseData);
             toast({ title: 'Expense Recorded' });
 
-            await syncExpenseToQuickbooks({
-                expenseId: newExpenseRef.key!,
-                ...expenseData
-            });
-            toast({ title: 'Synced to QuickBooks' });
+            const syncData = { expenseId: newExpenseRef.key!, ...expenseData };
+
+            if(isQuickBooksEnabled) {
+                await syncExpenseToQuickbooks(syncData);
+                toast({ title: 'Synced to QuickBooks' });
+            }
+            if(isSageEnabled) {
+                await syncExpenseToSage(syncData);
+                toast({ title: 'Synced to Sage' });
+            }
 
             setIsDialogOpen(false);
             resetForm();
