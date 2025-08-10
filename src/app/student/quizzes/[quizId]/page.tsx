@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Send, Clock, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db, auth } from "@/lib/firebase";
-import { ref, get, set, onValue } from 'firebase/database';
+import { ref, get, set, onValue, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -71,26 +71,64 @@ export default function TakeQuizPage() {
     }, [router]);
 
     React.useEffect(() => {
-        if (!quizId) return;
-        const fetchQuiz = async () => {
+        if (!quizId || !currentUser) return;
+        const fetchQuizAndSubmission = async () => {
             setLoading(true);
-            const quizRef = ref(db, `quizzes/${quizId}`);
-            const snapshot = await get(quizRef);
-            if (snapshot.exists()) {
-                const quizData = snapshot.val();
-                setQuiz(quizData);
-                setTimeLeft(quizData.timeLimit * 60); // Initialize timer
+            try {
+                const quizRef = ref(db, `quizzes/${quizId}`);
+                const submissionRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}`);
                 
-                let questions = quizData.sections.flatMap((s: any) => s.questions || []);
-                if (quizData.shuffleQuestions) {
-                    questions = shuffleArray(questions);
+                const [quizSnapshot, submissionSnapshot] = await Promise.all([get(quizRef), get(submissionRef)]);
+
+                if (quizSnapshot.exists()) {
+                    const quizData = quizSnapshot.val();
+                    setQuiz(quizData);
+
+                    let questions = quizData.sections.flatMap((s: any) => s.questions || []);
+                    if (quizData.shuffleQuestions) {
+                        questions = shuffleArray(questions);
+                    }
+                    setAllQuestions(questions);
+
+                    if (submissionSnapshot.exists()) {
+                        const submissionData = submissionSnapshot.val();
+                        if (submissionData.status === 'completed') {
+                            if (submissionData.score !== undefined) {
+                                setFinalScore(submissionData.score);
+                                setShowResults(true);
+                            } else {
+                                toast({ title: "Quiz Already Submitted", description: "This quiz is awaiting manual grading." });
+                                router.push('/student/quizzes');
+                            }
+                            return;
+                        }
+
+                        setAnswers(submissionData.answers || {});
+                        
+                        if (submissionData.startTime) {
+                            const elapsedSeconds = differenceInSeconds(new Date(), parseISO(submissionData.startTime));
+                            const remaining = quizData.timeLimit * 60 - elapsedSeconds;
+                            setTimeLeft(remaining > 0 ? remaining : 0);
+                        } else {
+                            // If submission exists but no start time, start it now
+                             await set(ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/startTime`), new Date().toISOString());
+                             setTimeLeft(quizData.timeLimit * 60);
+                        }
+                    } else {
+                        // First time taking the quiz, set start time
+                        await set(submissionRef, { answers: {}, status: 'in-progress', startTime: new Date().toISOString() });
+                        setTimeLeft(quizData.timeLimit * 60);
+                    }
                 }
-                setAllQuestions(questions);
+            } catch (error: any) {
+                console.error(error);
+                toast({ variant: 'destructive', title: 'Error', description: 'Could not load quiz.' });
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
-        fetchQuiz();
-    }, [quizId]);
+        fetchQuizAndSubmission();
+    }, [quizId, currentUser, router, toast]);
 
      // Timer countdown effect
     const handleSubmit = React.useCallback(async (isAutoSubmit = false) => {
