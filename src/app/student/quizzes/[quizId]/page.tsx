@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Send, Clock, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db, auth } from "@/lib/firebase";
-import { ref, get, set, onValue, serverTimestamp } from 'firebase/database';
+import { ref, get, set, onValue, serverTimestamp, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -83,11 +83,13 @@ export default function TakeQuizPage() {
                     const quizData: Quiz = quizSnapshot.val();
                     setQuiz(quizData);
 
-                    let questions = quizData.sections.flatMap((s: any) => s.questions || []);
-                    if (quizData.shuffleQuestions) {
-                        questions = shuffleArray(questions);
+                    if (allQuestions.length === 0) { // Only set/shuffle questions on initial load
+                        let questions = quizData.sections.flatMap((s: any) => s.questions || []);
+                        if (quizData.shuffleQuestions) {
+                            questions = shuffleArray(questions);
+                        }
+                        setAllQuestions(questions);
                     }
-                    setAllQuestions(questions);
 
                     if (submissionSnapshot.exists()) {
                         const submissionData = submissionSnapshot.val();
@@ -122,6 +124,7 @@ export default function TakeQuizPage() {
             }
         };
         fetchQuizAndSubmission();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [quizId, currentUser, router, toast]);
 
     const handleSubmit = React.useCallback(async (isAutoSubmit = false) => {
