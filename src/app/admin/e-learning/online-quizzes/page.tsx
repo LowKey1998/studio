@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -226,12 +227,21 @@ export default function OnlineQuizzesPage() {
                     <Skeleton className="h-48" />
                 ) : quizzes.length > 0 ? (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {quizzes.map(quiz => (
+                        {quizzes.map(quiz => {
+                            const course = courses.find(c => c.id === quiz.courseId);
+                            const semester = semesters.find(s => s.id === quiz.semesterId);
+                            return (
                             <Card key={quiz.id}>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2"><FileQuestion className="h-5 w-5 text-primary" /> {quiz.title}</CardTitle>
-                                    <CardDescription>{quiz.description}</CardDescription>
+                                    <CardDescription>
+                                        <div className="font-semibold">{course ? `${course.name} (${course.code})` : 'Unknown Course'}</div>
+                                        <div>{semester ? semester.name : 'Unknown Semester'}</div>
+                                    </CardDescription>
                                 </CardHeader>
+                                <CardContent>
+                                     <p className="text-sm text-muted-foreground line-clamp-2">{quiz.description}</p>
+                                </CardContent>
                                 <CardFooter className="flex justify-between">
                                     <Button variant="outline" onClick={() => router.push(`/admin/quizzes/builder/${quiz.id}`)}>Edit</Button>
                                     <AlertDialog>
@@ -251,7 +261,8 @@ export default function OnlineQuizzesPage() {
                                     </AlertDialog>
                                 </CardFooter>
                             </Card>
-                        ))}
+                            )
+                        })}
                     </div>
                 ) : (
                     <p className="text-muted-foreground text-center py-8">No quizzes have been created yet.</p>
