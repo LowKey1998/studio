@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -92,6 +93,13 @@ export default function WardLogbooksPage() {
                                 <TableCell className="text-right">
                                 <Dialog>
                                     <DialogTrigger asChild><Button variant="outline" size="sm" onClick={() => setViewingLog(log)}><Eye className="mr-2 h-4 w-4"/>View Log</Button></DialogTrigger>
+                                     <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Logbook Entry: {viewingLog?.studentName}</DialogTitle>
+                                            <DialogDescription>{viewingLog?.ward} - {viewingLog && format(new Date(viewingLog.date), 'PPP')}</DialogDescription>
+                                        </DialogHeader>
+                                        <div className="py-4 whitespace-pre-wrap">{viewingLog?.logText}</div>
+                                    </DialogContent>
                                 </Dialog>
                                 {log.status === 'Pending Review' && <Button size="sm" className="ml-2" onClick={() => handleApprove(log)} disabled={!!actionLoading}>{actionLoading === log.id ? <Loader2 className="animate-spin h-4 w-4"/> : <Check className="mr-2 h-4 w-4"/>}Approve</Button>}
                                 </TableCell>
@@ -100,13 +108,6 @@ export default function WardLogbooksPage() {
                     </TableBody>
                 </Table>
             </CardContent>
-             <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Logbook Entry: {viewingLog?.studentName}</DialogTitle>
-                        <DialogDescription>{viewingLog?.ward} - {viewingLog && format(new Date(viewingLog.date), 'PPP')}</DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4 whitespace-pre-wrap">{viewingLog?.logText}</div>
-                </DialogContent>
         </Card>
     );
 }
