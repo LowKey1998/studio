@@ -172,8 +172,10 @@ export default function CoursePathsPage() {
     
         if (!activeContainerId || !overContainerId || !active.id) return;
     
+        const movedItem = courses.find(c => c.id === active.id);
+        if (!movedItem) return;
+
         if (activeContainerId === overContainerId) {
-            // Reordering within the same container
             if (activeContainerId === 'available') {
                 setAvailableCourses(prev => {
                     const oldIndex = prev.findIndex(c => c.id === active.id);
@@ -193,25 +195,20 @@ export default function CoursePathsPage() {
                 });
             }
         } else {
-            // Moving between different containers
-            const movedItem = courses.find(c => c.id === active.id);
-            if (!movedItem) return;
-
-            // Start state update transaction
+            // Transactional state update
             setAvailableCourses(prevAvailable => {
-                 setSemesterCourses(prevSemesters => {
-                    let newAvailable = [...prevAvailable];
+                let newAvailable = [...prevAvailable];
+                setSemesterCourses(prevSemesters => {
                     const newSemesters = { ...prevSemesters };
-
-                    // Remove from source
+                     // Remove from source
                     if (activeContainerId === 'available') {
                         newAvailable = newAvailable.filter(c => c.id !== active.id);
                     } else {
-                        newSemesters[activeContainerId] = newSemesters[activeContainerId]?.filter(c => c.id !== active.id) || [];
+                        newSemesters[activeContainerId] = (newSemesters[activeContainerId] || []).filter(c => c.id !== active.id);
                     }
-
-                    // Add to destination
+                     // Add to destination
                     if (overContainerId === 'available') {
+                        // Find the index of the item we're hovering over
                         const overIndex = newAvailable.findIndex(item => item.id === over.id);
                         if (overIndex > -1) {
                             newAvailable.splice(overIndex, 0, movedItem);
@@ -220,20 +217,18 @@ export default function CoursePathsPage() {
                         }
                     } else {
                         const destinationCourses = newSemesters[overContainerId] || [];
+                         // Find the index of the item we're hovering over
                         const overIndex = destinationCourses.findIndex(item => item.id === over.id);
                         if (overIndex > -1) {
                             destinationCourses.splice(overIndex, 0, movedItem);
                         } else {
                             destinationCourses.push(movedItem);
                         }
-                         newSemesters[overContainerId] = destinationCourses;
+                        newSemesters[overContainerId] = destinationCourses;
                     }
-
-                    // Return the new semester state for the inner setter
-                    return newSemesters;
+                     return newSemesters;
                 });
-                // Return the new available courses state for the outer setter
-                return newAvailable;
+                 return newAvailable;
             });
         }
     };
