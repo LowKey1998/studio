@@ -36,6 +36,14 @@ type Quiz = {
 
 type Answers = Record<string, string>; // questionId -> answer (optionId or text)
 
+type Submission = {
+    status: 'in-progress' | 'completed';
+    answers: Answers;
+    questionOrder: Question[];
+    score?: number;
+    totalQuestions?: number;
+}
+
 const shuffleArray = (array: any[]) => {
     let currentIndex = array.length, randomIndex;
     while (currentIndex !== 0) {
@@ -83,19 +91,12 @@ export default function TakeQuizPage() {
                     const quizData: Quiz = quizSnapshot.val();
                     setQuiz(quizData);
 
-                    if (allQuestions.length === 0) { // Only set/shuffle questions on initial load
-                        let questions = quizData.sections.flatMap((s: any) => s.questions || []);
-                        if (quizData.shuffleQuestions) {
-                            questions = shuffleArray(questions);
-                        }
-                        setAllQuestions(questions);
-                    }
-
                     if (submissionSnapshot.exists()) {
-                        const submissionData = submissionSnapshot.val();
-                        if (submissionData.status === 'completed') {
+                        const submissionData: Submission = submissionSnapshot.val();
+                         if (submissionData.status === 'completed') {
                             if (submissionData.score !== undefined) {
                                 setFinalScore(submissionData.score);
+                                setAllQuestions(submissionData.questionOrder || []);
                                 setShowResults(true);
                             } else {
                                 toast({ title: "Quiz Already Submitted", description: "This quiz is awaiting manual grading." });
@@ -103,11 +104,25 @@ export default function TakeQuizPage() {
                             }
                             return;
                         }
+                        // Resume in-progress quiz
+                        setAllQuestions(submissionData.questionOrder || []);
                         setAnswers(submissionData.answers || {});
-                    } else {
-                        await set(submissionRef, { answers: {}, status: 'in-progress' });
-                    }
 
+                    } else {
+                        // Start new quiz
+                        let questions = quizData.sections.flatMap((s: any) => s.questions || []);
+                        if (quizData.shuffleQuestions) {
+                            questions = shuffleArray(questions);
+                        }
+                        setAllQuestions(questions);
+                        setAnswers({});
+                        await set(submissionRef, { 
+                            answers: {}, 
+                            status: 'in-progress',
+                            questionOrder: questions // Save the shuffled order
+                        });
+                    }
+                    
                     if (quizData.endTime) {
                          const remaining = differenceInSeconds(parseISO(quizData.endTime), new Date());
                          setTimeLeft(remaining > 0 ? remaining : 0);
@@ -124,7 +139,6 @@ export default function TakeQuizPage() {
             }
         };
         fetchQuizAndSubmission();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [quizId, currentUser, router, toast]);
 
     const handleSubmit = React.useCallback(async (isAutoSubmit = false) => {
@@ -133,7 +147,7 @@ export default function TakeQuizPage() {
         const submissionRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}`);
         
         try {
-            const submissionData: any = { answers, status: 'completed', submittedAt: new Date().toISOString() };
+            const submissionData: any = { status: 'completed', submittedAt: new Date().toISOString() };
             if (quiz?.isMultipleChoiceOnly) {
                 let score = 0;
                 allQuestions.forEach(q => {
@@ -175,15 +189,16 @@ export default function TakeQuizPage() {
         const newAnswers = { ...answers, [questionId]: answer };
         setAnswers(newAnswers);
         if(currentUser){
-            const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers`);
-            set(answerRef, newAnswers);
+            // Save answer to database immediately to prevent data loss
+            const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers/${questionId}`);
+            set(answerRef, answer);
         }
     };
     
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     const quizNotStarted = quiz?.startTime && differenceInSeconds(parseISO(quiz.startTime), new Date()) > 0;
-    const quizEnded = quiz?.endTime && differenceInSeconds(parseISO(quiz.endTime), new Date()) <= 0;
+    const quizEnded = quiz?.endTime && differenceInSeconds(parseISO(quiz.endTime), new Date()) <= 0 && !showResults;
 
     if(quizNotStarted || quizEnded) {
         return (
@@ -276,3 +291,5 @@ export default function TakeQuizPage() {
         </Card>
     );
 }
+
+    
