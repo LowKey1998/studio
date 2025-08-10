@@ -268,7 +268,7 @@ export default function RegistrationPage() {
                  const semesterOfferingsSnap = await get(ref(db, `semesterOfferings/${openSemesters.find(s => s.id === selectedSemesterId)?.name}/courseIds`));
                  const availableCourseIds = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : [];
                  
-                 setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id) && c.year === uData.year));
+                 setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id)));
                  setSelectedCourses([]);
             }
         } catch (error) {
@@ -571,7 +571,7 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                            {Object.values(semesterMandatoryFees).map(fee => (
+                            {semesterMandatoryFees.map(fee => (
                                 <div key={fee.id} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
