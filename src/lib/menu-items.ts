@@ -303,7 +303,6 @@ export const studentMenuItems = [
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
-            { href: '/student/courses/[courseId]/results', label: 'My Results', icon: ClipboardCheck },
         ]
     },
     {
@@ -321,6 +320,7 @@ export const studentMenuItems = [
             { href: '/student/leave', label: 'Request Absence', icon: Calendar },
             { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
             { href: '/student/resources', label: 'Resources', icon: FileText },
+            { href: '/vacancies', label: 'Job Vacancies', icon: Briefcase },
         ]
     },
      {
@@ -329,6 +329,15 @@ export const studentMenuItems = [
         items: [
             { href: '/student/innovation/idea-board', label: 'Idea Board', icon: Newspaper },
             { href: '/student/innovation/my-projects', label: 'My Projects', icon: Briefcase },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
+        ]
+    },
+    {
+        label: 'Spiritual Life',
+        icon: Heart,
+        items: [
+            { href: '/admin/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
+            { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
         ]
     }
   ];
@@ -362,5 +371,6 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
+
 
 
