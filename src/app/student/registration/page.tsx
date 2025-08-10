@@ -450,7 +450,7 @@ export default function RegistrationPage() {
     const recommendedCourseIds = React.useMemo(() => {
         if (!userData || !selectedSemesterData) return [];
         const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
-        if(!path) return [];
+        if(!path || !path.semesters) return [];
         
         // This is a simplification. A real implementation would need to know which semester of study this is (e.g., Year 2, Sem 1)
         // For now, we'll just check against the student's overall year.
@@ -571,7 +571,7 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                            {semesterMandatoryFees.map((fee) => (
+                            {Object.values(semesterMandatoryFees).map(fee => (
                                 <div key={fee.id} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
