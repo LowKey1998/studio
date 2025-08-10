@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Send, Clock, AlertTriangle } from "lucide-react";
+import { Loader2, Send, Clock, AlertTriangle, ChevronRight, ChevronLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db, auth } from "@/lib/firebase";
 import { ref, get, set, onValue, serverTimestamp, update } from 'firebase/database';
@@ -31,6 +31,7 @@ type Quiz = {
     endTime?: string;
     shuffleQuestions: boolean;
     isMultipleChoiceOnly: boolean;
+    questionsPerPage: number;
     sections: { title: string; questions: Question[] }[];
 };
 
@@ -69,6 +70,7 @@ export default function TakeQuizPage() {
     const { toast } = useToast();
 
     const [timeLeft, setTimeLeft] = React.useState<number | null>(null);
+    const [currentPage, setCurrentPage] = React.useState(0);
 
     React.useEffect(() => {
         onAuthStateChanged(auth, (user) => {
@@ -104,12 +106,10 @@ export default function TakeQuizPage() {
                             }
                             return;
                         }
-                        // Resume in-progress quiz
                         setAllQuestions(submissionData.questionOrder || []);
                         setAnswers(submissionData.answers || {});
 
                     } else {
-                        // Start new quiz
                         let questions = quizData.sections.flatMap((s: any) => s.questions || []);
                         if (quizData.shuffleQuestions) {
                             questions = shuffleArray(questions);
@@ -119,7 +119,7 @@ export default function TakeQuizPage() {
                         await set(submissionRef, { 
                             answers: {}, 
                             status: 'in-progress',
-                            questionOrder: questions // Save the shuffled order
+                            questionOrder: questions
                         });
                     }
                     
@@ -127,7 +127,7 @@ export default function TakeQuizPage() {
                          const remaining = differenceInSeconds(parseISO(quizData.endTime), new Date());
                          setTimeLeft(remaining > 0 ? remaining : 0);
                     } else {
-                        setTimeLeft(null); // No time limit
+                        setTimeLeft(null);
                     }
 
                 }
@@ -189,11 +189,14 @@ export default function TakeQuizPage() {
         const newAnswers = { ...answers, [questionId]: answer };
         setAnswers(newAnswers);
         if(currentUser){
-            // Save answer to database immediately to prevent data loss
             const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers/${questionId}`);
             set(answerRef, answer);
         }
     };
+
+    const questionsPerPage = quiz?.questionsPerPage || allQuestions.length;
+    const totalPages = questionsPerPage > 0 ? Math.ceil(allQuestions.length / questionsPerPage) : 1;
+    const currentQuestions = questionsPerPage > 0 ? allQuestions.slice(currentPage * questionsPerPage, (currentPage + 1) * questionsPerPage) : allQuestions;
     
     if (loading) return <Skeleton className="h-96 w-full" />;
 
@@ -254,9 +257,9 @@ export default function TakeQuizPage() {
                 )}
             </CardHeader>
             <CardContent className="space-y-8 p-4 md:p-6">
-                {allQuestions.map((question, index) => (
+                {currentQuestions.map((question, index) => (
                     <div key={question.id} className="p-4 border-t">
-                        <Label className="font-bold text-base">Question {index + 1}: {question.text}</Label>
+                        <Label className="font-bold text-base">Question {currentPage * questionsPerPage + index + 1}: {question.text}</Label>
                         <div className="mt-4">
                             {question.type === 'multiple-choice' ? (
                                 <RadioGroup onValueChange={(value) => handleAnswerChange(question.id, value)} value={answers[question.id]}>
@@ -274,22 +277,32 @@ export default function TakeQuizPage() {
                     </div>
                 ))}
             </CardContent>
-            <CardFooter className="justify-end p-4 border-t">
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <Button disabled={submitting}>Submit Quiz</Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Confirm Submission</AlertDialogTitle><AlertDialogDescription>Are you sure you want to submit your answers? You cannot make changes after submitting.</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleSubmit()}>Yes, Submit</AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
+            <CardFooter className="justify-between p-4 border-t">
+                <Button variant="outline" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
+                    <ChevronLeft className="mr-2 h-4 w-4"/> Previous
+                </Button>
+
+                <span className="text-sm text-muted-foreground">Page {currentPage + 1} of {totalPages}</span>
+
+                {currentPage < totalPages - 1 ? (
+                     <Button variant="outline" onClick={() => setCurrentPage(p => p + 1)}>
+                        Next <ChevronRight className="ml-2 h-4 w-4"/>
+                    </Button>
+                ) : (
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button disabled={submitting}>Submit Quiz</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Confirm Submission</AlertDialogTitle><AlertDialogDescription>Are you sure you want to submit your answers? You cannot make changes after submitting.</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleSubmit()}>Yes, Submit</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
             </CardFooter>
         </Card>
     );
 }
-
-    

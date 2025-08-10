@@ -43,6 +43,7 @@ type Quiz = {
     endTime?: string;
     isMultipleChoiceOnly: boolean;
     shuffleQuestions: boolean;
+    questionsPerPage: number;
     sections: Section[];
     courseId: string | null;
     semesterId: string | null;
@@ -102,6 +103,7 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
         endTime: '',
         isMultipleChoiceOnly: false,
         shuffleQuestions: true,
+        questionsPerPage: 10,
         sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }],
         courseId: courseId || null,
         semesterId: semesterId || null,
@@ -355,9 +357,10 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                 <CardContent className="space-y-4">
                     <Input placeholder="Quiz Title" value={quiz.title} onChange={e => handleQuizChange('title', e.target.value)} />
                     <Textarea placeholder="Quiz Description" value={quiz.description} onChange={e => handleQuizChange('description', e.target.value)} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div><Label>Start Time</Label><Input type="datetime-local" value={quiz.startTime} onChange={e => handleQuizChange('startTime', e.target.value)}/></div>
                         <div><Label>End Time</Label><Input type="datetime-local" value={quiz.endTime} onChange={e => handleQuizChange('endTime', e.target.value)}/></div>
+                         <div><Label>Questions Per Page</Label><Input type="number" min="0" placeholder="0 for all" value={quiz.questionsPerPage} onChange={e => handleQuizChange('questionsPerPage', Number(e.target.value))}/><p className="text-xs text-muted-foreground">Set to 0 to show all questions on one page.</p></div>
                         <div className="flex items-end gap-4">
                             <div className="flex items-center space-x-2"><Switch id="shuffle" checked={quiz.shuffleQuestions} onCheckedChange={c => handleQuizChange('shuffleQuestions', c)}/><Label htmlFor="shuffle">Shuffle Questions</Label></div>
                             <div className="flex items-center space-x-2"><Switch id="mc-only" checked={quiz.isMultipleChoiceOnly} onCheckedChange={c => handleQuizChange('isMultipleChoiceOnly', c)}/><Label htmlFor="mc-only">Auto-Grade</Label></div>
