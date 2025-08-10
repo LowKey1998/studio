@@ -281,7 +281,11 @@ export default function RegistrationPage() {
                     const offeringsRef = ref(db, `semesterOfferings/${semester.name}/courseIds`);
                     const offeringsSnap = await get(offeringsRef);
                     const availableCourseIds = offeringsSnap.exists() ? offeringsSnap.val() : [];
-                    setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id)));
+                    
+                    const coursesForYear = allCourses.filter(c => {
+                        return availableCourseIds.includes(c.id);
+                    });
+                    setAvailableCourses(coursesForYear);
                  }
                  setSelectedCourses([]);
             }
@@ -543,29 +547,40 @@ export default function RegistrationPage() {
                          <div>
                             <h3 className="font-bold text-lg mb-2">My Current Registration for {existingRegistration.semesterName}</h3>
                              <Card className="bg-muted/50">
-                                <CardHeader><CardTitle>Status: {existingRegistration.status}</CardTitle><CardDescription>Your registration is currently being processed. You can view payment details on the Payments page.</CardDescription></CardHeader>
+                                <CardHeader>
+                                    <CardTitle>Status: {existingRegistration.status}</CardTitle>
+                                    <CardDescription>
+                                        Your registration is currently being processed. You can view payment details on the{" "}
+                                        <Link href="/student/payments" className="underline text-primary">Payments</Link> page.
+                                    </CardDescription>
+                                </CardHeader>
                                 <CardContent>
                                     <Collapsible>
                                         <CollapsibleTrigger asChild>
                                             <Button variant="link" className="p-0 h-auto text-sm mb-2">
-                                                View Invoice Details <ChevronDown className="h-4 w-4 ml-1" />
+                                                View Registration Summary <ChevronDown className="h-4 w-4 ml-1" />
                                             </Button>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
-                                            <Table>
+                                             <Table>
                                                 <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
                                                 <TableBody>
-                                                    {existingRegistration.invoiceDetails?.totalTuition && existingRegistration.invoiceDetails.totalTuition > 0 && <TableRow><TableCell>Total Tuition</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalTuition.toFixed(2)}</TableCell></TableRow>}
-                                                    {existingRegistration.invoiceDetails?.totalMandatoryFees && existingRegistration.invoiceDetails.totalMandatoryFees > 0 && <TableRow><TableCell>Mandatory Fees</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalMandatoryFees.toFixed(2)}</TableCell></TableRow>}
-                                                    {existingRegistration.invoiceDetails?.totalOptionalFees && existingRegistration.invoiceDetails.totalOptionalFees > 0 && <TableRow><TableCell>Optional Fees</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalOptionalFees.toFixed(2)}</TableCell></TableRow>}
+                                                    {registeredCourses.map(course => (
+                                                        <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
+                                                    ))}
+                                                    {Object.values(semesterMandatoryFees).map(fee => (
+                                                        <TableRow key={fee.id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
+                                                    ))}
+                                                    {existingRegistration.optionalFees.map(feeId => {
+                                                         const fee = semesterOptionalFees.find(f => f.id === feeId);
+                                                         return fee ? <TableRow key={fee.id}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
+                                                    })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                    {existingRegistration.invoiceDetails?.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.applyScholarship ? (existingRegistration.invoiceDetails?.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
+                                                    <TableRow className="font-bold bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
+                                                    {existingRegistration.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails?.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
+                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.applyScholarship ? (existingRegistration.invoiceDetails?.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
                                                 </TableBody>
                                             </Table>
-                                            <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(existingRegistration.invoiceDetails!)}>
-                                                <Download className="mr-2 h-4 w-4" /> Download Full Invoice
-                                            </Button>
                                         </CollapsibleContent>
                                     </Collapsible>
                                 </CardContent>
@@ -573,6 +588,11 @@ export default function RegistrationPage() {
                                     <Button asChild variant="secondary"><Link href="/student/payments">Go to Payments</Link></Button>
                                     {(existingRegistration.status === 'Pending Approval' || existingRegistration.status === 'Pending Payment') && (
                                         <Button variant="destructive" onClick={handleCancelRegistration} disabled={submitting}>{submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}Cancel Registration</Button>
+                                    )}
+                                     {existingRegistration.status !== 'Pending Approval' && existingRegistration.invoiceDetails && (
+                                        <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(existingRegistration.invoiceDetails!)}>
+                                            <Download className="mr-2 h-4 w-4" /> Download Invoice
+                                        </Button>
                                     )}
                                 </CardFooter>
                             </Card>
