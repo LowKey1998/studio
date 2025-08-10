@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Send, Clock, AlertTriangle, ChevronRight, ChevronLeft } from "lucide-react";
+import { Loader2, Send, Clock, AlertTriangle, ChevronRight, ChevronLeft, Flag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db, auth } from "@/lib/firebase";
 import { ref, get, set, onValue, serverTimestamp, update } from 'firebase/database';
@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Confetti from 'react-confetti';
 import { differenceInSeconds, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 type Question = {
     id: string;
@@ -36,10 +37,12 @@ type Quiz = {
 };
 
 type Answers = Record<string, string>; // questionId -> answer (optionId or text)
+type Flagged = Record<string, boolean>; // questionId -> true
 
 type Submission = {
     status: 'in-progress' | 'completed';
     answers: Answers;
+    flagged: Flagged;
     questionOrder: Question[];
     score?: number;
     totalQuestions?: number;
@@ -62,6 +65,7 @@ export default function TakeQuizPage() {
     const [quiz, setQuiz] = React.useState<Quiz | null>(null);
     const [allQuestions, setAllQuestions] = React.useState<Question[]>([]);
     const [answers, setAnswers] = React.useState<Answers>({});
+    const [flagged, setFlagged] = React.useState<Flagged>({});
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [submitting, setSubmitting] = React.useState(false);
@@ -104,10 +108,12 @@ export default function TakeQuizPage() {
                                 toast({ title: "Quiz Already Submitted", description: "This quiz is awaiting manual grading." });
                                 router.push('/student/quizzes');
                             }
+                            setLoading(false);
                             return;
                         }
                         setAllQuestions(submissionData.questionOrder || []);
                         setAnswers(submissionData.answers || {});
+                        setFlagged(submissionData.flagged || {});
 
                     } else {
                         let questions = quizData.sections.flatMap((s: any) => s.questions || []);
@@ -116,8 +122,10 @@ export default function TakeQuizPage() {
                         }
                         setAllQuestions(questions);
                         setAnswers({});
+                        setFlagged({});
                         await set(submissionRef, { 
-                            answers: {}, 
+                            answers: {},
+                            flagged: {},
                             status: 'in-progress',
                             questionOrder: questions
                         });
@@ -193,6 +201,20 @@ export default function TakeQuizPage() {
             set(answerRef, answer);
         }
     };
+    
+    const handleFlagQuestion = (questionId: string) => {
+        const newFlagged = { ...flagged };
+        if (newFlagged[questionId]) {
+            delete newFlagged[questionId];
+        } else {
+            newFlagged[questionId] = true;
+        }
+        setFlagged(newFlagged);
+         if(currentUser){
+            const flaggedRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/flagged`);
+            set(flaggedRef, newFlagged);
+        }
+    }
 
     const questionsPerPage = quiz?.questionsPerPage || allQuestions.length;
     const totalPages = questionsPerPage > 0 ? Math.ceil(allQuestions.length / questionsPerPage) : 1;
@@ -257,25 +279,34 @@ export default function TakeQuizPage() {
                 )}
             </CardHeader>
             <CardContent className="space-y-8 p-4 md:p-6">
-                {currentQuestions.map((question, index) => (
-                    <div key={question.id} className="p-4 border-t">
-                        <Label className="font-bold text-base">Question {currentPage * questionsPerPage + index + 1}: {question.text}</Label>
-                        <div className="mt-4">
-                            {question.type === 'multiple-choice' ? (
-                                <RadioGroup onValueChange={(value) => handleAnswerChange(question.id, value)} value={answers[question.id]}>
-                                    {(question.options || []).map(option => (
-                                        <div key={option.id} className="flex items-center space-x-2">
-                                            <RadioGroupItem value={option.id} id={`${question.id}-${option.id}`} />
-                                            <Label htmlFor={`${question.id}-${option.id}`}>{option.text}</Label>
-                                        </div>
-                                    ))}
-                                </RadioGroup>
-                            ) : (
-                                <Textarea placeholder="Type your answer here..." onChange={(e) => handleAnswerChange(question.id, e.target.value)} value={answers[question.id] || ''} />
-                            )}
+                {currentQuestions.map((question, index) => {
+                    const questionNumber = currentPage * questionsPerPage + index + 1;
+                    return (
+                        <div key={question.id} className="p-4 border-t">
+                            <div className="flex justify-between items-start">
+                                <Label className="font-bold text-base mb-4 block">Question {questionNumber}: {question.text}</Label>
+                                <Button variant={flagged[question.id] ? "destructive" : "outline"} size="sm" onClick={() => handleFlagQuestion(question.id)}>
+                                    <Flag className="h-4 w-4 mr-2"/>
+                                    Flag for Review
+                                </Button>
+                            </div>
+                            <div className="mt-4">
+                                {question.type === 'multiple-choice' ? (
+                                    <RadioGroup onValueChange={(value) => handleAnswerChange(question.id, value)} value={answers[question.id]}>
+                                        {(question.options || []).map(option => (
+                                            <div key={option.id} className="flex items-center space-x-2">
+                                                <RadioGroupItem value={option.id} id={`${question.id}-${option.id}`} />
+                                                <Label htmlFor={`${question.id}-${option.id}`}>{option.text}</Label>
+                                            </div>
+                                        ))}
+                                    </RadioGroup>
+                                ) : (
+                                    <Textarea placeholder="Type your answer here..." onChange={(e) => handleAnswerChange(question.id, e.target.value)} value={answers[question.id] || ''} />
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </CardContent>
             <CardFooter className="justify-between p-4 border-t">
                 <Button variant="outline" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
@@ -293,11 +324,37 @@ export default function TakeQuizPage() {
                         <AlertDialogTrigger asChild>
                             <Button disabled={submitting}>Submit Quiz</Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader><AlertDialogTitle>Confirm Submission</AlertDialogTitle><AlertDialogDescription>Are you sure you want to submit your answers? You cannot make changes after submitting.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogContent className="max-w-2xl">
+                            <AlertDialogHeader><AlertDialogTitle>Confirm Submission</AlertDialogTitle><AlertDialogDescription>Review your answers below. You can click on a question number to jump to it.</AlertDialogDescription></AlertDialogHeader>
+                            <div className="grid grid-cols-5 md:grid-cols-10 gap-2 py-4">
+                                {allQuestions.map((q, i) => {
+                                    const isAnswered = !!answers[q.id]?.trim();
+                                    const isFlagged = !!flagged[q.id];
+                                    return (
+                                        <Button
+                                            key={q.id}
+                                            variant={isFlagged ? 'destructive' : isAnswered ? 'default' : 'outline'}
+                                            size="icon"
+                                            onClick={() => {
+                                                const pageIndex = Math.floor(i / questionsPerPage);
+                                                setCurrentPage(pageIndex);
+                                                const cancel = document.querySelector('[aria-label="Cancel"]');
+                                                if(cancel instanceof HTMLElement) cancel.click();
+                                            }}
+                                        >
+                                            {i + 1}
+                                        </Button>
+                                    )
+                                })}
+                            </div>
+                             <div className="flex justify-center gap-4 text-sm">
+                                <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-primary"/> Answered</span>
+                                <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-destructive"/> Flagged</span>
+                                <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm border"/> Unanswered</span>
+                            </div>
                             <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleSubmit()}>Yes, Submit</AlertDialogAction>
+                                <AlertDialogCancel>Review Answers</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleSubmit()}>Yes, Submit Quiz</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
