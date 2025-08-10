@@ -4,10 +4,10 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Clock, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db, auth } from "@/lib/firebase";
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Confetti from 'react-confetti';
+import { differenceInSeconds, parseISO } from 'date-fns';
 
 type Question = {
     id: string;
@@ -26,6 +27,8 @@ type Question = {
 
 type Quiz = {
     title: string;
+    startTime?: string;
+    timeLimit: number;
     shuffleQuestions: boolean;
     isMultipleChoiceOnly: boolean;
     sections: { title: string; questions: Question[] }[];
@@ -57,6 +60,9 @@ export default function TakeQuizPage() {
     const [finalScore, setFinalScore] = React.useState(0);
     const { toast } = useToast();
 
+    // Timer state
+    const [timeLeft, setTimeLeft] = React.useState<number | null>(null);
+
     React.useEffect(() => {
         onAuthStateChanged(auth, (user) => {
             if(user) setCurrentUser(user);
@@ -73,6 +79,7 @@ export default function TakeQuizPage() {
             if (snapshot.exists()) {
                 const quizData = snapshot.val();
                 setQuiz(quizData);
+                setTimeLeft(quizData.timeLimit * 60); // Initialize timer
                 let questions = quizData.sections.flatMap((s: any) => s.questions);
                 if (quizData.shuffleQuestions) {
                     questions = shuffleArray(questions);
@@ -84,17 +91,34 @@ export default function TakeQuizPage() {
         fetchQuiz();
     }, [quizId]);
 
+     // Timer countdown effect
+    React.useEffect(() => {
+        if (timeLeft === null || timeLeft <= 0 || submitting || showResults) {
+            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true); // Auto-submit when timer reaches 0
+            return;
+        }
+        const intervalId = setInterval(() => {
+            setTimeLeft(timeLeft - 1);
+        }, 1000);
+        return () => clearInterval(intervalId);
+    }, [timeLeft, submitting, showResults]);
+
     const handleAnswerChange = (questionId: string, answer: string) => {
-        setAnswers(prev => ({ ...prev, [questionId]: answer }));
+        const newAnswers = { ...answers, [questionId]: answer };
+        setAnswers(newAnswers);
+        if(currentUser){
+            const answerRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}/answers`);
+            set(answerRef, newAnswers);
+        }
     };
 
-    const handleSubmit = async () => {
-        if(!currentUser) return;
+    const handleSubmit = async (isAutoSubmit = false) => {
+        if(!currentUser || submitting) return;
         setSubmitting(true);
         const submissionRef = ref(db, `quizSubmissions/${quizId}/${currentUser.uid}`);
         
         try {
-            const submissionData: any = { answers, status: 'completed' };
+            const submissionData: any = { answers, status: 'completed', submittedAt: new Date().toISOString() };
             if (quiz?.isMultipleChoiceOnly) {
                 let score = 0;
                 allQuestions.forEach(q => {
@@ -111,6 +135,9 @@ export default function TakeQuizPage() {
                  router.push('/student/quizzes');
             }
             await set(submissionRef, submissionData);
+            if (isAutoSubmit) {
+                toast({ variant: "destructive", title: "Time's Up!", description: "Your quiz has been automatically submitted." });
+            }
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Submission Failed', description: error.message });
         } finally {
@@ -120,6 +147,22 @@ export default function TakeQuizPage() {
     
     if (loading) return <Skeleton className="h-96 w-full" />;
 
+    const quizNotStarted = quiz?.startTime && differenceInSeconds(parseISO(quiz.startTime), new Date()) > 0;
+    
+    if(quizNotStarted) {
+        return (
+             <Card className="max-w-2xl mx-auto text-center">
+                <CardHeader>
+                    <CardTitle>{quiz?.title}</CardTitle>
+                    <CardDescription>This quiz is not yet available.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <p>It will become available on {quiz?.startTime && format(parseISO(quiz.startTime), 'PPP p')}.</p>
+                </CardContent>
+             </Card>
+        )
+    }
+    
     if(showResults){
         return (
             <div className="relative">
@@ -140,17 +183,32 @@ export default function TakeQuizPage() {
             </div>
         )
     }
+    
+    const formatTimeLeft = () => {
+        if (timeLeft === null) return '...';
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    };
 
     return (
         <Card className="max-w-4xl mx-auto">
-            <CardHeader><CardTitle className="text-2xl">{quiz?.title}</CardTitle></CardHeader>
-            <CardContent className="space-y-8">
+            <CardHeader className="flex flex-row justify-between items-center sticky top-0 bg-background/95 backdrop-blur-sm z-10 p-4 border-b">
+                <CardTitle className="text-xl md:text-2xl">{quiz?.title}</CardTitle>
+                {timeLeft !== null && (
+                    <div className={`flex items-center gap-2 font-bold p-2 rounded-md ${timeLeft <= 60 ? 'text-destructive animate-pulse' : ''}`}>
+                        <Clock className="h-5 w-5" />
+                        <span>{formatTimeLeft()}</span>
+                    </div>
+                )}
+            </CardHeader>
+            <CardContent className="space-y-8 p-4 md:p-6">
                 {allQuestions.map((question, index) => (
                     <div key={question.id} className="p-4 border-t">
                         <Label className="font-bold text-base">Question {index + 1}: {question.text}</Label>
                         <div className="mt-4">
                             {question.type === 'multiple-choice' ? (
-                                <RadioGroup onValueChange={(value) => handleAnswerChange(question.id, value)}>
+                                <RadioGroup onValueChange={(value) => handleAnswerChange(question.id, value)} value={answers[question.id]}>
                                     {(question.options || []).map(option => (
                                         <div key={option.id} className="flex items-center space-x-2">
                                             <RadioGroupItem value={option.id} id={`${question.id}-${option.id}`} />
@@ -159,13 +217,13 @@ export default function TakeQuizPage() {
                                     ))}
                                 </RadioGroup>
                             ) : (
-                                <Textarea placeholder="Type your answer here..." onChange={(e) => handleAnswerChange(question.id, e.target.value)} />
+                                <Textarea placeholder="Type your answer here..." onChange={(e) => handleAnswerChange(question.id, e.target.value)} value={answers[question.id] || ''} />
                             )}
                         </div>
                     </div>
                 ))}
             </CardContent>
-            <CardFooter className="justify-end">
+            <CardFooter className="justify-end p-4 border-t">
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                         <Button disabled={submitting}>Submit Quiz</Button>
@@ -174,7 +232,7 @@ export default function TakeQuizPage() {
                         <AlertDialogHeader><AlertDialogTitle>Confirm Submission</AlertDialogTitle><AlertDialogDescription>Are you sure you want to submit your answers? You cannot make changes after submitting.</AlertDialogDescription></AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleSubmit}>Yes, Submit</AlertDialogAction>
+                            <AlertDialogAction onClick={() => handleSubmit()}>Yes, Submit</AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
