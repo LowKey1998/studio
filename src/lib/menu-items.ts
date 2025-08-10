@@ -299,6 +299,7 @@ export const studentMenuItems = [
         icon: GraduationCap,
         items: [
             { href: '/student/classes', label: 'My Classes', icon: BookCopy },
+            { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
