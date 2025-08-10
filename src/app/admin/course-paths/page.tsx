@@ -50,7 +50,6 @@ export default function CoursePathsPage() {
     const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({});
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeId, setActiveId] = React.useState<string | null>(null);
-    const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
@@ -143,7 +142,7 @@ export default function CoursePathsPage() {
     };
     
     const findContainer = (id: string) => {
-        if (id === 'available' || availableCourses.some(c => c.id === id)) {
+        if (id === 'available') {
             return 'available';
         }
         for (const semesterId in semesterCourses) {
@@ -154,86 +153,61 @@ export default function CoursePathsPage() {
         return null;
     };
 
-
     const handleDragStart = (event: DragStartEvent) => {
         setActiveId(event.active.id as string);
-        setActiveCourse(courses.find(c => c.id === event.active.id) || null);
     };
 
-   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setActiveCourse(null);
-
-    if (!over) {
-        return;
-    }
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    const activeContainer = findContainer(activeId);
-    const overContainer = findContainer(overId);
-
-    if (!activeContainer || !overContainer) {
-        return;
-    }
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        setActiveId(null);
+        if (!over) return;
     
-    const itemToMove = courses.find(c => c.id === activeId);
-    if (!itemToMove) return;
-
-    if (activeContainer === overContainer) {
-        // Reordering in the same container
-        if (activeContainer === 'available') {
-            setAvailableCourses((items) => {
-                const oldIndex = items.findIndex((item) => item.id === activeId);
-                const newIndex = items.findIndex((item) => item.id === overId);
-                return arrayMove(items, oldIndex, newIndex);
-            });
-        } else {
-            setSemesterCourses((prev) => {
-                const newSemesters = { ...prev };
-                const oldIndex = newSemesters[activeContainer].findIndex((item) => item.id === activeId);
-                const newIndex = newSemesters[activeContainer].findIndex((item) => item.id === overId);
-                newSemesters[activeContainer] = arrayMove(newSemesters[activeContainer], oldIndex, newIndex);
-                return newSemesters;
-            });
+        const activeContainer = findContainer(active.id as string);
+        const overContainer = findContainer(over.id as string);
+    
+        if (!activeContainer || !overContainer || active.id === over.id) {
+            return;
         }
-    } else {
-        // Moving to a different container
-        let newSemesterCourses = { ...semesterCourses };
-        let newAvailableCourses = [...availableCourses];
-        
+    
+        const item = courses.find(c => c.id === active.id);
+        if (!item) return;
+
+        const newSemesterCourses = { ...semesterCourses };
+        const newAvailableCourses = [...availableCourses];
+    
         // Remove from source
         if (activeContainer === 'available') {
-            const index = newAvailableCourses.findIndex(c => c.id === activeId);
-            if (index > -1) newAvailableCourses.splice(index, 1);
+            const index = newAvailableCourses.findIndex(c => c.id === active.id);
+            if(index > -1) newAvailableCourses.splice(index, 1);
         } else {
-            const index = newSemesterCourses[activeContainer].findIndex(c => c.id === activeId);
-            if (index > -1) newSemesterCourses[activeContainer].splice(index, 1);
+            const index = newSemesterCourses[activeContainer]?.findIndex(c => c.id === active.id);
+            if(index > -1) newSemesterCourses[activeContainer].splice(index, 1);
         }
-
+    
         // Add to destination
         if (overContainer === 'available') {
-             const index = newAvailableCourses.findIndex(c => c.id === overId);
-             if (index > -1) newAvailableCourses.splice(index, 0, itemToMove);
-             else newAvailableCourses.push(itemToMove);
+             const overIndex = newAvailableCourses.findIndex(c => c.id === over.id);
+            if (overIndex !== -1) {
+                newAvailableCourses.splice(overIndex, 0, item);
+            } else {
+                newAvailableCourses.push(item);
+            }
         } else {
             if (!newSemesterCourses[overContainer]) {
                 newSemesterCourses[overContainer] = [];
             }
-            const index = newSemesterCourses[overContainer].findIndex(c => c.id === overId);
-            if (index > -1) {
-                newSemesterCourses[overContainer].splice(index, 0, itemToMove);
+            const overIndex = newSemesterCourses[overContainer].findIndex(c => c.id === over.id);
+            if (overIndex !== -1) {
+                newSemesterCourses[overContainer].splice(overIndex, 0, item);
             } else {
-                newSemesterCourses[overContainer].push(itemToMove);
+                newSemesterCourses[overContainer].push(item);
             }
         }
-
+    
         setSemesterCourses(newSemesterCourses);
         setAvailableCourses(newAvailableCourses);
-    }
-};
+    };
+
 
     return (
         <Card>
@@ -310,7 +284,6 @@ export default function CoursePathsPage() {
                                             <AvailableCoursesColumn courses={availableCourses} />
                                         </div>
                                     </div>
-                                    <DragOverlay>{activeId ? <DraggableCourseItem id={activeId} course={activeCourse} isOverlay /> : null}</DragOverlay>
                                     </DndContext>
                                 ) : <Alert><Info className="h-4 w-4"/><AlertTitle>Select Intake & Programme</AlertTitle><AlertDescription>Please select an intake and a programme to begin building a course path.</AlertDescription></Alert>}
                             </CardContent>
@@ -326,13 +299,13 @@ export default function CoursePathsPage() {
 }
 
 // --- Draggable Course Item Component ---
-function DraggableCourseItem({ id, course, isOverlay }: { id: string, course?: Course | null, isOverlay?: boolean }) {
+function DraggableCourseItem({ id, course }: { id: string, course?: Course | null}) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     if (!course) return null;
     return (
-        <div ref={setNodeRef} style={style} {...attributes} className={cn("p-2 border rounded-md bg-card flex items-center gap-2", isDragging && "opacity-50", isOverlay && "shadow-lg")}>
-            <button {...listeners} className="cursor-grab touch-none"><GripVertical className="h-5 w-5 text-muted-foreground"/></button>
+        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={cn("p-2 border rounded-md bg-card flex items-center gap-2 touch-none", isDragging && "opacity-50")}>
+            <GripVertical className="h-5 w-5 text-muted-foreground"/>
             <div>
                 <p className="text-sm font-medium">{course.name}</p>
                 <p className="text-xs text-muted-foreground">{course.code}</p>
@@ -346,10 +319,10 @@ function SemesterColumn({ semesterNum, courses, year }: { semesterNum: number, c
     const semesterId = String((year - 1) * 2 + semesterNum);
     const { setNodeRef } = useSortable({ id: semesterId, data: { type: 'container', id: semesterId } });
     return (
-        <div className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
+        <div ref={setNodeRef} className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
             <h3 className="font-bold text-center">Semester {semesterNum}</h3>
             <SortableContext id={semesterId} items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
-                <div ref={setNodeRef} className="space-y-2">
+                <div className="space-y-2">
                     {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} />)}
                 </div>
             </SortableContext>
@@ -374,8 +347,3 @@ function AvailableCoursesColumn({ courses }: { courses: Course[] }) {
         </Card>
     )
 }
-
-
-    
-
-    
