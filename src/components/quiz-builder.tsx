@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -139,6 +140,11 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                      const [courseSnap, semesterSnap] = await Promise.all([get(courseRef), get(semesterRef)]);
                      if(courseSnap.exists()) setCourse(courseSnap.val());
                      if(semesterSnap.exists()) setSemester(semesterSnap.val());
+                     setQuiz(prev => ({...prev, courseId, semesterId}));
+                } else {
+                    // Handle case where no ids are provided but it's not an edit
+                    setLoading(false);
+                    return;
                 }
             } catch (error) {
                  toast({ variant: 'destructive', title: 'Error loading details' });
