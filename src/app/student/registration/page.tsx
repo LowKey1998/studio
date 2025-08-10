@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle, Star } from 'lucide-react';
+import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle, Star, Download, Banknote, ChevronDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -31,6 +31,9 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 
 type Course = {
@@ -163,6 +166,8 @@ export default function RegistrationPage() {
     const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [selectedPaymentPlanId, setSelectedPaymentPlanId] = React.useState<string>('');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
+
 
     const [existingRegistration, setExistingRegistration] = React.useState<Registration | null>(null);
     const [registeredCourses, setRegisteredCourses] = React.useState<Course[]>([]);
@@ -193,6 +198,8 @@ export default function RegistrationPage() {
         const regPolicyRef = ref(db, 'settings/registrationPolicy');
         const coursesRef = ref(db, 'courses');
         const coursePathsRef = ref(db, 'coursePaths');
+        const institutionRef = ref(db, 'settings/institution');
+
 
         const unsubPaymentPlans = onValue(paymentPlansRef, (snapshot) => {
             if (snapshot.exists()) setAllPaymentPlans(Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })));
@@ -211,12 +218,16 @@ export default function RegistrationPage() {
             if (snapshot.exists()) setAllCoursePaths(Object.values(snapshot.val()));
             else setAllCoursePaths([]);
         });
+        const unsubInstitution = onValue(institutionRef, (snapshot) => {
+            if (snapshot.exists()) setInstitutionSettings(snapshot.val());
+        });
         
         return () => {
             unsubPaymentPlans();
             unsubRegPolicy();
             unsubCourses();
             unsubCoursePaths();
+            unsubInstitution();
         };
     },[]);
 
@@ -265,10 +276,13 @@ export default function RegistrationPage() {
                  setExistingRegistration(null);
                  setRegisteredCourses([]);
                  
-                 const semesterOfferingsSnap = await get(ref(db, `semesterOfferings/${openSemesters.find(s => s.id === selectedSemesterId)?.name}/courseIds`));
-                 const availableCourseIds = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : [];
-                 
-                 setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id)));
+                 const semester = openSemesters.find(s => s.id === selectedSemesterId);
+                 if (semester) {
+                    const offeringsRef = ref(db, `semesterOfferings/${semester.name}/courseIds`);
+                    const offeringsSnap = await get(offeringsRef);
+                    const availableCourseIds = offeringsSnap.exists() ? offeringsSnap.val() : [];
+                    setAvailableCourses(allCourses.filter(c => availableCourseIds.includes(c.id)));
+                 }
                  setSelectedCourses([]);
             }
         } catch (error) {
@@ -425,6 +439,42 @@ export default function RegistrationPage() {
         }
     };
 
+    const generateInvoicePDF = (invoice: Invoice) => {
+        const semester = openSemesters.find(s => s.id === invoice.semesterId);
+        const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
+
+        if (!semester) return;
+
+        const doc = new jsPDF();
+        if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Student: ${userData?.name || ''} (${userData?.id || ''})`, 14, 40);
+        doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
+        doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
+        doc.text(`Semester: ${invoice.semester}`, 14, 45);
+
+        const courseItems = invoice.courses.map(id => [allCourses.find(c => c.id === id)?.code || 'N/A', `Tuition: ${allCourses.find(c => c.id === id)?.name || 'Unknown Course'}`, `ZMW ${(allCourses.find(c => c.id === id)?.cost || 0).toFixed(2)}`]);
+        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
+        const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
+        
+        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
+        if(invoice.applyScholarship) {
+            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.totalTuition || 0)).toFixed(2)}`]);
+        } else {
+            foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
+        }
+        
+        (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        
+        doc.save(`invoice-${invoice.invoiceId}.pdf`);
+    };
+
     const selectedSemesterData = openSemesters.find(s => s.id === selectedSemesterId);
     const isLateRegistration = selectedSemesterData?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
@@ -452,8 +502,6 @@ export default function RegistrationPage() {
         const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
         if(!path || !path.semesters) return [];
         
-        // This is a simplification. A real implementation would need to know which semester of study this is (e.g., Year 2, Sem 1)
-        // For now, we'll just check against the student's overall year.
         const semesterKeys = Object.keys(path.semesters);
         const relevantSemesterKey = semesterKeys[ (userData.year - 1) * 2 ] || semesterKeys[ (userData.year - 1) * 2 + 1 ];
         if (relevantSemesterKey && path.semesters[Number(relevantSemesterKey)]) {
@@ -497,10 +545,29 @@ export default function RegistrationPage() {
                              <Card className="bg-muted/50">
                                 <CardHeader><CardTitle>Status: {existingRegistration.status}</CardTitle><CardDescription>Your registration is currently being processed. You can view payment details on the Payments page.</CardDescription></CardHeader>
                                 <CardContent>
-                                    <Table>
-                                        <TableHeader><TableRow><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead></TableRow></TableHeader>
-                                        <TableBody>{registeredCourses.map(c => (<TableRow key={c.id}><TableCell>{c.code}</TableCell><TableCell>{c.name}</TableCell></TableRow>))}</TableBody>
-                                    </Table>
+                                    <Collapsible>
+                                        <CollapsibleTrigger asChild>
+                                            <Button variant="link" className="p-0 h-auto text-sm mb-2">
+                                                View Invoice Details <ChevronDown className="h-4 w-4 ml-1" />
+                                            </Button>
+                                        </CollapsibleTrigger>
+                                        <CollapsibleContent>
+                                            <Table>
+                                                <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
+                                                <TableBody>
+                                                    {existingRegistration.invoiceDetails?.totalTuition && existingRegistration.invoiceDetails.totalTuition > 0 && <TableRow><TableCell>Total Tuition</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalTuition.toFixed(2)}</TableCell></TableRow>}
+                                                    {existingRegistration.invoiceDetails?.totalMandatoryFees && existingRegistration.invoiceDetails.totalMandatoryFees > 0 && <TableRow><TableCell>Mandatory Fees</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalMandatoryFees.toFixed(2)}</TableCell></TableRow>}
+                                                    {existingRegistration.invoiceDetails?.totalOptionalFees && existingRegistration.invoiceDetails.totalOptionalFees > 0 && <TableRow><TableCell>Optional Fees</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.totalOptionalFees.toFixed(2)}</TableCell></TableRow>}
+                                                    {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
+                                                    {existingRegistration.invoiceDetails?.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
+                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.applyScholarship ? (existingRegistration.invoiceDetails?.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
+                                                </TableBody>
+                                            </Table>
+                                            <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(existingRegistration.invoiceDetails!)}>
+                                                <Download className="mr-2 h-4 w-4" /> Download Full Invoice
+                                            </Button>
+                                        </CollapsibleContent>
+                                    </Collapsible>
                                 </CardContent>
                                 <CardFooter className="justify-between">
                                     <Button asChild variant="secondary"><Link href="/student/payments">Go to Payments</Link></Button>
