@@ -14,7 +14,7 @@ function getAdminApp(): App {
 
   return initializeApp({
     credential: credential.cert(cert),
-    databaseURL: `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebaseio.com`,
+    databaseURL: `https://\${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebaseio.com`,
   });
 }
 
