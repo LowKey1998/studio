@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -12,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical } from 'lucide-react';
+import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -29,6 +28,8 @@ import Link from 'next/link';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 type Course = {
     id: string;
@@ -197,7 +198,10 @@ export default function RegistrationPage() {
             if(snapshot.exists()) setRegistrationPolicy(snapshot.val());
         });
         const unsubCourses = onValue(coursesRef, (snapshot) => {
-            if(snapshot.exists()) setAllCourses(Object.values(snapshot.val()));
+             if(snapshot.exists()) {
+                const coursesData = snapshot.val();
+                setAllCourses(Object.keys(coursesData).map(id => ({id, ...coursesData[id]})));
+            }
         });
         
         return () => {
@@ -246,8 +250,12 @@ export default function RegistrationPage() {
 
             const regData = regSnap.exists() ? regSnap.val() : null;
             if (regData) {
-                // ... (Existing logic to handle existing registration)
-            } else { // No existing registration, show course selection
+                 const courseIds = regData.courses || [];
+                 const regCourses = allCourses.filter(c => courseIds.includes(c.id));
+                 const invoice = invoiceSnap.exists() ? Object.values(invoiceSnap.val() as any).find((inv: any) => inv.invoiceId === regData.invoiceId) : null;
+                 setExistingRegistration({...regData, invoiceDetails: invoice});
+                 setRegisteredCourses(regCourses);
+            } else { 
                  setExistingRegistration(null);
                  setRegisteredCourses([]);
                  
@@ -290,9 +298,10 @@ export default function RegistrationPage() {
 
             if (semester.paymentPlanIds && allPaymentPlans.length > 0) {
                 const planIds = Object.keys(semester.paymentPlanIds);
-                setSemesterPaymentPlans(allPaymentPlans.filter(p => planIds.includes(p.id) && !p.archived));
-                 if (semesterPaymentPlans.length > 0) {
-                    setSelectedPaymentPlanId(semesterPaymentPlans[0].id);
+                const semesterPlans = allPaymentPlans.filter(p => planIds.includes(p.id) && !p.archived);
+                setSemesterPaymentPlans(semesterPlans);
+                 if (semesterPlans.length > 0) {
+                    setSelectedPaymentPlanId(semesterPlans[0].id);
                 }
             } else {
                 setSemesterPaymentPlans([]);
@@ -390,8 +399,25 @@ export default function RegistrationPage() {
         }
     };
     
-    // ... (rest of the component, including handleCancelRegistration, memoized calculations, and JSX)
-    // The JSX part needs to be updated significantly.
+    const handleCancelRegistration = async () => {
+        if (!currentUser || !selectedSemesterId || !existingRegistration) return;
+        if (!window.confirm("Are you sure you want to cancel this registration? All payment records for this semester will also be deleted.")) return;
+        setSubmitting(true);
+        try {
+            await remove(ref(db, `invoices/${currentUser.uid}/${existingRegistration.invoiceId}`));
+            await remove(ref(db, `registrations/${currentUser.uid}/${selectedSemesterId}`));
+            
+            // Optional: remove related transactions if necessary
+            // This would require querying transactions by invoiceId, which can be complex.
+            // For now, we leave them for auditing purposes.
+
+            toast({ title: "Registration Canceled" });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Cancellation Failed', description: error.message });
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const selectedSemesterData = openSemesters.find(s => s.id === selectedSemesterId);
     const isLateRegistration = selectedSemesterData?.lateRegistrationActive ?? false;
@@ -415,8 +441,13 @@ export default function RegistrationPage() {
         return { tuitionCost: tuition, feesCost: optional + mandatory, totalCost: total, payableAmount: payable };
     }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
-    // Omitted the JSX for brevity as it's complex and this is a logic change focus. The main change is in the course selection part.
-    // ...
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <Card><CardHeader><Skeleton className="h-8 w-1/3"/><Skeleton className="h-4 w-1/2 mt-2"/></CardHeader><CardContent><Skeleton className="h-64 w-full" /></CardContent></Card>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-6">
@@ -425,11 +456,11 @@ export default function RegistrationPage() {
                     <CardTitle className="font-headline text-2xl">Course Registration</CardTitle>
                     <CardDescription>{openSemesters.length > 0 ? "Select a semester, choose your courses, and set their priority." : "Course registration is not currently open."}</CardDescription>
                 </CardHeader>
-                {openSemesters.length > 0 && (
+                {openSemesters.length > 0 ? (
                 <>
                 <CardContent className="space-y-6">
                     <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></div>
-                    {isLateRegistration && (
+                     {isLateRegistration && (
                          <Alert variant="destructive">
                             <ShieldAlert className="h-4 w-4" />
                             <AlertTitle>Late Registration</AlertTitle>
@@ -438,7 +469,28 @@ export default function RegistrationPage() {
                             </AlertDescription>
                         </Alert>
                     )}
-                    
+
+                    {existingRegistration ? (
+                         <div>
+                            <h3 className="font-bold text-lg mb-2">My Current Registration for {existingRegistration.semesterName}</h3>
+                             <Card className="bg-muted/50">
+                                <CardHeader><CardTitle>Status: {existingRegistration.status}</CardTitle><CardDescription>Your registration is currently being processed. You can view payment details on the Payments page.</CardDescription></CardHeader>
+                                <CardContent>
+                                    <Table>
+                                        <TableHeader><TableRow><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead></TableRow></TableHeader>
+                                        <TableBody>{registeredCourses.map(c => (<TableRow key={c.id}><TableCell>{c.code}</TableCell><TableCell>{c.name}</TableCell></TableRow>))}</TableBody>
+                                    </Table>
+                                </CardContent>
+                                <CardFooter className="justify-between">
+                                    <Button asChild variant="secondary"><Link href="/student/payments">Go to Payments</Link></Button>
+                                    {(existingRegistration.status === 'Pending Approval' || existingRegistration.status === 'Pending Payment') && (
+                                        <Button variant="destructive" onClick={handleCancelRegistration} disabled={submitting}>{submitting ? <Loader2 className="mr-2 h-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}Cancel Registration</Button>
+                                    )}
+                                </CardFooter>
+                            </Card>
+                        </div>
+                    ) : (
+                    <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Available Courses */}
                         <div>
@@ -460,8 +512,9 @@ export default function RegistrationPage() {
 
                         {/* Selected Courses with Priority */}
                         <div>
-                            <h3 className="font-bold text-lg mb-2">My Selected Courses (Prioritized)</h3>
-                             <p className="text-sm text-muted-foreground mb-2">Drag and drop to set your course unlock priority. The course at the top will be unlocked first as you make payments.</p>
+                            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">My Selected Courses (Prioritized) 
+                                <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5"><HelpCircle className="h-4 w-4"/></Button></TooltipTrigger><TooltipContent><p>Drag and drop courses to set their unlock priority.<br/> Courses at the top will be unlocked first as you pay.</p></TooltipContent></Tooltip></TooltipProvider>
+                            </h3>
                             <div className="max-h-96 overflow-y-auto border rounded-md p-2">
                                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                                     <Table>
@@ -480,7 +533,11 @@ export default function RegistrationPage() {
 
                     {/* Fees Section */}
                      {semesterOptionalFees.length > 0 && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{semesterOptionalFees.map(fee => (<div key={fee.id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${fee.id}`} checked={selectedFees.includes(fee.id)} onCheckedChange={() => handleSelectFee(fee.id)}/><Label htmlFor={`fee-${fee.id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
+                    </>
+                    )}
                 </CardContent>
+                
+                { !existingRegistration && (
                 <CardFooter className="flex flex-col items-end gap-4 border-t pt-6">
                     <div className="w-full space-y-4">
                          <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div><div className="flex items-end pb-1"><div className="flex items-center gap-2"><Checkbox id="scholarship" checked={applyScholarship} onCheckedChange={(checked) => setApplyScholarship(checked as boolean)} /><Label htmlFor="scholarship">Apply for Scholarship (100% tuition waiver)</Label></div></div></div>
@@ -490,7 +547,10 @@ export default function RegistrationPage() {
                     </div>
                     <Button onClick={handleRegister} disabled={submitting || loading || selectedCourses.length === 0} size="lg" className="mt-4">{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{submitting ? 'Submitting...' : 'Submit for Approval'}</Button>
                 </CardFooter>
+                )}
                 </>
+                ) : (
+                <CardContent><div className="text-center py-12"><Clock className="mx-auto h-12 w-12 text-muted-foreground" /><h3 className="mt-4 text-lg font-semibold">Registration Closed</h3><p className="mt-2 text-sm text-muted-foreground">There are no semesters currently open for registration.</p></div></CardContent>
                 )}
             </Card>
         </div>

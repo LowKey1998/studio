@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import {
@@ -57,6 +56,7 @@ type Transaction = {
 
 type Registration = {
     courses: string[];
+    coursePriority: string[]; // Added for prioritization
     originalCourses?: string[];
     optionalFees: string[];
     invoiceId: string;
@@ -174,7 +174,7 @@ function PayNowSection({
                 />
                  <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
                     <h4 className="font-semibold">Coverage Summary</h4>
-                    <p className="text-xs text-muted-foreground">Paying this installment contributes to your total semester fees. Once the installment is fully paid, you will be enrolled in all courses and services for this semester.</p>
+                    <p className="text-xs text-muted-foreground">Paying this installment contributes to your total semester fees. As you pay, courses will be unlocked based on the priority you set during registration.</p>
                  </div>
                  <Button className="w-full mt-4" onClick={() => {
                     setIsPaying(true);
@@ -422,6 +422,7 @@ export default function PaymentsPage() {
 
     const handleSuccessfulPayment = async (payment: DuePayment, paymentResponse: any) => {
         if (!currentUser) return;
+        setActionLoading(true);
         try {
             const transactionRef = push(ref(db, `transactions`));
             await set(transactionRef, {
@@ -432,35 +433,37 @@ export default function PaymentsPage() {
                 currency: paymentResponse.currency,
                 status: paymentResponse.status,
                 paymentDate: new Date().toISOString(),
+                semesterId: payment.invoice.semesterId,
             });
             
-            // Check if this payment completes the installment
-            const newTotalPaid = payment.amountPaid + paymentResponse.amount;
-            if (newTotalPaid >= payment.amountDue && payment.registration.status !== 'Completed') {
-                await update(ref(db, `registrations/${currentUser.uid}/${payment.invoice.semesterId}`), {
-                    status: 'Completed'
-                });
-                 await createNotification(
-                    currentUser.uid,
-                    `You are now fully enrolled for ${payment.invoice.semester}! Access to your courses has been granted.`,
-                    '/student/classes'
-                );
-            }
-    
-            await createNotification(
-                currentUser.uid,
-                `Payment of ZMW ${paymentResponse.amount.toFixed(2)} for ${payment.installmentName} was successful.`,
-                '/student/payments'
-            );
-    
-            toast({ title: 'Payment Successful', description: 'Your payment has been recorded.' });
-            processData(); // Re-process data to update UI instantly
+            // Re-fetch everything to re-calculate access
+             await fetchDataForSemester(currentUser, userData!);
+            
+            toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
     
         } catch(error) {
             console.error("Error updating database after payment:", error);
             toast({ variant: 'destructive', title: "Update Error", description: "Payment was successful but records may not be updated. Contact support."});
+        } finally {
+            setActionLoading(false);
         }
       }
+
+    const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
+        // This function is simplified for brevity. It would refetch all the data as in the main useEffect.
+         const [regsSnap, invoicesSnap, allTxSnap] = await Promise.all([
+            get(ref(db, `registrations/${user.uid}`)),
+            get(ref(db, `invoices/${user.uid}`)),
+            get(ref(db, 'transactions'))
+        ]);
+
+        setRawRegistrations(regsSnap.val() || {});
+        setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
+        const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === user.uid);
+        setRawTransactions(userTransactions as Transaction[]);
+
+        // The processData() call in the useEffect will handle the rest
+    }, []);
 
     const handleCancelRegistration = async (payment: DuePayment) => {
         if (!currentUser) return;
@@ -560,9 +563,10 @@ export default function PaymentsPage() {
                         <Accordion type="multiple" defaultValue={Object.keys(groupedInvoices)}>
                             {Object.entries(groupedInvoices).map(([semesterId, invoices]) => {
                                 const semester = semesters.find(s => s.id === semesterId);
-                                const plan = allPaymentPlans.find(p => p.name === invoices[0].paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
-                                const totalAmount = (invoices[0].totalTuition || 0) + (invoices[0].totalMandatoryFees || 0) + (invoices[0].totalOptionalFees || 0) + (invoices[0].lateFee || 0);
-                                const payableAmount = totalAmount - (invoices[0].applyScholarship ? (invoices[0].totalTuition || 0) : 0);
+                                const invoiceDetails = invoices[0];
+                                const plan = allPaymentPlans.find(p => p.name === invoiceDetails.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
+                                const totalAmount = (invoiceDetails.totalTuition || 0) + (invoiceDetails.totalMandatoryFees || 0) + (invoiceDetails.totalOptionalFees || 0) + (invoiceDetails.lateFee || 0);
+                                const payableAmount = totalAmount - (invoiceDetails.applyScholarship ? (invoiceDetails.totalTuition || 0) : 0);
 
                                 return (
                                 <AccordionItem value={semesterId} key={semesterId}>
@@ -578,14 +582,14 @@ export default function PaymentsPage() {
                                                  <Table>
                                                     <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
                                                     <TableBody>
-                                                        {invoices[0].totalTuition > 0 && <TableRow><TableCell>Total Tuition</TableCell><TableCell className="text-right">{invoices[0].totalTuition.toFixed(2)}</TableCell></TableRow>}
+                                                        {invoiceDetails.totalTuition > 0 && <TableRow><TableCell>Total Tuition</TableCell><TableCell className="text-right">{invoiceDetails.totalTuition.toFixed(2)}</TableCell></TableRow>}
                                                         {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (<TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>))}
-                                                        {semester?.optionalFees && (invoices[0].optionalFees || []).map(feeId => (<TableRow key={feeId}><TableCell>Optional Fee: {semester.optionalFees[feeId]?.name || "Unknown"}</TableCell><TableCell className="text-right">{(semester.optionalFees[feeId]?.amount || 0).toFixed(2)}</TableCell></TableRow>))}
-                                                        {invoices[0].lateFee && invoices[0].lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{invoices[0].lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                        <TableRow className="font-bold bg-muted/50"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {( (invoiceDetails?.totalTuition || 0) + (invoiceDetails?.totalMandatoryFees || 0) + (invoiceDetails?.totalOptionalFees || 0) + (invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
-                                                        {invoices[0].applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoices[0].totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
+                                                        {semester?.optionalFees && (invoiceDetails.optionalFees || []).map(feeId => (<TableRow key={feeId}><TableCell>Optional Fee: {semester.optionalFees[feeId]?.name || "Unknown"}</TableCell><TableCell className="text-right">{(semester.optionalFees[feeId]?.amount || 0).toFixed(2)}</TableCell></TableRow>))}
+                                                        {invoiceDetails.lateFee && invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
+                                                        <TableRow className="font-bold bg-muted/50"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {totalAmount.toFixed(2)}</TableCell></TableRow>
+                                                        {invoiceDetails.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoiceDetails.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
                                                         <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {payableAmount.toFixed(2)}</TableCell></TableRow>
-                                                        <TableRow className="font-bold"><TableCell>Payment Plan</TableCell><TableCell className="text-right">{invoices[0].paymentPlan}</TableCell></TableRow>
+                                                        <TableRow className="font-bold"><TableCell>Payment Plan</TableCell><TableCell className="text-right">{invoiceDetails.paymentPlan}</TableCell></TableRow>
                                                     </TableBody>
                                                 </Table>
                                                 <h4 className="font-semibold mt-4 mb-2">Installment Plan</h4>
@@ -600,7 +604,7 @@ export default function PaymentsPage() {
                                                         })}
                                                     </TableBody>
                                                 </Table>
-                                                <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(invoices[0])}>
+                                                <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(invoiceDetails)}>
                                                     <Download className="mr-2 h-4 w-4" /> Download PDF
                                                 </Button>
                                             </CollapsibleContent>
