@@ -165,72 +165,69 @@ export default function CoursePathsPage() {
         const { active, over } = event;
         setActiveId(null);
         setActiveCourse(null);
-        if (!over) return;
     
-        const activeContainerId = findContainer(active.id as string);
-        const overContainerId = findContainer(over.id as string);
-    
-        if (!activeContainerId || !overContainerId || !active.id) return;
-    
-        const movedItem = courses.find(c => c.id === active.id);
-        if (!movedItem) return;
-
-        if (activeContainerId === overContainerId) {
-            if (activeContainerId === 'available') {
-                setAvailableCourses(prev => {
-                    const oldIndex = prev.findIndex(c => c.id === active.id);
-                    const newIndex = prev.findIndex(c => c.id === over.id);
-                    return oldIndex !== -1 && newIndex !== -1 ? arrayMove(prev, oldIndex, newIndex) : prev;
-                });
-            } else {
-                setSemesterCourses(prev => {
-                    const newSemesters = { ...prev };
-                    const semesterCoursesList = newSemesters[activeContainerId] || [];
-                    const oldIndex = semesterCoursesList.findIndex(c => c.id === active.id);
-                    const newIndex = semesterCoursesList.findIndex(c => c.id === over.id);
-                    if(oldIndex !== -1 && newIndex !== -1) {
-                       newSemesters[activeContainerId] = arrayMove(semesterCoursesList, oldIndex, newIndex);
-                    }
-                    return newSemesters;
-                });
-            }
-        } else {
-            // Transactional state update
-            setAvailableCourses(prevAvailable => {
-                let newAvailable = [...prevAvailable];
-                setSemesterCourses(prevSemesters => {
-                    const newSemesters = { ...prevSemesters };
-                     // Remove from source
-                    if (activeContainerId === 'available') {
-                        newAvailable = newAvailable.filter(c => c.id !== active.id);
-                    } else {
-                        newSemesters[activeContainerId] = (newSemesters[activeContainerId] || []).filter(c => c.id !== active.id);
-                    }
-                     // Add to destination
-                    if (overContainerId === 'available') {
-                        // Find the index of the item we're hovering over
-                        const overIndex = newAvailable.findIndex(item => item.id === over.id);
-                        if (overIndex > -1) {
-                            newAvailable.splice(overIndex, 0, movedItem);
-                        } else {
-                            newAvailable.push(movedItem);
-                        }
-                    } else {
-                        const destinationCourses = newSemesters[overContainerId] || [];
-                         // Find the index of the item we're hovering over
-                        const overIndex = destinationCourses.findIndex(item => item.id === over.id);
-                        if (overIndex > -1) {
-                            destinationCourses.splice(overIndex, 0, movedItem);
-                        } else {
-                            destinationCourses.push(movedItem);
-                        }
-                        newSemesters[overContainerId] = destinationCourses;
-                    }
-                     return newSemesters;
-                });
-                 return newAvailable;
-            });
+        if (!over) {
+            return;
         }
+    
+        const activeId = active.id as string;
+        const overId = over.id as string;
+    
+        if (activeId === overId) {
+            return;
+        }
+    
+        const activeContainer = findContainer(activeId);
+        const overContainer = findContainer(overId);
+    
+        if (!activeContainer || !overContainer) {
+            return;
+        }
+    
+        setAvailableCourses(prevAvailable => {
+            const newAvailable = [...prevAvailable];
+            setSemesterCourses(prevSemesters => {
+                const newSemesters = { ...prevSemesters };
+                const activeItems = activeContainer === 'available' ? newAvailable : newSemesters[activeContainer] || [];
+                const overItems = overContainer === 'available' ? newAvailable : newSemesters[overContainer] || [];
+                
+                const activeIndex = activeItems.findIndex(item => item.id === activeId);
+                const overIndex = overItems.findIndex(item => item.id === overId);
+                
+                let newIndex;
+                if (activeContainer === overContainer) {
+                    // Reordering in the same container
+                    const movedItems = arrayMove(activeItems, activeIndex, overIndex);
+                    if (activeContainer === 'available') {
+                        return { prevAvailable: movedItems, prevSemesters };
+                    } else {
+                        return { prevAvailable, prevSemesters: { ...prevSemesters, [activeContainer]: movedItems } };
+                    }
+                } else {
+                    // Moving to a different container
+                    const [movedItem] = activeItems.splice(activeIndex, 1);
+                    
+                    if (overContainer === 'available') {
+                        newIndex = overIndex >= 0 ? overIndex : newAvailable.length;
+                        newAvailable.splice(newIndex, 0, movedItem);
+                    } else {
+                        const destinationItems = newSemesters[overContainer] || [];
+                        newIndex = overIndex >= 0 ? overIndex : destinationItems.length;
+                        destinationItems.splice(newIndex, 0, movedItem);
+                        newSemesters[overContainer] = destinationItems;
+                    }
+                    
+                    if (activeContainer !== 'available') {
+                        newSemesters[activeContainer] = activeItems;
+                    }
+                    
+                    return { prevAvailable: newAvailable, prevSemesters: newSemesters };
+                }
+            });
+            // This is a dummy return to satisfy TypeScript, the actual state update happens in the nested setSemesterCourses.
+            // A more advanced solution would use a single state object for both available and semester courses.
+            return prevAvailable; 
+        });
     };
     
 
@@ -373,3 +370,6 @@ function AvailableCoursesColumn({ courses }: { courses: Course[] }) {
         </Card>
     )
 }
+
+
+    
