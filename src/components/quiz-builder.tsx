@@ -16,6 +16,7 @@ import { Checkbox } from './ui/checkbox';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useRouter } from 'next/navigation';
 
 type Question = {
     id: string;
@@ -38,6 +39,7 @@ type Quiz = {
     isMultipleChoiceOnly: boolean;
     shuffleQuestions: boolean;
     sections: Section[];
+    courseId: string | null;
 };
 
 const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, removeQuestion, updateOption, addOption, removeOption, setCorrectAnswer }: {
@@ -86,18 +88,20 @@ const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, remo
     );
 };
 
-export default function QuizBuilder({ quizId }: { quizId?: string }) {
+export default function QuizBuilder({ quizId, courseId }: { quizId?: string, courseId?: string | null }) {
     const [quiz, setQuiz] = React.useState<Quiz>({
         title: '',
         description: '',
         timeLimit: 30,
         isMultipleChoiceOnly: false,
         shuffleQuestions: true,
-        sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }]
+        sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }],
+        courseId: courseId || null,
     });
     const [loading, setLoading] = React.useState(!!quizId);
     const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
+    const router = useRouter();
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
     React.useEffect(() => {
@@ -208,9 +212,15 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
     const handleSaveQuiz = async () => {
         setSaving(true);
         try {
+            const quizToSave = {...quiz};
+            if(!quizId && courseId) {
+                quizToSave.courseId = courseId;
+            }
+
             const quizRef = quizId ? ref(db, `quizzes/${quizId}`) : push(ref(db, 'quizzes'));
-            await set(quizRef, quiz);
+            await set(quizRef, quizToSave);
             toast({ title: 'Quiz Saved', description: 'Your quiz has been successfully saved.' });
+            router.push('/admin/e-learning/online-quizzes');
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
         } finally {
@@ -306,4 +316,3 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
         </div>
     );
 }
-

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, FileQuestion, Trash2 } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, onValue, set, push, remove } from 'firebase/database';
+import { ref, onValue, set, push, remove, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 type Quiz = {
     id: string;
@@ -28,15 +39,26 @@ type Quiz = {
     courseId: string;
 };
 
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+};
+
 export default function OnlineQuizzesPage() {
     const [quizzes, setQuizzes] = React.useState<Quiz[]>([]);
+    const [courses, setCourses] = React.useState<Course[]>([]);
+    const [selectedCourse, setSelectedCourse] = React.useState('');
     const [loading, setLoading] = React.useState(true);
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const router = useRouter();
     const { toast } = useToast();
     
     React.useEffect(() => {
         const quizzesRef = ref(db, 'quizzes');
-        const unsub = onValue(quizzesRef, (snapshot) => {
+        const coursesRef = ref(db, 'courses');
+
+        const unsubQuizzes = onValue(quizzesRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 setQuizzes(Object.keys(data).map(id => ({ id, ...data[id] })));
@@ -45,8 +67,30 @@ export default function OnlineQuizzesPage() {
             }
             setLoading(false);
         });
-        return () => unsub();
+
+        const unsubCourses = onValue(coursesRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                setCourses(Object.keys(data).map(id => ({ id, ...data[id] })));
+            } else {
+                setCourses([]);
+            }
+        });
+
+        return () => {
+            unsubQuizzes();
+            unsubCourses();
+        }
     }, []);
+    
+    const handleProceedToBuilder = () => {
+        if (!selectedCourse) {
+            toast({ variant: 'destructive', title: 'Please select a course.' });
+            return;
+        }
+        setIsCreateDialogOpen(false);
+        router.push(`/admin/quizzes/builder?courseId=${selectedCourse}`);
+    };
 
     const handleDelete = async (quizId: string) => {
         try {
@@ -65,9 +109,36 @@ export default function OnlineQuizzesPage() {
                     <CardTitle>Online Quizzes</CardTitle>
                     <CardDescription>Create, manage, and review online quizzes for student assessment.</CardDescription>
                 </div>
-                <Button onClick={() => router.push('/admin/quizzes/builder')}>
-                    <PlusCircle className="mr-2 h-4 w-4"/> Create Quiz
-                </Button>
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button><PlusCircle className="mr-2 h-4 w-4"/> Create Quiz</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Select Course</DialogTitle>
+                            <DialogDescription>Choose the course this quiz will belong to.</DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <Label htmlFor="course-select">Course</Label>
+                            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+                                <SelectTrigger id="course-select">
+                                    <SelectValue placeholder="Select a course..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {courses.map(course => (
+                                        <SelectItem key={course.id} value={course.id}>
+                                            {course.name} ({course.code})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleProceedToBuilder}>Proceed to Builder</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardHeader>
             <CardContent>
                 {loading ? (
@@ -108,4 +179,3 @@ export default function OnlineQuizzesPage() {
         </Card>
     );
 }
-
