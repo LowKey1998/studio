@@ -18,6 +18,9 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, v
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/navigation';
 import { Skeleton } from './ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { Info } from 'lucide-react';
+
 
 type Question = {
     id: string;
@@ -110,8 +113,22 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
     const { toast } = useToast();
     const router = useRouter();
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+    
+    const [isReady, setIsReady] = React.useState(false);
 
     React.useEffect(() => {
+        if (quizId || (courseId && semesterId)) {
+            setIsReady(true);
+        }
+    }, [quizId, courseId, semesterId]);
+
+
+    React.useEffect(() => {
+        if (!isReady) {
+             setLoading(false);
+             return;
+        };
+
         const fetchDetails = async () => {
             setLoading(true);
             try {
@@ -141,10 +158,6 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                      if(courseSnap.exists()) setCourse(courseSnap.val());
                      if(semesterSnap.exists()) setSemester(semesterSnap.val());
                      setQuiz(prev => ({...prev, courseId, semesterId}));
-                } else {
-                    // Handle case where no ids are provided but it's not an edit
-                    setLoading(false);
-                    return;
                 }
             } catch (error) {
                  toast({ variant: 'destructive', title: 'Error loading details' });
@@ -153,7 +166,7 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
             }
         };
         fetchDetails();
-    }, [quizId, courseId, semesterId, toast]);
+    }, [quizId, courseId, semesterId, toast, isReady]);
 
     const handleQuizChange = (field: keyof Quiz, value: any) => {
         setQuiz(prev => ({ ...prev, [field]: value }));
@@ -299,6 +312,25 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
             return {...prev, sections: newSections};
         });
     };
+    
+    if (!isReady) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Quiz Builder</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Alert variant="destructive">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>Missing Information</AlertTitle>
+                        <AlertDescription>
+                            No course or quiz ID was provided. Please create a quiz from the main quizzes page.
+                        </AlertDescription>
+                    </Alert>
+                </CardContent>
+            </Card>
+        )
+    }
 
     if (loading) {
         return (
