@@ -469,6 +469,12 @@ export default function UserManagementPage() {
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-email" className="text-right">Email</Label><Input id="edit-email" value={editingUser?.email || ''} className="col-span-3" disabled /></div>
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-name" className="text-right">Name</Label><Input id="edit-name" value={editName} onChange={e => setEditName(e.target.value)} className="col-span-3" disabled={loading}/></div>
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-role" className="text-right">Role</Label><Select onValueChange={setEditRole} value={editRole} disabled={loading}><SelectTrigger className="col-span-3"><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="Student">Student</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Admin">Admin</SelectItem></SelectContent></Select></div>
+                    {editRole === 'Student' && editingUser?.intakeId && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-intake" className="text-right">Intake</Label>
+                            <Input id="edit-intake" value={allIntakes.find(i => i.id === editingUser.intakeId)?.name || 'N/A'} className="col-span-3" disabled />
+                        </div>
+                    )}
                     {editRole === 'Staff' && (<div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>)}
                 </div>
                 <DialogFooter><DialogClose asChild><Button variant="outline" type="button" onClick={() => setIsEditOpen(false)}>Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Update User'}</Button></DialogFooter>
@@ -502,11 +508,12 @@ export default function UserManagementPage() {
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 animate-spin"/> : "Save Role"}</Button>
+                <Button onClick={handleSaveSubRole} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Save Role"}</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
     </>
   );
 }
+
 
