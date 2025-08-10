@@ -17,6 +17,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter } from 'next/navigation';
+import { Skeleton } from './ui/skeleton';
 
 type Question = {
     id: string;
@@ -100,24 +101,52 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
         courseId: courseId || null,
         semesterId: semesterId || null,
     });
-    const [loading, setLoading] = React.useState(!!quizId);
+    const [course, setCourse] = React.useState<{ name: string; code: string } | null>(null);
+    const [semester, setSemester] = React.useState<{ name: string } | null>(null);
+    const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
     const router = useRouter();
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
     React.useEffect(() => {
-        if (!quizId) return;
-        setLoading(true);
-        const quizRef = ref(db, `quizzes/${quizId}`);
-        get(quizRef).then(snapshot => {
-            if (snapshot.exists()) {
-                setQuiz(snapshot.val());
-            } else {
-                toast({ variant: 'destructive', title: 'Quiz not found' });
+        const fetchDetails = async () => {
+            setLoading(true);
+            try {
+                if (quizId) {
+                    const quizRef = ref(db, `quizzes/${quizId}`);
+                    const snapshot = await get(quizRef);
+                    if (snapshot.exists()) {
+                        const quizData = snapshot.val();
+                        setQuiz(quizData);
+                        if (quizData.courseId) {
+                            const courseRef = ref(db, `courses/${quizData.courseId}`);
+                            const courseSnap = await get(courseRef);
+                            if (courseSnap.exists()) setCourse(courseSnap.val());
+                        }
+                         if (quizData.semesterId) {
+                            const semesterRef = ref(db, `semesters/${quizData.semesterId}`);
+                            const semesterSnap = await get(semesterRef);
+                            if (semesterSnap.exists()) setSemester(semesterSnap.val());
+                        }
+                    } else {
+                        toast({ variant: 'destructive', title: 'Quiz not found' });
+                    }
+                } else if (courseId && semesterId) {
+                     const courseRef = ref(db, `courses/${courseId}`);
+                     const semesterRef = ref(db, `semesters/${semesterId}`);
+                     const [courseSnap, semesterSnap] = await Promise.all([get(courseRef), get(semesterRef)]);
+                     if(courseSnap.exists()) setCourse(courseSnap.val());
+                     if(semesterSnap.exists()) setSemester(semesterSnap.val());
+                }
+            } catch (error) {
+                 toast({ variant: 'destructive', title: 'Error loading details' });
+            } finally {
+                setLoading(false);
             }
-        }).finally(() => setLoading(false));
-    }, [quizId, toast]);
+        };
+        fetchDetails();
+    }, [quizId, courseId, semesterId, toast]);
 
     const handleQuizChange = (field: keyof Quiz, value: any) => {
         setQuiz(prev => ({ ...prev, [field]: value }));
@@ -264,12 +293,25 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
         });
     };
 
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                 <Skeleton className="h-40 w-full" />
+                 <Skeleton className="h-64 w-full" />
+                 <div className="flex justify-end"><Skeleton className="h-10 w-24" /></div>
+            </div>
+        )
+    }
+
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="text-2xl">{quizId ? 'Edit Quiz' : 'Create New Quiz'}</CardTitle>
-                    <CardDescription>Build your quiz with sections, questions, and settings.</CardDescription>
+                    <CardDescription>
+                        {loading ? <Skeleton className="h-4 w-1/2" /> :
+                        `For ${course?.name || '...'} (${course?.code || '...'}) - ${semester?.name || '...'}.`}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Input placeholder="Quiz Title" value={quiz.title} onChange={e => handleQuizChange('title', e.target.value)} />
