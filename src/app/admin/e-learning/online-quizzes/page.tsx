@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, FileQuestion, Trash2 } from "lucide-react";
+import { PlusCircle, Loader2, FileQuestion, Trash2, Search } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 type Quiz = {
     id: string;
@@ -65,13 +66,21 @@ export default function OnlineQuizzesPage() {
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState('');
-    const [selectedProgramme, setSelectedProgramme] = React.useState('');
-    const [selectedCourse, setSelectedCourse] = React.useState('');
     const [loading, setLoading] = React.useState(true);
-    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const router = useRouter();
     const { toast } = useToast();
+    
+    // Create Dialog State
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+    const [createSelectedSemester, setCreateSelectedSemester] = React.useState('');
+    const [createSelectedProgramme, setCreateSelectedProgramme] = React.useState('');
+    const [createSelectedCourse, setCreateSelectedCourse] = React.useState('');
+
+    // Filter State
+    const [searchTerm, setSearchTerm] = React.useState('');
+    const [programmeFilter, setProgrammeFilter] = React.useState('all');
+    const [semesterFilter, setSemesterFilter] = React.useState('all');
+
     
     React.useEffect(() => {
         const quizzesRef = ref(db, 'quizzes');
@@ -80,41 +89,21 @@ export default function OnlineQuizzesPage() {
         const semestersRef = ref(db, 'semesters');
 
         const unsubQuizzes = onValue(quizzesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                setQuizzes(Object.keys(data).map(id => ({ id, ...data[id] })));
-            } else {
-                setQuizzes([]);
-            }
+            setQuizzes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
             setLoading(false);
         });
 
         const unsubCourses = onValue(coursesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                setCourses(Object.keys(data).map(id => ({ id, ...data[id] })));
-            } else {
-                setCourses([]);
-            }
+            setCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
         });
 
         const unsubProgrammes = onValue(programmesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                setProgrammes(Object.keys(data).map(id => ({ id, ...data[id] })));
-            } else {
-                setProgrammes([]);
-            }
+            setProgrammes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
         });
         
         const unsubSemesters = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                setSemesters(list.filter(s => s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name)));
-            } else {
-                setSemesters([]);
-            }
+            const list: Semester[] = snapshot.exists() ? Object.keys(snapshot.val()).map(key => ({ id: key, ...snapshot.val()[key] })) : [];
+            setSemesters(list.filter(s => s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name)));
         });
 
         return () => {
@@ -126,12 +115,12 @@ export default function OnlineQuizzesPage() {
     }, []);
     
     const handleProceedToBuilder = () => {
-        if (!selectedCourse) {
+        if (!createSelectedCourse) {
             toast({ variant: 'destructive', title: 'Please select a course.' });
             return;
         }
         setIsCreateDialogOpen(false);
-        router.push(`/admin/quizzes/builder?courseId=${selectedCourse}&semesterId=${selectedSemester}`);
+        router.push(`/admin/quizzes/builder?courseId=${createSelectedCourse}&semesterId=${createSelectedSemester}`);
     };
 
     const handleDelete = async (quizId: string) => {
@@ -144,17 +133,35 @@ export default function OnlineQuizzesPage() {
         }
     };
     
-    const filteredCourses = React.useMemo(() => {
-        if (!selectedProgramme) return [];
-        const programme = programmes.find(p => p.id === selectedProgramme);
+    const createDialogFilteredCourses = React.useMemo(() => {
+        if (!createSelectedProgramme) return [];
+        const programme = programmes.find(p => p.id === createSelectedProgramme);
         if (!programme || !programme.courseIds) return [];
         const courseIds = Object.keys(programme.courseIds);
         return courses.filter(c => courseIds.includes(c.id));
-    }, [selectedProgramme, programmes, courses]);
+    }, [createSelectedProgramme, programmes, courses]);
+
+    const filteredQuizzes = React.useMemo(() => {
+        const programmeCourseIds = new Set<string>();
+        if (programmeFilter !== 'all') {
+            const programme = programmes.find(p => p.id === programmeFilter);
+            if (programme?.courseIds) {
+                Object.keys(programme.courseIds).forEach(id => programmeCourseIds.add(id));
+            }
+        }
+
+        return quizzes.filter(quiz => {
+            const searchMatch = !searchTerm || quiz.title.toLowerCase().includes(searchTerm.toLowerCase());
+            const semesterMatch = semesterFilter === 'all' || quiz.semesterId === semesterFilter;
+            const programmeMatch = programmeFilter === 'all' || programmeCourseIds.has(quiz.courseId);
+
+            return searchMatch && semesterMatch && programmeMatch;
+        });
+    }, [quizzes, searchTerm, programmeFilter, semesterFilter, programmes]);
 
     return (
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                     <CardTitle>Online Quizzes</CardTitle>
                     <CardDescription>Create, manage, and review online quizzes for student assessment.</CardDescription>
@@ -171,47 +178,23 @@ export default function OnlineQuizzesPage() {
                         <div className="py-4 space-y-4">
                              <div className="space-y-1">
                                 <Label htmlFor="semester-select">Semester</Label>
-                                <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-                                    <SelectTrigger id="semester-select">
-                                        <SelectValue placeholder="Select a semester..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {semesters.map(semester => (
-                                            <SelectItem key={semester.id} value={semester.id}>
-                                                {semester.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
+                                <Select value={createSelectedSemester} onValueChange={setCreateSelectedSemester}>
+                                    <SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger>
+                                    <SelectContent>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                              <div className="space-y-1">
                                 <Label htmlFor="programme-select">Programme</Label>
-                                <Select value={selectedProgramme} onValueChange={setSelectedProgramme} disabled={!selectedSemester}>
-                                    <SelectTrigger id="programme-select">
-                                        <SelectValue placeholder="Select a programme..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {programmes.map(programme => (
-                                            <SelectItem key={programme.id} value={programme.id}>
-                                                {programme.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
+                                <Select value={createSelectedProgramme} onValueChange={setCreateSelectedProgramme} disabled={!createSelectedSemester}>
+                                    <SelectTrigger id="programme-select"><SelectValue placeholder="Select a programme..." /></SelectTrigger>
+                                    <SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-1">
                                 <Label htmlFor="course-select">Course</Label>
-                                <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={!selectedProgramme}>
-                                    <SelectTrigger id="course-select">
-                                        <SelectValue placeholder="Select a course..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {filteredCourses.map(course => (
-                                            <SelectItem key={course.id} value={course.id}>
-                                                {course.name} ({course.code})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
+                                <Select value={createSelectedCourse} onValueChange={setCreateSelectedCourse} disabled={!createSelectedProgramme}>
+                                    <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
+                                    <SelectContent>{createDialogFilteredCourses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                         </div>
@@ -223,11 +206,25 @@ export default function OnlineQuizzesPage() {
                 </Dialog>
             </CardHeader>
             <CardContent>
+                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                    <div className="relative flex-grow">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="Search quiz title..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
+                    <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
+                        <SelectTrigger className="md:w-[250px]"><SelectValue placeholder="Filter by programme..." /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                     <Select value={semesterFilter} onValueChange={setSemesterFilter}>
+                        <SelectTrigger className="md:w-[250px]"><SelectValue placeholder="Filter by semester..." /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
                 {loading ? (
                     <Skeleton className="h-48" />
-                ) : quizzes.length > 0 ? (
+                ) : filteredQuizzes.length > 0 ? (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {quizzes.map(quiz => {
+                        {filteredQuizzes.map(quiz => {
                             const course = courses.find(c => c.id === quiz.courseId);
                             const semester = semesters.find(s => s.id === quiz.semesterId);
                             return (
@@ -265,7 +262,7 @@ export default function OnlineQuizzesPage() {
                         })}
                     </div>
                 ) : (
-                    <p className="text-muted-foreground text-center py-8">No quizzes have been created yet.</p>
+                    <p className="text-muted-foreground text-center py-8">No quizzes found for the current filters.</p>
                 )}
             </CardContent>
         </Card>
