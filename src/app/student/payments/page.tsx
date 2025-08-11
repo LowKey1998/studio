@@ -144,8 +144,8 @@ function PayNowSection({
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
-    const paymentAllocation: { course: Course, allocatedAmount: number }[] = React.useMemo(() => {
-        if (finalAmount <= 0 || !paymentPlan) return [];
+    const paymentAllocation = React.useMemo(() => {
+        if (finalAmount <= 0) return [];
         let paymentLeftToAllocate = finalAmount;
         const breakdown: { course: Course, allocatedAmount: number }[] = [];
         
@@ -168,29 +168,20 @@ function PayNowSection({
             }
         }
         return breakdown;
-    }, [finalAmount, totalPaidForInvoice, payment.registration.coursePriority, allCourses, paymentPlan]);
+    }, [finalAmount, totalPaidForInvoice, payment.registration.coursePriority, allCourses]);
 
-    const unlockedCourses: { course: Course, amountCovered: number }[] = React.useMemo(() => {
+    const unlockedCourses: Course[] = React.useMemo(() => {
         if (!paymentPlan) return [];
         
-        let runningBudget = newTotalPaid;
-        const unlocked: { course: Course, amountCovered: number }[] = [];
-        
-        const installmentIndex = allPaymentPlans.findIndex(p => p.id === paymentPlan.id);
-        const currentInstallmentNumber = payment.installmentName.match(/\d+/)?.[0] ? parseInt(payment.installmentName.match(/\d+/)?.[0]!) -1 : 0;
+        let cumulativePaid = newTotalPaid;
+        const unlocked: Course[] = [];
 
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
-                let costToUnlock = 0;
-                for (let i=0; i<=currentInstallmentNumber; i++) {
-                    const percentage = paymentPlan.installmentPercentages[i];
-                    costToUnlock += course.cost * (percentage / 100);
-                }
-
-                if (runningBudget >= costToUnlock) {
-                    unlocked.push({ course, amountCovered: costToUnlock });
-                    runningBudget -= course.cost; // Subtract full course cost as we move to next
+                if (cumulativePaid >= course.cost) {
+                    unlocked.push(course);
+                    cumulativePaid -= course.cost;
                 } else {
                     break;
                 }
@@ -279,10 +270,10 @@ function PayNowSection({
                     max={payment.balance}
                     min="1"
                 />
-                 {customAmount > 0 ? (
+                 {customAmount > 0 && (
                     <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
                         <h4 className="font-semibold">Payment Allocation & Unlocked Courses</h4>
-                        <div className="space-y-1 text-xs">
+                         <div className="space-y-1 text-xs">
                             <p className="font-bold">Your payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows:</p>
                             <ul className="list-disc pl-5">
                                 {paymentAllocation.length > 0 ? paymentAllocation.map(({course, allocatedAmount}) => (
@@ -292,13 +283,13 @@ function PayNowSection({
                         </div>
                         <Separator/>
                          <div className="space-y-1 text-xs">
-                            <p className="font-bold">Total unlocked courses after this payment:</p>
+                            <p className="font-bold">Courses unlocked after this payment:</p>
                              <ul className="list-disc pl-5 text-green-600 font-medium">
-                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li key="no-courses-covered">No courses fully unlocked yet.</li>}
+                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>) : <li>No new courses fully unlocked.</li>}
                             </ul>
                         </div>
                     </div>
-                ) : null }
+                )}
                  <Button className="w-full mt-4" onClick={() => {
                     setIsPaying(true);
                     handleFlutterwavePayment({
@@ -695,7 +686,7 @@ export default function PaymentsPage() {
                                     <AccordionContent className="space-y-4">
                                         <Collapsible>
                                             <CollapsibleTrigger asChild>
-                                                 <Button variant="link" className="p-0 h-auto text-sm">
+                                                 <Button variant="link" className="p-0 h-auto text-sm mb-2">
                                                     View Invoice Details <ChevronDown className="h-4 w-4 ml-1" />
                                                 </Button>
                                             </CollapsibleTrigger>
