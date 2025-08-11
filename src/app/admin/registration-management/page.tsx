@@ -116,7 +116,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         if (!template) return;
         
         const newFee = { name: template.name, amount: parseFloat(feeAmount) };
-        const feeId = selectedFeeTemplate;
+        const feeId = selectedFeeTemplate; // Use the template's ID as the key
         
         if (isMandatory) {
             setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
@@ -519,7 +519,7 @@ export default function RegistrationManagementPage() {
                                                 {Object.entries(prog.coursesByYear).map(([year, courses]) => (
                                                     <AccordionItem value={year} key={year}><AccordionTrigger className="font-semibold text-base pl-4">{year} Courses</AccordionTrigger><AccordionContent className="pl-8">
                                                             <Table><TableHeader><TableRow><TableHead className="w-[50px]">Enable</TableHead><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead><TableHead>Assigned Lecturer</TableHead></TableRow></TableHeader>
-                                                                <TableBody>{courses.map((course) => (<TableRow key={course.id} className={cn(!availableForSemester.includes(course.id) && "text-muted-foreground opacity-60")} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={!canSave && currentSemester?.status !== 'Open'}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
+                                                                <TableBody>{courses.map((course) => (<TableRow key={course.id} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={!canSave && currentSemester?.status !== 'Open'}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
                                                                 </TableBody></Table></AccordionContent></AccordionItem>))}
                                            </Accordion>) : (<p className="text-muted-foreground p-4">No courses assigned to this programme.</p>)}
                                     </AccordionContent></AccordionItem>
@@ -536,5 +536,7 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+    
 
     

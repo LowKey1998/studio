@@ -590,7 +590,7 @@ export default function RegistrationPage() {
                                                     ))}
                                                     {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
                                                          const fee = currentSemester.optionalFees![feeId];
-                                                         return fee ? <TableRow key={fee.id}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
+                                                         return fee ? <TableRow key={feeId}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
                                                     <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
@@ -723,5 +723,7 @@ export default function RegistrationPage() {
         </div>
     );
 }
+
+    
 
     
