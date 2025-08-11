@@ -484,10 +484,11 @@ export default function RegistrationPage() {
     
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
     
-        const optional = (semester.optionalFees ? Object.keys(semester.optionalFees) : [])
-            .filter(feeId => selectedFees.includes(feeId))
-            .reduce((acc, feeId) => acc + (semester.optionalFees?.[feeId]?.amount || 0), 0);
-    
+        const optional = selectedFees.reduce((acc, feeId) => {
+            const fee = semester.optionalFees?.[feeId];
+            return acc + (fee?.amount || 0);
+        }, 0);
+            
         const mandatory = semester.mandatoryFees ? Object.values(semester.mandatoryFees).reduce((acc, fee) => acc + fee.amount, 0) : 0;
             
         const lateFee = isLateRegistration ? lateFeeAmount : 0;
@@ -588,7 +589,7 @@ export default function RegistrationPage() {
                                                         <TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
                                                     {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
-                                                         const fee = Object.values(currentSemester.optionalFees!).find(f => f.id === feeId);
+                                                         const fee = currentSemester.optionalFees![feeId];
                                                          return fee ? <TableRow key={fee.id}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
@@ -659,7 +660,7 @@ export default function RegistrationPage() {
                     </div>
 
                     {/* Fees Section */}
-                     {(currentSemester?.optionalFees && Object.keys(currentSemester.optionalFees).length > 0) && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{Object.values(currentSemester.optionalFees).map(fee => (<div key={fee.id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${fee.id}`} checked={selectedFees.includes(fee.id)} onCheckedChange={() => handleSelectFee(fee.id)}/><Label htmlFor={`fee-${fee.id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
+                     {(currentSemester?.optionalFees && Object.keys(currentSemester.optionalFees).length > 0) && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{Object.entries(currentSemester.optionalFees).map(([id, fee]) => (<div key={id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${id}`} checked={selectedFees.includes(id)} onCheckedChange={() => handleSelectFee(id)}/><Label htmlFor={`fee-${id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
                     </>
                     )}
                 </CardContent>
@@ -722,3 +723,5 @@ export default function RegistrationPage() {
         </div>
     );
 }
+
+    

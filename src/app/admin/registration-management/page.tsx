@@ -116,7 +116,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         if (!template) return;
         
         const newFee = { name: template.name, amount: parseFloat(feeAmount) };
-        const feeId = push(ref(db, 'semesters')).key!;
+        const feeId = selectedFeeTemplate;
         
         if (isMandatory) {
             setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
@@ -536,3 +536,5 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+    
