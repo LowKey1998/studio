@@ -386,8 +386,10 @@ export default function RegistrationPage() {
             }
 
             const tuitionCost = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-            const optionalFees = currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).filter(fee => selectedFees.includes(fee.id)) : [];
-            const optionalFeesCost = optionalFees.reduce((acc, fee) => acc + (fee.amount || 0), 0);
+            const optionalFeesFromSemester = currentSemester.optionalFees ? Object.values(currentSemester.optionalFees) : [];
+            const selectedOptionalFeesDetails = optionalFeesFromSemester.filter(fee => selectedFees.includes(fee.id));
+            const optionalFeesCost = selectedOptionalFeesDetails.reduce((acc, fee) => acc + (fee?.amount || 0), 0);
+
             const mandatoryFees = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees) : [];
             const mandatoryFeesCost = mandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
 
@@ -476,16 +478,16 @@ export default function RegistrationPage() {
     const isLateRegistration = currentSemester?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
-    const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
+    const { tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount } = React.useMemo(() => {
         const semester = openSemesters.find(s => s.id === selectedSemesterId);
         if (!semester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
-
+    
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-
-        const optional = (semester.optionalFees ? Object.values(semester.optionalFees) : [])
-            .filter(fee => selectedFees.includes(fee.id))
-            .reduce((acc, fee) => acc + (fee?.amount || 0), 0);
-
+    
+        const optional = (semester.optionalFees ? Object.keys(semester.optionalFees) : [])
+            .filter(feeId => selectedFees.includes(feeId))
+            .reduce((acc, feeId) => acc + (semester.optionalFees?.[feeId]?.amount || 0), 0);
+    
         const mandatory = semester.mandatoryFees ? Object.values(semester.mandatoryFees).reduce((acc, fee) => acc + fee.amount, 0) : 0;
             
         const lateFee = isLateRegistration ? lateFeeAmount : 0;
@@ -506,7 +508,13 @@ export default function RegistrationPage() {
             firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
         }
     
-        return { tuitionCost: tuition, optionalFeesCost: optional, mandatoryFeesCost: mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
+        return { 
+            tuitionCost: tuition, 
+            optionalFeesCost: optional, 
+            mandatoryFeesCost: mandatory, 
+            totalCost: total, 
+            payableAmount: firstInstallmentAmount 
+        };
     }, [selectedCourses, selectedFees, selectedSemesterId, openSemesters, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
 
     const recommendedCourseIds = React.useMemo(() => {
