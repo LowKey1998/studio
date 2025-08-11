@@ -30,6 +30,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
+
 
 type Invoice = {
   invoiceId: string;
@@ -97,12 +99,6 @@ type Course = {
     cost: number;
 };
 
-type Fee = {
-    id: string;
-    name: string;
-    amount: number;
-}
-
 type PaymentPlan = {
     id: string;
     name: string;
@@ -117,6 +113,13 @@ type Semester = {
     optionalFees: Record<string, Omit<Fee, 'id'>>;
 }
 
+type Fee = {
+    id: string;
+    name: string;
+    amount: number;
+};
+
+
 type GroupedData<T> = Record<string, T[]>;
 
 function PayNowSection({ 
@@ -125,12 +128,14 @@ function PayNowSection({
     onPaymentSuccess,
     totalPaidForInvoice,
     allCourses,
+    paymentPlan,
 }: { 
     payment: DuePayment, 
     userData: UserData | null, 
     onPaymentSuccess: (payment: DuePayment, response: any, amount: number) => Promise<void>,
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
+    paymentPlan: PaymentPlan | null,
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
@@ -140,25 +145,29 @@ function PayNowSection({
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
     const unlockedCourses = React.useMemo(() => {
-        if (finalAmount <= 0) return [];
+        if (finalAmount <= 0 || !paymentPlan) return [];
         let runningBudget = newTotalPaid;
         const unlocked: Course[] = [];
+        const installmentMultiplier = (paymentPlan.installmentPercentages[0] || 100) / 100;
         
         for (const courseId of payment.registration.coursePriority) {
-             const course = allCourses[courseId];
-            if (course && runningBudget >= course.cost) {
-                unlocked.push(course);
-                runningBudget -= course.cost;
-            } else if (course && runningBudget > 0) {
-                 unlocked.push(course);
-                 runningBudget = 0; // The course is partially covered, but access is still granted.
-                 break; // Stop after the first partially covered course.
-            } else {
-                break; // Not enough funds for the next priority course.
+            const course = allCourses[courseId];
+            if (course) {
+                const proRatedCost = course.cost * installmentMultiplier;
+                if(runningBudget >= proRatedCost) {
+                    unlocked.push(course);
+                    runningBudget -= proRatedCost;
+                } else if(runningBudget > 0) {
+                     unlocked.push(course);
+                     runningBudget = 0;
+                     break;
+                } else {
+                    break;
+                }
             }
         }
         return unlocked;
-    }, [newTotalPaid, payment.registration.coursePriority, allCourses, finalAmount]);
+    }, [newTotalPaid, payment.registration.coursePriority, allCourses, finalAmount, paymentPlan]);
 
     const config = {
         public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!,
@@ -239,22 +248,20 @@ function PayNowSection({
                     max={payment.balance}
                     min="1"
                 />
-                 {unlockedCourses.length > 0 ? (
-                        <>
-                        <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                           <h4 className="font-semibold">Coverage Summary</h4>
-                            <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid for this semester. Based on your course priority, the following courses will be fully paid for and unlocked:</p>
-                            <ul className="list-disc pl-5 text-xs font-medium">
-                                {unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>)}
-                            </ul>
-                        </div>
-                        </>
-                    ) : (
-                        customAmount > 0 &&
-                        <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                             <p className="text-xs text-muted-foreground">This payment will be applied towards your balance.</p>
-                        </div>
-                    )}
+                 {customAmount > 0 && unlockedCourses.length > 0 ? (
+                    <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
+                        <h4 className="font-semibold">Coverage Summary</h4>
+                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid towards this installment. Based on your course priority, you will gain access to:</p>
+                        <ul className="list-disc pl-5 text-xs font-medium">
+                            {unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>)}
+                        </ul>
+                    </div>
+                ) : (
+                    customAmount > 0 &&
+                    <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
+                         <p className="text-xs text-muted-foreground">This payment will be applied towards your balance.</p>
+                    </div>
+                )}
                  <Button className="w-full mt-4" onClick={() => {
                     setIsPaying(true);
                     handleFlutterwavePayment({
@@ -571,6 +578,8 @@ export default function PaymentsPage() {
                         .filter(t => t.invoiceId === payments[0]?.invoice.invoiceId)
                         .reduce((sum, tx) => sum + tx.amount, 0);
 
+                    const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
+
                     return (
                     <AccordionItem value={semesterId} key={semesterId}>
                     <AccordionTrigger>{semesterMap[semesterId] || 'Semester'}</AccordionTrigger>
@@ -600,6 +609,7 @@ export default function PaymentsPage() {
                                                     onPaymentSuccess={handleSuccessfulPayment}
                                                     totalPaidForInvoice={totalPaidForInvoice}
                                                     allCourses={allCourses}
+                                                    paymentPlan={paymentPlan}
                                                 />
                                             </TableCell>
                                         </TableRow>
