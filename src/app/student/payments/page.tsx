@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 
 type Invoice = {
   invoiceId: string;
@@ -144,12 +145,14 @@ function PayNowSection({
         const unlocked: Course[] = [];
         
         for (const courseId of payment.registration.coursePriority) {
-            if (runningBudget > 0) {
-                const course = allCourses[courseId];
-                if (course) {
-                    unlocked.push(course);
-                    runningBudget -= course.cost;
-                }
+             const course = allCourses[courseId];
+            if (course && runningBudget >= course.cost) {
+                unlocked.push(course);
+                runningBudget -= course.cost;
+            } else if (course && runningBudget > 0) {
+                 unlocked.push(course);
+                 runningBudget = 0;
+                 break;
             } else {
                 break;
             }
@@ -184,8 +187,47 @@ function PayNowSection({
         return <Button size="sm" variant="outline" disabled>Pay</Button>
     }
 
+    const totalInvoiceValue = (payment.invoice.totalTuition || 0) + (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0) + (payment.invoice.lateFee || 0);
+
     return (
         <div className="w-full space-y-4 pt-2">
+            <Card className="bg-background">
+                <CardHeader>
+                    <CardTitle className="text-base">Invoice Summary</CardTitle>
+                    <CardDescription>This is a summary of all charges for this semester.</CardDescription>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                    <div className="flex justify-between">
+                        <span>Tuition Fees:</span>
+                        <span>ZMW {(payment.invoice.totalTuition || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Mandatory Fees:</span>
+                        <span>ZMW {(payment.invoice.totalMandatoryFees || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Optional Fees:</span>
+                        <span>ZMW {(payment.invoice.totalOptionalFees || 0).toFixed(2)}</span>
+                    </div>
+                    {payment.invoice.lateFee && payment.invoice.lateFee > 0 && (
+                        <div className="flex justify-between text-destructive">
+                            <span>Late Registration Fee:</span>
+                            <span>ZMW {payment.invoice.lateFee.toFixed(2)}</span>
+                        </div>
+                    )}
+                    <Separator className="my-2"/>
+                    <div className="flex justify-between font-bold">
+                        <span>Total Invoice Value:</span>
+                        <span>ZMW {totalInvoiceValue.toFixed(2)}</span>
+                    </div>
+                    {payment.invoice.applyScholarship && (
+                        <div className="flex justify-between font-bold text-blue-600">
+                            <span>Scholarship Waived:</span>
+                            <span>- ZMW {(payment.invoice.totalTuition || 0).toFixed(2)}</span>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
              <div className="p-4 border rounded-lg bg-background">
                 <Label htmlFor={`amount-${payment.invoice.invoiceId}`}>Payment Amount</Label>
                 <Input 
@@ -363,6 +405,22 @@ export default function PaymentsPage() {
     
     }, [rawRegistrations, currentUser, rawInvoices, allPaymentPlans, rawTransactions, calendarEvents]);
 
+    const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
+        // This function is simplified for brevity. It would refetch all the data as in the main useEffect.
+         const [regsSnap, invoicesSnap, allTxSnap] = await Promise.all([
+            get(ref(db, `registrations/${user.uid}`)),
+            get(ref(db, `invoices/${user.uid}`)),
+            get(ref(db, 'transactions'))
+        ]);
+
+        setRawRegistrations(regsSnap.val() || {});
+        setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
+        const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === user.uid);
+        setRawTransactions(userTransactions as Transaction[]);
+
+        // The processData() call in the useEffect will handle the rest
+    }, []);
+
     React.useEffect(() => {
         if (!currentUser) return;
         
@@ -413,6 +471,8 @@ export default function PaymentsPage() {
         const semester = semesters.find(s => s.id === invoice.semesterId);
         const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
 
+        if (!semester) return;
+
         if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
         doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
@@ -424,7 +484,7 @@ export default function PaymentsPage() {
 
         const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees[id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees[id]?.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
         
         const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
@@ -485,22 +545,6 @@ export default function PaymentsPage() {
             setActionLoading(false);
         }
       }
-
-    const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
-        // This function is simplified for brevity. It would refetch all the data as in the main useEffect.
-         const [regsSnap, invoicesSnap, allTxSnap] = await Promise.all([
-            get(ref(db, `registrations/${user.uid}`)),
-            get(ref(db, `invoices/${user.uid}`)),
-            get(ref(db, 'transactions'))
-        ]);
-
-        setRawRegistrations(regsSnap.val() || {});
-        setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
-        const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === user.uid);
-        setRawTransactions(userTransactions as Transaction[]);
-
-        // The processData() call in the useEffect will handle the rest
-    }, []);
 
     const handleCancelRegistration = async (payment: DuePayment) => {
         if (!currentUser) return;
@@ -563,7 +607,7 @@ export default function PaymentsPage() {
                                         <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
                                     </TableRow>
                                     {payment.isPayable && (
-                                        <tr>
+                                        <TableRow className="bg-muted/30 hover:bg-muted/50">
                                             <TableCell colSpan={4} className="p-0">
                                                  <PayNowSection 
                                                     payment={payment} 
@@ -573,7 +617,7 @@ export default function PaymentsPage() {
                                                     allCourses={allCourses}
                                                 />
                                             </TableCell>
-                                        </tr>
+                                        </TableRow>
                                     )}
                                     </>
                                 </Collapsible>
