@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { format, parseISO } from 'date-fns';
 
 
 type Course = {
