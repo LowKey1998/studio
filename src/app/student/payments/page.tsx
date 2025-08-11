@@ -144,7 +144,7 @@ function PayNowSection({
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
-    const paymentBreakdown: { course: Course, allocatedAmount: number }[] = React.useMemo(() => {
+    const paymentAllocation: { course: Course, allocatedAmount: number }[] = React.useMemo(() => {
         if (finalAmount <= 0 || !paymentPlan) return [];
         let paymentLeftToAllocate = finalAmount;
         const breakdown: { course: Course, allocatedAmount: number }[] = [];
@@ -176,13 +176,21 @@ function PayNowSection({
         let runningBudget = newTotalPaid;
         const unlocked: { course: Course, amountCovered: number }[] = [];
         
+        const installmentIndex = allPaymentPlans.findIndex(p => p.id === paymentPlan.id);
+        const currentInstallmentNumber = payment.installmentName.match(/\d+/)?.[0] ? parseInt(payment.installmentName.match(/\d+/)?.[0]!) -1 : 0;
+
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
-                const proRatedCost = course.cost; // Check against full course cost now
-                if (runningBudget >= proRatedCost) {
-                    unlocked.push({ course, amountCovered: proRatedCost });
-                    runningBudget -= proRatedCost;
+                let costToUnlock = 0;
+                for (let i=0; i<=currentInstallmentNumber; i++) {
+                    const percentage = paymentPlan.installmentPercentages[i];
+                    costToUnlock += course.cost * (percentage / 100);
+                }
+
+                if (runningBudget >= costToUnlock) {
+                    unlocked.push({ course, amountCovered: costToUnlock });
+                    runningBudget -= course.cost; // Subtract full course cost as we move to next
                 } else {
                     break;
                 }
@@ -273,20 +281,20 @@ function PayNowSection({
                 />
                  {customAmount > 0 ? (
                     <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                        <h4 className="font-semibold">Payment Coverage Summary</h4>
-                         <div className="space-y-1 text-xs">
+                        <h4 className="font-semibold">Payment Allocation & Unlocked Courses</h4>
+                        <div className="space-y-1 text-xs">
                             <p className="font-bold">Your payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows:</p>
                             <ul className="list-disc pl-5">
-                                {paymentBreakdown.map(({course, allocatedAmount}) => (
+                                {paymentAllocation.length > 0 ? paymentAllocation.map(({course, allocatedAmount}) => (
                                     <li key={course.id}>ZMW {allocatedAmount.toFixed(2)} towards {course.name}</li>
-                                ))}
+                                )) : <li>-</li>}
                             </ul>
                         </div>
                         <Separator/>
                          <div className="space-y-1 text-xs">
                             <p className="font-bold">Total unlocked courses after this payment:</p>
                              <ul className="list-disc pl-5 text-green-600 font-medium">
-                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li>No courses fully unlocked yet.</li>}
+                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li key="no-courses-covered">No courses fully unlocked yet.</li>}
                             </ul>
                         </div>
                     </div>
