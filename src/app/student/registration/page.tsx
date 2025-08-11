@@ -445,10 +445,8 @@ export default function RegistrationPage() {
 
     const generateInvoicePDF = (invoice: Invoice) => {
         const semester = openSemesters.find(s => s.id === invoice.semesterId);
-        const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
-
         if (!semester) return;
-
+    
         const doc = new jsPDF();
         if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
@@ -458,12 +456,13 @@ export default function RegistrationPage() {
         doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
         doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
         doc.text(`Semester: ${invoice.semester}`, 14, 45);
-
+    
         const courseItems = invoice.courses.map(id => [allCourses.find(c => c.id === id)?.code || 'N/A', `Tuition: ${allCourses.find(c => c.id === id)?.name || 'Unknown Course'}`, `ZMW ${(allCourses.find(c => c.id === id)?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
         const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        
-        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
+        const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
+
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
         
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
@@ -576,7 +575,7 @@ export default function RegistrationPage() {
                                                          return fee ? <TableRow key={fee.id}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
+                                                    <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
                                                     {existingRegistration.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails?.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
                                                     <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.applyScholarship ? (existingRegistration.invoiceDetails?.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
                                                 </TableBody>
@@ -658,7 +657,7 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                            {semesterMandatoryFees.map(fee => (
+                             {semesterMandatoryFees.map(fee => (
                                 <div key={fee.id} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
