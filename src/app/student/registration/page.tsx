@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -430,10 +431,6 @@ export default function RegistrationPage() {
             await remove(ref(db, `invoices/${currentUser.uid}/${existingRegistration.invoiceId}`));
             await remove(ref(db, `registrations/${currentUser.uid}/${selectedSemesterId}`));
             
-            // Optional: remove related transactions if necessary
-            // This would require querying transactions by invoiceId, which can be complex.
-            // For now, we leave them for auditing purposes.
-
             toast({ title: "Registration Canceled" });
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Cancellation Failed', description: error.message });
@@ -481,7 +478,7 @@ export default function RegistrationPage() {
     const isLateRegistration = selectedSemesterData?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
-    const {tuitionCost, feesCost, totalCost, payableAmount} = React.useMemo(() => {
+    const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
         const optional = selectedFees.reduce((acc, feeId) => {
             const fee = semesterOptionalFees.find(f => f.id === feeId);
@@ -509,7 +506,7 @@ export default function RegistrationPage() {
             }
         }
     
-        return { tuitionCost: tuition, feesCost: optional + mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
+        return { tuitionCost: tuition, optionalFeesCost: optional, mandatoryFeesCost: mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
     }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
     const recommendedCourseIds = React.useMemo(() => {
@@ -677,7 +674,7 @@ export default function RegistrationPage() {
                             ))}
                             <div className="flex justify-between">
                                 <span>Optional Fees:</span>
-                                <span>ZMW {selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0).toFixed(2)}</span>
+                                <span>ZMW {optionalFeesCost.toFixed(2)}</span>
                             </div>
                             {isLateRegistration && 
                                 <div className="flex justify-between text-destructive">
@@ -717,3 +714,5 @@ export default function RegistrationPage() {
         </div>
     );
 }
+
+    
