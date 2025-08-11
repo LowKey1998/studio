@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -500,7 +499,7 @@ export default function RegistrationPage() {
     
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
         
-        let firstInstallmentAmount = payableBase; // Default to full amount
+        let firstInstallmentAmount = payableBase;
         if (selectedPlan && selectedPlan.installments > 1 && selectedPlan.installmentPercentages && selectedPlan.installmentPercentages.length > 0) {
             const firstInstallmentPercentage = selectedPlan.installmentPercentages[0] / 100;
             const tuitionPortion = tuition * firstInstallmentPercentage;
@@ -510,12 +509,7 @@ export default function RegistrationPage() {
             }
         }
     
-        return { 
-            tuitionCost: tuition, 
-            feesCost: optional + mandatory, 
-            totalCost: total, 
-            payableAmount: firstInstallmentAmount 
-        };
+        return { tuitionCost: tuition, feesCost: optional + mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
     }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
     const recommendedCourseIds = React.useMemo(() => {
