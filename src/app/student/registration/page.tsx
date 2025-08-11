@@ -146,8 +146,6 @@ function SortableCourseItem({ course }: { course: Course }) {
 export default function RegistrationPage() {
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
-    const [semesterOptionalFees, setSemesterOptionalFees] = React.useState<Fee[]>([]);
-    const [semesterMandatoryFees, setSemesterMandatoryFees] = React.useState<Fee[]>([]);
     
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     
@@ -313,26 +311,26 @@ export default function RegistrationPage() {
         return () => { regUnsub(); };
     }, [currentUser, selectedSemesterId, userData, fetchDataForSemester]);
 
+    const currentSemester = openSemesters.find(s => s.id === selectedSemesterId);
 
     // Update available payment plans when semester changes
     React.useEffect(() => {
-        const semester = openSemesters.find(s => s.id === selectedSemesterId);
-        if (semester) {
-             setSemesterOptionalFees(semester.optionalFees ? Object.keys(semester.optionalFees).map(id => ({ id, ...semester.optionalFees![id] })) : []);
-             setSemesterMandatoryFees(semester.mandatoryFees ? Object.keys(semester.mandatoryFees).map(id => ({ id, ...semester.mandatoryFees![id] })) : []);
-
-            if (semester.paymentPlanIds && allPaymentPlans.length > 0) {
-                const planIds = Object.keys(semester.paymentPlanIds);
+        if (currentSemester) {
+            if (currentSemester.paymentPlanIds && allPaymentPlans.length > 0) {
+                const planIds = Object.keys(currentSemester.paymentPlanIds);
                 const semesterPlans = allPaymentPlans.filter(p => planIds.includes(p.id) && !p.archived);
                 setSemesterPaymentPlans(semesterPlans);
                  if (semesterPlans.length > 0) {
                     setSelectedPaymentPlanId(semesterPlans[0].id);
+                } else {
+                    setSelectedPaymentPlanId('');
                 }
             } else {
                 setSemesterPaymentPlans([]);
+                setSelectedPaymentPlanId('');
             }
         }
-    }, [selectedSemesterId, openSemesters, allPaymentPlans]);
+    }, [currentSemester, allPaymentPlans]);
 
     const handleSelectCourse = (courseId: string) => {
         const course = availableCourses.find(c => c.id === courseId);
@@ -376,24 +374,22 @@ export default function RegistrationPage() {
         if (!selectedPaymentPlanId) { toast({ variant: 'destructive', title: 'Please select a payment plan.' }); return; }
 
         setSubmitting(true);
-        const selectedSemester = openSemesters.find(s => s.id === selectedSemesterId);
-        if (!selectedSemester) { toast({ variant: 'destructive', title: 'Invalid semester.' }); setSubmitting(false); return; }
+        if (!currentSemester) { toast({ variant: 'destructive', title: 'Invalid semester.' }); setSubmitting(false); return; }
 
         try {
             const settingsSnap = await get(ref(db, 'settings/registrationPolicy'));
             const policy = settingsSnap.exists() ? settingsSnap.val() : { lateRegistrationFee: 0 };
             
             let lateFee = 0;
-            if (selectedSemester.lateRegistrationActive && policy.lateRegistrationFee > 0) {
+            if (currentSemester.lateRegistrationActive && policy.lateRegistrationFee > 0) {
                 lateFee = policy.lateRegistrationFee;
             }
 
             const tuitionCost = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-            const optionalFeesCost = selectedFees.reduce((acc, feeId) => {
-                const fee = semesterOptionalFees.find(f => f.id === feeId);
-                return acc + (fee?.amount || 0);
-            }, 0);
-            const mandatoryFeesCost = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
+            const optionalFees = currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).filter(fee => selectedFees.includes(fee.id)) : [];
+            const optionalFeesCost = optionalFees.reduce((acc, fee) => acc + (fee.amount || 0), 0);
+            const mandatoryFees = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees) : [];
+            const mandatoryFeesCost = mandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
 
             const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
             if (!selectedPlan) { toast({ variant: 'destructive', title: 'Invalid payment plan selected.' }); setSubmitting(false); return; }
@@ -406,13 +402,13 @@ export default function RegistrationPage() {
                 invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedFees,
                 totalTuition: tuitionCost, totalOptionalFees: optionalFeesCost, totalMandatoryFees: mandatoryFeesCost, lateFee,
                 paymentPlan: selectedPlan.name, amountPaid: 0, status: 'pending', dateCreated: new Date().toISOString(),
-                semester: selectedSemester.name, semesterId: selectedSemester.id, applyScholarship
+                semester: currentSemester.name, semesterId: currentSemester.id, applyScholarship
             });
 
-            const registrationRef = ref(db, `registrations/${currentUser.uid}/${selectedSemester.id}`);
+            const registrationRef = ref(db, `registrations/${currentUser.uid}/${currentSemester.id}`);
             await set(registrationRef, {
                 courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedFees, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
-                registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship, semesterName: selectedSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
+                registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
             });
 
             const registrarIds = await getRegistrarIds();
@@ -444,8 +440,7 @@ export default function RegistrationPage() {
     };
 
     const generateInvoicePDF = (invoice: Invoice) => {
-        const semester = openSemesters.find(s => s.id === invoice.semesterId);
-        if (!semester) return;
+        if (!currentSemester) return;
     
         const doc = new jsPDF();
         if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
@@ -458,8 +453,8 @@ export default function RegistrationPage() {
         doc.text(`Semester: ${invoice.semester}`, 14, 45);
     
         const courseItems = invoice.courses.map(id => [allCourses.find(c => c.id === id)?.code || 'N/A', `Tuition: ${allCourses.find(c => c.id === id)?.name || 'Unknown Course'}`, `ZMW ${(allCourses.find(c => c.id === id)?.cost || 0).toFixed(2)}`]);
-        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        const mandatoryFeeItems = currentSemester?.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = currentSemester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${currentSemester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(currentSemester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
         const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
 
         const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
@@ -477,20 +472,22 @@ export default function RegistrationPage() {
         
         doc.save(`invoice-${invoice.invoiceId}.pdf`);
     };
-
-    const selectedSemesterData = openSemesters.find(s => s.id === selectedSemesterId);
-    const isLateRegistration = selectedSemesterData?.lateRegistrationActive ?? false;
+    
+    const isLateRegistration = currentSemester?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
     const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
+        const semester = openSemesters.find(s => s.id === selectedSemesterId);
+        if (!semester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
+        
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
         
-        const optional = selectedFees.reduce((acc, feeId) => {
-            const fee = semesterOptionalFees.find(f => f.id === feeId);
-            return acc + (fee?.amount || 0);
-        }, 0);
-    
-        const mandatory = semesterMandatoryFees.reduce((acc, fee) => acc + (fee.amount || 0), 0);
+        const optional = (semester.optionalFees ? Object.values(semester.optionalFees) : [])
+            .filter(fee => selectedFees.includes(fee.id))
+            .reduce((acc, fee) => acc + (fee?.amount || 0), 0);
+            
+        const mandatory = (semester.mandatoryFees ? Object.values(semester.mandatoryFees) : [])
+            .reduce((acc, fee) => acc + (fee.amount || 0), 0);
     
         const lateFee = isLateRegistration ? lateFeeAmount : 0;
         
@@ -510,17 +507,11 @@ export default function RegistrationPage() {
             firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
         }
     
-        return { 
-            tuitionCost: tuition, 
-            optionalFeesCost: optional, 
-            mandatoryFeesCost: mandatory, 
-            totalCost: total, 
-            payableAmount: firstInstallmentAmount 
-        };
-    }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
+        return { tuitionCost: tuition, optionalFeesCost: optional, mandatoryFeesCost: mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
+    }, [selectedCourses, selectedFees, selectedSemesterId, openSemesters, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
 
     const recommendedCourseIds = React.useMemo(() => {
-        if (!userData || !selectedSemesterData) return [];
+        if (!userData || !currentSemester) return [];
         const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
         if(!path || !path.semesters) return [];
         
@@ -530,7 +521,7 @@ export default function RegistrationPage() {
             return path.semesters[Number(relevantSemesterKey)].courses;
         }
         return [];
-    }, [userData, selectedSemesterData, allCoursePaths]);
+    }, [userData, currentSemester, allCoursePaths]);
 
     if (loading) {
         return (
@@ -586,11 +577,11 @@ export default function RegistrationPage() {
                                                     {registeredCourses.map(course => (
                                                         <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                    {semesterMandatoryFees.map(fee => (
-                                                        <TableRow key={fee.id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
+                                                    {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
+                                                        <TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                    {existingRegistration.optionalFees.map(feeId => {
-                                                         const fee = semesterOptionalFees.find(f => f.id === feeId);
+                                                    {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
+                                                         const fee = Object.values(currentSemester.optionalFees!).find(f => f.id === feeId);
                                                          return fee ? <TableRow key={fee.id}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
@@ -661,7 +652,7 @@ export default function RegistrationPage() {
                     </div>
 
                     {/* Fees Section */}
-                     {semesterOptionalFees.length > 0 && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{semesterOptionalFees.map(fee => (<div key={fee.id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${fee.id}`} checked={selectedFees.includes(fee.id)} onCheckedChange={() => handleSelectFee(fee.id)}/><Label htmlFor={`fee-${fee.id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
+                     {(currentSemester?.optionalFees && Object.keys(currentSemester.optionalFees).length > 0) && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{Object.values(currentSemester.optionalFees).map(fee => (<div key={fee.id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${fee.id}`} checked={selectedFees.includes(fee.id)} onCheckedChange={() => handleSelectFee(fee.id)}/><Label htmlFor={`fee-${fee.id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
                     </>
                     )}
                 </CardContent>
@@ -676,7 +667,7 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                             {semesterMandatoryFees.map(fee => (
+                             {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map(fee => (
                                 <div key={fee.id} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
