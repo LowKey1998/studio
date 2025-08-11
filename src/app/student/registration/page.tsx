@@ -479,17 +479,16 @@ export default function RegistrationPage() {
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
     const { tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount } = React.useMemo(() => {
-        const semester = openSemesters.find(s => s.id === selectedSemesterId);
-        if (!semester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
+        if (!currentSemester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
     
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
     
         const optional = selectedFees.reduce((acc, feeId) => {
-            const fee = semester.optionalFees?.[feeId];
+            const fee = currentSemester.optionalFees?.[feeId];
             return acc + (fee?.amount || 0);
         }, 0);
             
-        const mandatory = semester.mandatoryFees ? Object.values(semester.mandatoryFees).reduce((acc, fee) => acc + fee.amount, 0) : 0;
+        const mandatory = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).reduce((acc, fee) => acc + fee.amount, 0) : 0;
             
         const lateFee = isLateRegistration ? lateFeeAmount : 0;
         
@@ -516,7 +515,7 @@ export default function RegistrationPage() {
             totalCost: total, 
             payableAmount: firstInstallmentAmount 
         };
-    }, [selectedCourses, selectedFees, selectedSemesterId, openSemesters, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
+    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
 
     const recommendedCourseIds = React.useMemo(() => {
         if (!userData || !currentSemester) return [];
