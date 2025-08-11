@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import {
@@ -120,17 +121,41 @@ type GroupedData<T> = Record<string, T[]>;
 function PayNowSection({ 
     payment, 
     userData, 
-    onPaymentSuccess
+    onPaymentSuccess,
+    totalPaidForInvoice,
+    allCourses,
 }: { 
     payment: DuePayment, 
     userData: UserData | null, 
-    onPaymentSuccess: (payment: DuePayment, response: any) => Promise<void>
+    onPaymentSuccess: (payment: DuePayment, response: any) => Promise<void>,
+    totalPaidForInvoice: number,
+    allCourses: Record<string, Course>,
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
     
     const paymentAmount = Number(customAmount) > 0 ? Number(customAmount) : 0;
     const finalAmount = Math.min(paymentAmount, payment.balance);
+    const newTotalPaid = totalPaidForInvoice + finalAmount;
+
+    const unlockedCourses = React.useMemo(() => {
+        if (finalAmount <= 0) return [];
+        let runningBudget = newTotalPaid;
+        const unlocked: Course[] = [];
+        
+        for (const courseId of payment.registration.coursePriority) {
+            if (runningBudget > 0) {
+                const course = allCourses[courseId];
+                if (course) {
+                    unlocked.push(course);
+                    runningBudget -= course.cost;
+                }
+            } else {
+                break;
+            }
+        }
+        return unlocked;
+    }, [newTotalPaid, payment.registration.coursePriority, allCourses, finalAmount]);
 
     const config = {
         public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!,
@@ -172,10 +197,22 @@ function PayNowSection({
                     max={payment.balance}
                     min="1"
                 />
-                 <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                    <h4 className="font-semibold">Coverage Summary</h4>
-                    <p className="text-xs text-muted-foreground">Paying this installment contributes to your total semester fees. As you pay, courses will be unlocked based on the priority you set during registration.</p>
-                 </div>
+                 {unlockedCourses.length > 0 ? (
+                        <>
+                        <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
+                           <h4 className="font-semibold">Coverage Summary</h4>
+                            <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid for this semester. Based on your course priority, the following courses will be fully paid for and unlocked:</p>
+                            <ul className="list-disc pl-5 text-xs font-medium">
+                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>) : <li key="no-courses-covered">No courses fully covered yet.</li>}
+                            </ul>
+                        </div>
+                        </>
+                    ) : (
+                        customAmount > 0 &&
+                        <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
+                             <p className="text-xs text-muted-foreground">This payment will be applied towards your balance.</p>
+                        </div>
+                    )}
                  <Button className="w-full mt-4" onClick={() => {
                     setIsPaying(true);
                     handleFlutterwavePayment({
@@ -501,6 +538,10 @@ export default function PaymentsPage() {
                     const unpaidPayments = payments.filter(p => p.status !== 'Paid');
                     if (unpaidPayments.length === 0) return null;
 
+                    const totalPaidForInvoice = rawTransactions
+                        .filter(t => t.invoiceId === payments[0]?.invoice.invoiceId)
+                        .reduce((sum, tx) => sum + tx.amount, 0);
+
                     return (
                     <AccordionItem value={semesterId} key={semesterId}>
                     <AccordionTrigger>{semesterMap[semesterId] || 'Semester'}</AccordionTrigger>
@@ -528,6 +569,8 @@ export default function PaymentsPage() {
                                                     payment={payment} 
                                                     userData={userData} 
                                                     onPaymentSuccess={handleSuccessfulPayment}
+                                                    totalPaidForInvoice={totalPaidForInvoice}
+                                                    allCourses={allCourses}
                                                 />
                                             </TableCell>
                                         </tr>
@@ -582,7 +625,7 @@ export default function PaymentsPage() {
                                                  <Table>
                                                     <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
                                                     <TableBody>
-                                                        {invoiceDetails.totalTuition > 0 && <TableRow><TableCell>Total Tuition</TableCell><TableCell className="text-right">{invoiceDetails.totalTuition.toFixed(2)}</TableCell></TableRow>}
+                                                        {invoiceDetails.courses.map(id => allCourses[id]).filter(Boolean).map(course => (<TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>))}
                                                         {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (<TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>))}
                                                         {semester?.optionalFees && (invoiceDetails.optionalFees || []).map(feeId => (<TableRow key={feeId}><TableCell>Optional Fee: {semester.optionalFees[feeId]?.name || "Unknown"}</TableCell><TableCell className="text-right">{(semester.optionalFees[feeId]?.amount || 0).toFixed(2)}</TableCell></TableRow>))}
                                                         {invoiceDetails.lateFee && invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
