@@ -109,8 +109,8 @@ type PaymentPlan = {
 type Semester = {
     id: string;
     name: string;
-    mandatoryFees: Record<string, Omit<Fee, 'id'>>;
-    optionalFees: Record<string, Omit<Fee, 'id'>>;
+    mandatoryFees: Record<string, Fee>;
+    optionalFees: Record<string, Fee>;
 }
 
 type Fee = {
@@ -157,6 +157,7 @@ function PayNowSection({
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
+        const unlocked: Course[] = [];
 
         const allFees = [
             ...(Object.values(semester?.mandatoryFees || {})),
@@ -189,15 +190,14 @@ function PayNowSection({
         const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
 
         // 3. Determine unlocked courses
-        const unlocked: Course[] = [];
-        let tempCumulativeTuitionPaid = cumulativeTuitionPaid;
-        const tuitionPerInstallment = paymentPlan.installments > 0 ? payment.invoice.totalTuition / paymentPlan.installments : payment.invoice.totalTuition;
-
         if (payment.registration.coursePriority) {
+             const tuitionPerCourseForInstallment = paymentPlan.installments > 0 ? 1 / paymentPlan.installments : 1;
+             let tempCumulativeTuitionPaid = cumulativeTuitionPaid;
+
              for (const courseId of payment.registration.coursePriority) {
                 const course = allCourses[courseId];
                 if (course) {
-                    const costToUnlockThisCourse = (course.cost || 0) / (paymentPlan.installments || 1);
+                    const costToUnlockThisCourse = (course.cost || 0) * tuitionPerCourseForInstallment;
                     if (tempCumulativeTuitionPaid >= costToUnlockThisCourse) {
                         unlocked.push(course);
                         tempCumulativeTuitionPaid -= costToUnlockThisCourse;
@@ -608,7 +608,7 @@ export default function PaymentsPage() {
                                                 return fee ? <TableRow key={feeId}><TableCell className="pl-0">Optional Fee: {fee.name}</TableCell><TableCell className="text-right">ZMW {fee.amount.toFixed(2)}</TableCell></TableRow> : null
                                             })}
                                             {invoice.lateFee && invoice.lateFee > 0 && <TableRow className="text-destructive"><TableCell className="pl-0">Late Registration Fee</TableCell><TableCell className="text-right">ZMW {invoice.lateFee.toFixed(2)}</TableCell></TableRow>}
-                                            <TableRow className="font-bold bg-muted/50 hover:bg-muted/50"><TableCell className="pl-0">Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
+                                            <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell className="pl-0">Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
                                             {invoice.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell className="pl-0">Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoice.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
                                             <TableRow className="font-bold"><TableCell className="pl-0">Final Amount Due</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
                                         </TableBody>
@@ -622,18 +622,18 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                        <CollapsibleTrigger asChild>
                                         <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
                                             <TableCell className="font-medium">
-                                                <div className="flex items-center gap-2">
-                                                    {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
-                                                </div>
+                                                <CollapsibleTrigger asChild>
+                                                    <div className="flex items-center gap-2">
+                                                        {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
+                                                    </div>
+                                                </CollapsibleTrigger>
                                             </TableCell>
                                             <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
                                             <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
                                             <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
                                         </TableRow>
-                                        </CollapsibleTrigger>
                                         <CollapsibleContent asChild>
                                             <tr>
                                                 <TableCell colSpan={4} className="p-0">
