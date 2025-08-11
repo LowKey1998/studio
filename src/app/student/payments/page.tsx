@@ -128,7 +128,7 @@ function PayNowSection({
 }: { 
     payment: DuePayment, 
     userData: UserData | null, 
-    onPaymentSuccess: (payment: DuePayment, response: any) => Promise<void>,
+    onPaymentSuccess: (payment: DuePayment, response: any, amount: number) => Promise<void>,
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
 }) {
@@ -151,10 +151,10 @@ function PayNowSection({
                 runningBudget -= course.cost;
             } else if (course && runningBudget > 0) {
                  unlocked.push(course);
-                 runningBudget = 0;
-                 break;
+                 runningBudget = 0; // The course is partially covered, but access is still granted.
+                 break; // Stop after the first partially covered course.
             } else {
-                break;
+                break; // Not enough funds for the next priority course.
             }
         }
         return unlocked;
@@ -245,7 +245,7 @@ function PayNowSection({
                            <h4 className="font-semibold">Coverage Summary</h4>
                             <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid for this semester. Based on your course priority, the following courses will be fully paid for and unlocked:</p>
                             <ul className="list-disc pl-5 text-xs font-medium">
-                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>) : <li key="no-courses-covered">No courses fully covered yet.</li>}
+                                {unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>)}
                             </ul>
                         </div>
                         </>
@@ -260,7 +260,7 @@ function PayNowSection({
                     handleFlutterwavePayment({
                         callback: async (response) => {
                             if (response.status === 'successful') {
-                                await onPaymentSuccess(payment, response);
+                                await onPaymentSuccess(payment, response, finalAmount);
                             }
                             closePaymentModal();
                             setIsPaying(false);
@@ -467,12 +467,12 @@ export default function PaymentsPage() {
     }, [loading, processData]);
   
     const generateInvoicePDF = (invoice: Invoice) => {
-        const doc = new jsPDF();
         const semester = semesters.find(s => s.id === invoice.semesterId);
         const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
 
         if (!semester) return;
 
+        const doc = new jsPDF();
         if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
         doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
@@ -497,27 +497,12 @@ export default function PaymentsPage() {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
         
-        const installmentBody = [];
-        const payableAmount = totalAmount - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
-        for (let i = 0; i < plan.installments; i++) {
-            const percentage = plan.installmentPercentages?.[i] || (100 / plan.installments);
-            const installmentAmount = payableAmount * (percentage / 100);
-            const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
-            installmentBody.push([installmentName, `${percentage}%`, `ZMW ${installmentAmount.toFixed(2)}`]);
-        }
-
         (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
-        (doc as any).autoTable({
-            startY: (doc as any).lastAutoTable.finalY + 10,
-            head: [['Installment Plan', 'Percentage', 'Amount']],
-            body: installmentBody,
-            theme: 'grid'
-        });
-
+        
         doc.save(`invoice-${invoice.invoiceId}.pdf`);
     };
 
-    const handleSuccessfulPayment = async (payment: DuePayment, paymentResponse: any) => {
+    const handleSuccessfulPayment = async (payment: DuePayment, paymentResponse: any, amount: number) => {
         if (!currentUser) return;
         setActionLoading(true);
         try {
@@ -526,7 +511,7 @@ export default function PaymentsPage() {
                 transactionId: paymentResponse.transaction_id,
                 invoiceId: payment.invoice.invoiceId,
                 userId: currentUser.uid,
-                amount: paymentResponse.amount,
+                amount: amount,
                 currency: paymentResponse.currency,
                 status: paymentResponse.status,
                 paymentDate: new Date().toISOString(),
@@ -677,18 +662,6 @@ export default function PaymentsPage() {
                                                         {invoiceDetails.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoiceDetails.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
                                                         <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {payableAmount.toFixed(2)}</TableCell></TableRow>
                                                         <TableRow className="font-bold"><TableCell>Payment Plan</TableCell><TableCell className="text-right">{invoiceDetails.paymentPlan}</TableCell></TableRow>
-                                                    </TableBody>
-                                                </Table>
-                                                <h4 className="font-semibold mt-4 mb-2">Installment Plan</h4>
-                                                <Table>
-                                                    <TableHeader><TableRow><TableHead>Installment</TableHead><TableHead>%</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-                                                    <TableBody>
-                                                        {Array.from({length: plan.installments}).map((_, i) => {
-                                                            const percentage = plan.installmentPercentages?.[i] || (100 / plan.installments);
-                                                            const installmentAmount = payableAmount * (percentage / 100);
-                                                            const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
-                                                            return (<TableRow key={i}><TableCell>{installmentName}</TableCell><TableCell>{percentage}%</TableCell><TableCell className="text-right">ZMW {installmentAmount.toFixed(2)}</TableCell></TableRow>)
-                                                        })}
                                                     </TableBody>
                                                 </Table>
                                                 <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(invoiceDetails)}>
