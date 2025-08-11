@@ -129,7 +129,6 @@ function PayNowSection({
     totalPaidForInvoice,
     allCourses,
     paymentPlan,
-    semesterData
 }: {
     payment: DuePayment,
     userData: UserData | null,
@@ -137,7 +136,6 @@ function PayNowSection({
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
     paymentPlan: PaymentPlan | null,
-    semesterData: Semester | null
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
@@ -147,69 +145,64 @@ function PayNowSection({
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
     const { paymentAllocation, unlockedCourses } = React.useMemo(() => {
-        if (!paymentPlan || !semesterData) return { paymentAllocation: [], unlockedCourses: [] };
+        if (!paymentPlan || !payment.invoice) return { paymentAllocation: [], unlockedCourses: [] };
 
         let paymentLeftToAllocate = finalAmount;
+        let cumulativePaid = totalPaidForInvoice + finalAmount;
         const allocation: { item: string, allocatedAmount: number }[] = [];
+        const unlocked: Course[] = [];
         
         // 1. Allocate to fees first
-        const mandatoryFees = Object.values(semesterData.mandatoryFees || {});
-        const optionalFees = payment.invoice.optionalFees.map(id => semesterData.optionalFees[id]).filter(Boolean);
+        const mandatoryFees = Object.values(payment.invoice.totalMandatoryFees ? { 'mandatory': {name: 'Mandatory Fees', amount: payment.invoice.totalMandatoryFees}} : {});
+        const optionalFees = Object.values(payment.invoice.totalOptionalFees ? { 'optional': {name: 'Optional Fees', amount: payment.invoice.totalOptionalFees}} : {});
         const allFees = [...mandatoryFees, ...optionalFees];
-        
+        let totalFeesPaid = Math.max(0, totalPaidForInvoice - (payment.invoice.totalTuition || 0));
+
         for (const fee of allFees) {
             if(paymentLeftToAllocate <= 0) break;
-            const paidTowardsFee = Math.max(0, totalPaidForInvoice - (payment.invoice.totalTuition || 0)); // Simplified fee payment tracking
-            const remainingOnFee = fee.amount - paidTowardsFee;
+            const remainingOnFee = fee.amount - totalFeesPaid;
             if (remainingOnFee > 0) {
                 const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnFee);
                 allocation.push({ item: fee.name, allocatedAmount: amountToAllocate });
                 paymentLeftToAllocate -= amountToAllocate;
+                totalFeesPaid += amountToAllocate;
             }
         }
         
         // 2. Allocate remaining to courses based on priority
+        let tuitionPaid = Math.max(0, totalPaidForInvoice - (payment.invoice.totalMandatoryFees || 0) - (payment.invoice.totalOptionalFees || 0));
         for (const courseId of payment.registration.coursePriority) {
             if (paymentLeftToAllocate <= 0) break;
             const course = allCourses[courseId];
             if (course) {
-                const paidTowardsCourse = Math.max(0, totalPaidForInvoice - (payment.invoice.totalMandatoryFees || 0) - (payment.invoice.totalOptionalFees || 0));
-                const remainingOnCourse = course.cost - paidTowardsCourse;
+                const remainingOnCourse = course.cost - tuitionPaid;
                 if(remainingOnCourse > 0) {
                     const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
                     allocation.push({ item: course.name, allocatedAmount: amountToAllocate });
                     paymentLeftToAllocate -= amountToAllocate;
+                    tuitionPaid += amountToAllocate;
                 }
             }
         }
 
         // Determine unlocked courses
-        let cumulativePaid = newTotalPaid;
-        const unlocked: Course[] = [];
-        const currentInstallment = payment.registration.installmentsPaid || 0;
-        const installmentPercentage = paymentPlan.installmentPercentages[currentInstallment] || 100;
+        const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
+        let cumulativePaidForTuition = Math.max(0, cumulativePaid - totalFees);
 
-        // Fees must be covered by what's paid so far in this installment
-        const feesForThisInstallment = ((payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0));
-        cumulativePaid -= feesForThisInstallment;
-        
-        if (cumulativePaid > 0) {
-            for (const courseId of payment.registration.coursePriority) {
-                const course = allCourses[courseId];
-                if (course) {
-                    const proRatedCost = course.cost * (installmentPercentage / 100);
-                     if (cumulativePaid >= proRatedCost) {
-                        unlocked.push(course);
-                        cumulativePaid -= proRatedCost;
-                    } else {
-                        break; // Stop if we can't afford the next priority course
-                    }
+        for (const courseId of payment.registration.coursePriority) {
+            const course = allCourses[courseId];
+            if(course) {
+                 if (cumulativePaidForTuition >= course.cost) {
+                    unlocked.push(course);
+                    cumulativePaidForTuition -= course.cost;
+                } else {
+                    break;
                 }
             }
         }
 
         return { paymentAllocation: allocation, unlockedCourses: unlocked };
-    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semesterData]);
+    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan]);
 
 
     const config = {
@@ -239,47 +232,8 @@ function PayNowSection({
         return <Button size="sm" variant="outline" disabled>Pay</Button>
     }
 
-    const totalInvoiceValue = (payment.invoice.totalTuition || 0) + (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0) + (payment.invoice.lateFee || 0);
-
     return (
         <div className="w-full space-y-4 pt-2">
-            <Card className="bg-background">
-                <CardHeader>
-                    <CardTitle className="text-base">Invoice Summary</CardTitle>
-                    <CardDescription>This is a summary of all charges for this semester.</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm space-y-1">
-                    <div className="flex justify-between">
-                        <span>Tuition Fees:</span>
-                        <span>ZMW {(payment.invoice.totalTuition || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Mandatory Fees:</span>
-                        <span>ZMW {(payment.invoice.totalMandatoryFees || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Optional Fees:</span>
-                        <span>ZMW {(payment.invoice.totalOptionalFees || 0).toFixed(2)}</span>
-                    </div>
-                    {payment.invoice.lateFee && payment.invoice.lateFee > 0 && (
-                        <div className="flex justify-between text-destructive">
-                            <span>Late Registration Fee:</span>
-                            <span>ZMW {payment.invoice.lateFee.toFixed(2)}</span>
-                        </div>
-                    )}
-                    <Separator className="my-2"/>
-                    <div className="flex justify-between font-bold">
-                        <span>Total Invoice Value:</span>
-                        <span>ZMW {totalInvoiceValue.toFixed(2)}</span>
-                    </div>
-                    {payment.invoice.applyScholarship && (
-                        <div className="flex justify-between font-bold text-blue-600">
-                            <span>Scholarship Waived:</span>
-                            <span>- ZMW {(payment.invoice.totalTuition || 0).toFixed(2)}</span>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
              <div className="p-4 border rounded-lg bg-background">
                 <Label htmlFor={`amount-${payment.invoice.invoiceId}`}>Payment Amount</Label>
                 <Input
@@ -629,14 +583,50 @@ export default function PaymentsPage() {
 
                     const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
                     const semesterData = semesters.find(s => s.id === semesterId) || null;
+                    const invoice = payments[0]?.invoice;
 
                     return (
                     <AccordionItem value={semesterId} key={semesterId}>
                     <AccordionTrigger>{semesterMap[semesterId] || 'Semester'}</AccordionTrigger>
-                    <AccordionContent>
-                        {payments.some(p => p.invoice.applyScholarship && p.registration.status === 'Pending Approval') && (
-                            <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 text-blue-800">
-                                <GraduationCap className="h-4 w-4 text-blue-700" /><AlertTitle className="text-blue-900">Scholarship Application Pending</AlertTitle><AlertDescription className="text-blue-700">Your scholarship application for this semester is under review. Payment obligations will be updated upon approval or denial.</AlertDescription></Alert>
+                    <AccordionContent className="space-y-4">
+                        {invoice && (
+                            <Card className="bg-background">
+                                <CardHeader>
+                                    <CardTitle className="text-base">Invoice Summary</CardTitle>
+                                    <CardDescription>This is a summary of all charges for this semester.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="text-sm space-y-1">
+                                    <div className="flex justify-between">
+                                        <span>Tuition Fees:</span>
+                                        <span>ZMW {(invoice.totalTuition || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Mandatory Fees:</span>
+                                        <span>ZMW {(invoice.totalMandatoryFees || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Optional Fees:</span>
+                                        <span>ZMW {(invoice.totalOptionalFees || 0).toFixed(2)}</span>
+                                    </div>
+                                    {invoice.lateFee && invoice.lateFee > 0 && (
+                                        <div className="flex justify-between text-destructive">
+                                            <span>Late Registration Fee:</span>
+                                            <span>ZMW {invoice.lateFee.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    <Separator className="my-2"/>
+                                    <div className="flex justify-between font-bold">
+                                        <span>Total Invoice Value:</span>
+                                        <span>ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)).toFixed(2)}</span>
+                                    </div>
+                                    {invoice.applyScholarship && (
+                                        <div className="flex justify-between font-bold text-blue-600">
+                                            <span>Scholarship Waived:</span>
+                                            <span>- ZMW {(invoice.totalTuition || 0).toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
                         )}
                         <Table>
                         <TableHeader><TableRow><TableHead>Installment</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount Due (ZMW)</TableHead></TableRow></TableHeader>
@@ -663,7 +653,6 @@ export default function PaymentsPage() {
                                                 totalPaidForInvoice={totalPaidForInvoice}
                                                 allCourses={allCourses}
                                                 paymentPlan={paymentPlan}
-                                                semesterData={semesterData}
                                                 />
                                             )}
                                         </TableCell>
