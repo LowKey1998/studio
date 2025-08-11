@@ -144,21 +144,42 @@ function PayNowSection({
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
-    const unlockedCourses: { course: Course, amountCovered: number }[] = React.useMemo(() => {
+    const paymentBreakdown: { course: Course, allocatedAmount: number }[] = React.useMemo(() => {
         if (finalAmount <= 0 || !paymentPlan) return [];
+        let paymentLeftToAllocate = finalAmount;
+        const breakdown: { course: Course, allocatedAmount: number }[] = [];
+        
+        let cumulativePaid = totalPaidForInvoice;
+
+        for (const courseId of payment.registration.coursePriority) {
+            if (paymentLeftToAllocate <= 0) break;
+            const course = allCourses[courseId];
+            if (course) {
+                const totalCourseCost = course.cost;
+                const paidTowardsThisCourse = Math.min(cumulativePaid, totalCourseCost);
+                const remainingOnCourse = totalCourseCost - paidTowardsThisCourse;
+                
+                if(remainingOnCourse > 0) {
+                    const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
+                    breakdown.push({ course, allocatedAmount: amountToAllocate });
+                    paymentLeftToAllocate -= amountToAllocate;
+                }
+                cumulativePaid -= paidTowardsThisCourse;
+            }
+        }
+        return breakdown;
+    }, [finalAmount, totalPaidForInvoice, payment.registration.coursePriority, allCourses, paymentPlan]);
+
+    const unlockedCourses: { course: Course, amountCovered: number }[] = React.useMemo(() => {
+        if (!paymentPlan) return [];
         
         let runningBudget = newTotalPaid;
         const unlocked: { course: Course, amountCovered: number }[] = [];
         
-        const currentInstallmentIndex = payment.registration.installmentsPaid || 0;
-        const installmentMultiplier = (paymentPlan.installmentPercentages[currentInstallmentIndex] || 0) / 100;
-        
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
-                const proRatedCost = course.cost * installmentMultiplier;
-                
-                // Only unlock if the entire pro-rated cost for this installment is covered
+                const proRatedCost = course.cost; // Check against full course cost now
                 if (runningBudget >= proRatedCost) {
                     unlocked.push({ course, amountCovered: proRatedCost });
                     runningBudget -= proRatedCost;
@@ -168,7 +189,7 @@ function PayNowSection({
             }
         }
         return unlocked;
-    }, [newTotalPaid, payment, allCourses, finalAmount, paymentPlan]);
+    }, [newTotalPaid, payment.registration.coursePriority, allCourses, paymentPlan]);
 
 
     const config = {
@@ -253,12 +274,21 @@ function PayNowSection({
                  {customAmount > 0 ? (
                     <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
                         <h4 className="font-semibold">Payment Coverage Summary</h4>
-                        <>
-                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid for this semester. Based on your course priority, the following courses will be fully paid for and unlocked:</p>
-                        <ul className="list-disc pl-5 text-xs font-medium">
-                            {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li key="no-courses-covered">No courses fully covered yet.</li>}
-                        </ul>
-                        </>
+                         <div className="space-y-1 text-xs">
+                            <p className="font-bold">Your payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows:</p>
+                            <ul className="list-disc pl-5">
+                                {paymentBreakdown.map(({course, allocatedAmount}) => (
+                                    <li key={course.id}>ZMW {allocatedAmount.toFixed(2)} towards {course.name}</li>
+                                ))}
+                            </ul>
+                        </div>
+                        <Separator/>
+                         <div className="space-y-1 text-xs">
+                            <p className="font-bold">Total unlocked courses after this payment:</p>
+                             <ul className="list-disc pl-5 text-green-600 font-medium">
+                                {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li>No courses fully unlocked yet.</li>}
+                            </ul>
+                        </div>
                     </div>
                 ) : null }
                  <Button className="w-full mt-4" onClick={() => {
@@ -593,26 +623,28 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                    <TableRow>
+                                    <TableRow data-state={payment.isPayable ? 'open' : 'closed'}>
                                         <TableCell className="font-medium">{payment.installmentName}</TableCell>
                                         <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
                                         <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
                                         <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
                                     </TableRow>
-                                    {payment.isPayable && (
-                                        <TableRow className="bg-muted/30 hover:bg-muted/50">
-                                            <TableCell colSpan={4} className="p-0">
-                                                 <PayNowSection
-                                                    payment={payment}
-                                                    userData={userData}
-                                                    onPaymentSuccess={handleSuccessfulPayment}
-                                                    totalPaidForInvoice={totalPaidForInvoice}
-                                                    allCourses={allCourses}
-                                                    paymentPlan={paymentPlan}
+                                    <CollapsibleContent asChild>
+                                    <tr className="bg-muted/30 hover:bg-muted/50">
+                                        <TableCell colSpan={4} className="p-0">
+                                            {payment.isPayable && (
+                                                <PayNowSection
+                                                payment={payment}
+                                                userData={userData}
+                                                onPaymentSuccess={handleSuccessfulPayment}
+                                                totalPaidForInvoice={totalPaidForInvoice}
+                                                allCourses={allCourses}
+                                                paymentPlan={paymentPlan}
                                                 />
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
+                                            )}
+                                        </TableCell>
+                                    </tr>
+                                    </CollapsibleContent>
                                     </>
                                 </Collapsible>
                             ))}
