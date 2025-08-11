@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import {
@@ -128,6 +129,7 @@ function PayNowSection({
     totalPaidForInvoice,
     allCourses,
     paymentPlan,
+    semesterData
 }: {
     payment: DuePayment,
     userData: UserData | null,
@@ -135,6 +137,7 @@ function PayNowSection({
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
     paymentPlan: PaymentPlan | null,
+    semesterData: Semester | null
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
@@ -143,48 +146,70 @@ function PayNowSection({
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
-    const paymentAllocation = React.useMemo(() => {
-        if (finalAmount <= 0) return [];
+    const { paymentAllocation, unlockedCourses } = React.useMemo(() => {
+        if (!paymentPlan || !semesterData) return { paymentAllocation: [], unlockedCourses: [] };
+
         let paymentLeftToAllocate = finalAmount;
-        const breakdown: { course: Course, allocatedAmount: number }[] = [];
+        const allocation: { item: string, allocatedAmount: number }[] = [];
         
+        // 1. Allocate to fees first
+        const mandatoryFees = Object.values(semesterData.mandatoryFees || {});
+        const optionalFees = payment.invoice.optionalFees.map(id => semesterData.optionalFees[id]).filter(Boolean);
+        const allFees = [...mandatoryFees, ...optionalFees];
+        
+        for (const fee of allFees) {
+            if(paymentLeftToAllocate <= 0) break;
+            const paidTowardsFee = Math.max(0, totalPaidForInvoice - (payment.invoice.totalTuition || 0)); // Simplified fee payment tracking
+            const remainingOnFee = fee.amount - paidTowardsFee;
+            if (remainingOnFee > 0) {
+                const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnFee);
+                allocation.push({ item: fee.name, allocatedAmount: amountToAllocate });
+                paymentLeftToAllocate -= amountToAllocate;
+            }
+        }
+        
+        // 2. Allocate remaining to courses based on priority
         for (const courseId of payment.registration.coursePriority) {
             if (paymentLeftToAllocate <= 0) break;
             const course = allCourses[courseId];
             if (course) {
-                const totalCourseCost = course.cost;
-                const paidTowardsThisCourse = Math.min(totalPaidForInvoice, totalCourseCost);
-                const remainingOnCourse = totalCourseCost - paidTowardsThisCourse;
-                
+                const paidTowardsCourse = Math.max(0, totalPaidForInvoice - (payment.invoice.totalMandatoryFees || 0) - (payment.invoice.totalOptionalFees || 0));
+                const remainingOnCourse = course.cost - paidTowardsCourse;
                 if(remainingOnCourse > 0) {
                     const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
-                    breakdown.push({ course, allocatedAmount: amountToAllocate });
+                    allocation.push({ item: course.name, allocatedAmount: amountToAllocate });
                     paymentLeftToAllocate -= amountToAllocate;
                 }
             }
         }
-        return breakdown;
-    }, [finalAmount, totalPaidForInvoice, payment.registration.coursePriority, allCourses]);
 
-    const unlockedCourses = React.useMemo(() => {
-        if (!paymentPlan) return [];
+        // Determine unlocked courses
         let cumulativePaid = newTotalPaid;
         const unlocked: Course[] = [];
+        const currentInstallment = payment.registration.installmentsPaid || 0;
+        const installmentPercentage = paymentPlan.installmentPercentages[currentInstallment] || 100;
 
-        for (const courseId of payment.registration.coursePriority) {
-            const course = allCourses[courseId];
-            if (course) {
-                const proRatedCost = course.cost * ((paymentPlan?.installmentPercentages[payment.registration.installmentsPaid || 0] || 100) / 100);
-                 if (cumulativePaid >= proRatedCost) {
-                    unlocked.push(course);
-                    cumulativePaid -= proRatedCost;
-                } else {
-                    break;
+        // Fees must be covered by what's paid so far in this installment
+        const feesForThisInstallment = ((payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0));
+        cumulativePaid -= feesForThisInstallment;
+        
+        if (cumulativePaid > 0) {
+            for (const courseId of payment.registration.coursePriority) {
+                const course = allCourses[courseId];
+                if (course) {
+                    const proRatedCost = course.cost * (installmentPercentage / 100);
+                     if (cumulativePaid >= proRatedCost) {
+                        unlocked.push(course);
+                        cumulativePaid -= proRatedCost;
+                    } else {
+                        break; // Stop if we can't afford the next priority course
+                    }
                 }
             }
         }
-        return unlocked;
-    }, [newTotalPaid, payment.registration.coursePriority, allCourses, paymentPlan, payment.registration.installmentsPaid]);
+
+        return { paymentAllocation: allocation, unlockedCourses: unlocked };
+    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semesterData]);
 
 
     const config = {
@@ -272,8 +297,8 @@ function PayNowSection({
                          <div className="space-y-1 text-xs">
                             <p className="font-bold">Your payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows:</p>
                             <ul className="list-disc pl-5">
-                                {paymentAllocation.length > 0 ? paymentAllocation.map(({course, allocatedAmount}) => (
-                                    <li key={course.id}>ZMW {allocatedAmount.toFixed(2)} towards {course.name}</li>
+                                {paymentAllocation.length > 0 ? paymentAllocation.map((alloc, i) => (
+                                    <li key={i}>ZMW {alloc.allocatedAmount.toFixed(2)} towards {alloc.item}</li>
                                 )) : <li>-</li>}
                             </ul>
                         </div>
@@ -497,42 +522,6 @@ export default function PaymentsPage() {
         }
     }, [loading, processData]);
 
-    const generateInvoicePDF = (invoice: Invoice) => {
-        const semester = semesters.find(s => s.id === invoice.semesterId);
-        const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
-
-        if (!semester) return;
-
-        const doc = new jsPDF();
-        if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
-        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
-        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`Student: ${userData?.name || ''} (${userData?.id || ''})`, 14, 40);
-        doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
-        doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
-        doc.text(`Semester: ${invoice.semester}`, 14, 45);
-
-        const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
-        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        
-        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
-        const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-        
-        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
-        if(invoice.applyScholarship) {
-            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
-            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.totalTuition || 0)).toFixed(2)}`]);
-        } else {
-            foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
-        }
-        
-        (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
-        
-        doc.save(`invoice-${invoice.invoiceId}.pdf`);
-    };
-
     const handleSuccessfulPayment = async (payment: DuePayment, paymentResponse: any, amount: number) => {
         if (!currentUser) return;
         setActionLoading(true);
@@ -576,6 +565,42 @@ export default function PaymentsPage() {
         }
     };
 
+    const generateInvoicePDF = (invoice: Invoice) => {
+        const semester = semesters.find(s => s.id === invoice.semesterId);
+        const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
+
+        if (!semester) return;
+
+        const doc = new jsPDF();
+        if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Student: ${userData?.name || ''} (${userData?.id || ''})`, 14, 40);
+        doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
+        doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
+        doc.text(`Semester: ${invoice.semester}`, 14, 45);
+
+        const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
+        const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
+        
+        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
+        if(invoice.applyScholarship) {
+            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.totalTuition || 0)).toFixed(2)}`]);
+        } else {
+            foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
+        }
+        
+        (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        
+        doc.save(`invoice-${invoice.invoiceId}.pdf`);
+    };
+
     const statusVariant: { [key in DuePayment['status']]: 'destructive' | 'secondary' | 'default' | 'outline' } = {
         Due: 'secondary', Paid: 'default', Overdue: 'destructive', Upcoming: 'outline', 'Partially Paid': 'secondary',
     };
@@ -603,6 +628,7 @@ export default function PaymentsPage() {
                         .reduce((sum, tx) => sum + tx.amount, 0);
 
                     const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
+                    const semesterData = semesters.find(s => s.id === semesterId) || null;
 
                     return (
                     <AccordionItem value={semesterId} key={semesterId}>
@@ -637,6 +663,7 @@ export default function PaymentsPage() {
                                                 totalPaidForInvoice={totalPaidForInvoice}
                                                 allCourses={allCourses}
                                                 paymentPlan={paymentPlan}
+                                                semesterData={semesterData}
                                                 />
                                             )}
                                         </TableCell>

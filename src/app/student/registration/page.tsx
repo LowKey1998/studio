@@ -51,7 +51,7 @@ type Fee = {
     id: string;
     name: string;
     amount: number;
-}
+};
 
 type UserData = {
     id: string;
