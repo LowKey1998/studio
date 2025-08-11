@@ -347,14 +347,14 @@ export default function PaymentsPage() {
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
-            const proRatedTuition = totalTuition / (plan.installments || 1);
+            const tuitionPerInstallment = totalTuition / (plan.installments || 1);
 
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
                 const deadlineEvent = calendarEvents.find(e => e.title.trim() === deadlineTitle.trim());
 
-                let amountDueForThis = proRatedTuition;
+                let amountDueForThis = tuitionPerInstallment;
                 if(i === 0) { // All fees due on first installment
                     amountDueForThis += totalFees;
                 }
@@ -629,34 +629,34 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                    <TableRow data-state={payment.isPayable ? 'open' : 'closed'} >
-                                        <TableCell className="font-medium">
-                                             <CollapsibleTrigger asChild>
-                                                <div className="flex items-center gap-2 cursor-pointer">
-                                                    {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
-                                                </div>
-                                             </CollapsibleTrigger>
-                                        </TableCell>
-                                        <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                        <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                    </TableRow>
-                                    <CollapsibleContent asChild>
-                                    <tr className="bg-muted/30 hover:bg-muted/50">
-                                        <TableCell colSpan={4} className="p-4">
-                                            {payment.isPayable && (
-                                                <PayNowSection
-                                                payment={payment}
-                                                userData={userData}
-                                                onPaymentSuccess={handleSuccessfulPayment}
-                                                totalPaidForInvoice={totalPaidForInvoice}
-                                                allCourses={allCourses}
-                                                paymentPlan={paymentPlan}
-                                                />
-                                            )}
-                                        </TableCell>
-                                    </tr>
-                                    </CollapsibleContent>
+                                        <TableRow data-state={payment.isPayable ? 'open' : 'closed'} >
+                                            <TableCell className="font-medium">
+                                                <CollapsibleTrigger asChild>
+                                                    <div className="flex items-center gap-2 cursor-pointer">
+                                                        {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
+                                                    </div>
+                                                </CollapsibleTrigger>
+                                            </TableCell>
+                                            <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                            <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                            <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                        </TableRow>
+                                        <CollapsibleContent asChild>
+                                            <tr className="bg-muted/30 hover:bg-muted/50">
+                                                <TableCell colSpan={4} className="p-4">
+                                                    {payment.isPayable && (
+                                                        <PayNowSection
+                                                        payment={payment}
+                                                        userData={userData}
+                                                        onPaymentSuccess={handleSuccessfulPayment}
+                                                        totalPaidForInvoice={totalPaidForInvoice}
+                                                        allCourses={allCourses}
+                                                        paymentPlan={paymentPlan}
+                                                        />
+                                                    )}
+                                                </TableCell>
+                                            </tr>
+                                        </CollapsibleContent>
                                     </>
                                 </Collapsible>
                             ))}
