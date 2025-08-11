@@ -144,26 +144,24 @@ function PayNowSection({
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
 
-    const unlockedCourses = React.useMemo(() => {
+    const unlockedCourses: { course: Course, amountCovered: number }[] = React.useMemo(() => {
         if (finalAmount <= 0 || !paymentPlan) return [];
+        
         let runningBudget = newTotalPaid;
-        const unlocked: Course[] = [];
+        const unlocked: { course: Course, amountCovered: number }[] = [];
         const installmentMultiplier = (paymentPlan.installmentPercentages[0] || 100) / 100;
         
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
                 const proRatedCost = course.cost * installmentMultiplier;
-                if(runningBudget >= proRatedCost) {
-                    unlocked.push(course);
-                    runningBudget -= proRatedCost;
-                } else if(runningBudget > 0) {
-                     unlocked.push(course);
-                     runningBudget = 0;
-                     break;
-                } else {
-                    break;
+                const amountToCover = Math.min(runningBudget, proRatedCost);
+
+                if (amountToCover > 0) {
+                    unlocked.push({ course, amountCovered: amountToCover });
+                    runningBudget -= amountToCover;
                 }
+                if (runningBudget <= 0) break;
             }
         }
         return unlocked;
@@ -250,10 +248,14 @@ function PayNowSection({
                 />
                  {customAmount > 0 && unlockedCourses.length > 0 ? (
                     <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                        <h4 className="font-semibold">Coverage Summary</h4>
-                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid towards this installment. Based on your course priority, you will gain access to:</p>
+                        <h4 className="font-semibold">Payment Coverage Summary</h4>
+                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows, unlocking access to these courses:</p>
                         <ul className="list-disc pl-5 text-xs font-medium">
-                            {unlockedCourses.map(c => <li key={c.id}>{c.name} ({c.code})</li>)}
+                            {unlockedCourses.map(({ course, amountCovered }) => (
+                                <li key={course.id}>
+                                    {course.name} ({course.code}) - <span className="font-semibold">ZMW {amountCovered.toFixed(2)}</span>
+                                </li>
+                            ))}
                         </ul>
                     </div>
                 ) : (
