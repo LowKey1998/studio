@@ -1,6 +1,10 @@
 
 'use client';
 import * as React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
+import { Loader2, Receipt, History, DollarSign, AlertCircle, Download, GraduationCap, Trash2, Banknote, ChevronDown } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -9,10 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from "@/components/ui/badge";
-import { Button } from '@/components/ui/button';
-import { Loader2, Receipt, History, DollarSign, AlertCircle, Download, GraduationCap, Trash2, Banknote, ChevronDown } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { format, parseISO, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -157,8 +157,7 @@ function PayNowSection({
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
-        const unlocked: Course[] = [];
-
+        
         const allFees = [
             ...(Object.values(semester?.mandatoryFees || {})),
             ...(payment.invoice.optionalFees.map(feeId => semester?.optionalFees?.[feeId]).filter(Boolean) as Fee[])
@@ -188,7 +187,8 @@ function PayNowSection({
         }
         
         const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
-
+        const unlocked: Course[] = [];
+        
         // 3. Determine unlocked courses
         if (payment.registration.coursePriority) {
              const tuitionPerCourseForInstallment = paymentPlan.installments > 0 ? 1 / paymentPlan.installments : 1;
@@ -205,7 +205,7 @@ function PayNowSection({
                 }
             }
         }
-        return { paymentAllocation: allocation, unlockedCourses };
+        return { paymentAllocation, unlockedCourses };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semester]);
 
 
@@ -622,18 +622,18 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                        <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
-                                            <TableCell className="font-medium">
-                                                <CollapsibleTrigger asChild>
+                                        <CollapsibleTrigger asChild>
+                                             <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
+                                                <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2">
                                                         {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
                                                     </div>
-                                                </CollapsibleTrigger>
-                                            </TableCell>
-                                            <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                            <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                        </TableRow>
+                                                </TableCell>
+                                                <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                                <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                                <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                            </TableRow>
+                                        </CollapsibleTrigger>
                                         <CollapsibleContent asChild>
                                             <tr>
                                                 <TableCell colSpan={4} className="p-0">
