@@ -60,7 +60,7 @@ type Transaction = {
 
 type Registration = {
     courses: string[];
-    coursePriority: string[]; // Added for prioritization
+    coursePriority: string[];
     originalCourses?: string[];
     optionalFees: string[];
     invoiceId: string;
@@ -122,16 +122,16 @@ type Fee = {
 
 type GroupedData<T> = Record<string, T[]>;
 
-function PayNowSection({ 
-    payment, 
-    userData, 
+function PayNowSection({
+    payment,
+    userData,
     onPaymentSuccess,
     totalPaidForInvoice,
     allCourses,
     paymentPlan,
-}: { 
-    payment: DuePayment, 
-    userData: UserData | null, 
+}: {
+    payment: DuePayment,
+    userData: UserData | null,
     onPaymentSuccess: (payment: DuePayment, response: any, amount: number) => Promise<void>,
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
@@ -139,7 +139,7 @@ function PayNowSection({
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
-    
+
     const paymentAmount = Number(customAmount) > 0 ? Number(customAmount) : 0;
     const finalAmount = Math.min(paymentAmount, payment.balance);
     const newTotalPaid = totalPaidForInvoice + finalAmount;
@@ -149,23 +149,28 @@ function PayNowSection({
         
         let runningBudget = newTotalPaid;
         const unlocked: { course: Course, amountCovered: number }[] = [];
-        const installmentMultiplier = (paymentPlan.installmentPercentages[0] || 100) / 100;
+        
+        const currentInstallmentIndex = payment.registration.installmentsPaid || 0;
+        const installmentMultiplier = (paymentPlan.installmentPercentages[currentInstallmentIndex] || 0) / 100;
         
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
                 const proRatedCost = course.cost * installmentMultiplier;
-                const amountToCover = Math.min(runningBudget, proRatedCost);
-
-                if (amountToCover > 0) {
-                    unlocked.push({ course, amountCovered: amountToCover });
-                    runningBudget -= amountToCover;
+                
+                // Only unlock if the entire pro-rated cost for this installment is covered
+                if (runningBudget >= proRatedCost) {
+                    unlocked.push({ course, amountCovered: proRatedCost });
+                    runningBudget -= proRatedCost;
+                } else {
+                    // Stop if we can't afford the next priority course
+                    break;
                 }
-                if (runningBudget <= 0) break;
             }
         }
         return unlocked;
-    }, [newTotalPaid, payment.registration.coursePriority, allCourses, finalAmount, paymentPlan]);
+    }, [newTotalPaid, payment, allCourses, finalAmount, paymentPlan]);
+
 
     const config = {
         public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!,
@@ -185,11 +190,11 @@ function PayNowSection({
     };
 
     const handleFlutterwavePayment = useFlutterwave(config);
-    
+
     if (payment.registration.status === 'Pending Approval') {
         return <Button size="sm" disabled>Awaiting Approval</Button>
     }
-    
+
     if (!payment.isPayable) {
         return <Button size="sm" variant="outline" disabled>Pay</Button>
     }
@@ -237,7 +242,7 @@ function PayNowSection({
             </Card>
              <div className="p-4 border rounded-lg bg-background">
                 <Label htmlFor={`amount-${payment.invoice.invoiceId}`}>Payment Amount</Label>
-                <Input 
+                <Input
                     id={`amount-${payment.invoice.invoiceId}`}
                     type="number"
                     placeholder={`Up to ZMW ${payment.balance.toFixed(2)}`}
@@ -246,24 +251,17 @@ function PayNowSection({
                     max={payment.balance}
                     min="1"
                 />
-                 {customAmount > 0 && unlockedCourses.length > 0 ? (
+                 {customAmount > 0 ? (
                     <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
                         <h4 className="font-semibold">Payment Coverage Summary</h4>
-                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will be allocated as follows, unlocking access to these courses:</p>
+                        <>
+                        <p className="text-xs text-muted-foreground">A payment of ZMW {finalAmount.toFixed(2)} will result in a total of ZMW {newTotalPaid.toFixed(2)} paid for this semester. Based on your course priority, the following courses will be fully paid for and unlocked:</p>
                         <ul className="list-disc pl-5 text-xs font-medium">
-                            {unlockedCourses.map(({ course, amountCovered }) => (
-                                <li key={course.id}>
-                                    {course.name} ({course.code}) - <span className="font-semibold">ZMW {amountCovered.toFixed(2)}</span>
-                                </li>
-                            ))}
+                            {unlockedCourses.length > 0 ? unlockedCourses.map(c => <li key={c.course.id}>{c.course.name} ({c.course.code})</li>) : <li key="no-courses-covered">No courses fully covered yet.</li>}
                         </ul>
+                        </>
                     </div>
-                ) : (
-                    customAmount > 0 &&
-                    <div className="mt-4 p-3 bg-muted/50 rounded-md text-sm space-y-2">
-                         <p className="text-xs text-muted-foreground">This payment will be applied towards your balance.</p>
-                    </div>
-                )}
+                ) : null }
                  <Button className="w-full mt-4" onClick={() => {
                     setIsPaying(true);
                     handleFlutterwavePayment({
@@ -297,7 +295,7 @@ export default function PaymentsPage() {
     const [groupedDuePayments, setGroupedDuePayments] = React.useState<GroupedData<DuePayment>>({});
     const [groupedInvoices, setGroupedInvoices] = React.useState<GroupedData<Invoice>>({});
     const [groupedTransactions, setGroupedTransactions] = React.useState<GroupedData<Transaction>>({});
-    
+
     // Raw data from Firebase
     const [rawRegistrations, setRawRegistrations] = React.useState<Record<string, Registration> | null>(null);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
@@ -307,7 +305,7 @@ export default function PaymentsPage() {
     const [calendarEvents, setCalendarEvents] = React.useState<{title: string, date: string}[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
-    
+
     // Component state
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState(false);
@@ -333,60 +331,60 @@ export default function PaymentsPage() {
 
     const processData = React.useCallback(() => {
         if (!rawRegistrations || !currentUser) return;
-    
+
         const allDuePayments: DuePayment[] = [];
         const newGroupedInvoices: GroupedData<Invoice> = {};
-    
+
         for (const invoice of rawInvoices) {
             const reg = Object.values(rawRegistrations).find(r => r.invoiceId === invoice.invoiceId);
             if (!reg) continue;
-    
+
             if (!newGroupedInvoices[invoice.semesterId]) newGroupedInvoices[invoice.semesterId] = [];
             newGroupedInvoices[invoice.semesterId].push(invoice);
-    
+
             const totalPayable = invoice.applyScholarship
                 ? (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0)
                 : (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0);
-    
+
             const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100] };
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
+
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
                 const deadlineEvent = calendarEvents.find(e => e.title.trim() === deadlineTitle.trim());
-    
+
                 const percentage = plan.installmentPercentages?.[i] || (100 / plan.installments);
                 const amountDueForThis = totalPayable * (percentage / 100);
                 const paidForThis = Math.min(totalPaidForInvoice, amountDueForThis);
                 const balance = Math.max(0, amountDueForThis - paidForThis);
-    
+
                 let status: DuePayment['status'] = 'Upcoming';
                 const today = new Date(); today.setHours(0,0,0,0);
                 const dueDate = deadlineEvent ? parseISO(deadlineEvent.date) : null;
-    
+
                 if (balance <= 0.01) status = 'Paid';
                 else if (paidForThis > 0) status = 'Partially Paid';
                 else if (dueDate && isBefore(dueDate, today)) status = 'Overdue';
-    
+
                 allDuePayments.push({ installmentName, dueDate: deadlineEvent?.date || null, amountDue: amountDueForThis, amountPaid: paidForThis, balance, status, invoice, isPayable: false, registration: reg });
                 totalPaidForInvoice = Math.max(0, totalPaidForInvoice - paidForThis);
             }
         }
-    
+
         const finalDuePayments: GroupedData<DuePayment> = {};
         const semesterIdsWithRegs = Object.keys(rawRegistrations);
-    
+
         for (const semesterId of semesterIdsWithRegs) {
             if (!finalDuePayments[semesterId]) finalDuePayments[semesterId] = [];
             const semesterPayments = allDuePayments.filter(p => p.invoice.semesterId === semesterId);
-    
+
             let firstUnpaidFound = false;
             for (const payment of semesterPayments) {
                 let isPayableNow = false;
                 let currentStatus = payment.status;
-    
+
                 if (currentStatus !== 'Paid' && !firstUnpaidFound) {
                     isPayableNow = true;
                     if (currentStatus === 'Upcoming') {
@@ -394,11 +392,11 @@ export default function PaymentsPage() {
                     }
                     firstUnpaidFound = true;
                 }
-    
+
                 finalDuePayments[semesterId].push({ ...payment, isPayable: isPayableNow, status: currentStatus });
             }
         }
-    
+
         const newGroupedTransactions: GroupedData<Transaction> = {};
         for (const tx of rawTransactions) {
             const invoice = rawInvoices.find(inv => inv.invoiceId === tx.invoiceId);
@@ -407,11 +405,11 @@ export default function PaymentsPage() {
                 newGroupedTransactions[invoice.semesterId].push(tx);
             }
         }
-    
+
         setGroupedDuePayments(finalDuePayments);
         setGroupedInvoices(newGroupedInvoices);
         setGroupedTransactions(newGroupedTransactions);
-    
+
     }, [rawRegistrations, currentUser, rawInvoices, allPaymentPlans, rawTransactions, calendarEvents]);
 
     const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
@@ -432,7 +430,7 @@ export default function PaymentsPage() {
 
     React.useEffect(() => {
         if (!currentUser) return;
-        
+
         const fetchData = async () => {
             setLoading(true);
             try {
@@ -445,7 +443,7 @@ export default function PaymentsPage() {
                     get(ref(db, 'semesters')),
                     get(ref(db, 'transactions'))
                 ]);
-                
+
                 setRawRegistrations(regsSnap.val() || {});
                 setCalendarEvents(calendarSnap.exists() ? Object.values(calendarSnap.val()) : []);
                 setAllCourses(coursesSnap.val() || {});
@@ -454,7 +452,7 @@ export default function PaymentsPage() {
                 if (settingsData.institution) setInstitutionSettings(settingsData.institution);
                 setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
                 setSemesters(semestersSnap.exists() ? Object.values(semestersSnap.val()) : []);
-                
+
                 const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === currentUser.uid);
                 setRawTransactions(userTransactions as Transaction[]);
 
@@ -474,7 +472,7 @@ export default function PaymentsPage() {
             processData();
         }
     }, [loading, processData]);
-  
+
     const generateInvoicePDF = (invoice: Invoice) => {
         const semester = semesters.find(s => s.id === invoice.semesterId);
         const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
@@ -494,10 +492,10 @@ export default function PaymentsPage() {
         const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
         const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        
+
         const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-        
+
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
         if(invoice.applyScholarship) {
             foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
@@ -505,9 +503,9 @@ export default function PaymentsPage() {
         } else {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
-        
+
         (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
-        
+
         doc.save(`invoice-${invoice.invoiceId}.pdf`);
     };
 
@@ -526,12 +524,12 @@ export default function PaymentsPage() {
                 paymentDate: new Date().toISOString(),
                 semesterId: payment.invoice.semesterId,
             });
-            
+
             // Re-fetch everything to re-calculate access
              await fetchDataForSemester(currentUser, userData!);
-            
+
             toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
-    
+
         } catch(error) {
             console.error("Error updating database after payment:", error);
             toast({ variant: 'destructive', title: "Update Error", description: "Payment was successful but records may not be updated. Contact support."});
@@ -553,11 +551,11 @@ export default function PaymentsPage() {
             setActionLoading(false);
         }
     };
-  
+
     const statusVariant: { [key in DuePayment['status']]: 'destructive' | 'secondary' | 'default' | 'outline' } = {
         Due: 'secondary', Paid: 'default', Overdue: 'destructive', Upcoming: 'outline', 'Partially Paid': 'secondary',
     };
-  
+
     const hasDuePayments = Object.values(groupedDuePayments).some(arr => arr.some(p => p.status !== 'Paid'));
     const semesterMap = semesters.reduce((acc, sem) => {
         acc[sem.id] = sem.name;
@@ -605,9 +603,9 @@ export default function PaymentsPage() {
                                     {payment.isPayable && (
                                         <TableRow className="bg-muted/30 hover:bg-muted/50">
                                             <TableCell colSpan={4} className="p-0">
-                                                 <PayNowSection 
-                                                    payment={payment} 
-                                                    userData={userData} 
+                                                 <PayNowSection
+                                                    payment={payment}
+                                                    userData={userData}
                                                     onPaymentSuccess={handleSuccessfulPayment}
                                                     totalPaidForInvoice={totalPaidForInvoice}
                                                     allCourses={allCourses}
@@ -635,7 +633,7 @@ export default function PaymentsPage() {
             )}
             </CardContent>
         </Card>
-      
+
         <Card className="shadow-lg">
            <Accordion type="single" collapsible>
             <AccordionItem value="history" className="border-b-0">
@@ -681,7 +679,7 @@ export default function PaymentsPage() {
                                                 </Button>
                                             </CollapsibleContent>
                                         </Collapsible>
-                                        
+
                                         <h4 className="font-semibold pt-4">Transactions</h4>
                                         <Table>
                                             <TableHeader><TableRow><TableHead>Transaction ID</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
