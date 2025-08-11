@@ -156,11 +156,10 @@ function PayNowSection({
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
-        const unlocked: Course[] = [];
-
+        
         const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
         let feesPaidSoFar = Math.min(totalPaidForInvoice, totalFees);
-        let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - feesPaidSoFar);
+        let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
 
         // 1. Allocate payment to remaining fees first
         const remainingFees = totalFees - feesPaidSoFar;
@@ -171,40 +170,49 @@ function PayNowSection({
                 paymentLeftToAllocate -= amountToAllocate;
             }
         }
+        
+        const tuitionPortionOfPayment = paymentLeftToAllocate;
+        let cumulativeTuitionPaid = tuitionPaidSoFar + tuitionPortionOfPayment;
 
         // 2. Allocate remaining to tuition, respecting course priority
-        for (const courseId of payment.registration.coursePriority) {
-            if (paymentLeftToAllocate <= 0) break;
-            const course = allCourses[courseId];
-            if (course) {
-                const remainingOnCourse = course.cost - tuitionPaidSoFar;
-                if (remainingOnCourse > 0) {
-                    const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
-                     if (amountToAllocate > 0) {
-                        allocation.push({ item: `Tuition: ${course.name}`, allocatedAmount: amountToAllocate });
-                        paymentLeftToAllocate -= amountToAllocate;
-                        tuitionPaidSoFar += amountToAllocate;
+        if(payment.registration.coursePriority){
+            for (const courseId of payment.registration.coursePriority) {
+                if (paymentLeftToAllocate <= 0) break;
+                const course = allCourses[courseId];
+                if (course) {
+                    const remainingOnCourse = course.cost - tuitionPaidSoFar;
+                    if (remainingOnCourse > 0) {
+                        const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
+                         if (amountToAllocate > 0) {
+                            allocation.push({ item: `Tuition: ${course.name}`, allocatedAmount: amountToAllocate });
+                            paymentLeftToAllocate -= amountToAllocate;
+                            tuitionPaidSoFar += amountToAllocate;
+                        }
                     }
                 }
             }
         }
 
         // Determine unlocked courses based on cumulative payment
-        let cumulativeTuitionPaid = Math.max(0, cumulativePaidAfterThisPayment - totalFees);
-        for (const courseId of payment.registration.coursePriority) {
-            const course = allCourses[courseId];
-            if (course) {
-                if (cumulativeTuitionPaid >= course.cost) {
-                    unlocked.push(course);
-                    cumulativeTuitionPaid -= course.cost;
-                } else {
-                    break;
+        const unlocked: Course[] = [];
+        let tempCumulativeTuitionPaid = Math.max(0, cumulativePaidAfterThisPayment - totalFees);
+
+        if(payment.registration.coursePriority){
+            for (const courseId of payment.registration.coursePriority) {
+                const course = allCourses[courseId];
+                if (course) {
+                    if (tempCumulativeTuitionPaid >= course.cost) {
+                        unlocked.push(course);
+                        tempCumulativeTuitionPaid -= course.cost;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
 
-        return { paymentAllocation: allocation, unlockedCourses };
-    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan]);
+        return { paymentAllocation: allocation, unlockedCourses: unlocked };
+    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, cumulativePaidAfterThisPayment]);
 
 
     const config = {
@@ -342,8 +350,8 @@ export default function PaymentsPage() {
             const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-
-            const tuitionPerInstallment = totalTuition / (plan.installments || 1);
+            
+            const tuitionPerInstallment = plan.installments > 0 ? totalTuition / plan.installments : totalTuition;
 
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
@@ -625,20 +633,20 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                        <CollapsibleTrigger asChild>
-                                            <TableRow className="cursor-pointer">
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2">
+                                        <TableRow>
+                                            <TableCell className="font-medium">
+                                                <CollapsibleTrigger asChild>
+                                                    <div className="flex items-center gap-2 cursor-pointer">
                                                         {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
                                                     </div>
-                                                </TableCell>
-                                                <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                                <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                                <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        </CollapsibleTrigger>
+                                                </CollapsibleTrigger>
+                                            </TableCell>
+                                            <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                            <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                            <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                        </TableRow>
                                         <CollapsibleContent asChild>
-                                            <tr className="bg-muted/30 hover:bg-muted/50">
+                                            <tr>
                                                 <TableCell colSpan={4} className="p-4">
                                                     {payment.isPayable && (
                                                         <PayNowSection
