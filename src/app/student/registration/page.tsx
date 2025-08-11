@@ -490,8 +490,11 @@ export default function RegistrationPage() {
 
         const total = tuition + optional + mandatory + lateFee;
         
-        const payableBase = applyScholarship ? optional + mandatory + lateFee : total;
-        
+        let payableBase = total;
+        if(applyScholarship) {
+            payableBase -= tuition;
+        }
+
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
         const firstInstallmentMultiplier = selectedPlan ? (selectedPlan.installmentPercentages?.[0] || 100) / 100 : 1;
         
@@ -567,7 +570,7 @@ export default function RegistrationPage() {
                                                     {registeredCourses.map(course => (
                                                         <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                    {Object.values(semesterMandatoryFees).map(fee => (
+                                                    {semesterMandatoryFees.map(fee => (
                                                         <TableRow key={fee.id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
                                                     {existingRegistration.optionalFees.map(feeId => {
