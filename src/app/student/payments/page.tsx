@@ -142,66 +142,62 @@ function PayNowSection({
 
     const paymentAmount = Number(customAmount) > 0 ? Number(customAmount) : 0;
     const finalAmount = Math.min(paymentAmount, payment.balance);
-    const newTotalPaid = totalPaidForInvoice + finalAmount;
+    const cumulativePaidAfterThisPayment = totalPaidForInvoice + finalAmount;
 
     const { paymentAllocation, unlockedCourses } = React.useMemo(() => {
         if (!paymentPlan || !payment.invoice) return { paymentAllocation: [], unlockedCourses: [] };
-
-        let paymentLeftToAllocate = finalAmount;
-        let cumulativePaid = totalPaidForInvoice + finalAmount;
+    
         const allocation: { item: string, allocatedAmount: number }[] = [];
         const unlocked: Course[] = [];
-        
-        // 1. Allocate to fees first
-        const mandatoryFees = Object.values(payment.invoice.totalMandatoryFees ? { 'mandatory': {name: 'Mandatory Fees', amount: payment.invoice.totalMandatoryFees}} : {});
-        const optionalFees = Object.values(payment.invoice.totalOptionalFees ? { 'optional': {name: 'Optional Fees', amount: payment.invoice.totalOptionalFees}} : {});
-        const allFees = [...mandatoryFees, ...optionalFees];
-        let totalFeesPaid = Math.max(0, totalPaidForInvoice - (payment.invoice.totalTuition || 0));
-
-        for (const fee of allFees) {
-            if(paymentLeftToAllocate <= 0) break;
-            const remainingOnFee = fee.amount - totalFeesPaid;
-            if (remainingOnFee > 0) {
-                const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnFee);
-                allocation.push({ item: fee.name, allocatedAmount: amountToAllocate });
+        let paymentLeftToAllocate = finalAmount;
+    
+        // Calculate fees and tuition paid so far
+        const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
+        let feesPaidSoFar = Math.min(totalPaidForInvoice, totalFees);
+        let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
+    
+        // 1. Allocate payment to remaining fees first
+        const remainingFees = totalFees - feesPaidSoFar;
+        if (remainingFees > 0) {
+            const amountToAllocate = Math.min(paymentLeftToAllocate, remainingFees);
+            if (amountToAllocate > 0) {
+                allocation.push({ item: 'Semester Fees', allocatedAmount: amountToAllocate });
                 paymentLeftToAllocate -= amountToAllocate;
-                totalFeesPaid += amountToAllocate;
             }
         }
-        
-        // 2. Allocate remaining to courses based on priority
-        let tuitionPaid = Math.max(0, totalPaidForInvoice - (payment.invoice.totalMandatoryFees || 0) - (payment.invoice.totalOptionalFees || 0));
+    
+        // 2. Allocate remaining to tuition, respecting course priority
         for (const courseId of payment.registration.coursePriority) {
             if (paymentLeftToAllocate <= 0) break;
             const course = allCourses[courseId];
             if (course) {
-                const remainingOnCourse = course.cost - tuitionPaid;
+                const remainingOnCourse = course.cost - tuitionPaidSoFar;
                 if(remainingOnCourse > 0) {
                     const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
-                    allocation.push({ item: course.name, allocatedAmount: amountToAllocate });
-                    paymentLeftToAllocate -= amountToAllocate;
-                    tuitionPaid += amountToAllocate;
+                     if (amountToAllocate > 0) {
+                        allocation.push({ item: `Tuition: ${course.name}`, allocatedAmount: amountToAllocate });
+                        paymentLeftToAllocate -= amountToAllocate;
+                        tuitionPaidSoFar += amountToAllocate;
+                    }
                 }
             }
         }
-
-        // Determine unlocked courses
-        const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
-        let cumulativePaidForTuition = Math.max(0, cumulativePaid - totalFees);
-
+    
+        // Determine unlocked courses based on cumulative payment
+        let cumulativeTuitionPaid = Math.max(0, cumulativePaidAfterThisPayment - totalFees);
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
-            if(course) {
-                 if (cumulativePaidForTuition >= course.cost) {
+            if (course) {
+                if (cumulativeTuitionPaid >= course.cost) {
                     unlocked.push(course);
-                    cumulativePaidForTuition -= course.cost;
+                    cumulativeTuitionPaid -= course.cost;
                 } else {
-                    break;
+                    break; 
                 }
             }
         }
-
-        return { paymentAllocation: allocation, unlockedCourses: unlocked };
+    
+        return { paymentAllocation: allocation, unlockedCourses };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan]);
 
 
@@ -285,13 +281,6 @@ function PayNowSection({
     );
 }
 
-const getOrdinalSuffix = (i: number) => {
-    if (i === 1) return '1st';
-    if (i === 2) return '2nd';
-    if (i === 3) return '3rd';
-    return `${i}th`;
-}
-
 
 export default function PaymentsPage() {
     // Final processed data for UI
@@ -344,12 +333,11 @@ export default function PaymentsPage() {
 
             if (!newGroupedInvoices[invoice.semesterId]) newGroupedInvoices[invoice.semesterId] = [];
             newGroupedInvoices[invoice.semesterId].push(invoice);
-
-            const totalPayable = invoice.applyScholarship
-                ? (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0)
-                : (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0);
-
-            const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100] };
+            
+            const totalTuition = invoice.totalTuition || 0;
+            const totalFees = (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
+            
+            const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
@@ -358,8 +346,15 @@ export default function PaymentsPage() {
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
                 const deadlineEvent = calendarEvents.find(e => e.title.trim() === deadlineTitle.trim());
 
-                const percentage = plan.installmentPercentages?.[i] || (100 / plan.installments);
-                const amountDueForThis = totalPayable * (percentage / 100);
+                let amountDueForThis = (totalTuition / plan.installments);
+                // All fees are due on the first installment
+                if(i === 0) {
+                    amountDueForThis += totalFees;
+                }
+                 if(invoice.applyScholarship) {
+                    amountDueForThis = i === 0 ? totalFees : 0;
+                }
+
                 const paidForThis = Math.min(totalPaidForInvoice, amountDueForThis);
                 const balance = Math.max(0, amountDueForThis - paidForThis);
 
@@ -372,7 +367,7 @@ export default function PaymentsPage() {
                 else if (dueDate && isBefore(dueDate, today)) status = 'Overdue';
 
                 allDuePayments.push({ installmentName, dueDate: deadlineEvent?.date || null, amountDue: amountDueForThis, amountPaid: paidForThis, balance, status, invoice, isPayable: false, registration: reg });
-                totalPaidForInvoice = Math.max(0, totalPaidForInvoice - paidForThis);
+                totalPaidForInvoice = Math.max(0, totalPaidForInvoice - amountDueForThis);
             }
         }
 
@@ -416,7 +411,6 @@ export default function PaymentsPage() {
     }, [rawRegistrations, currentUser, rawInvoices, allPaymentPlans, rawTransactions, calendarEvents]);
 
     const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
-        // This function is simplified for brevity. It would refetch all the data as in the main useEffect.
          const [regsSnap, invoicesSnap, allTxSnap] = await Promise.all([
             get(ref(db, `registrations/${user.uid}`)),
             get(ref(db, `invoices/${user.uid}`)),
@@ -427,8 +421,6 @@ export default function PaymentsPage() {
         setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
         const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === user.uid);
         setRawTransactions(userTransactions as Transaction[]);
-
-        // The processData() call in the useEffect will handle the rest
     }, []);
 
     React.useEffect(() => {
@@ -492,7 +484,6 @@ export default function PaymentsPage() {
                 semesterId: payment.invoice.semesterId,
             });
 
-            // Re-fetch everything to re-calculate access
              await fetchDataForSemester(currentUser, userData!);
 
             toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
@@ -521,8 +512,6 @@ export default function PaymentsPage() {
 
     const generateInvoicePDF = (invoice: Invoice) => {
         const semester = semesters.find(s => s.id === invoice.semesterId);
-        const plan = allPaymentPlans.find(p => p.name === invoice.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
-
         if (!semester) return;
 
         const doc = new jsPDF();
@@ -582,7 +571,6 @@ export default function PaymentsPage() {
                         .reduce((sum, tx) => sum + tx.amount, 0);
 
                     const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
-                    const semesterData = semesters.find(s => s.id === semesterId) || null;
                     const invoice = payments[0]?.invoice;
 
                     return (
@@ -690,7 +678,6 @@ export default function PaymentsPage() {
                             {Object.entries(groupedInvoices).map(([semesterId, invoices]) => {
                                 const semester = semesters.find(s => s.id === semesterId);
                                 const invoiceDetails = invoices[0];
-                                const plan = allPaymentPlans.find(p => p.name === invoiceDetails.paymentPlan) || { name: 'Full Payment', installments: 1, installmentPercentages: [100]};
                                 const totalAmount = (invoiceDetails.totalTuition || 0) + (invoiceDetails.totalMandatoryFees || 0) + (invoiceDetails.totalOptionalFees || 0) + (invoiceDetails.lateFee || 0);
                                 const payableAmount = totalAmount - (invoiceDetails.applyScholarship ? (invoiceDetails.totalTuition || 0) : 0);
 
