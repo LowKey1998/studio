@@ -484,23 +484,38 @@ export default function RegistrationPage() {
 
     const {tuitionCost, feesCost, totalCost, payableAmount} = React.useMemo(() => {
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-        const optional = selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0);
+        const optional = selectedFees.reduce((acc, feeId) => {
+            const fee = semesterOptionalFees.find(f => f.id === feeId);
+            return acc + (fee?.amount || 0);
+        }, 0);
         const mandatory = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
         const lateFee = isLateRegistration ? lateFeeAmount : 0;
-
+    
         const total = tuition + optional + mandatory + lateFee;
         
         let payableBase = total;
         if(applyScholarship) {
             payableBase -= tuition;
         }
-
+    
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
-        const firstInstallmentMultiplier = selectedPlan ? (selectedPlan.installmentPercentages?.[0] || 100) / 100 : 1;
         
-        const payable = payableBase * firstInstallmentMultiplier;
-
-        return { tuitionCost: tuition, feesCost: optional + mandatory, totalCost: total, payableAmount: payable };
+        let firstInstallmentAmount = payableBase; // Default to full amount
+        if (selectedPlan && selectedPlan.installments > 1 && selectedPlan.installmentPercentages && selectedPlan.installmentPercentages.length > 0) {
+            const firstInstallmentPercentage = selectedPlan.installmentPercentages[0] / 100;
+            const tuitionPortion = tuition * firstInstallmentPercentage;
+            firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
+             if(applyScholarship){
+                 firstInstallmentAmount -= tuitionPortion;
+            }
+        }
+    
+        return { 
+            tuitionCost: tuition, 
+            feesCost: optional + mandatory, 
+            totalCost: total, 
+            payableAmount: firstInstallmentAmount 
+        };
     }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
 
     const recommendedCourseIds = React.useMemo(() => {
