@@ -386,9 +386,10 @@ export default function RegistrationPage() {
             }
 
             const tuitionCost = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-            const optionalFeesFromSemester = currentSemester.optionalFees ? Object.values(currentSemester.optionalFees) : [];
-            const selectedOptionalFeesDetails = optionalFeesFromSemester.filter(fee => selectedFees.includes(fee.id));
-            const optionalFeesCost = selectedOptionalFeesDetails.reduce((acc, fee) => acc + (fee?.amount || 0), 0);
+            const optionalFeesFromSemester = currentSemester.optionalFees ? Object.entries(currentSemester.optionalFees) : [];
+            const selectedOptionalFeesDetails = optionalFeesFromSemester.filter(([feeId, fee]) => selectedFees.includes(feeId));
+            const optionalFeesCost = selectedOptionalFeesDetails.reduce((acc, [id, fee]) => acc + (fee?.amount || 0), 0);
+            const selectedOptionalFeeIds = selectedOptionalFeesDetails.map(([id, fee]) => id);
 
             const mandatoryFees = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees) : [];
             const mandatoryFeesCost = mandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
@@ -401,7 +402,7 @@ export default function RegistrationPage() {
             const coursePriority = selectedCourses.map(c => c.id);
 
             await set(invoiceRef, {
-                invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedFees,
+                invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedOptionalFeeIds,
                 totalTuition: tuitionCost, totalOptionalFees: optionalFeesCost, totalMandatoryFees: mandatoryFeesCost, lateFee,
                 paymentPlan: selectedPlan.name, amountPaid: 0, status: 'pending', dateCreated: new Date().toISOString(),
                 semester: currentSemester.name, semesterId: currentSemester.id, applyScholarship
@@ -409,7 +410,7 @@ export default function RegistrationPage() {
 
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${currentSemester.id}`);
             await set(registrationRef, {
-                courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedFees, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
+                courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedOptionalFeeIds, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
                 registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
             });
 
@@ -584,8 +585,8 @@ export default function RegistrationPage() {
                                                     {registeredCourses.map(course => (
                                                         <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                    {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
-                                                        <TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
+                                                    {currentSemester?.mandatoryFees && Object.entries(currentSemester.mandatoryFees).map(([id, fee]) => (
+                                                        <TableRow key={id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
                                                     {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
                                                          const fee = currentSemester.optionalFees![feeId];
@@ -674,8 +675,8 @@ export default function RegistrationPage() {
                                 <span>Tuition Cost:</span>
                                 <span>ZMW {tuitionCost.toFixed(2)}</span>
                             </div>
-                             {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map(fee => (
-                                <div key={fee.id} className="flex justify-between">
+                             {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
+                                <div key={i} className="flex justify-between">
                                     <span>Mandatory Fee: {fee.name}</span>
                                     <span>ZMW {fee.amount.toFixed(2)}</span>
                                 </div>
