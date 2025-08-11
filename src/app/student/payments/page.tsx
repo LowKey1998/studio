@@ -158,6 +158,7 @@ function PayNowSection({
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
+        const unlockedCourses: Course[] = [];
         
         const allFees = [
             ...(Object.values(semester?.mandatoryFees || {})),
@@ -188,7 +189,6 @@ function PayNowSection({
         }
         
         const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
-        const unlocked: Course[] = [];
         const tuitionPerInstallment = paymentPlan.installments > 0 ? (payment.invoice.totalTuition / paymentPlan.installments) : payment.invoice.totalTuition;
         
         // 3. Determine unlocked courses
@@ -200,7 +200,7 @@ function PayNowSection({
                 if (course) {
                     const costToUnlockThisCourse = (course.cost || 0);
                     if (tempCumulativeTuitionPaid >= (costToUnlockThisCourse / paymentPlan.installments) ) {
-                        unlocked.push(course);
+                        unlockedCourses.push(course);
                         tempCumulativeTuitionPaid -= costToUnlockThisCourse / paymentPlan.installments;
                     }
                 }
@@ -624,7 +624,7 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                    <>
-                                    <TableRow>
+                                    <TableRow data-state={payment.isPayable ? 'open' : 'closed'}>
                                         <TableCell className="font-medium">
                                             <CollapsibleTrigger asChild>
                                                 <button className="flex items-center gap-2 cursor-pointer w-full text-left" disabled={!payment.isPayable}>
