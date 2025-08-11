@@ -122,6 +122,13 @@ type Fee = {
 
 type GroupedData<T> = Record<string, T[]>;
 
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+}
+
 function PayNowSection({
     payment,
     userData,
@@ -151,10 +158,9 @@ function PayNowSection({
         const unlocked: Course[] = [];
         let paymentLeftToAllocate = finalAmount;
     
-        // Calculate fees and tuition paid so far
         const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
         let feesPaidSoFar = Math.min(totalPaidForInvoice, totalFees);
-        let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
+        let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - feesPaidSoFar);
     
         // 1. Allocate payment to remaining fees first
         const remainingFees = totalFees - feesPaidSoFar;
@@ -341,14 +347,15 @@ export default function PaymentsPage() {
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
+            const proRatedTuition = totalTuition / (plan.installments || 1);
+
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
                 const deadlineEvent = calendarEvents.find(e => e.title.trim() === deadlineTitle.trim());
 
-                let amountDueForThis = (totalTuition / plan.installments);
-                // All fees are due on the first installment
-                if(i === 0) {
+                let amountDueForThis = proRatedTuition;
+                if(i === 0) { // All fees due on first installment
                     amountDueForThis += totalFees;
                 }
                  if(invoice.applyScholarship) {
@@ -622,14 +629,18 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                    <CollapsibleTrigger asChild>
-                                        <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
-                                            <TableCell className="font-medium flex items-center gap-2">{payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}</TableCell>
-                                            <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                            <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                        </TableRow>
-                                    </CollapsibleTrigger>
+                                    <TableRow data-state={payment.isPayable ? 'open' : 'closed'} >
+                                        <TableCell className="font-medium">
+                                             <CollapsibleTrigger asChild>
+                                                <div className="flex items-center gap-2 cursor-pointer">
+                                                    {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
+                                                </div>
+                                             </CollapsibleTrigger>
+                                        </TableCell>
+                                        <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                        <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                        <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                    </TableRow>
                                     <CollapsibleContent asChild>
                                     <tr className="bg-muted/30 hover:bg-muted/50">
                                         <TableCell colSpan={4} className="p-4">
