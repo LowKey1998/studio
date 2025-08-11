@@ -157,7 +157,6 @@ function PayNowSection({
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
-        let cumulativePaid = totalPaidForInvoice;
 
         const allFees = [
             ...(Object.values(semester?.mandatoryFees || {})),
@@ -182,29 +181,30 @@ function PayNowSection({
         });
 
         // 2. Allocate remaining to tuition
-        if (paymentLeftToAllocate > 0) {
-            allocation.push({ item: `Tuition`, allocatedAmount: paymentLeftToAllocate });
+        const remainingPaymentForTuition = paymentLeftToAllocate;
+        if (remainingPaymentForTuition > 0) {
+            allocation.push({ item: `Tuition`, allocatedAmount: remainingPaymentForTuition });
         }
         
-        const cumulativeTuitionPaid = tuitionPaidSoFar + paymentLeftToAllocate;
+        const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
 
         // 3. Determine unlocked courses
         const unlocked: Course[] = [];
         let tempCumulativeTuitionPaid = cumulativeTuitionPaid;
+        const tuitionPerInstallment = paymentPlan.installments > 0 ? payment.invoice.totalTuition / paymentPlan.installments : payment.invoice.totalTuition;
 
         if (payment.registration.coursePriority) {
-            for (const courseId of payment.registration.coursePriority) {
+             for (const courseId of payment.registration.coursePriority) {
                 const course = allCourses[courseId];
                 if (course) {
-                    const coursePortion = (course.cost || 0) / (paymentPlan.installments || 1);
-                    if (tempCumulativeTuitionPaid >= coursePortion) {
+                    const costToUnlockThisCourse = (course.cost || 0) / (paymentPlan.installments || 1);
+                    if (tempCumulativeTuitionPaid >= costToUnlockThisCourse) {
                         unlocked.push(course);
-                        tempCumulativeTuitionPaid -= coursePortion;
+                        tempCumulativeTuitionPaid -= costToUnlockThisCourse;
                     }
                 }
             }
         }
-
         return { paymentAllocation: allocation, unlockedCourses };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semester]);
 
@@ -577,47 +577,42 @@ export default function PaymentsPage() {
 
                     const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
                     const invoice = payments[0]?.invoice;
+                    const semester = semesters.find(s => s.id === invoice.semesterId);
 
                     return (
                     <AccordionItem value={semesterId} key={semesterId}>
                     <AccordionTrigger>{semesterMap[semesterId] || 'Semester'}</AccordionTrigger>
                     <AccordionContent className="space-y-4">
                         {invoice && (
-                            <Card className="bg-background">
-                                <CardHeader>
-                                    <CardTitle className="text-base">Invoice Summary</CardTitle>
-                                    <CardDescription>This is a summary of all charges for this semester.</CardDescription>
+                           <Card className="bg-background">
+                                <CardHeader className="flex flex-row items-start justify-between">
+                                    <div>
+                                        <CardTitle className="text-base">Invoice Summary</CardTitle>
+                                        <CardDescription>A summary of all charges for this semester.</CardDescription>
+                                    </div>
+                                     <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(invoice)}>
+                                        <Download className="mr-2 h-4 w-4" /> Download PDF
+                                    </Button>
                                 </CardHeader>
-                                <CardContent className="text-sm space-y-1">
-                                    <div className="flex justify-between">
-                                        <span>Tuition Fees:</span>
-                                        <span>ZMW {(invoice.totalTuition || 0).toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Mandatory Fees:</span>
-                                        <span>ZMW {(invoice.totalMandatoryFees || 0).toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Optional Fees:</span>
-                                        <span>ZMW {(invoice.totalOptionalFees || 0).toFixed(2)}</span>
-                                    </div>
-                                    {invoice.lateFee && invoice.lateFee > 0 && (
-                                        <div className="flex justify-between text-destructive">
-                                            <span>Late Registration Fee:</span>
-                                            <span>ZMW {invoice.lateFee.toFixed(2)}</span>
-                                        </div>
-                                    )}
-                                    <Separator className="my-2"/>
-                                    <div className="flex justify-between font-bold">
-                                        <span>Total Invoice Value:</span>
-                                        <span>ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)).toFixed(2)}</span>
-                                    </div>
-                                    {invoice.applyScholarship && (
-                                        <div className="flex justify-between font-bold text-blue-600">
-                                            <span>Scholarship Waived:</span>
-                                            <span>- ZMW {(invoice.totalTuition || 0).toFixed(2)}</span>
-                                        </div>
-                                    )}
+                                <CardContent className="text-sm">
+                                    <Table>
+                                        <TableBody>
+                                             {invoice.courses.map(id => allCourses[id]).filter(Boolean).map(course => (
+                                                <TableRow key={course.id}><TableCell className="pl-0">Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">ZMW {course.cost.toFixed(2)}</TableCell></TableRow>
+                                            ))}
+                                            {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (
+                                                <TableRow key={`mand-${i}`}><TableCell className="pl-0">Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">ZMW {fee.amount.toFixed(2)}</TableCell></TableRow>
+                                            ))}
+                                            {semester?.optionalFees && (invoice.optionalFees || []).map(feeId => {
+                                                const fee = semester?.optionalFees?.[feeId];
+                                                return fee ? <TableRow key={feeId}><TableCell className="pl-0">Optional Fee: {fee.name}</TableCell><TableCell className="text-right">ZMW {fee.amount.toFixed(2)}</TableCell></TableRow> : null
+                                            })}
+                                            {invoice.lateFee && invoice.lateFee > 0 && <TableRow className="text-destructive"><TableCell className="pl-0">Late Registration Fee</TableCell><TableCell className="text-right">ZMW {invoice.lateFee.toFixed(2)}</TableCell></TableRow>}
+                                            <TableRow className="font-bold bg-muted/50 hover:bg-muted/50"><TableCell className="pl-0">Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
+                                            {invoice.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell className="pl-0">Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoice.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
+                                            <TableRow className="font-bold"><TableCell className="pl-0">Final Amount Due</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
+                                        </TableBody>
+                                    </Table>
                                 </CardContent>
                             </Card>
                         )}
@@ -627,18 +622,18 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
+                                        <CollapsibleTrigger asChild>
                                         <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
                                             <TableCell className="font-medium">
-                                                <CollapsibleTrigger asChild>
-                                                    <div className="flex items-center gap-2">
-                                                        {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
-                                                    </div>
-                                                </CollapsibleTrigger>
+                                                <div className="flex items-center gap-2">
+                                                    {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
+                                                </div>
                                             </TableCell>
                                             <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
                                             <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
                                             <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
                                         </TableRow>
+                                        </CollapsibleTrigger>
                                         <CollapsibleContent asChild>
                                             <tr>
                                                 <TableCell colSpan={4} className="p-0">
@@ -680,53 +675,21 @@ export default function PaymentsPage() {
            <Accordion type="single" collapsible>
             <AccordionItem value="history" className="border-b-0">
                 <AccordionTrigger className="p-6">
-                    <div className="flex items-center gap-3"><History className="h-6 w-6" /><h3 className="font-headline text-2xl">Invoice &amp; Transaction History</h3></div>
+                    <div className="flex items-center gap-3"><History className="h-6 w-6" /><h3 className="font-headline text-2xl">Transaction History</h3></div>
                 </AccordionTrigger>
                 <AccordionContent className="px-6 pb-6 space-y-4">
-                    {Object.keys(groupedInvoices).length > 0 ? (
-                        <Accordion type="multiple" defaultValue={Object.keys(groupedInvoices)}>
-                            {Object.entries(groupedInvoices).map(([semesterId, invoices]) => {
-                                const semester = semesters.find(s => s.id === semesterId);
-                                const invoiceDetails = invoices[0];
-                                const totalAmount = (invoiceDetails.totalTuition || 0) + (invoiceDetails.totalMandatoryFees || 0) + (invoiceDetails.totalOptionalFees || 0) + (invoiceDetails.lateFee || 0);
-                                const payableAmount = totalAmount - (invoiceDetails.applyScholarship ? (invoiceDetails.totalTuition || 0) : 0);
-
+                    {Object.keys(groupedTransactions).length > 0 ? (
+                        <Accordion type="multiple" defaultValue={Object.keys(groupedTransactions)}>
+                            {Object.entries(groupedTransactions).map(([semesterId, transactions]) => {
                                 return (
                                 <AccordionItem value={semesterId} key={semesterId}>
                                     <AccordionTrigger className="font-semibold">{semesterMap[semesterId] || 'Semester'}</AccordionTrigger>
-                                    <AccordionContent className="space-y-4">
-                                        <Collapsible>
-                                            <CollapsibleTrigger asChild>
-                                                 <Button variant="link" className="p-0 h-auto text-sm mb-2">
-                                                    View Invoice Details <ChevronDown className="h-4 w-4 ml-1" />
-                                                </Button>
-                                            </CollapsibleTrigger>
-                                            <CollapsibleContent>
-                                                 <Table>
-                                                    <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
-                                                    <TableBody>
-                                                        {invoiceDetails.courses.map(id => allCourses[id]).filter(Boolean).map(course => (<TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>))}
-                                                        {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (<TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>))}
-                                                        {semester?.optionalFees && (invoiceDetails.optionalFees || []).map(feeId => (<TableRow key={feeId}><TableCell>Optional Fee: {semester.optionalFees[feeId]?.name || "Unknown"}</TableCell><TableCell className="text-right">{(semester.optionalFees[feeId]?.amount || 0).toFixed(2)}</TableCell></TableRow>))}
-                                                        {invoiceDetails.lateFee && invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                        <TableRow className="font-bold bg-muted/50"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {totalAmount.toFixed(2)}</TableCell></TableRow>
-                                                        {invoiceDetails.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(invoiceDetails.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
-                                                        <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {payableAmount.toFixed(2)}</TableCell></TableRow>
-                                                        <TableRow className="font-bold"><TableCell>Payment Plan</TableCell><TableCell className="text-right">{invoiceDetails.paymentPlan}</TableCell></TableRow>
-                                                    </TableBody>
-                                                </Table>
-                                                <Button variant="outline" size="sm" className="mt-4" onClick={() => generateInvoicePDF(invoiceDetails)}>
-                                                    <Download className="mr-2 h-4 w-4" /> Download PDF
-                                                </Button>
-                                            </CollapsibleContent>
-                                        </Collapsible>
-
-                                        <h4 className="font-semibold pt-4">Transactions</h4>
+                                    <AccordionContent>
                                         <Table>
                                             <TableHeader><TableRow><TableHead>Transaction ID</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
                                             <TableBody>
-                                                {groupedTransactions[semesterId] && groupedTransactions[semesterId].length > 0 ? (
-                                                    groupedTransactions[semesterId].map((tx) => (
+                                                {transactions.length > 0 ? (
+                                                    transactions.map((tx) => (
                                                         <TableRow key={tx.transactionId}>
                                                             <TableCell className="font-mono text-xs">{tx.transactionId}</TableCell>
                                                             <TableCell>{format(new Date(tx.paymentDate), 'PPP p')}</TableCell>
