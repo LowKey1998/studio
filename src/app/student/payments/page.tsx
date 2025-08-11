@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 
 
 type Invoice = {
@@ -205,7 +206,7 @@ function PayNowSection({
                 }
             }
         }
-        return { paymentAllocation: allocation, unlockedCourses: unlocked };
+        return { paymentAllocation: allocation, unlockedCourses };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semester]);
 
 
