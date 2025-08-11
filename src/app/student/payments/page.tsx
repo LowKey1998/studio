@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { Loader2, Receipt, History, DollarSign, AlertCircle, Download, GraduationCap, Trash2, Banknote, ChevronDown } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+
 import {
   Table,
   TableBody,
@@ -188,24 +188,24 @@ function PayNowSection({
         
         const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
         const unlocked: Course[] = [];
+        const tuitionPerInstallment = paymentPlan.installments > 0 ? (payment.invoice.totalTuition / paymentPlan.installments) : payment.invoice.totalTuition;
         
         // 3. Determine unlocked courses
         if (payment.registration.coursePriority) {
-             const tuitionPerCourseForInstallment = paymentPlan.installments > 0 ? 1 / paymentPlan.installments : 1;
              let tempCumulativeTuitionPaid = cumulativeTuitionPaid;
 
              for (const courseId of payment.registration.coursePriority) {
                 const course = allCourses[courseId];
                 if (course) {
-                    const costToUnlockThisCourse = (course.cost || 0) * tuitionPerCourseForInstallment;
-                    if (tempCumulativeTuitionPaid >= costToUnlockThisCourse) {
+                    const costToUnlockThisCourse = (course.cost || 0);
+                    if (tempCumulativeTuitionPaid >= (costToUnlockThisCourse / paymentPlan.installments) ) {
                         unlocked.push(course);
-                        tempCumulativeTuitionPaid -= costToUnlockThisCourse;
+                        tempCumulativeTuitionPaid -= costToUnlockThisCourse / paymentPlan.installments;
                     }
                 }
             }
         }
-        return { paymentAllocation, unlockedCourses };
+        return { paymentAllocation: allocation, unlockedCourses: unlocked };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semester]);
 
 
@@ -345,19 +345,19 @@ export default function PaymentsPage() {
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
             
-            const tuitionPerInstallment = plan.installments > 0 ? totalTuition / plan.installments : totalTuition;
+            let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
 
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
                 const deadlineEvent = calendarEvents.find(e => e.title.trim() === deadlineTitle.trim());
 
-                let amountDueForThis = tuitionPerInstallment;
-                if(i === 0) { // All fees due on first installment
+                let amountDueForThis = (totalTuition / plan.installments);
+                 if(i === 0) { // All fees due on first installment
                     amountDueForThis += totalFees;
                 }
                  if(invoice.applyScholarship) {
-                    amountDueForThis -= tuitionPerInstallment;
+                    amountDueForThis -= (totalTuition / plan.installments);
                 }
 
                 const paidForThis = Math.min(totalPaidForInvoice, amountDueForThis);
@@ -518,7 +518,7 @@ export default function PaymentsPage() {
     const generateInvoicePDF = (invoice: Invoice) => {
         const semester = semesters.find(s => s.id === invoice.semesterId);
         if (!semester) return;
-
+    
         const doc = new jsPDF();
         if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
@@ -528,12 +528,13 @@ export default function PaymentsPage() {
         doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
         doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
         doc.text(`Semester: ${invoice.semester}`, 14, 45);
-
+    
         const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
         const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        
-        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
+        const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
+
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
         
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
@@ -621,37 +622,37 @@ export default function PaymentsPage() {
                         <TableBody>
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
-                                    <>
-                                        <CollapsibleTrigger asChild>
-                                             <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2">
-                                                        {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                                <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                                <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent asChild>
-                                            <tr>
-                                                <TableCell colSpan={4} className="p-0">
-                                                    {payment.isPayable && (
-                                                        <PayNowSection
-                                                        payment={payment}
-                                                        userData={userData}
-                                                        onPaymentSuccess={handleSuccessfulPayment}
-                                                        totalPaidForInvoice={totalPaidForInvoice}
-                                                        allCourses={allCourses}
-                                                        paymentPlan={paymentPlan}
-                                                        semester={semesters.find(s => s.id === payment.invoice.semesterId)}
-                                                        />
-                                                    )}
-                                                </TableCell>
-                                            </tr>
-                                        </CollapsibleContent>
-                                    </>
+                                   <>
+                                    <TableRow>
+                                        <TableCell className="font-medium">
+                                            <CollapsibleTrigger asChild>
+                                                <button className="flex items-center gap-2 cursor-pointer w-full text-left" disabled={!payment.isPayable}>
+                                                    {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
+                                                </button>
+                                            </CollapsibleTrigger>
+                                        </TableCell>
+                                        <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                        <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                        <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                    <CollapsibleContent asChild>
+                                        <tr>
+                                            <TableCell colSpan={4} className="p-0">
+                                                {payment.isPayable && (
+                                                    <PayNowSection
+                                                    payment={payment}
+                                                    userData={userData}
+                                                    onPaymentSuccess={handleSuccessfulPayment}
+                                                    totalPaidForInvoice={totalPaidForInvoice}
+                                                    allCourses={allCourses}
+                                                    paymentPlan={paymentPlan}
+                                                    semester={semesters.find(s => s.id === payment.invoice.semesterId)}
+                                                    />
+                                                )}
+                                            </TableCell>
+                                        </tr>
+                                    </CollapsibleContent>
+                                  </>
                                 </Collapsible>
                             ))}
                         </TableBody>
