@@ -136,6 +136,7 @@ function PayNowSection({
     totalPaidForInvoice,
     allCourses,
     paymentPlan,
+    semester
 }: {
     payment: DuePayment,
     userData: UserData | null,
@@ -143,76 +144,69 @@ function PayNowSection({
     totalPaidForInvoice: number,
     allCourses: Record<string, Course>,
     paymentPlan: PaymentPlan | null,
+    semester: Semester | undefined
 }) {
     const [isPaying, setIsPaying] = React.useState(false);
     const [customAmount, setCustomAmount] = React.useState<number | string>('');
 
     const paymentAmount = Number(customAmount) > 0 ? Number(customAmount) : 0;
     const finalAmount = Math.min(paymentAmount, payment.balance);
-    const cumulativePaidAfterThisPayment = totalPaidForInvoice + finalAmount;
 
     const { paymentAllocation, unlockedCourses } = React.useMemo(() => {
         if (!paymentPlan || !payment.invoice) return { paymentAllocation: [], unlockedCourses: [] };
 
         const allocation: { item: string, allocatedAmount: number }[] = [];
         let paymentLeftToAllocate = finalAmount;
+        let cumulativePaid = totalPaidForInvoice;
+
+        const allFees = [
+            ...(Object.values(semester?.mandatoryFees || {})),
+            ...(payment.invoice.optionalFees.map(feeId => semester?.optionalFees?.[feeId]).filter(Boolean) as Fee[])
+        ];
+        const totalFees = allFees.reduce((sum, fee) => sum + fee.amount, 0);
         
-        const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
         let feesPaidSoFar = Math.min(totalPaidForInvoice, totalFees);
         let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
 
         // 1. Allocate payment to remaining fees first
-        const remainingFees = totalFees - feesPaidSoFar;
-        if (remainingFees > 0) {
-            const amountToAllocate = Math.min(paymentLeftToAllocate, remainingFees);
-            if (amountToAllocate > 0) {
-                allocation.push({ item: 'Semester Fees', allocatedAmount: amountToAllocate });
+        allFees.forEach(fee => {
+            const feeCost = fee.amount;
+            const feePaid = Math.min(feesPaidSoFar, feeCost);
+            const remainingFeeBalance = feeCost - feePaid;
+            if (paymentLeftToAllocate > 0 && remainingFeeBalance > 0) {
+                const amountToAllocate = Math.min(paymentLeftToAllocate, remainingFeeBalance);
+                allocation.push({ item: `Fee: ${fee.name}`, allocatedAmount: amountToAllocate });
                 paymentLeftToAllocate -= amountToAllocate;
             }
+            feesPaidSoFar = Math.max(0, feesPaidSoFar - feeCost);
+        });
+
+        // 2. Allocate remaining to tuition
+        if (paymentLeftToAllocate > 0) {
+            allocation.push({ item: `Tuition`, allocatedAmount: paymentLeftToAllocate });
         }
         
-        const tuitionPortionOfPayment = paymentLeftToAllocate;
-        let cumulativeTuitionPaid = tuitionPaidSoFar + tuitionPortionOfPayment;
+        const cumulativeTuitionPaid = tuitionPaidSoFar + paymentLeftToAllocate;
 
-        // 2. Allocate remaining to tuition, respecting course priority
-        if(payment.registration.coursePriority){
-            for (const courseId of payment.registration.coursePriority) {
-                if (paymentLeftToAllocate <= 0) break;
-                const course = allCourses[courseId];
-                if (course) {
-                    const remainingOnCourse = course.cost - tuitionPaidSoFar;
-                    if (remainingOnCourse > 0) {
-                        const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
-                         if (amountToAllocate > 0) {
-                            allocation.push({ item: `Tuition: ${course.name}`, allocatedAmount: amountToAllocate });
-                            paymentLeftToAllocate -= amountToAllocate;
-                            tuitionPaidSoFar += amountToAllocate;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Determine unlocked courses based on cumulative payment
+        // 3. Determine unlocked courses
         const unlocked: Course[] = [];
-        let tempCumulativeTuitionPaid = Math.max(0, cumulativePaidAfterThisPayment - totalFees);
+        let tempCumulativeTuitionPaid = cumulativeTuitionPaid;
 
-        if(payment.registration.coursePriority){
+        if (payment.registration.coursePriority) {
             for (const courseId of payment.registration.coursePriority) {
                 const course = allCourses[courseId];
                 if (course) {
-                    if (tempCumulativeTuitionPaid >= course.cost) {
+                    const coursePortion = (course.cost || 0) / (paymentPlan.installments || 1);
+                    if (tempCumulativeTuitionPaid >= coursePortion) {
                         unlocked.push(course);
-                        tempCumulativeTuitionPaid -= course.cost;
-                    } else {
-                        break;
+                        tempCumulativeTuitionPaid -= coursePortion;
                     }
                 }
             }
         }
 
-        return { paymentAllocation: allocation, unlockedCourses: unlocked };
-    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, cumulativePaidAfterThisPayment]);
+        return { paymentAllocation: allocation, unlockedCourses };
+    }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan, semester]);
 
 
     const config = {
@@ -363,7 +357,7 @@ export default function PaymentsPage() {
                     amountDueForThis += totalFees;
                 }
                  if(invoice.applyScholarship) {
-                    amountDueForThis = i === 0 ? totalFees : 0;
+                    amountDueForThis -= tuitionPerInstallment;
                 }
 
                 const paidForThis = Math.min(totalPaidForInvoice, amountDueForThis);
@@ -633,10 +627,10 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                        <TableRow>
+                                        <TableRow data-state={payment.isPayable ? 'open' : 'closed'} className="cursor-pointer">
                                             <TableCell className="font-medium">
                                                 <CollapsibleTrigger asChild>
-                                                    <div className="flex items-center gap-2 cursor-pointer">
+                                                    <div className="flex items-center gap-2">
                                                         {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
                                                     </div>
                                                 </CollapsibleTrigger>
@@ -647,7 +641,7 @@ export default function PaymentsPage() {
                                         </TableRow>
                                         <CollapsibleContent asChild>
                                             <tr>
-                                                <TableCell colSpan={4} className="p-4">
+                                                <TableCell colSpan={4} className="p-0">
                                                     {payment.isPayable && (
                                                         <PayNowSection
                                                         payment={payment}
@@ -656,6 +650,7 @@ export default function PaymentsPage() {
                                                         totalPaidForInvoice={totalPaidForInvoice}
                                                         allCourses={allCourses}
                                                         paymentPlan={paymentPlan}
+                                                        semester={semesters.find(s => s.id === payment.invoice.semesterId)}
                                                         />
                                                     )}
                                                 </TableCell>
