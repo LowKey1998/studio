@@ -163,7 +163,6 @@ function PayNowSection({
                     unlocked.push({ course, amountCovered: proRatedCost });
                     runningBudget -= proRatedCost;
                 } else {
-                    // Stop if we can't afford the next priority course
                     break;
                 }
             }
