@@ -482,7 +482,7 @@ export default function RegistrationPage() {
     const isLateRegistration = selectedSemesterData?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
-     const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
+    const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
         
         const optional = selectedFees.reduce((acc, feeId) => {
@@ -724,3 +724,5 @@ export default function RegistrationPage() {
         </div>
     );
 }
+
+    
