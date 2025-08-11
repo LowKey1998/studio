@@ -149,14 +149,12 @@ function PayNowSection({
         let paymentLeftToAllocate = finalAmount;
         const breakdown: { course: Course, allocatedAmount: number }[] = [];
         
-        let cumulativePaid = totalPaidForInvoice;
-
         for (const courseId of payment.registration.coursePriority) {
             if (paymentLeftToAllocate <= 0) break;
             const course = allCourses[courseId];
             if (course) {
                 const totalCourseCost = course.cost;
-                const paidTowardsThisCourse = Math.min(cumulativePaid, totalCourseCost);
+                const paidTowardsThisCourse = Math.min(totalPaidForInvoice, totalCourseCost);
                 const remainingOnCourse = totalCourseCost - paidTowardsThisCourse;
                 
                 if(remainingOnCourse > 0) {
@@ -164,25 +162,25 @@ function PayNowSection({
                     breakdown.push({ course, allocatedAmount: amountToAllocate });
                     paymentLeftToAllocate -= amountToAllocate;
                 }
-                cumulativePaid -= paidTowardsThisCourse;
             }
         }
         return breakdown;
     }, [finalAmount, totalPaidForInvoice, payment.registration.coursePriority, allCourses]);
 
-    const unlockedCourses: Course[] = React.useMemo(() => {
+    const unlockedCourses = React.useMemo(() => {
         if (!paymentPlan) return [];
-        
         let cumulativePaid = newTotalPaid;
         const unlocked: Course[] = [];
 
         for (const courseId of payment.registration.coursePriority) {
             const course = allCourses[courseId];
             if (course) {
-                if (cumulativePaid >= course.cost) {
+                const proRatedCost = course.cost * ((paymentPlan?.installmentPercentages[0] || 100) / 100);
+                 if (cumulativePaid >= proRatedCost) {
                     unlocked.push(course);
-                    cumulativePaid -= course.cost;
+                    cumulativePaid -= proRatedCost;
                 } else {
+                    // Stop if we can't afford the next priority course
                     break;
                 }
             }
@@ -520,10 +518,10 @@ export default function PaymentsPage() {
         const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
         const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-
+        
         const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems];
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-
+        
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
         if(invoice.applyScholarship) {
             foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
@@ -531,9 +529,9 @@ export default function PaymentsPage() {
         } else {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
-
+        
         (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
-
+        
         doc.save(`invoice-${invoice.invoiceId}.pdf`);
     };
 
