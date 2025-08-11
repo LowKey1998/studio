@@ -153,15 +153,15 @@ function PayNowSection({
 
     const { paymentAllocation, unlockedCourses } = React.useMemo(() => {
         if (!paymentPlan || !payment.invoice) return { paymentAllocation: [], unlockedCourses: [] };
-    
+
         const allocation: { item: string, allocatedAmount: number }[] = [];
-        const unlocked: Course[] = [];
         let paymentLeftToAllocate = finalAmount;
-    
+        const unlocked: Course[] = [];
+
         const totalFees = (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0);
         let feesPaidSoFar = Math.min(totalPaidForInvoice, totalFees);
         let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - feesPaidSoFar);
-    
+
         // 1. Allocate payment to remaining fees first
         const remainingFees = totalFees - feesPaidSoFar;
         if (remainingFees > 0) {
@@ -171,14 +171,14 @@ function PayNowSection({
                 paymentLeftToAllocate -= amountToAllocate;
             }
         }
-    
+
         // 2. Allocate remaining to tuition, respecting course priority
         for (const courseId of payment.registration.coursePriority) {
             if (paymentLeftToAllocate <= 0) break;
             const course = allCourses[courseId];
             if (course) {
                 const remainingOnCourse = course.cost - tuitionPaidSoFar;
-                if(remainingOnCourse > 0) {
+                if (remainingOnCourse > 0) {
                     const amountToAllocate = Math.min(paymentLeftToAllocate, remainingOnCourse);
                      if (amountToAllocate > 0) {
                         allocation.push({ item: `Tuition: ${course.name}`, allocatedAmount: amountToAllocate });
@@ -188,7 +188,7 @@ function PayNowSection({
                 }
             }
         }
-    
+
         // Determine unlocked courses based on cumulative payment
         let cumulativeTuitionPaid = Math.max(0, cumulativePaidAfterThisPayment - totalFees);
         for (const courseId of payment.registration.coursePriority) {
@@ -198,11 +198,11 @@ function PayNowSection({
                     unlocked.push(course);
                     cumulativeTuitionPaid -= course.cost;
                 } else {
-                    break; 
+                    break;
                 }
             }
         }
-    
+
         return { paymentAllocation: allocation, unlockedCourses };
     }, [finalAmount, totalPaidForInvoice, payment, allCourses, paymentPlan]);
 
@@ -228,10 +228,6 @@ function PayNowSection({
 
     if (payment.registration.status === 'Pending Approval') {
         return <Button size="sm" disabled>Awaiting Approval</Button>
-    }
-
-    if (!payment.isPayable) {
-        return <Button size="sm" variant="outline" disabled>Pay</Button>
     }
 
     return (
@@ -629,18 +625,18 @@ export default function PaymentsPage() {
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
                                     <>
-                                        <TableRow data-state={payment.isPayable ? 'open' : 'closed'} >
-                                            <TableCell className="font-medium">
-                                                <CollapsibleTrigger asChild>
-                                                    <div className="flex items-center gap-2 cursor-pointer">
+                                        <CollapsibleTrigger asChild>
+                                            <TableRow className="cursor-pointer">
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
                                                         {payment.installmentName} {payment.isPayable && <ChevronDown className="h-4 w-4"/>}
                                                     </div>
-                                                </CollapsibleTrigger>
-                                            </TableCell>
-                                            <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
-                                            <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
-                                        </TableRow>
+                                                </TableCell>
+                                                <TableCell>{payment.dueDate ? format(parseISO(payment.dueDate), 'PPP') : 'N/A'}</TableCell>
+                                                <TableCell><Badge variant={statusVariant[payment.status]}>{payment.status}</Badge></TableCell>
+                                                <TableCell className="text-right font-medium">{payment.balance.toFixed(2)}</TableCell>
+                                            </TableRow>
+                                        </CollapsibleTrigger>
                                         <CollapsibleContent asChild>
                                             <tr className="bg-muted/30 hover:bg-muted/50">
                                                 <TableCell colSpan={4} className="p-4">
