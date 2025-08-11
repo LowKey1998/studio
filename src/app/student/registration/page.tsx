@@ -576,7 +576,7 @@ export default function RegistrationPage() {
                                                     {registeredCourses.map(course => (
                                                         <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                     {semesterMandatoryFees.map(fee => (
+                                                    {semesterMandatoryFees.map(fee => (
                                                         <TableRow key={fee.id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
                                                     {existingRegistration.optionalFees.map(feeId => {
@@ -714,5 +714,3 @@ export default function RegistrationPage() {
         </div>
     );
 }
-
-    
