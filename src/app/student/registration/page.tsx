@@ -389,7 +389,10 @@ export default function RegistrationPage() {
             }
 
             const tuitionCost = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-            const optionalFeesCost = selectedFees.reduce((acc, feeId) => acc + (semesterOptionalFees.find(f => f.id === feeId)?.amount || 0), 0);
+            const optionalFeesCost = selectedFees.reduce((acc, feeId) => {
+                const fee = semesterOptionalFees.find(f => f.id === feeId);
+                return acc + (fee?.amount || 0);
+            }, 0);
             const mandatoryFeesCost = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
 
             const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
@@ -481,34 +484,40 @@ export default function RegistrationPage() {
 
     const {tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount} = React.useMemo(() => {
         const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
+        
         const optional = selectedFees.reduce((acc, feeId) => {
             const fee = semesterOptionalFees.find(f => f.id === feeId);
             return acc + (fee?.amount || 0);
         }, 0);
-        const mandatory = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
-        const lateFee = isLateRegistration ? lateFeeAmount : 0;
     
+        const mandatory = semesterMandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
+    
+        const lateFee = isLateRegistration ? lateFeeAmount : 0;
+        
         const total = tuition + optional + mandatory + lateFee;
         
         let payableBase = total;
-        if(applyScholarship) {
+        if (applyScholarship) {
             payableBase -= tuition;
         }
     
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
-        
         let firstInstallmentAmount = payableBase;
+    
         if (selectedPlan && selectedPlan.installments > 1 && selectedPlan.installmentPercentages && selectedPlan.installmentPercentages.length > 0) {
             const firstInstallmentPercentage = selectedPlan.installmentPercentages[0] / 100;
-            const tuitionPortion = tuition * firstInstallmentPercentage;
+            const tuitionPortion = applyScholarship ? 0 : tuition * firstInstallmentPercentage;
             firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
-             if(applyScholarship){
-                 firstInstallmentAmount -= tuitionPortion;
-            }
         }
     
-        return { tuitionCost: tuition, optionalFeesCost: optional, mandatoryFeesCost: mandatory, totalCost: total, payableAmount: firstInstallmentAmount };
-    }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, selectedPaymentPlanId, allPaymentPlans, applyScholarship, isLateRegistration, lateFeeAmount]);
+        return { 
+            tuitionCost: tuition, 
+            optionalFeesCost: optional, 
+            mandatoryFeesCost: mandatory, 
+            totalCost: total, 
+            payableAmount: firstInstallmentAmount 
+        };
+    }, [selectedCourses, selectedFees, semesterOptionalFees, semesterMandatoryFees, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
 
     const recommendedCourseIds = React.useMemo(() => {
         if (!userData || !selectedSemesterData) return [];
