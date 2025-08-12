@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, onValue, set, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, onValue, set, push, serverTimestamp, query, orderByChild, equalTo, get } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { formatDistanceToNow } from 'date-fns';
 import { Check, Heart, PlusCircle, Loader2 } from 'lucide-react';
@@ -25,8 +25,8 @@ type PrayerRequest = {
     details: string;
     submittedAt: number;
     prayedFor?: boolean;
-    studentId: string;
-    studentName: string;
+    studentId?: string;
+    studentName?: string;
 };
 
 export default function StudentPrayerRequestsPage() {
@@ -76,10 +76,16 @@ export default function StudentPrayerRequestsPage() {
     };
 
     const handleSumbitRequest = async () => {
-        if (!requestFor || !details || !currentUser || !userData) {
+        if (!requestFor.trim() || !details.trim()) {
             toast({ variant: 'destructive', title: 'Please fill out all fields.' });
             return;
         }
+
+        if (!isAnonymous && (!currentUser || !userData)) {
+            toast({ variant: 'destructive', title: 'You must be logged in to submit a non-anonymous request.' });
+            return;
+        }
+
         setFormLoading(true);
         try {
             const newRequestRef = push(ref(db, 'prayerRequests'));
@@ -87,8 +93,8 @@ export default function StudentPrayerRequestsPage() {
                 requestFor,
                 details,
                 isAnonymous,
-                studentId: currentUser.uid,
-                studentName: userData.name,
+                studentId: isAnonymous ? null : currentUser!.uid,
+                studentName: isAnonymous ? 'Anonymous' : userData!.name,
                 submittedAt: serverTimestamp(),
                 prayedFor: false
             });
