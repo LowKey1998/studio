@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -12,6 +13,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Progress } from '@/components/ui/progress';
+import { format, parseISO } from 'date-fns';
 
 type Course = {
     id: string;
@@ -20,15 +22,34 @@ type Course = {
     lecturerName: string;
 };
 
+type TimetableEntry = {
+    day: string;
+    startTime: string;
+    endTime: string;
+    venue: string;
+    courseCode: string;
+    courseName: string;
+};
+
+type AssessmentEvent = {
+    title: string;
+    date: string;
+};
+
 type SemesterCourses = {
     semesterId: string;
     semesterName: string;
     courses: Course[];
     attendancePercentage: number;
+    timetable: TimetableEntry[];
+    assessments: AssessmentEvent[];
 };
 
-type UserData = {
-    role: 'Student' | 'Staff';
+const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const timeToMinutes = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
 };
 
 export default function StudentSemesterOverviewPage() {
@@ -53,12 +74,14 @@ export default function StudentSemesterOverviewPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap, timetablesSnap, calendarSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
-                get(ref(db, 'attendance'))
+                get(ref(db, 'attendance')),
+                get(ref(db, 'timetables')),
+                get(ref(db, 'calendarEvents')),
             ]);
 
             if (!registrationsSnap.exists()) {
@@ -72,6 +95,8 @@ export default function StudentSemesterOverviewPage() {
             const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
             const usersData = usersSnap.exists() ? usersSnap.val() : {};
             const allAttendance = attendanceSnap.exists() ? attendanceSnap.val() : {};
+            const allTimetables = timetablesSnap.exists() ? timetablesSnap.val() : {};
+            const allCalendarEvents = calendarSnap.exists() ? calendarSnap.val() : {};
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
@@ -80,7 +105,7 @@ export default function StudentSemesterOverviewPage() {
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                if (registration.status === 'Completed') {
+                if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
                     if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
                     for (const courseId of registration.courses) {
                         const courseInfo = coursesData[courseId];
@@ -121,12 +146,35 @@ export default function StudentSemesterOverviewPage() {
                     }
                 });
                 const attendancePercentage = totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100;
+                
+                // Get Timetable
+                const timetableEntries: TimetableEntry[] = [];
+                if(allTimetables[semesterId]) {
+                    courses.forEach(course => {
+                        if (allTimetables[semesterId][course.id]) {
+                            Object.values(allTimetables[semesterId][course.id]).forEach((entry: any) => {
+                                timetableEntries.push({ ...entry, courseCode: course.code, courseName: course.name });
+                            });
+                        }
+                    });
+                }
+                
+                // Get Assessments
+                const assessmentEvents: AssessmentEvent[] = [];
+                Object.values(allCalendarEvents).forEach((event: any) => {
+                    if (event.semester === semesterInfo?.name) {
+                        assessmentEvents.push({ title: event.title, date: event.date });
+                    }
+                });
+
 
                 const semesterData = {
                     semesterId: semesterId,
                     semesterName: semesterInfo?.name || "Unknown Semester",
                     courses,
-                    attendancePercentage
+                    attendancePercentage,
+                    timetable: timetableEntries,
+                    assessments: assessmentEvents,
                 };
 
                 if(semesterInfo && semesterInfo.status !== 'Archived') {
@@ -159,57 +207,85 @@ export default function StudentSemesterOverviewPage() {
             <Card className="shadow-lg border-0">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">My Semester Overview</CardTitle>
-                    <CardDescription>An overview of your currently enrolled classes.</CardDescription>
+                    <CardDescription>An overview of your currently enrolled classes and schedules.</CardDescription>
                 </CardHeader>
             </Card>
 
             {loading ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                        <Card key={index} className="shadow-md">
-                            <CardHeader>
-                                <Skeleton className="h-6 w-2/3" />
-                                <Skeleton className="h-4 w-1/3" />
-                            </CardHeader>
-                            <CardContent>
-                                <Skeleton className="h-5 w-1/2" />
-                            </CardContent>
-                            <CardFooter>
-                                <Skeleton className="h-10 w-full" />
-                            </CardFooter>
-                        </Card>
+                <div className="space-y-4">
+                    {Array.from({ length: 2 }).map((_, index) => (
+                       <Skeleton key={index} className="h-48 w-full" />
                     ))}
                 </div>
             ) : activeSemesters.length > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <Accordion type="single" collapsible className="w-full space-y-4">
                     {activeSemesters.map((semester) => (
-                    <Card key={semester.semesterId} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
-                        <CardHeader>
-                            <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center text-sm text-muted-foreground">
-                                <BookOpen className="mr-2 h-4 w-4" />
-                                <span>{semester.courses.length} Course(s)</span>
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center text-sm">
-                                    <div className="flex items-center text-muted-foreground"><Hand className="mr-2 h-4 w-4" /> <span>Overall Attendance</span></div>
-                                    <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
+                    <Card key={semester.semesterId} className="shadow-lg">
+                        <AccordionItem value={semester.semesterId} className="border-b-0">
+                            <AccordionTrigger className="p-6 hover:no-underline">
+                                <div className="w-full">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
+                                        <div className="flex items-center text-sm text-muted-foreground">
+                                            <BookOpen className="mr-2 h-4 w-4" />
+                                            <span>{semester.courses.length} Course(s)</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 mt-4 text-left">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <div className="flex items-center text-muted-foreground"><Hand className="mr-2 h-4 w-4" /> <span>Overall Attendance</span></div>
+                                            <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
+                                        </div>
+                                        <Progress value={semester.attendancePercentage} />
+                                    </div>
                                 </div>
-                                <Progress value={semester.attendancePercentage} />
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                        <Button asChild className="w-full">
-                            <Link href={`/student/semester/${semester.semesterId}`}>
-                                View Details <ChevronRight className="ml-2 h-4 w-4" />
-                            </Link>
-                        </Button>
-                        </CardFooter>
+                            </AccordionTrigger>
+                            <AccordionContent className="px-6 pb-6">
+                                <div className="grid lg:grid-cols-3 gap-6">
+                                    <div className="lg:col-span-2">
+                                        <h4 className="font-semibold mb-2">Class Timetable</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
+                                            {daysOfWeek.map(day => (
+                                                <div key={day} className="bg-card">
+                                                    <h3 className="font-semibold text-center text-xs p-2 border-b bg-muted/50">{day}</h3>
+                                                    <div className="p-2 space-y-2 min-h-24">
+                                                        {semester.timetable
+                                                            .filter(entry => entry.day === day)
+                                                            .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                                                            .map((entry, index) => (
+                                                                <div key={index} className="p-2 text-xs rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
+                                                                    <p className="font-bold text-primary">{entry.courseCode}</p>
+                                                                    <p className="text-primary/80">{entry.startTime} - {entry.endTime}</p>
+                                                                    <p className="text-primary/80">Venue: {entry.venue}</p>
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold mb-2">Key Dates</h4>
+                                        <div className="space-y-2">
+                                            {semester.assessments
+                                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                                .map((event, index) => (
+                                                <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
+                                                    <CalendarIcon className="h-4 w-4 text-muted-foreground"/>
+                                                    <div>
+                                                        <p className="text-sm font-medium">{event.title.replace(`- ${semester.semesterName}`, '')}</p>
+                                                        <p className="text-xs text-muted-foreground">{format(parseISO(event.date), 'PPP')}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
                     </Card>
                     ))}
-                </div>
+                </Accordion>
             ) : (
                 <Card>
                     <CardContent className="pt-6">
@@ -263,3 +339,4 @@ export default function StudentSemesterOverviewPage() {
         </div>
     );
 }
+
