@@ -311,7 +311,8 @@ export const studentMenuItems = [
         label: 'Academics',
         icon: GraduationCap,
         items: [
-            { href: '/student/classes', label: 'Semester Overview', icon: BookCopy },
+            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
+            { href: '/student/course-path', label: 'My Course Path', icon: Route },
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
