@@ -27,7 +27,7 @@ type Semester = {
     status: 'Open' | 'Closed' | 'Archived';
 };
 
-export default function ClassesPage() {
+export default function StudentSemesterOverviewPage() {
     const [activeCourses, setActiveCourses] = React.useState<Course[]>([]);
     const [archivedCourses, setArchivedCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -127,7 +127,7 @@ export default function ClassesPage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
+                    <CardTitle className="font-headline text-2xl">My Semester Overview</CardTitle>
                     <CardDescription>An overview of your currently enrolled classes.</CardDescription>
                 </CardHeader>
             </Card>

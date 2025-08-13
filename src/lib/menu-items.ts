@@ -311,12 +311,19 @@ export const studentMenuItems = [
         label: 'Academics',
         icon: GraduationCap,
         items: [
-            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
-            { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
+            { href: '/student/classes', label: 'Semester Overview', icon: BookCopy },
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
             { href: '/student/courses/results', label: 'My Results', icon: ClipboardCheck },
+        ]
+    },
+    {
+        label: 'eLearning',
+        icon: MonitorPlay,
+        items: [
+            { href: '/student/assignments', label: 'Assignments', icon: BookMarked },
+            { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
         ]
     },
     {
@@ -334,6 +341,7 @@ export const studentMenuItems = [
             { href: '/student/leave', label: 'Request Absence', icon: Calendar },
             { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
             { href: '/student/resources', label: 'Resources', icon: FileText },
+            { href: '/student/student-life/clubs', label: 'Clubs & Associations', icon: Users },
             { href: '/vacancies', label: 'Job Vacancies', icon: Briefcase },
         ]
     },
