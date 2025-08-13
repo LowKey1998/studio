@@ -457,7 +457,7 @@ export default function ApproveRegistrationsPage() {
                                     {type !== 'completed' && (<CardContent className="p-4"><ul className="space-y-2">
                                         {currentSelection.map(courseId => allCourses.get(courseId)).filter(Boolean).map(course => {
                                             const history = request.academicHistory[course.id];
-                                            const isPathDeviation = coursePath && !Object.values(coursePath.semesters).some(s => s.courses.includes(course.id));
+                                            const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course.id)) : false;
                                             return(
                                             <li key={course.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course.id) && !currentSelection.includes(course.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course.id) && currentSelection.includes(course.id) && "bg-green-100 border-green-200")}>
                                                 <Checkbox id={`${reqId}-${course.id}`} checked={type === 'pending' ? currentSelection.includes(course.id) : request.courseIds.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
@@ -519,3 +519,4 @@ export default function ApproveRegistrationsPage() {
         </div>
     );
 }
+
