@@ -3,14 +3,15 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Users, UserPlus, UserMinus, Info, Loader2 } from 'lucide-react';
+import { Users, UserPlus, UserMinus, Info, Loader2, ArrowRight } from 'lucide-react';
 import { db, auth } from '@/lib/firebase';
-import { ref, onValue, set, update, get } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from 'next/link';
 
 type Club = {
     id: string;
@@ -23,7 +24,6 @@ export default function ClubsPage() {
     const [clubs, setClubs] = React.useState<Club[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -46,31 +46,12 @@ export default function ClubsPage() {
         });
         return () => unsub();
     }, []);
-    
-    const handleToggleMembership = async (clubId: string, isMember: boolean) => {
-        if (!currentUser) return;
-        setActionLoading(clubId);
-        try {
-            const memberRef = ref(db, `clubs/${clubId}/members/${currentUser.uid}`);
-            if(isMember) {
-                await set(memberRef, null); // Remove membership
-                toast({ title: "You've left the club." });
-            } else {
-                await set(memberRef, true); // Add membership
-                toast({ title: "Welcome to the club!" });
-            }
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Action failed', description: e.message });
-        } finally {
-            setActionLoading(null);
-        }
-    };
 
     const myClubs = React.useMemo(() => {
         if (!currentUser) return [];
         return clubs.filter(club => club.members?.[currentUser.uid]);
     }, [clubs, currentUser]);
-    
+
     if (loading) {
         return (
              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -96,7 +77,6 @@ export default function ClubsPage() {
         return (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {clubList.map(club => {
-                    const isMember = currentUser ? !!club.members?.[currentUser.uid] : false;
                     return (
                     <Card key={club.id} className="flex flex-col">
                         <CardHeader>
@@ -109,14 +89,10 @@ export default function ClubsPage() {
                             </div>
                         </CardContent>
                         <CardFooter>
-                             <Button 
-                                className="w-full" 
-                                variant={isMember ? 'destructive' : 'default'}
-                                onClick={() => handleToggleMembership(club.id, isMember)}
-                                disabled={!currentUser || actionLoading === club.id}
-                            >
-                                {actionLoading === club.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : isMember ? <UserMinus className="mr-2 h-4 w-4"/> : <UserPlus className="mr-2 h-4 w-4"/>}
-                                {isMember ? 'Leave Club' : 'Join Club'}
+                             <Button className="w-full" asChild>
+                                <Link href={`/student/student-life/clubs/${club.id}`}>
+                                    View Club <ArrowRight className="ml-2 h-4 w-4" />
+                                </Link>
                             </Button>
                         </CardFooter>
                     </Card>
