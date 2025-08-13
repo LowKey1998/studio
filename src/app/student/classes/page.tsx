@@ -1,35 +1,39 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookUser, Info, User, Archive } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get, query, equalTo, orderByChild } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Progress } from '@/components/ui/progress';
 
 type Course = {
     id: string;
     name: string;
     code: string;
     lecturerName: string;
-    semester: string;
 };
 
-type Semester = {
-    id: string;
-    name: string;
-    status: 'Open' | 'Closed' | 'Archived';
+type SemesterCourses = {
+    semesterId: string;
+    semesterName: string;
+    courses: Course[];
+    attendancePercentage: number;
+};
+
+type UserData = {
+    role: 'Student' | 'Staff';
 };
 
 export default function StudentSemesterOverviewPage() {
-    const [activeCourses, setActiveCourses] = React.useState<Course[]>([]);
-    const [archivedCourses, setArchivedCourses] = React.useState<Course[]>([]);
+    const [activeSemesters, setActiveSemesters] = React.useState<SemesterCourses[]>([]);
+    const [archivedSemesters, setArchivedSemesters] = React.useState<SemesterCourses[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const { toast } = useToast();
@@ -49,64 +53,91 @@ export default function StudentSemesterOverviewPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'users'))
+                get(ref(db, 'users')),
+                get(ref(db, 'attendance'))
             ]);
 
             if (!registrationsSnap.exists()) {
-                setActiveCourses([]);
-                setArchivedCourses([]);
+                setActiveSemesters([]);
+                setArchivedSemesters([]);
                 setLoading(false);
                 return;
             }
             
-            const allSemesters: Semester[] = semestersSnap.exists() ? Object.values(semestersSnap.val()) : [];
-            const semesterMap = new Map<string, Semester>();
-            if(semestersSnap.exists()){
-                Object.values(semestersSnap.val() as Record<string, Semester>).forEach((s, i) => {
-                    semesterMap.set(Object.keys(semestersSnap.val())[i], s);
-                });
-            }
-
+            const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
             const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
             const usersData = usersSnap.exists() ? usersSnap.val() : {};
+            const allAttendance = attendanceSnap.exists() ? attendanceSnap.val() : {};
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
-            const newActiveCourses: Course[] = [];
-            const newArchivedCourses: Course[] = [];
+            const semesterCourseMap: Record<string, Course[]> = {};
             const registrationsData = registrationsSnap.val();
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                const semesterInfo = semesterMap.get(semesterId);
-
                 if (registration.status === 'Completed') {
+                    if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
                     for (const courseId of registration.courses) {
                         const courseInfo = coursesData[courseId];
                         if (courseInfo) {
-                            const course = {
+                            semesterCourseMap[semesterId].push({
                                 id: courseId,
                                 name: courseInfo.name,
                                 code: courseInfo.code,
                                 lecturerName: userMap.get(courseInfo.lecturerId) || 'N/A',
-                                semester: registration.semesterName,
-                            };
-                            if (semesterInfo && semesterInfo.status !== 'Archived') {
-                                newActiveCourses.push(course);
-                            } else {
-                                newArchivedCourses.push(course);
-                            }
+                            });
                         }
                     }
                 }
             }
+
+            const newActiveSemesters: SemesterCourses[] = [];
+            const newArchivedSemesters: SemesterCourses[] = [];
+
+            for (const semesterId in semesterCourseMap) {
+                const semesterInfo = allSemesters[semesterId];
+                const courses = semesterCourseMap[semesterId];
+
+                // Calculate attendance
+                let totalPresent = 0;
+                let totalMarked = 0;
+                courses.forEach(course => {
+                    const courseAttendance = allAttendance[course.id];
+                    if (courseAttendance) {
+                        Object.values(courseAttendance).forEach((dailyRecord: any) => {
+                             const status = dailyRecord[currentUser.uid];
+                             if(status) {
+                                 totalMarked++;
+                                 if (status === 'Present' || status === 'Late' || status === 'Excused Absence') {
+                                     totalPresent++;
+                                 }
+                             }
+                        });
+                    }
+                });
+                const attendancePercentage = totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100;
+
+                const semesterData = {
+                    semesterId: semesterId,
+                    semesterName: semesterInfo?.name || "Unknown Semester",
+                    courses,
+                    attendancePercentage
+                };
+
+                if(semesterInfo && semesterInfo.status !== 'Archived') {
+                    newActiveSemesters.push(semesterData);
+                } else {
+                    newArchivedSemesters.push(semesterData);
+                }
+            }
             
-            setActiveCourses(newActiveCourses);
-            setArchivedCourses(newArchivedCourses);
+            setActiveSemesters(newActiveSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
+            setArchivedSemesters(newArchivedSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
 
         } catch (error) {
             console.error("Error fetching enrolled courses:", error);
@@ -149,24 +180,30 @@ export default function StudentSemesterOverviewPage() {
                         </Card>
                     ))}
                 </div>
-            ) : activeCourses.length > 0 ? (
+            ) : activeSemesters.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {activeCourses.map((course) => (
-                    <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
+                    {activeSemesters.map((semester) => (
+                    <Card key={semester.semesterId} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
                         <CardHeader>
-                            <CardTitle className="font-headline">{course.name}</CardTitle>
-                            <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
+                            <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center text-sm text-muted-foreground">
-                                <User className="mr-2 h-4 w-4" />
-                                <span>Lecturer: {course.lecturerName}</span>
+                                <BookOpen className="mr-2 h-4 w-4" />
+                                <span>{semester.courses.length} Course(s)</span>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center text-sm">
+                                    <div className="flex items-center text-muted-foreground"><Hand className="mr-2 h-4 w-4" /> <span>Overall Attendance</span></div>
+                                    <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
+                                </div>
+                                <Progress value={semester.attendancePercentage} />
                             </div>
                         </CardContent>
                         <CardFooter>
                         <Button asChild className="w-full">
-                            <Link href={`/student/courses/${course.id}`}>
-                                View Course <ChevronRight className="ml-2 h-4 w-4" />
+                            <Link href={`/student/semester/${semester.semesterId}`}>
+                                View Details <ChevronRight className="ml-2 h-4 w-4" />
                             </Link>
                         </Button>
                         </CardFooter>
@@ -187,33 +224,32 @@ export default function StudentSemesterOverviewPage() {
                 </Card>
             )}
 
-            {archivedCourses.length > 0 && (
+            {archivedSemesters.length > 0 && (
                 <Accordion type="single" collapsible className="w-full">
                     <AccordionItem value="archived-courses">
                         <AccordionTrigger>
                             <div className="flex items-center gap-2 text-lg font-semibold">
                                 <Archive className="h-5 w-5"/>
-                                My Archived Classes
+                                Archived Semesters
                             </div>
                         </AccordionTrigger>
                         <AccordionContent>
                              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pt-4">
-                                {archivedCourses.map((course) => (
-                                <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg opacity-70">
+                                {archivedSemesters.map((semester) => (
+                                <Card key={semester.semesterId} className="flex flex-col justify-between shadow-lg opacity-70">
                                     <CardHeader>
-                                        <CardTitle className="font-headline">{course.name}</CardTitle>
-                                        <CardDescription>{course.code} ({course.semester})</CardDescription>
+                                        <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="flex items-center text-sm text-muted-foreground">
-                                            <User className="mr-2 h-4 w-4" />
-                                            <span>Lecturer: {course.lecturerName}</span>
+                                            <BookOpen className="mr-2 h-4 w-4" />
+                                            <span>{semester.courses.length} Course(s)</span>
                                         </div>
                                     </CardContent>
                                     <CardFooter>
                                     <Button asChild className="w-full" variant="secondary">
-                                        <Link href={`/student/courses/${course.id}`}>
-                                            View Course <ChevronRight className="ml-2 h-4 w-4" />
+                                        <Link href={`/student/semester/${semester.semesterId}`}>
+                                            View Details <ChevronRight className="ml-2 h-4 w-4" />
                                         </Link>
                                     </Button>
                                     </CardFooter>
