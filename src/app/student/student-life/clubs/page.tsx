@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Club = {
     id: string;
@@ -18,7 +19,7 @@ type Club = {
     members?: Record<string, boolean>; // studentId -> true
 };
 
-export default function StudentClubsPage() {
+export default function ClubsPage() {
     const [clubs, setClubs] = React.useState<Club[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -64,12 +65,63 @@ export default function StudentClubsPage() {
             setActionLoading(null);
         }
     };
+
+    const myClubs = React.useMemo(() => {
+        if (!currentUser) return [];
+        return clubs.filter(club => club.members?.[currentUser.uid]);
+    }, [clubs, currentUser]);
     
     if (loading) {
         return (
              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48"/>)}
              </div>
+        )
+    }
+
+    const renderClubList = (clubList: Club[]) => {
+        if (clubList.length === 0) {
+            return (
+                <Card>
+                    <CardContent className="pt-6">
+                        <Alert>
+                            <Info className="h-4 w-4"/>
+                            <AlertTitle>No Clubs Found</AlertTitle>
+                            <AlertDescription>There are no clubs to display in this view.</AlertDescription>
+                        </Alert>
+                    </CardContent>
+                </Card>
+            )
+        }
+        return (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {clubList.map(club => {
+                    const isMember = currentUser ? !!club.members?.[currentUser.uid] : false;
+                    return (
+                    <Card key={club.id} className="flex flex-col">
+                        <CardHeader>
+                            <CardTitle>{club.name}</CardTitle>
+                            <CardDescription>{club.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Users className="h-4"/>{Object.keys(club.members || {}).length} Members
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                             <Button 
+                                className="w-full" 
+                                variant={isMember ? 'destructive' : 'default'}
+                                onClick={() => handleToggleMembership(club.id, isMember)}
+                                disabled={!currentUser || actionLoading === club.id}
+                            >
+                                {actionLoading === club.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : isMember ? <UserMinus className="mr-2 h-4 w-4"/> : <UserPlus className="mr-2 h-4 w-4"/>}
+                                {isMember ? 'Leave Club' : 'Join Club'}
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                 )})}
+            </div>
         )
     }
 
@@ -80,48 +132,21 @@ export default function StudentClubsPage() {
                     <CardTitle className="font-headline text-2xl">Clubs & Associations</CardTitle>
                     <CardDescription>Explore and join student clubs to get involved on campus.</CardDescription>
                 </CardHeader>
+                <CardContent>
+                    <Tabs defaultValue="all">
+                        <TabsList>
+                            <TabsTrigger value="all">All Clubs</TabsTrigger>
+                            <TabsTrigger value="my-clubs">My Clubs</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="all" className="pt-6">
+                            {renderClubList(clubs)}
+                        </TabsContent>
+                        <TabsContent value="my-clubs" className="pt-6">
+                             {renderClubList(myClubs)}
+                        </TabsContent>
+                    </Tabs>
+                </CardContent>
             </Card>
-
-            {clubs.length > 0 ? (
-                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {clubs.map(club => {
-                        const isMember = currentUser ? !!club.members?.[currentUser.uid] : false;
-                        return (
-                        <Card key={club.id} className="flex flex-col">
-                            <CardHeader>
-                                <CardTitle>{club.name}</CardTitle>
-                                <CardDescription>{club.description}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex-grow">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Users className="h-4"/>{Object.keys(club.members || {}).length} Members
-                                </div>
-                            </CardContent>
-                            <CardFooter>
-                                 <Button 
-                                    className="w-full" 
-                                    variant={isMember ? 'destructive' : 'default'}
-                                    onClick={() => handleToggleMembership(club.id, isMember)}
-                                    disabled={!currentUser || actionLoading === club.id}
-                                >
-                                    {actionLoading === club.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : isMember ? <UserMinus className="mr-2 h-4 w-4"/> : <UserPlus className="mr-2 h-4 w-4"/>}
-                                    {isMember ? 'Leave Club' : 'Join Club'}
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                     )})}
-                 </div>
-            ) : (
-                <Card>
-                    <CardContent className="pt-6">
-                        <Alert>
-                            <Info className="h-4 w-4"/>
-                            <AlertTitle>No Clubs Available</AlertTitle>
-                            <AlertDescription>There are no clubs to join at the moment. Check back later!</AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
-            )}
         </div>
     );
 }
