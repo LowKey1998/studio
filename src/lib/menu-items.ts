@@ -311,10 +311,10 @@ export const studentMenuItems = [
         label: 'Academics',
         icon: GraduationCap,
         items: [
-            { href: '/student/classes', label: 'My Classes', icon: BookCopy },
+            { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { href: '/student/courses', label: 'My Classes', icon: BookCopy },
             { href: '/student/course-path', label: 'My Course Path', icon: Route },
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
-            { href: '/student/attendance', label: 'My Attendance', icon: Hand },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
             { href: '/student/courses/results', label: 'My Results', icon: ClipboardCheck },
         ]
@@ -323,7 +323,6 @@ export const studentMenuItems = [
         label: 'eLearning',
         icon: MonitorPlay,
         items: [
-            { href: '/student/assignments', label: 'Assignments', icon: BookMarked },
             { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
         ]
     },

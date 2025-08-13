@@ -21,7 +21,7 @@ type CoursePath = {
     id: string;
     intakeId: string;
     programmeId: string;
-    semesters: Record<number, { courses: string[] }>;
+    semesters: Record<string, { courses: string[] }>;
 };
 
 type UserData = {
@@ -89,31 +89,11 @@ export default function MyCoursePathPage() {
         fetchData();
     }, [currentUser]);
 
-    const getYearFromSemester = (semNum: number) => Math.floor((semNum - 1) / 2) + 1;
-    const getSemesterInYear = (semNum: number) => (semNum - 1) % 2 + 1;
+    const semestersInOrder = React.useMemo(() => {
+        if (!path || !path.semesters) return [];
+        return Object.entries(path.semesters).sort(([semNumA], [semNumB]) => Number(semNumA) - Number(semNumB));
+    }, [path]);
 
-    const groupedByYear = React.useMemo(() => {
-        if (!path || !path.semesters) return {};
-
-        const grouped: Record<string, { semester: number, courses: Course[] }[]> = {};
-
-        Object.entries(path.semesters).forEach(([semNumStr, semData]) => {
-            const semNum = Number(semNumStr);
-            const year = getYearFromSemester(semNum);
-            const yearKey = `Year ${year}`;
-
-            if (!grouped[yearKey]) {
-                grouped[yearKey] = [];
-            }
-
-            grouped[yearKey].push({
-                semester: getSemesterInYear(semNum),
-                courses: semData.courses.map(courseId => allCourses[courseId]).filter(Boolean),
-            });
-        });
-
-        return grouped;
-    }, [path, allCourses]);
 
     if (loading) {
         return (
@@ -152,31 +132,29 @@ export default function MyCoursePathPage() {
                     <CardDescription>A complete roadmap of your curriculum for the {userData?.programmeName || 'programme'}.</CardDescription>
                 </CardHeader>
             </Card>
-            <Accordion type="multiple" defaultValue={Object.keys(groupedByYear)} className="w-full space-y-4">
-                {Object.entries(groupedByYear).map(([year, semesters]) => (
-                    <AccordionItem value={year} key={year} className="border rounded-lg bg-card">
-                        <AccordionTrigger className="text-xl font-bold px-6 py-4 hover:no-underline">
-                           {year}
-                        </AccordionTrigger>
-                        <AccordionContent className="px-6 pb-6 space-y-4">
-                            {semesters.map(({ semester, courses }) => (
-                                <div key={semester}>
-                                    <h4 className="font-semibold text-lg mb-2">Semester {semester}</h4>
-                                    <div className="border rounded-md">
-                                        {courses.map(course => (
-                                            <div key={course.id} className="flex justify-between p-3 border-b last:border-b-0">
-                                                <span>{course.name}</span>
-                                                <span className="text-muted-foreground">{course.code}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </AccordionContent>
-                    </AccordionItem>
+            <div className="space-y-4">
+                {semestersInOrder.map(([semNum, semData]) => (
+                    <Card key={semNum}>
+                        <CardHeader>
+                            <CardTitle>Semester {semNum}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                             <div className="border rounded-md">
+                                {semData.courses.map((courseId, index) => {
+                                    const course = allCourses[courseId];
+                                    if(!course) return null;
+                                    return (
+                                        <div key={courseId} className={`flex justify-between p-3 ${index < semData.courses.length - 1 ? 'border-b' : ''}`}>
+                                            <span>{course.name}</span>
+                                            <span className="text-muted-foreground">{course.code}</span>
+                                        </div>
+                                    )
+                                })}
+                             </div>
+                        </CardContent>
+                    </Card>
                 ))}
-            </Accordion>
+            </div>
         </div>
     );
 }
-

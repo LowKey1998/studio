@@ -26,7 +26,7 @@ export default function DashboardRedirectPage() {
             } else if (role === 'Staff') {
               router.replace('/staff/courses');
             } else if (role === 'Student') {
-              router.replace('/student/classes');
+              router.replace('/student/dashboard');
             } else {
               router.replace('/login');
             }
