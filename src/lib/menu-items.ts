@@ -364,6 +364,7 @@ export const staffMenuItems = [
       icon: Settings,
       items: [
         { href: '/staff/library', label: 'Library', icon: Library },
+        { href: '/staff/profile', label: 'My Profile', icon: User },
       ]
     }
   ];
