@@ -203,22 +203,22 @@ export const allMenuItems = [
         isComingSoon: true,
     },
     {
-        label: 'Quality Assurance',
-        icon: Check,
-        roles: ['Admin'],
-        isComingSoon: true,
+      label: 'Quality Assurance',
+      icon: Check,
+      roles: ['Admin'],
+      isComingSoon: true,
     },
     {
-        label: 'Legal & Compliance',
-        icon: GitBranch,
-        roles: ['Admin'],
-        isComingSoon: true,
+      label: 'Legal & Compliance',
+      icon: GitBranch,
+      roles: ['Admin'],
+      isComingSoon: true,
     },
-     {
-        label: 'Facilities & Estates',
-        icon: Building,
-        roles: ['Admin'],
-        isComingSoon: true,
+    {
+      label: 'Facilities & Estates',
+      icon: Building,
+      roles: ['Admin'],
+      isComingSoon: true,
     },
     {
         label: 'Transport',
@@ -278,6 +278,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
+            { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
         ]
     },
 ];
@@ -369,4 +370,5 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
+
 
