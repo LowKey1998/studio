@@ -72,6 +72,7 @@ export default function DashboardLayout({
         const staffPermissions = userProfile.permissions || {};
         const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
         
+        // Base items for all staff, filtered by sub-role if a permission is specified
         const baseStaffItems = staffMenuItems.map(category => {
             const filteredSubItems = category.items.filter(subItem => 
                 !subItem.permission || (userProfile.subRoles && userProfile.subRoles.includes(subItem.permission))
@@ -83,21 +84,27 @@ export default function DashboardLayout({
             return null;
         }).filter(Boolean);
         
+        // Admin items they have permission for
         const assignedAdminItems = allMenuItems.map(category => {
-            if (!category.items) {
-                return allowedHrefs.includes(category.href) ? category : null;
+            if (!category.items || category.roles?.includes('Admin') === false) { // Skip non-admin or item-less categories
+                return null;
             }
             
             const filteredSubItems = category.items.filter(subItem => allowedHrefs.includes(subItem.href));
             
             if (filteredSubItems.length > 0) {
+                // Return the whole category if any sub-item is allowed
                 return { ...category, items: filteredSubItems };
             }
             
             return null;
         }).filter(Boolean);
 
-        itemsToRender = [...baseStaffItems, ...assignedAdminItems];
+        // Filter out admin categories that are already part of the base staff menu to avoid duplication
+        const baseCategoryLabels = new Set(baseStaffItems.map(item => item?.label));
+        const uniqueAssignedAdminItems = assignedAdminItems.filter(item => !baseCategoryLabels.has(item?.label));
+
+        itemsToRender = [...baseStaffItems, ...uniqueAssignedAdminItems];
     }
     
     const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
