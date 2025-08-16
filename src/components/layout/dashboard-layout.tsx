@@ -71,10 +71,10 @@ export default function DashboardLayout({
     } else if (userProfile.role.toLowerCase() === 'staff') {
         const staffPermissions = userProfile.permissions || {};
         
-        const baseStaffItems = staffBaseMenuItems.map(category => {
-            if (!category.items) return category; // Keep top-level items without children
+        const baseMenu = staffBaseMenuItems.map(category => {
+            if (!category.items) return category;
             const filteredSubItems = category.items.filter(subItem => {
-                 if (!subItem.permission) return true; // Item has no specific sub-role requirement
+                 if (!subItem.permission) return true;
                  return userProfile.subRoles?.includes(subItem.permission);
             });
             
@@ -84,22 +84,25 @@ export default function DashboardLayout({
             return null;
         }).filter(Boolean) as any[];
 
-        const baseCategoryLabels = new Set(baseStaffItems.map(item => item?.label));
-
-        const assignedAdminItems = allMenuItems.map(category => {
-            if (baseCategoryLabels.has(category.label)) return null; // Avoid duplicating categories from base menu
-            if (!category.items) return null;
-            
-            const filteredSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
-            
-            if (filteredSubItems.length > 0) {
-                return { ...category, items: filteredSubItems };
-            }
-            
-            return null;
+        const additionalMenu = allMenuItems.map(category => {
+             if (!category.items) return null;
+             const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
+             if (permittedSubItems.length > 0) {
+                 return { ...category, items: permittedSubItems };
+             }
+             return null;
         }).filter(Boolean);
 
-        itemsToRender = [...baseStaffItems, ...assignedAdminItems];
+        const combinedMenu = [...baseMenu];
+        const baseCategories = new Set(baseMenu.map(c => c.label));
+
+        additionalMenu.forEach(category => {
+            if (!baseCategories.has(category.label)) {
+                combinedMenu.push(category);
+            }
+        });
+
+        itemsToRender = combinedMenu;
     }
     
     const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
