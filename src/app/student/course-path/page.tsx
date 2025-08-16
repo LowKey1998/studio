@@ -77,7 +77,7 @@ export default function MyCoursePathPage() {
                 const userPath = allCoursePaths.find(p => p.intakeId === uData.intakeId && p.programmeId === uData.programmeId);
                 setPath(userPath || null);
 
-                setAllCourses(coursesSnap.val());
+                setAllCourses(coursesSnap.val() || {});
 
             } catch (error) {
                 console.error("Error fetching course path:", error);

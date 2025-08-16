@@ -21,6 +21,12 @@ type SubRole = {
     permissions: Record<string, boolean>;
 };
 
+// Firebase keys cannot contain '.', '#', '$', '[', ']', or '/'.
+// We replace '/' with a safe character.
+const sanitizeKey = (key: string) => key.replace(/\//g, '|');
+const desanitizeKey = (key: string) => key.replace(/\|/g, '/');
+
+
 export default function AccessRulesPage() {
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -39,7 +45,17 @@ export default function AccessRulesPage() {
         const unsubscribe = onValue(subRolesRef, (snapshot) => {
              if (snapshot.exists()) {
                 const subRolesData = snapshot.val();
-                setSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
+                const sanitizedRoles = Object.keys(subRolesData).map(id => {
+                    const role = subRolesData[id];
+                    const sanitizedPermissions: Record<string, boolean> = {};
+                    if(role.permissions) {
+                        for(const key in role.permissions) {
+                           sanitizedPermissions[desanitizeKey(key)] = role.permissions[key];
+                        }
+                    }
+                    return { id, name: role.name, permissions: sanitizedPermissions };
+                });
+                setSubRoles(sanitizedRoles);
             } else { setSubRoles([]) }
             setLoading(false);
         });
@@ -64,10 +80,15 @@ export default function AccessRulesPage() {
     };
     
     const handlePermissionChange = (permissionKey: string, checked: boolean) => {
-        setPermissions(prev => ({
-            ...prev,
-            [permissionKey]: checked
-        }));
+        setPermissions(prev => {
+            const newPermissions = { ...prev };
+            if (checked) {
+                newPermissions[permissionKey] = true;
+            } else {
+                delete newPermissions[permissionKey];
+            }
+            return newPermissions;
+        });
     };
 
     const handleSaveRole = async () => {
@@ -76,7 +97,14 @@ export default function AccessRulesPage() {
             return;
         }
         setSaving(true);
-        const roleData = { name: roleName, permissions };
+        
+        const sanitizedPermissions: Record<string, boolean> = {};
+        for(const key in permissions){
+            sanitizedPermissions[sanitizeKey(key)] = permissions[key];
+        }
+
+        const roleData = { name: roleName, permissions: sanitizedPermissions };
+        
         try {
             if (editingRole) {
                 await update(ref(db, `settings/subRoles/${editingRole.id}`), roleData);
