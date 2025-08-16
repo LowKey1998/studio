@@ -1,26 +1,178 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { KeyRound, Shield } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { KeyRound, Shield, PlusCircle, Trash2, Pencil, Loader2, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { db } from '@/lib/firebase';
+import { ref, onValue, push, update, remove } from 'firebase/database';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { allMenuItems } from '@/lib/menu-items';
+
+type SubRole = {
+    id: string;
+    name: string;
+    permissions: Record<string, boolean>;
+};
 
 export default function AccessRulesPage() {
+    const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    
+    // Dialog State
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [editingRole, setEditingRole] = React.useState<SubRole | null>(null);
+    const [roleName, setRoleName] = React.useState('');
+    const [permissions, setPermissions] = React.useState<Record<string, boolean>>({});
+
+    const { toast } = useToast();
+    
+    React.useEffect(() => {
+        const subRolesRef = ref(db, 'settings/subRoles');
+        const unsubscribe = onValue(subRolesRef, (snapshot) => {
+             if (snapshot.exists()) {
+                const subRolesData = snapshot.val();
+                setSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
+            } else { setSubRoles([]) }
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const resetRoleForm = () => {
+        setEditingRole(null);
+        setRoleName('');
+        setPermissions({});
+    };
+
+    const openRoleDialog = (role: SubRole | null) => {
+        if (role) {
+            setEditingRole(role);
+            setRoleName(role.name);
+            setPermissions(role.permissions || {});
+        } else {
+            resetRoleForm();
+        }
+        setIsDialogOpen(true);
+    };
+    
+    const handlePermissionChange = (permissionKey: string) => {
+        setPermissions(prev => ({
+            ...prev,
+            [permissionKey]: !prev[permissionKey]
+        }));
+    };
+
+    const handleSaveRole = async () => {
+        if (!roleName) {
+            toast({ variant: 'destructive', title: 'Role name required' });
+            return;
+        }
+        setSaving(true);
+        const roleData = { name: roleName, permissions };
+        try {
+            if (editingRole) {
+                await update(ref(db, `settings/subRoles/${editingRole.id}`), roleData);
+                toast({ title: 'Role Updated' });
+            } else {
+                await push(ref(db, `settings/subRoles`), roleData);
+                toast({ title: 'Role Created' });
+            }
+            setIsDialogOpen(false);
+            resetRoleForm();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Failed to save role', description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteRole = async (roleId: string) => {
+        if (!window.confirm("Are you sure? This may affect users assigned to this role.")) {
+            return;
+        }
+        await remove(ref(db, `settings/subRoles/${roleId}`));
+        toast({ title: "Role deleted" });
+    }
+
     return (
         <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><KeyRound /> Access Rules & Permissions</CardTitle>
-                <CardDescription>This section will provide a centralized interface for fine-grained control over user roles and their specific permissions across the entire application.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="flex items-center gap-2"><KeyRound /> Access Rules & Permissions</CardTitle>
+                    <CardDescription>Create and manage staff sub-roles to grant specific permissions across the system.</CardDescription>
+                </div>
+                 <Button onClick={() => openRoleDialog(null)}><PlusCircle className="mr-2 h-4"/>New Sub-Role</Button>
             </CardHeader>
             <CardContent>
-                <Alert>
-                    <Shield className="h-4 w-4"/>
-                    <AlertTitle>Coming Soon!</AlertTitle>
-                    <AlertDescription>
-                        Advanced role-based access control (RBAC) and permission management features are currently under development.
-                    </AlertDescription>
-                </Alert>
+                <div className="space-y-2">
+                    {loading ? (
+                        <>
+                           <Skeleton className="h-16 w-full" />
+                           <Skeleton className="h-16 w-full" />
+                        </>
+                    ) : subRoles.length > 0 ? (
+                        subRoles.map(role => (
+                            <Card key={role.id}>
+                                <CardHeader className="flex flex-row items-center justify-between p-4">
+                                    <p className="font-semibold">{role.name}</p>
+                                    <div className="flex gap-2">
+                                        <Button type="button" size="sm" variant="outline" onClick={() => openRoleDialog(role)}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
+                                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteRole(role.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete</Button>
+                                    </div>
+                                </CardHeader>
+                            </Card>
+                        ))
+                    ) : (
+                        <div className="text-center py-10 text-muted-foreground">
+                           <Shield className="mx-auto h-12 w-12" />
+                            <h3 className="mt-4 text-lg font-semibold">No Sub-Roles Created</h3>
+                            <p className="mt-2 text-sm">Create a sub-role to define specific user permissions.</p>
+                        </div>
+                    )}
+                </div>
+
+                <Dialog open={isDialogOpen} onOpenChange={(open) => {if(!open) resetRoleForm(); setIsDialogOpen(open);}}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>{editingRole ? `Edit ${editingRole.name}` : "Create New Sub-Role"}</DialogTitle>
+                            <DialogDescription>Define the name and permissions for this staff sub-role.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <Input placeholder="Role Name, e.g., Bursar" value={roleName} onChange={(e) => setRoleName(e.target.value)} />
+                             <div className="max-h-[60vh] overflow-y-auto pr-4">
+                                <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
+                                {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
+                                    <AccordionItem value={item.label} key={item.label}>
+                                        <AccordionTrigger>{item.label}</AccordionTrigger>
+                                        <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                                            {item.items?.map(subItem => (
+                                                <div key={subItem.href} className="flex items-center gap-2">
+                                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => handlePermissionChange(subItem.href)}/>
+                                                    <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
+                                                </div>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                                </Accordion>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleSaveRole} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}Save Role</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
 }
+
