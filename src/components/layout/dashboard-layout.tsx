@@ -105,6 +105,17 @@ export default function DashboardLayout({
     return (
         <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
             {itemsToRender.map((item) => {
+                if (item.isComingSoon) {
+                    return (
+                        <div key={item.label} className="px-2 py-1.5">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.label}</span>
+                                <span className="ml-auto text-xs font-medium text-muted-foreground/70">Soon</span>
+                            </div>
+                        </div>
+                    )
+                }
                 if(item.items && item.items.length > 0) {
                     return (
                         <AccordionItem value={item.label} key={item.label} className="border-none">

@@ -1,6 +1,5 @@
 
-
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, BookMarked } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -77,15 +76,7 @@ export const allMenuItems = [
         label: 'Clinicals',
         icon: Stethoscope,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning', icon: GitBranch },
-            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Login', icon: User },
-            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks', icon: Book },
-            { href: '/admin/clinicals/community-placement', label: 'Community Placement', icon: MapPin },
-            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms', icon: MessageSquare },
-            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
-            { href: '/admin/clinicals/clinical-assessment', label: 'Clinical Assessment Reports', icon: ClipboardEdit },
-        ]
+        isComingSoon: true,
     },
      {
       label: 'E-Learning',
@@ -155,7 +146,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
     {
         label: 'HR',
@@ -209,52 +200,37 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
     {
         label: 'Quality Assurance',
         icon: Check,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/qa/audit-reports', label: 'Internal Audit Reports', icon: FileText },
-            { href: '/admin/qa/accreditation', label: 'Accreditation Tracker', icon: Check },
-            { href: '/admin/qa/kpi-dashboard', label: 'KPI Dashboard', icon: BarChart2 },
-            { href: '/admin/qa/course-eval', label: 'Course Evaluation', icon: MessageSquare },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Legal & Compliance',
         icon: GitBranch,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/legal/case-management', label: 'Case Management', icon: Briefcase },
-            { href: '/admin/legal/contract-repository', label: 'Contract Repository', icon: FileText },
-            { href: '/admin/legal/disciplinary-logs', label: 'Student Disciplinary Logs', icon: UserX },
-            { href: '/admin/legal/policy-uploads', label: 'Policy Uploads', icon: FileUp },
-        ]
+        isComingSoon: true,
     },
      {
         label: 'Facilities & Estates',
         icon: Building,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
-            { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: ClipboardList },
-            { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: Sparkles },
-            { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
      {
         label: 'Mentorship & Advising',
@@ -270,7 +246,7 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',
@@ -393,3 +369,4 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
+
