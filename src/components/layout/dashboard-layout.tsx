@@ -82,11 +82,11 @@ export default function DashboardLayout({
                 return { ...category, items: filteredSubItems };
             }
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean) as any[];
         
         // Admin items they have permission for
         const assignedAdminItems = allMenuItems.map(category => {
-            if (!category.items || category.roles?.includes('Admin') === false) { // Skip non-admin or item-less categories
+            if (!category.items) {
                 return null;
             }
             
