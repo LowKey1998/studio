@@ -70,27 +70,27 @@ export default function DashboardLayout({
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
         const staffPermissions = userProfile.permissions || {};
-        const allowedHrefs = new Set(Object.keys(staffPermissions));
         
-        // Base items for all staff, filtered by sub-role if a permission is specified
         const baseStaffItems = staffBaseMenuItems.map(category => {
-            const filteredSubItems = category.items.filter(subItem => 
-                !subItem.permission || (userProfile.subRoles && userProfile.subRoles.includes(subItem.permission))
-            );
+            if (!category.items) return category; // Keep top-level items without children
+            const filteredSubItems = category.items.filter(subItem => {
+                 if (!subItem.permission) return true; // Item has no specific sub-role requirement
+                 return userProfile.subRoles?.includes(subItem.permission);
+            });
             
             if (filteredSubItems.length > 0) {
                 return { ...category, items: filteredSubItems };
             }
             return null;
         }).filter(Boolean) as any[];
-        
-        // Admin items they have permission for
+
+        const baseCategoryLabels = new Set(baseStaffItems.map(item => item?.label));
+
         const assignedAdminItems = allMenuItems.map(category => {
-            if (!category.items) {
-                return null;
-            }
+            if (baseCategoryLabels.has(category.label)) return null; // Avoid duplicating categories from base menu
+            if (!category.items) return null;
             
-            const filteredSubItems = category.items.filter(subItem => allowedHrefs.has(subItem.href));
+            const filteredSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
             
             if (filteredSubItems.length > 0) {
                 return { ...category, items: filteredSubItems };
@@ -99,11 +99,7 @@ export default function DashboardLayout({
             return null;
         }).filter(Boolean);
 
-        // Filter out admin categories that are already part of the base staff menu to avoid duplication
-        const baseCategoryLabels = new Set(baseStaffItems.map(item => item?.label));
-        const uniqueAssignedAdminItems = assignedAdminItems.filter(item => !baseCategoryLabels.has(item?.label));
-
-        itemsToRender = [...baseStaffItems, ...uniqueAssignedAdminItems];
+        itemsToRender = [...baseStaffItems, ...assignedAdminItems];
     }
     
     const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
