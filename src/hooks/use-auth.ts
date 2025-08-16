@@ -22,6 +22,10 @@ export type SubRole = {
   permissions: Record<string, boolean>;
 };
 
+// Firebase keys cannot contain '.', '#', '$', '[', ']', or '/'.
+// We replace '/' with a safe character.
+const desanitizeKey = (key: string) => key.replace(/\|/g, '/');
+
 
 export function useAuth() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -49,7 +53,11 @@ export function useAuth() {
                     
                     Object.values(allSubRoles).forEach(roleDetail => {
                         if (userSubRoleNames.includes(roleDetail.name)) {
-                            aggregatedPermissions = { ...aggregatedPermissions, ...roleDetail.permissions };
+                             if (roleDetail.permissions) {
+                                for(const key in roleDetail.permissions) {
+                                   aggregatedPermissions[desanitizeKey(key)] = roleDetail.permissions[key];
+                                }
+                            }
                         }
                     });
                 }
