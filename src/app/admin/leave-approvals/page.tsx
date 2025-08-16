@@ -1,9 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Check, X, ClipboardCheck, User, Briefcase, Calendar } from 'lucide-react';
+import { Loader2, Check, X, ClipboardCheck, User, Briefcase, Calendar, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -17,6 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 type StaffLeaveRequest = {
@@ -64,23 +66,29 @@ export default function LeaveApprovalsPage() {
                 const userRef = ref(db, `users/${user.uid}`);
                 onValue(userRef, (snapshot) => {
                     if(snapshot.exists()) {
-                        const userData = snapshot.val();
-                        // Security check: Only allow HR to view this page
-                        if(userData.role === 'Staff' && userData.subRoles?.includes('HR') || userData.role === 'Admin') {
-                           setCurrentUser(userData);
-                        } else {
-                           toast({ variant: 'destructive', title: "Access Denied" });
-                           // Ideally redirect here
-                        }
+                        setCurrentUser(snapshot.val());
+                    } else {
+                        setLoading(false);
                     }
                 });
+            } else {
+                setLoading(false);
             }
         });
         return () => unsubscribe();
     }, [toast]);
+    
+    const hasPermission = React.useMemo(() => {
+        if (!currentUser) return false;
+        return currentUser.role === 'Admin' || (currentUser.role === 'Staff' && currentUser.subRoles?.includes('HR'));
+    }, [currentUser]);
+
 
     React.useEffect(() => {
-        if (!currentUser) return;
+        if (!hasPermission) {
+            setLoading(false);
+            return;
+        };
 
         setLoading(true);
         const staffRequestsRef = ref(db, 'leaveRequests');
@@ -122,7 +130,7 @@ export default function LeaveApprovalsPage() {
             unsubStaff();
             unsubStudent();
         }
-    }, [currentUser]);
+    }, [hasPermission]);
     
     const handleStaffApproval = async (request: StaffLeaveRequest, decision: 'Approved' | 'Declined') => {
         if (!currentUser) return;
@@ -167,6 +175,24 @@ export default function LeaveApprovalsPage() {
             setActionLoading(null);
         }
     };
+
+    if (loading) {
+        return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
+    }
+    
+    if (!hasPermission) {
+         return (
+            <Card>
+                <CardContent className="pt-6">
+                    <Alert variant="destructive">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>Access Denied</AlertTitle>
+                        <AlertDescription>You do not have permission to view this page. This feature is restricted to HR personnel and Administrators.</AlertDescription>
+                    </Alert>
+                </CardContent>
+            </Card>
+        );
+    }
     
     return (
         <div className="space-y-6">

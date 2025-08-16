@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, studentMenuItems, staffMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
@@ -73,7 +73,7 @@ export default function DashboardLayout({
         const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
         
         // Base items for all staff, filtered by sub-role if a permission is specified
-        const baseStaffItems = staffMenuItems.map(category => {
+        const baseStaffItems = staffBaseMenuItems.map(category => {
             const filteredSubItems = category.items.filter(subItem => 
                 !subItem.permission || (userProfile.subRoles && userProfile.subRoles.includes(subItem.permission))
             );
@@ -93,7 +93,6 @@ export default function DashboardLayout({
             const filteredSubItems = category.items.filter(subItem => allowedHrefs.includes(subItem.href));
             
             if (filteredSubItems.length > 0) {
-                // Return the whole category if any sub-item is allowed
                 return { ...category, items: filteredSubItems };
             }
             

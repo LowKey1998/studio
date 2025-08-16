@@ -73,6 +73,12 @@ export default function PayrollPage() {
         };
     }, []);
 
+    const hasPermission = React.useMemo(() => {
+        if (!userData) return false;
+        return userData.role === 'Admin' || (userData.role === 'Staff' && userData.subRoles?.includes('HR'));
+    }, [userData]);
+
+
     React.useEffect(() => {
         if (!userData) {
             if (currentUser === null) {
@@ -81,7 +87,7 @@ export default function PayrollPage() {
             return;
         }
         
-        if (!(userData.role === 'Staff' && userData.subRoles?.includes('HR'))) {
+        if (!hasPermission) {
              setLoading(false);
              return;
         }
@@ -111,7 +117,7 @@ export default function PayrollPage() {
         };
 
         fetchStaff();
-    }, [userData, toast, currentUser]);
+    }, [userData, toast, currentUser, hasPermission]);
     
     const handleSendPayslip = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
         setActionLoading(`payslip-${staff.uid}`);
@@ -190,7 +196,7 @@ export default function PayrollPage() {
         );
     }
     
-    if (!userData || !(userData.role === 'Staff' && userData.subRoles?.includes('HR'))) {
+    if (!hasPermission) {
         return (
             <Card>
                 <CardContent className="pt-6">
@@ -198,7 +204,7 @@ export default function PayrollPage() {
                         <Info className="h-4 w-4" />
                         <AlertTitle>Access Denied</AlertTitle>
                         <AlertDescription>
-                            You do not have permission to view the payroll page. This feature is restricted to HR personnel.
+                            You do not have permission to view the payroll page. This feature is restricted to HR personnel and Administrators.
                         </AlertDescription>
                     </Alert>
                 </CardContent>
