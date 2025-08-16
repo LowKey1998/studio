@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import type { UserProfile } from '@/hooks/use-auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
@@ -70,7 +70,7 @@ export default function DashboardLayout({
       itemsToRender = studentMenuItems;
     } else if (userProfile.role.toLowerCase() === 'staff') {
         const staffPermissions = userProfile.permissions || {};
-        const allowedHrefs = Object.keys(staffPermissions).filter(key => staffPermissions[key]);
+        const allowedHrefs = new Set(Object.keys(staffPermissions));
         
         // Base items for all staff, filtered by sub-role if a permission is specified
         const baseStaffItems = staffBaseMenuItems.map(category => {
@@ -90,7 +90,7 @@ export default function DashboardLayout({
                 return null;
             }
             
-            const filteredSubItems = category.items.filter(subItem => allowedHrefs.includes(subItem.href));
+            const filteredSubItems = category.items.filter(subItem => allowedHrefs.has(subItem.href));
             
             if (filteredSubItems.length > 0) {
                 return { ...category, items: filteredSubItems };
