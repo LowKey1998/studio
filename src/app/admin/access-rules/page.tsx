@@ -63,10 +63,10 @@ export default function AccessRulesPage() {
         setIsDialogOpen(true);
     };
     
-    const handlePermissionChange = (permissionKey: string) => {
+    const handlePermissionChange = (permissionKey: string, checked: boolean) => {
         setPermissions(prev => ({
             ...prev,
-            [permissionKey]: !prev[permissionKey]
+            [permissionKey]: checked
         }));
     };
 
@@ -155,7 +155,11 @@ export default function AccessRulesPage() {
                                         <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
                                             {item.items?.map(subItem => (
                                                 <div key={subItem.href} className="flex items-center gap-2">
-                                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => handlePermissionChange(subItem.href)}/>
+                                                    <Checkbox 
+                                                        id={subItem.href} 
+                                                        checked={!!permissions[subItem.href]} 
+                                                        onCheckedChange={(checked) => handlePermissionChange(subItem.href, !!checked)}
+                                                    />
                                                     <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
                                                 </div>
                                             ))}
@@ -175,4 +179,3 @@ export default function AccessRulesPage() {
         </Card>
     );
 }
-
