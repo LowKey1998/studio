@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -522,21 +521,23 @@ export default function UserManagementPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
                 <Input placeholder="Role Name, e.g., Bursar" value={newSubRoleName} onChange={(e) => setNewSubRoleName(e.target.value)} />
-                <Accordion type="multiple" defaultValue={['Academics', 'Finance', 'Library', 'HR']} className="w-full">
-                {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
-                    <AccordionItem value={item.label} key={item.label}>
-                        <AccordionTrigger>{item.label}</AccordionTrigger>
-                        <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
-                            {item.items?.map(subItem => (
-                                <div key={subItem.href} className="flex items-center gap-2">
-                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [subItem.href]: !prev[subItem.href]}))}/>
-                                    <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
-                                </div>
-                            ))}
-                        </AccordionContent>
-                    </AccordionItem>
-                ))}
-                </Accordion>
+                <div className="max-h-[60vh] overflow-y-auto pr-4">
+                    <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
+                    {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
+                        <AccordionItem value={item.label} key={item.label}>
+                            <AccordionTrigger>{item.label}</AccordionTrigger>
+                            <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                                {item.items?.map(subItem => (
+                                    <div key={subItem.href} className="flex items-center gap-2">
+                                        <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => setPermissions(prev => ({...prev, [subItem.href]: !prev[subItem.href]}))}/>
+                                        <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
+                                    </div>
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
+                    ))}
+                    </Accordion>
+                </div>
             </div>
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -547,7 +548,5 @@ export default function UserManagementPage() {
     </>
   );
 }
-
-
 
 
