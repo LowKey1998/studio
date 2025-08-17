@@ -39,7 +39,7 @@ type Student = {
     name: string;
 }
 
-type AttendanceStatus = "Present" | "Absent" | "Late";
+type AttendanceStatus = "Present" | "Absent" | "Late" | "Excused Absence";
 type AttendanceRecord = Record<string, AttendanceStatus>;
 
 
@@ -50,6 +50,7 @@ export default function MarkAttendancePage() {
     const [students, setStudents] = React.useState<Student[]>([]);
     const [attendance, setAttendance] = React.useState<AttendanceRecord>({});
     const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
+    const [isSubmitted, setIsSubmitted] = React.useState(false);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -65,16 +66,13 @@ export default function MarkAttendancePage() {
     const fetchCourseAndStudents = React.useCallback(async () => {
         setLoading(true);
         try {
-            // Fetch Course Details
             const courseRef = ref(db, `courses/${courseId}`);
             const courseSnapshot = await get(courseRef);
             if (!courseSnapshot.exists()) throw new Error("Course not found");
             const courseData = courseSnapshot.val();
-            // Basic security check: ensure current user is the lecturer for this course
             if (currentUser && courseData.lecturerId !== currentUser.uid) throw new Error("Access denied");
             setCourse({ id: courseId, ...courseData });
 
-            // Fetch Enrolled Students
             const allUsersSnapshot = await get(ref(db, 'users'));
             const allUsers = allUsersSnapshot.val();
             
@@ -111,10 +109,13 @@ export default function MarkAttendancePage() {
         const formattedDate = format(date, 'yyyy-MM-dd');
         const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
         const snapshot = await get(attendanceRef);
-        if (snapshot.exists()) {
+        
+        const hasBeenSubmitted = snapshot.exists();
+        setIsSubmitted(hasBeenSubmitted);
+
+        if (hasBeenSubmitted) {
             setAttendance(snapshot.val());
         } else {
-            // If no record, initialize all fetched students to 'Present'
             const initialAttendance: AttendanceRecord = {};
             students.forEach(student => {
                 initialAttendance[student.uid] = 'Present';
@@ -140,7 +141,6 @@ export default function MarkAttendancePage() {
     const handleDateChange = (date: Date | undefined) => {
         if (date) {
             setSelectedDate(date);
-            // Attendance will be refetched by the useEffect hook
         }
     };
 
@@ -158,6 +158,7 @@ export default function MarkAttendancePage() {
             const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
             await set(attendanceRef, attendance);
             toast({ title: "Attendance Saved", description: `Attendance for ${format(selectedDate, 'PPP')} has been successfully recorded.` });
+            setIsSubmitted(true);
         } catch (error: any) {
             console.error("Error saving attendance:", error);
             toast({ variant: 'destructive', title: "Save Failed", description: error.message || "Could not save attendance." });
@@ -197,7 +198,7 @@ export default function MarkAttendancePage() {
         return (
             <div className="space-y-6">
                  <Button variant="outline" asChild>
-                    <Link href="/staff/attendance"><ChevronLeft className="mr-2 h-4 w-4" /> Back to Courses</Link>
+                    <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to Courses</Link>
                 </Button>
                  <Card><CardContent className="pt-6">
                     <Alert variant="destructive">
@@ -211,14 +212,10 @@ export default function MarkAttendancePage() {
     }
 
   return (
-    <div className="space-y-6">
-        <Button variant="outline" asChild>
-            <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to Courses</Link>
-        </Button>
-       <Card className="shadow-lg">
+       <Card>
           <CardHeader>
-            <CardTitle className="font-headline text-2xl">Mark Attendance: {course.name}</CardTitle>
-            <CardDescription>Select a date and mark attendance for {course.code}.</CardDescription>
+            <CardTitle>Mark Attendance</CardTitle>
+            <CardDescription>Select a date and mark attendance for this course.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -243,7 +240,15 @@ export default function MarkAttendancePage() {
                     <div className="flex items-center text-orange-500 gap-1"><Clock className="h-4 w-4" />Late: {stats.late}</div>
                 </div>
               </div>
-
+                {isSubmitted && (
+                    <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-800">
+                        <Info className="h-4 w-4 text-blue-700" />
+                        <AlertTitle className="text-blue-900">Attendance Submitted</AlertTitle>
+                        <AlertDescription className="text-blue-700">
+                            The attendance for this date has already been submitted and is now read-only. Please contact an administrator if you need to make changes.
+                        </AlertDescription>
+                    </Alert>
+                )}
                {students.length > 0 ? (
                 <div className="border rounded-md">
                  <Table>
@@ -261,10 +266,10 @@ export default function MarkAttendancePage() {
                                 <TableCell>{student.name}</TableCell>
                                 <TableCell className="text-right">
                                     <RadioGroup
-                                        defaultValue="Present"
                                         value={attendance[student.uid] || 'Present'}
                                         onValueChange={(value) => handleStatusChange(student.uid, value as AttendanceStatus)}
                                         className="flex justify-end gap-4"
+                                        disabled={isSubmitted}
                                     >
                                         <div className="flex items-center space-x-2">
                                             <RadioGroupItem value="Present" id={`present-${student.uid}`} />
@@ -277,6 +282,10 @@ export default function MarkAttendancePage() {
                                         <div className="flex items-center space-x-2">
                                             <RadioGroupItem value="Late" id={`late-${student.uid}`} />
                                             <Label htmlFor={`late-${student.uid}`}>Late</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="Excused Absence" id={`excused-${student.uid}`} />
+                                            <Label htmlFor={`excused-${student.uid}`}>Excused</Label>
                                         </div>
                                     </RadioGroup>
                                 </TableCell>
@@ -294,12 +303,11 @@ export default function MarkAttendancePage() {
                )}
           </CardContent>
           <CardFooter className="flex justify-end border-t pt-6">
-                <Button onClick={handleSaveAttendance} disabled={saving || loading || students.length === 0}>
+                <Button onClick={handleSaveAttendance} disabled={saving || loading || students.length === 0 || isSubmitted}>
                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Attendance
+                    {isSubmitted ? 'Attendance Submitted' : 'Save Attendance'}
                 </Button>
           </CardFooter>
       </Card>
-    </div>
   );
 }

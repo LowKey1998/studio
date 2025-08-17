@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route } from 'lucide-react';
+import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route, Lightbulb } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerName?: string; status: 'active' | 'archived'; year: number; };
@@ -30,7 +31,7 @@ type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory'
 type GroupedCourses = { [year: string]: Course[]; };
 type Programme = { id: string; name: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Omit<Fee, 'id'>>; optionalFees?: Record<string, Omit<Fee, 'id'>>; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; innovationHubActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Omit<Fee, 'id'>>; optionalFees?: Record<string, Omit<Fee, 'id'>>; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type Intake = { id: string; name: string; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
@@ -120,6 +121,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 name: semesterNameInput.trim(),
                 status: editingSemester?.status || 'Closed',
                 lateRegistrationActive: editingSemester?.lateRegistrationActive || false,
+                innovationHubActive: editingSemester?.innovationHubActive || false,
                 startDate: format(semesterDates.from, 'yyyy-MM-dd'),
                 endDate: semesterDates.to ? format(semesterDates.to, 'yyyy-MM-dd') : format(semesterDates.from, 'yyyy-MM-dd'),
                 paymentPlanIds: selectedPaymentPlans,
@@ -335,6 +337,13 @@ export default function RegistrationManagementPage() {
              toast({ variant: 'success', title: `Late Registration ${newStatus ? 'Enabled' : 'Disabled'}` });
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
+    
+    const handleToggleInnovationHub = async (semester: Semester) => {
+        const newStatus = !(semester.innovationHubActive ?? false);
+        try { await update(ref(db, `semesters/${semester.id}`), { innovationHubActive: newStatus });
+             toast({ variant: 'success', title: `Innovation Hub ${newStatus ? 'Enabled' : 'Disabled'}` });
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
+    };
 
     const handleSaveChanges = async () => {
         const semester = semesters.find(s => s.id === selectedSemester);
@@ -389,14 +398,19 @@ export default function RegistrationManagementPage() {
                     </Dialog>
                 </div>
                  {currentSemester && (
-                    <div className="space-y-4"><div className='flex flex-wrap gap-2'>
-                        <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
-                        {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
-                        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                            <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
-                        </Dialog>
-                    </div>
+                    <div className="space-y-4">
+                        <div className='flex flex-wrap gap-2 items-center'>
+                            <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
+                            {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
+                            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                                <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
+                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                            </Dialog>
+                             <div className="flex items-center space-x-2 p-2 border rounded-md">
+                                <Switch id="innovation-hub-switch" checked={currentSemester.innovationHubActive} onCheckedChange={() => handleToggleInnovationHub(currentSemester)} />
+                                <Label htmlFor="innovation-hub-switch" className="flex items-center gap-2"><Lightbulb className="h-4 w-4" /> Innovation Hub Active</Label>
+                            </div>
+                        </div>
                         {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
                     </div>
                  )}
