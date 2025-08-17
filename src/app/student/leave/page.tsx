@@ -28,13 +28,16 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, differenceInCalendarDays, eachDayOfInterval, isSameDay } from 'date-fns';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 type LeaveRequest = {
     id: string;
@@ -68,6 +71,10 @@ const statusVariant: { [key in LeaveRequest['status']]: 'destructive' | 'seconda
   Declined: 'destructive',
 };
 
+const leaveTypes = ["Annual", "Sick", "Maternity", "Paternity", "Unpaid", "Bereavement"];
+const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+
 export default function StudentLeavePage() {
     const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
     const [enrolledCourses, setEnrolledCourses] = React.useState<Course[]>([]);
@@ -76,6 +83,10 @@ export default function StudentLeavePage() {
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
+    const [maxLeaveDays, setMaxLeaveDays] = React.useState<number | null>(null);
+    const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    const [conflictingClasses, setConflictingClasses] = React.useState<TimetableEntry[]>([]);
+
 
     // Form state
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
@@ -84,7 +95,7 @@ export default function StudentLeavePage() {
 
     const { toast } = useToast();
     
-    React.useEffect(() => {
+     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
           if (user) {
             setCurrentUser(user);
@@ -110,7 +121,7 @@ export default function StudentLeavePage() {
                 const courseIds = new Set<string>();
                 if(regsSnapshot.exists()){
                     Object.values(regsSnapshot.val()).forEach((reg: any) => {
-                        if (reg.status === 'Completed') {
+                        if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                             reg.courses.forEach((id: string) => courseIds.add(id));
                         }
                     });
@@ -148,8 +159,9 @@ export default function StudentLeavePage() {
         setSelectedCourseId('');
         setLeaveDate(undefined);
         setReason('');
+        setConflictingClasses([]);
     };
-
+    
     const handleApplyForLeave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedCourseId || !leaveDate || !reason || !currentUser || !userData) {
@@ -182,8 +194,7 @@ export default function StudentLeavePage() {
             await createNotification(
                 selectedCourse.lecturerId,
                 `${userData.name} requested absence for ${selectedCourse.name} on ${format(leaveDate, 'PPP')}.`,
-                '/staff/leave-approvals',
-                'info'
+                '/staff/leave-approvals'
             );
 
             toast({ variant: 'success', title: 'Request Submitted', description: 'Your request for absence has been sent to your lecturer.' });
