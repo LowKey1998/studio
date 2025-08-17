@@ -9,8 +9,13 @@ export default function AdmissionConfirmationPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Admission Confirmation</CardTitle>
-                <CardDescription>Track which students have confirmed their admission and paid any required deposits.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Admission Confirmation</CardTitle>
+                        <CardDescription>Track which students have confirmed their admission and paid any required deposits.</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>

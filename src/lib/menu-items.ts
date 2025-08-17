@@ -23,19 +23,19 @@ export const allMenuItems = [
       items: [
         { href: '/admin/registration-management', label: 'Registration Setup', icon: Settings },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
-        { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
-        { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
-        { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2 },
-        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
-        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
-        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
-        { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
-        { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
-        { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
-        { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
-        { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase },
-        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload },
-        { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send },
+        { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp, isPremium: true },
+        { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar, isPremium: true },
+        { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2, isPremium: true },
+        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature, isPremium: true },
+        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2, isPremium: true },
+        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail, isPremium: true },
+        { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart, isPremium: true },
+        { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users, isPremium: true },
+        { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star, isPremium: true },
+        { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target, isPremium: true },
+        { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase, isPremium: true },
+        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload, isPremium: true },
+        { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send, isPremium: true },
       ]
     },
     {
@@ -371,6 +371,7 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
+
 
 
 

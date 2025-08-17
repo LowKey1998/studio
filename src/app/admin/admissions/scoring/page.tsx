@@ -4,13 +4,19 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Star } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function ScoringPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Scoring & Results</CardTitle>
-                <CardDescription>Define scoring criteria and evaluate applicants based on a standardized rubric.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Scoring & Results</CardTitle>
+                        <CardDescription>Define scoring criteria and evaluate applicants based on a standardized rubric.</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
+                </div>
             </CardHeader>
             <CardContent>
                 <div className="text-center p-8 border rounded-lg bg-muted/50">

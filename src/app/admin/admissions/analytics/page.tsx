@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { Badge } from '@/components/ui/badge';
 
 const chartData = [
     { stage: "Leads", count: 1200 },
@@ -21,11 +22,16 @@ export default function AdmissionFunnelAnalyticsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Admission Funnel Analytics</CardTitle>
-                <CardDescription>Visualize the entire admission process from lead to enrollment.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Admission Funnel Analytics</CardTitle>
+                        <CardDescription>Visualize the entire admission process from lead to enrollment.</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
+                </div>
             </CardHeader>
             <CardContent>
-                <ChartContainer config={chartConfig} className="h-[400px] w-full">
+                <ChartContainer config={chartConfig} className="h-[400px] w-full blur-sm pointer-events-none">
                     <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                         <CartesianGrid horizontal={false} />
                         <YAxis dataKey="stage" type="category" tickLine={false} axisLine={false}/>

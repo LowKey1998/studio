@@ -50,11 +50,16 @@ export default function DocumentUploadsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Document Uploads</CardTitle>
-                <CardDescription>Manage and verify applicant-submitted documents like transcripts and identification.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Document Uploads</CardTitle>
+                        <CardDescription>Manage and verify applicant-submitted documents like transcripts and identification.</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
+                </div>
                 <div className="relative pt-2">
                     <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search applicant by name or document type..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <Input placeholder="Search applicant by name or document type..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} disabled/>
                 </div>
             </CardHeader>
             <CardContent>
@@ -75,11 +80,11 @@ export default function DocumentUploadsPage() {
                                 <TableCell>{doc.documentType}</TableCell>
                                 <TableCell><Badge variant={doc.status === 'Verified' ? 'default' : (doc.status === 'Rejected' ? 'destructive' : 'secondary')}>{doc.status}</Badge></TableCell>
                                 <TableCell className="text-right space-x-2">
-                                    <Button variant="outline" size="sm" asChild><a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4"/>View</a></Button>
+                                    <Button variant="outline" size="sm" asChild disabled><a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4"/>View</a></Button>
                                     {doc.status === 'Pending Verification' && (
                                         <>
-                                            <Button size="sm" onClick={() => handleUpdateStatus(doc.id, 'Verified')}><Check className="mr-2 h-4"/>Verify</Button>
-                                            <Button variant="destructive" size="sm" onClick={() => handleUpdateStatus(doc.id, 'Rejected')}><X className="mr-2 h-4"/>Reject</Button>
+                                            <Button size="sm" onClick={() => handleUpdateStatus(doc.id, 'Verified')} disabled><Check className="mr-2 h-4"/>Verify</Button>
+                                            <Button variant="destructive" size="sm" onClick={() => handleUpdateStatus(doc.id, 'Rejected')} disabled><X className="mr-2 h-4"/>Reject</Button>
                                         </>
                                     )}
                                 </TableCell>

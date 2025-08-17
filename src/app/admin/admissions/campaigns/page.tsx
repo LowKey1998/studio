@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 type Campaign = {
     id: string;
@@ -70,25 +71,12 @@ export default function CampaignTrackingPage() {
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex-row items-start justify-between">
                 <div>
                     <CardTitle>Campaign Tracking</CardTitle>
                     <CardDescription>Monitor the performance of your marketing and admissions campaigns.</CardDescription>
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4"/>Add Campaign</Button></DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
-                        <div className="py-4">
-                            <Label>Campaign Name</Label>
-                            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. 2024 Social Media Campaign"/>
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleSaveCampaign} disabled={saving}>{saving && <Loader2 className="mr-2 h-4"/>}Save</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                 <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
             </CardHeader>
             <CardContent>
                  <Table>
@@ -109,7 +97,7 @@ export default function CampaignTrackingPage() {
                                 <TableCell>{c.applicants}</TableCell>
                                 <TableCell>{c.enrollments}</TableCell>
                                  <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteCampaign(c.id)}>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteCampaign(c.id)} disabled>
                                         <Trash2 className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </TableCell>

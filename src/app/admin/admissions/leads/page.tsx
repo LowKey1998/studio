@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 type Lead = {
     id: string;
@@ -84,27 +85,12 @@ export default function LeadsCapturePage() {
 
     return (
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-start justify-between">
                 <div>
                     <CardTitle>Leads Capture</CardTitle>
                     <CardDescription>Manually add and manage prospective student leads.</CardDescription>
                 </div>
-                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4"/>Add Lead</Button></DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>New Lead</DialogTitle></DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="space-y-1"><Label>Full Name</Label><Input value={name} onChange={e => setName(e.target.value)} required/></div>
-                            <div className="space-y-1"><Label>Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required/></div>
-                            <div className="space-y-1"><Label>Phone</Label><Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} /></div>
-                            <div className="space-y-1"><Label>Lead Source</Label><Input value={source} onChange={e => setSource(e.target.value)} placeholder="e.g. Facebook, Referral"/></div>
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleSaveLead} disabled={saving}>{saving && <Loader2 className="mr-2 h-4"/>}Save Lead</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                 <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
             </CardHeader>
             <CardContent>
                  <Table>
@@ -126,7 +112,7 @@ export default function LeadsCapturePage() {
                                 <TableCell>{lead.source}</TableCell>
                                 <TableCell>{lead.status}</TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteLead(lead.id)}>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteLead(lead.id)} disabled>
                                         <Trash2 className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </TableCell>

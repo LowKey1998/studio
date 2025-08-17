@@ -134,11 +134,15 @@ export default function DashboardLayout({
                                  <SidebarMenu>
                                     {item.items.map((subItem: any) => (
                                         <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.href}>
-                                            <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
-                                                {subItem.icon && <subItem.icon />}
-                                                <span>{subItem.label}</span>
-                                            </SidebarMenuButton>
+                                            <Link href={subItem.isPremium ? '#' : subItem.href}>
+                                                <SidebarMenuButton 
+                                                    isActive={pathname.startsWith(subItem.href)}
+                                                    disabled={subItem.isPremium}
+                                                >
+                                                    {subItem.icon && <subItem.icon />}
+                                                    <span>{subItem.label}</span>
+                                                    {subItem.isPremium && <span className="ml-auto text-xs font-bold text-yellow-500 bg-yellow-500/20 px-1.5 py-0.5 rounded-full">Premium</span>}
+                                                </SidebarMenuButton>
                                             </Link>
                                         </SidebarMenuItem>
                                     ))}
