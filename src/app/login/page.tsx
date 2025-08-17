@@ -19,23 +19,22 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!role || !userId || !password) {
+    if (!userId || !password) {
       toast({
         variant: "destructive",
         title: "Missing Fields",
-        description: "Please fill out all fields to log in.",
+        description: "Please enter your User ID and password.",
       });
       return;
     }
@@ -73,34 +72,23 @@ export default function LoginPage() {
 
       // 3. Extract email from the found user
       const userEmail = userRecord.email;
+      const userRole = userRecord.role.toLowerCase();
 
       if (!userEmail) {
         throw new Error("User data is incomplete.");
       }
       
       // 4. Authenticate with Firebase Auth using the retrieved email
-      const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
-      const user = userCredential.user;
-
-      // 5. Verify role from Realtime Database
-      const dbRoleRef = ref(db, `users/${user.uid}/role`);
-      const dbRoleSnapshot = await get(dbRoleRef);
+      await signInWithEmailAndPassword(auth, userEmail, password);
       
-      const userRole = dbRoleSnapshot.val();
-
-      if (!dbRoleSnapshot.exists() || userRole.toLowerCase() !== role) {
-        await auth.signOut(); // Sign out if roles don't match
-        throw new Error(`You are not authorized to log in as a${role === 'admin' ? 'n' : ''} ${role}.`);
-      }
-      
-      // 6. Redirect based on role
+      // 5. Redirect based on role
       toast({ variant: 'success', title: 'Login Successful', description: 'Welcome back!' });
-      if (role === 'admin') {
+      if (userRole === 'admin') {
         router.push('/admin/dashboard');
-      } else if (role === 'staff') {
+      } else if (userRole === 'staff') {
         router.push('/staff/courses');
       } else {
-        router.push('/student/classes');
+        router.push('/student/dashboard');
       }
 
     } catch (error: any) {
@@ -125,29 +113,16 @@ export default function LoginPage() {
         <Card className="shadow-2xl">
           <CardHeader>
             <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
-            <CardDescription>Select your role and enter your credentials to access your dashboard.</CardDescription>
+            <CardDescription>Enter your credentials to access your dashboard.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleLogin}>
-               <div className="space-y-2">
-                <Label htmlFor="role">Log in as</Label>
-                 <Select onValueChange={setRole} value={role} disabled={loading}>
-                    <SelectTrigger id="role">
-                        <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="student">Student</SelectItem>
-                    </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="userId">User ID</Label>
                 <Input
                   id="userId"
                   type="text"
-                  placeholder="STU-001"
+                  placeholder="e.g., STU-001"
                   required
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
@@ -172,7 +147,7 @@ export default function LoginPage() {
               </div>
              
               <Button type="submit" className="w-full !mt-6" disabled={loading}>
-                {loading ? 'Logging in...' : 'Log in'}
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Log in'}
               </Button>
             </form>
             <div className="mt-4 text-center text-sm">

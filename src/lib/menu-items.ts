@@ -347,7 +347,7 @@ export const staffMenuItems = [
       icon: GraduationCap,
       items: [
         { href: '/staff/courses', label: 'My Courses', icon: Library, permission: 'Lecturer' },
-        { href: '/staff/leave-approvals', label: 'Student Absences', icon: UserCheckIcon, permission: 'Lecturer' },
+        { href: '/staff/student-absences', label: 'Student Absences', icon: UserCheckIcon, permission: 'Lecturer' },
         { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
       ],
     },
@@ -371,5 +371,6 @@ export const staffMenuItems = [
 
 export const staffBaseMenuItems = staffMenuItems;
     
+
 
 
