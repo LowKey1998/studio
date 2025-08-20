@@ -3,14 +3,13 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, Trash2, Percent, AlertCircle } from "lucide-react";
+import { PlusCircle, Loader2, Trash2, Percent, AlertCircle, Pencil } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update } from 'firebase/database';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
@@ -96,6 +95,9 @@ export default function AssessmentSetupPage() {
         if (totalWeight !== 100) {
             toast({ variant: 'destructive', title: 'Total weight must be exactly 100%.' }); return;
         }
+        if (components.some(c => !c.name.trim() || !c.weight)) {
+            toast({ variant: 'destructive', title: 'All components must have a name and weight.' }); return;
+        }
 
         setSaving(true);
         try {
@@ -111,7 +113,7 @@ export default function AssessmentSetupPage() {
                 await update(ref(db, `settings/assessmentTemplates/${editingTemplate.id}`), templateData);
                 toast({ title: 'Template Updated' });
             } else {
-                await push(ref(db, `settings/assessmentTemplates`), templateData);
+                await push(ref(db, 'settings/assessmentTemplates'), templateData);
                 toast({ title: 'Template Created' });
             }
             resetForm();
@@ -141,29 +143,35 @@ export default function AssessmentSetupPage() {
             </CardHeader>
             <CardContent>
                  {loading ? <Skeleton className="h-48" /> : templates.length > 0 ? (
-                    <Accordion type="multiple" className="w-full space-y-2">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {templates.map(template => (
-                             <AccordionItem value={template.id} key={template.id} className="border rounded-md px-4">
-                                <AccordionTrigger className="hover:no-underline">
-                                    <div className="flex-1 text-left">
-                                        <p className="font-bold">{template.name}</p>
-                                        <p className="text-sm text-muted-foreground">{Object.keys(template.components).length} components</p>
+                             <Card key={template.id} className="flex flex-col">
+                                <CardHeader>
+                                    <div className="flex justify-between items-start">
+                                        <CardTitle>{template.name}</CardTitle>
+                                        <div className="flex gap-1">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDialog(template)}><Pencil className="h-4 w-4"/></Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteTemplate(template.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                        </div>
                                     </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                    <ul className="list-disc pl-5 text-muted-foreground">
+                                    <CardDescription>{Object.keys(template.components).length} components</CardDescription>
+                                </CardHeader>
+                                <CardContent className="flex-grow">
+                                     <ul className="space-y-1 text-sm">
                                         {Object.values(template.components).map((comp, i) => (
-                                            <li key={i}>{comp.name} ({comp.weight}%)</li>
+                                            <li key={i} className="flex justify-between">
+                                                <span className="text-muted-foreground">{comp.name}</span>
+                                                <span className="font-semibold">{comp.weight}%</span>
+                                            </li>
                                         ))}
                                     </ul>
-                                     <div className="flex justify-end gap-2 mt-4">
-                                        <Button variant="outline" size="sm" onClick={() => openDialog(template)}>Edit</Button>
-                                        <Button variant="destructive" size="sm" onClick={() => handleDeleteTemplate(template.id)}>Delete</Button>
-                                    </div>
-                                </AccordionContent>
-                            </AccordionItem>
+                                </CardContent>
+                                <CardFooter>
+                                    <div className="w-full text-center text-sm font-bold border-t pt-2">Total: 100%</div>
+                                </CardFooter>
+                            </Card>
                         ))}
-                    </Accordion>
+                    </div>
                  ) : (
                     <div className="text-center py-16 text-muted-foreground">No assessment templates created yet.</div>
                  )}
@@ -174,6 +182,7 @@ export default function AssessmentSetupPage() {
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>{editingTemplate ? 'Edit' : 'Create'} Assessment Template</DialogTitle>
+                    <DialogDescription>Define the name and weighted components for this assessment structure.</DialogDescription>
                 </DialogHeader>
                  <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
                     <div className="space-y-1">
@@ -184,13 +193,19 @@ export default function AssessmentSetupPage() {
                     <Label>Assessment Components</Label>
                     <div className="space-y-2">
                         {components.map(comp => (
-                            <div key={comp.id} className="flex items-center gap-2">
-                                <Input placeholder="Component Name (e.g., Quiz 1)" value={comp.name} onChange={e => handleComponentChange(comp.id, 'name', e.target.value)} />
-                                <div className="relative">
-                                    <Input type="number" placeholder="Weight" value={comp.weight} onChange={e => handleComponentChange(comp.id, 'weight', e.target.value)} className="w-24 pr-6"/>
-                                    <Percent className="h-4 w-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+                            <div key={comp.id} className="flex items-center gap-2 p-2 border rounded-md">
+                                <div className="flex-grow space-y-1">
+                                    <Label htmlFor={`name-${comp.id}`} className="text-xs">Component Name</Label>
+                                    <Input id={`name-${comp.id}`} placeholder="e.g., Quiz 1" value={comp.name} onChange={e => handleComponentChange(comp.id, 'name', e.target.value)} />
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => removeComponent(comp.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                <div className="space-y-1 w-24">
+                                     <Label htmlFor={`weight-${comp.id}`} className="text-xs">Weight (%)</Label>
+                                    <div className="relative">
+                                        <Input id={`weight-${comp.id}`} type="number" placeholder="%" value={comp.weight} onChange={e => handleComponentChange(comp.id, 'weight', e.target.value)} className="pr-6"/>
+                                        <Percent className="h-4 w-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => removeComponent(comp.id)} className="self-end"><Trash2 className="h-4 w-4 text-destructive"/></Button>
                             </div>
                         ))}
                     </div>
