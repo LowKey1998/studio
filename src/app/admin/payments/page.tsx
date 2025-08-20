@@ -57,6 +57,11 @@ type OptionalFee = {
     amount: number;
 }
 
+type FeeReportStudent = {
+    id: string;
+    name: string;
+};
+
 
 export default function PaymentsManagementPage() {
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
@@ -82,6 +87,10 @@ export default function PaymentsManagementPage() {
 
     // Fee Report State
     const [selectedFee, setSelectedFee] = React.useState('');
+    const [selectedFeeSemester, setSelectedFeeSemester] = React.useState('');
+    const [feeReportData, setFeeReportData] = React.useState<FeeReportStudent[] | null>(null);
+    const [reportLoading, setReportLoading] = React.useState(false);
+
 
     const { toast } = useToast();
 
@@ -321,16 +330,13 @@ export default function PaymentsManagementPage() {
         doc.save(`payments_report_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
-    const handleDownloadFeeReport = async () => {
-        if (!selectedFee) {
-            toast({ variant: 'destructive', title: 'Please select a fee to generate a report.' });
+    const handleGenerateFeeReport = async () => {
+        if (!selectedFee || !selectedFeeSemester) {
+            toast({ variant: 'destructive', title: 'Please select a fee and semester.' });
             return;
         }
-
-        const fee = optionalFees.find(f => f.id === selectedFee);
-        if (!fee) return;
-
-        setLoading(true);
+        setReportLoading(true);
+        setFeeReportData(null);
         try {
             const registrationsSnap = await get(ref(db, 'registrations'));
             const usersSnap = await get(ref(db, 'users'));
@@ -341,47 +347,51 @@ export default function PaymentsManagementPage() {
 
             const registrations = registrationsSnap.val();
             const users = usersSnap.val();
-            const studentList: { id: string, name: string }[] = [];
+            const studentList: FeeReportStudent[] = [];
 
             for (const userId in registrations) {
-                for (const semester in registrations[userId]) {
-                    const reg = registrations[userId][semester];
-                    if (reg.status === 'Completed' && reg.optionalFees?.includes(selectedFee)) {
-                        if (users[userId]) {
-                            studentList.push({ id: users[userId].id, name: users[userId].name });
-                        }
+                const semesterReg = registrations[userId][selectedFeeSemester];
+                if (semesterReg && (semesterReg.status === 'Completed' || semesterReg.status === 'Pending Payment') && semesterReg.optionalFees?.includes(selectedFee)) {
+                    if (users[userId]) {
+                        studentList.push({ id: users[userId].id, name: users[userId].name });
                     }
                 }
             }
 
             if (studentList.length === 0) {
-                toast({ title: 'No students found for this fee.' });
-                setLoading(false);
-                return;
+                toast({ title: 'No students found for this fee in the selected semester.' });
             }
-
-            const doc = new jsPDF();
-            doc.setFontSize(18);
-            doc.text(`Student Report for ${fee.name}`, 14, 22);
-            doc.setFontSize(12);
-            doc.text(`Generated on: ${format(new Date(), 'PPP')}`, 14, 30);
-            
-            (doc as any).autoTable({
-                head: [['Student ID', 'Student Name']],
-                body: studentList.map(s => [s.id, s.name]),
-                startY: 40
-            });
-            doc.save(`report_${fee.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-
+            setFeeReportData(studentList);
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: 'Failed to generate report.' });
         } finally {
-            setLoading(false);
+            setReportLoading(false);
         }
     };
-
     
+    const handleDownloadFeeReport = () => {
+        if (!feeReportData || !selectedFee || !selectedFeeSemester) return;
+        
+        const fee = optionalFees.find(f => f.id === selectedFee);
+        const semester = semesters.find(s => s.id === selectedFeeSemester);
+        if (!fee || !semester) return;
+        
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`Student Report for ${fee.name}`, 14, 22);
+        doc.setFontSize(12);
+        doc.text(`Semester: ${semester.name}`, 14, 30);
+        doc.text(`Generated on: ${format(new Date(), 'PPP')}`, 14, 35);
+        
+        (doc as any).autoTable({
+            head: [['Student ID', 'Student Name']],
+            body: feeReportData.map(s => [s.id, s.name]),
+            startY: 45
+        });
+        doc.save(`report_${fee.name.replace(/\s+/g, '_')}.pdf`);
+    }
+
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {
         Paid: 'default',
         Pending: 'secondary',
@@ -481,8 +491,21 @@ export default function PaymentsManagementPage() {
                     <CardDescription>Download lists of students who have paid for specific optional services.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1">
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="fee-semester-select">Select Semester</Label>
+                            <Select value={selectedFeeSemester} onValueChange={setSelectedFeeSemester}>
+                                <SelectTrigger id="fee-semester-select">
+                                    <SelectValue placeholder="Select a semester..."/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {semesters.map(semester => (
+                                        <SelectItem key={semester.id} value={semester.id}>{semester.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
                             <Label htmlFor="fee-select">Select Optional Fee</Label>
                             <Select value={selectedFee} onValueChange={setSelectedFee}>
                                 <SelectTrigger id="fee-select">
@@ -495,11 +518,43 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <Button onClick={handleDownloadFeeReport} disabled={!selectedFee || loading}>
-                            <Download className="mr-2 h-4 w-4"/>
-                            Download Report
-                        </Button>
                     </div>
+                     <Button onClick={handleGenerateFeeReport} disabled={!selectedFee || !selectedFeeSemester || reportLoading} className="mt-4">
+                        {reportLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Generate Report
+                    </Button>
+
+                    {feeReportData && (
+                        <div className="mt-6">
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-semibold">Report for {optionalFees.find(f=>f.id === selectedFee)?.name} - {semesters.find(s=>s.id === selectedFeeSemester)?.name}</h4>
+                                <Button onClick={handleDownloadFeeReport} variant="outline" size="sm">
+                                    <Download className="mr-2 h-4 w-4"/> Download PDF
+                                </Button>
+                            </div>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Student ID</TableHead>
+                                        <TableHead>Student Name</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {feeReportData.length > 0 ? (
+                                        feeReportData.map(student => (
+                                            <TableRow key={student.id}>
+                                                <TableCell>{student.id}</TableCell>
+                                                <TableCell>{student.name}</TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={2} className="text-center h-24">No students have paid for this fee in the selected semester.</TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
