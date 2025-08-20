@@ -16,6 +16,7 @@ type Defaulter = {
     studentId: string;
     studentName: string;
     programmeName: string;
+    semesterName: string;
     balance: number;
     lastPaymentDate: string | null;
     dueDate: string | null;
@@ -31,13 +32,14 @@ export default function DefaultersPage() {
         const fetchDefaulters = async () => {
             setLoading(true);
             try {
-                const [usersSnap, regsSnap, transactionsSnap, programmesSnap, invoicesSnap, calendarSnap] = await Promise.all([
+                const [usersSnap, regsSnap, transactionsSnap, programmesSnap, invoicesSnap, calendarSnap, semestersSnap] = await Promise.all([
                     get(ref(db, 'users')),
                     get(ref(db, 'registrations')),
                     get(ref(db, 'transactions')),
                     get(ref(db, 'programmes')),
                     get(ref(db, 'invoices')),
                     get(ref(db, 'calendarEvents')),
+                    get(ref(db, 'semesters')),
                 ]);
 
                 if (!usersSnap.exists() || !regsSnap.exists()) {
@@ -51,6 +53,7 @@ export default function DefaultersPage() {
                 const programmes = programmesSnap.val() || {};
                 const allInvoices = invoicesSnap.val() || {};
                 const calendarEvents = calendarSnap.val() || {};
+                const semesters = semestersSnap.val() || {};
                 const eventMap = new Map(Object.values(calendarEvents).map((e: any) => [e.title.trim(), e.date]));
 
                 const defaulterList: Defaulter[] = [];
@@ -81,6 +84,7 @@ export default function DefaultersPage() {
                                 studentId: users[userId].id,
                                 studentName: users[userId].name,
                                 programmeName: programmes[reg.programmeId]?.name || 'N/A',
+                                semesterName: semesters[semesterId]?.name || 'N/A',
                                 balance,
                                 lastPaymentDate,
                                 dueDate: dueDate ? format(parseISO(dueDate), 'PPP') : 'N/A',
@@ -123,6 +127,7 @@ export default function DefaultersPage() {
                             <TableHead>Student ID</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Programme</TableHead>
+                            <TableHead>Semester</TableHead>
                             <TableHead>Last Payment</TableHead>
                             <TableHead>Due Date</TableHead>
                             <TableHead className="text-right">Balance (ZMW)</TableHead>
@@ -131,12 +136,13 @@ export default function DefaultersPage() {
                     </TableHeader>
                     <TableBody>
                         {loading ? Array.from({length: 5}).map((_, i) => (
-                            <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                            <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                         )) : filteredDefaulters.map(defaulter => (
-                            <TableRow key={defaulter.userId}>
+                            <TableRow key={`${defaulter.userId}-${defaulter.semesterName}`}>
                                 <TableCell>{defaulter.studentId}</TableCell>
                                 <TableCell className="font-medium">{defaulter.studentName}</TableCell>
                                 <TableCell>{defaulter.programmeName}</TableCell>
+                                <TableCell>{defaulter.semesterName}</TableCell>
                                 <TableCell>{defaulter.lastPaymentDate || 'N/A'}</TableCell>
                                 <TableCell>{defaulter.dueDate}</TableCell>
                                 <TableCell className="text-right font-semibold">{defaulter.balance.toFixed(2)}</TableCell>
