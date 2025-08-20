@@ -103,7 +103,7 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'optionalFees')),
+                get(ref(db, 'settings/feeTemplates')),
                 get(ref(db, 'settings/integrations'))
             ]);
             
@@ -114,7 +114,8 @@ export default function PaymentsManagementPage() {
                 setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
             }
             if (optionalFeesSnap.exists()) {
-                setOptionalFees(Object.keys(optionalFeesSnap.val()).map(id => ({ id, ...optionalFeesSnap.val()[id]})));
+                 const allFees = optionalFeesSnap.val();
+                setOptionalFees(Object.keys(allFees).filter(id => allFees[id].type === 'Optional').map(id => ({ id, ...allFees[id]})));
             }
             if (settingsSnap.exists()) {
                 const integrations = settingsSnap.val();
@@ -348,6 +349,8 @@ export default function PaymentsManagementPage() {
             const registrations = registrationsSnap.val();
             const users = usersSnap.val();
             const studentList: FeeReportStudent[] = [];
+            
+            const selectedSemesterName = semesters.find(s => s.id === selectedFeeSemester)?.name;
 
             for (const userId in registrations) {
                 const semesterReg = registrations[userId][selectedFeeSemester];
