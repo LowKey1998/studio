@@ -29,7 +29,7 @@ import Link from 'next/link';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import jsPDF from 'jspdf';
@@ -74,7 +74,8 @@ type Invoice = {
     semesterId: string;
     courses: string[];
     optionalFees: string[];
-    applyScholarship?: boolean;
+    scholarshipId?: string;
+    scholarshipWaiver?: number;
 };
 
 type Registration = {
@@ -86,7 +87,7 @@ type Registration = {
     status: 'Pending Approval' | 'Pending Payment' | 'Completed';
     paymentPlan: string;
     programmeId: string;
-    applyScholarship?: boolean;
+    scholarshipId?: string;
     invoiceDetails?: Invoice;
     semesterName: string;
     installmentsPaid?: number;
@@ -123,6 +124,13 @@ type RegistrationPolicy = {
     lateRegistrationFee: number;
 }
 
+type Scholarship = {
+    id: string;
+    name: string;
+    percentage: number;
+    semesterIds?: Record<string, boolean>;
+};
+
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
     if (i === 2) return '2nd';
@@ -151,7 +159,7 @@ export default function RegistrationPage() {
     
     const [selectedCourses, setSelectedCourses] = React.useState<Course[]>([]);
     const [selectedFees, setSelectedFees] = React.useState<string[]>([]);
-    const [applyScholarship, setApplyScholarship] = React.useState(false);
+    const [selectedScholarshipId, setSelectedScholarshipId] = React.useState<string>('');
 
     const [loading, setLoading] = React.useState(true);
     const [submitting, setSubmitting] = React.useState(false);
@@ -163,6 +171,8 @@ export default function RegistrationPage() {
     
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
+    const [semesterScholarships, setSemesterScholarships] = React.useState<Scholarship[]>([]);
     const [selectedPaymentPlanId, setSelectedPaymentPlanId] = React.useState<string>('');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
@@ -198,6 +208,7 @@ export default function RegistrationPage() {
         const coursesRef = ref(db, 'courses');
         const coursePathsRef = ref(db, 'coursePaths');
         const institutionRef = ref(db, 'settings/institution');
+        const scholarshipsRef = ref(db, 'scholarships');
 
 
         const unsubPaymentPlans = onValue(paymentPlansRef, (snapshot) => {
@@ -220,6 +231,10 @@ export default function RegistrationPage() {
         const unsubInstitution = onValue(institutionRef, (snapshot) => {
             if (snapshot.exists()) setInstitutionSettings(snapshot.val());
         });
+        const unsubScholarships = onValue(scholarshipsRef, (snapshot) => {
+            if (snapshot.exists()) setAllScholarships(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
+            else setAllScholarships([]);
+        });
         
         return () => {
             unsubPaymentPlans();
@@ -227,6 +242,7 @@ export default function RegistrationPage() {
             unsubCourses();
             unsubCoursePaths();
             unsubInstitution();
+            unsubScholarships();
         };
     },[]);
 
@@ -313,9 +329,10 @@ export default function RegistrationPage() {
 
     const currentSemester = openSemesters.find(s => s.id === selectedSemesterId);
 
-    // Update available payment plans when semester changes
+    // Update available payment plans & scholarships when semester changes
     React.useEffect(() => {
         if (currentSemester) {
+            // Payment Plans
             if (currentSemester.paymentPlanIds && allPaymentPlans.length > 0) {
                 const planIds = Object.keys(currentSemester.paymentPlanIds);
                 const semesterPlans = allPaymentPlans.filter(p => planIds.includes(p.id) && !p.archived);
@@ -329,8 +346,14 @@ export default function RegistrationPage() {
                 setSemesterPaymentPlans([]);
                 setSelectedPaymentPlanId('');
             }
+            
+            // Scholarships
+            const availableSchols = allScholarships.filter(s => s.semesterIds && s.semesterIds[currentSemester.id]);
+            setSemesterScholarships(availableSchols);
+            setSelectedScholarshipId('');
+
         }
-    }, [currentSemester, allPaymentPlans]);
+    }, [currentSemester, allPaymentPlans, allScholarships]);
 
     const handleSelectCourse = (courseId: string) => {
         const course = availableCourses.find(c => c.id === courseId);
@@ -396,6 +419,10 @@ export default function RegistrationPage() {
 
             const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
             if (!selectedPlan) { toast({ variant: 'destructive', title: 'Invalid payment plan selected.' }); setSubmitting(false); return; }
+            
+            const scholarship = allScholarships.find(s => s.id === selectedScholarshipId);
+            const scholarshipWaiver = scholarship ? tuitionCost * (scholarship.percentage / 100) : 0;
+
 
             const invoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             const invoiceId = invoiceRef.key!;
@@ -405,13 +432,13 @@ export default function RegistrationPage() {
                 invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedOptionalFeeIds,
                 totalTuition: tuitionCost, totalOptionalFees: optionalFeesCost, totalMandatoryFees: mandatoryFeesCost, lateFee,
                 paymentPlan: selectedPlan.name, amountPaid: 0, status: 'pending', dateCreated: new Date().toISOString(),
-                semester: currentSemester.name, semesterId: currentSemester.id, applyScholarship
+                semester: currentSemester.name, semesterId: currentSemester.id, scholarshipId: selectedScholarshipId, scholarshipWaiver
             });
 
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${currentSemester.id}`);
             await set(registrationRef, {
                 courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedOptionalFeeIds, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
-                registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
+                registrationDate: new Date().toISOString(), status: 'Pending Approval', scholarshipId: selectedScholarshipId, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
             });
 
             const registrarIds = await getRegistrarIds();
@@ -464,9 +491,9 @@ export default function RegistrationPage() {
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
         
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
-        if(invoice.applyScholarship) {
-            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
-            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.totalTuition || 0)).toFixed(2)}`]);
+        if(invoice.scholarshipId) {
+            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.scholarshipWaiver || 0).toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.scholarshipWaiver || 0)).toFixed(2)}`]);
         } else {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
@@ -495,17 +522,18 @@ export default function RegistrationPage() {
         
         const total = tuition + optional + mandatory + lateFee;
         
-        let payableBase = total;
-        if (applyScholarship) {
-            payableBase -= tuition;
-        }
+        const scholarship = allScholarships.find(s => s.id === selectedScholarshipId);
+        const scholarshipWaiver = scholarship ? tuition * (scholarship.percentage / 100) : 0;
+        
+        let payableBase = total - scholarshipWaiver;
     
         const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
         let firstInstallmentAmount = payableBase;
     
         if (selectedPlan && selectedPlan.installments > 1 && selectedPlan.installmentPercentages && selectedPlan.installmentPercentages.length > 0) {
             const firstInstallmentPercentage = selectedPlan.installmentPercentages[0] / 100;
-            const tuitionPortion = applyScholarship ? 0 : tuition * firstInstallmentPercentage;
+            const tuitionAfterWaiver = tuition - scholarshipWaiver;
+            const tuitionPortion = tuitionAfterWaiver * firstInstallmentPercentage;
             firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
         }
     
@@ -516,7 +544,7 @@ export default function RegistrationPage() {
             totalCost: total, 
             payableAmount: firstInstallmentAmount 
         };
-    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, applyScholarship, allPaymentPlans, selectedPaymentPlanId]);
+    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, selectedScholarshipId, allScholarships, allPaymentPlans, selectedPaymentPlanId]);
 
     const recommendedCourseIds = React.useMemo(() => {
         if (!userData || !currentSemester) return [];
@@ -594,8 +622,8 @@ export default function RegistrationPage() {
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
                                                     <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
-                                                    {existingRegistration.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails?.totalTuition || 0).toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.applyScholarship ? (existingRegistration.invoiceDetails?.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
+                                                    {existingRegistration.invoiceDetails?.scholarshipId && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails?.scholarshipWaiver || 0).toFixed(2)}</TableCell></TableRow>}
+                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.scholarshipWaiver || 0)).toFixed(2)}</TableCell></TableRow>
                                                 </TableBody>
                                             </Table>
                                         </CollapsibleContent>
@@ -668,7 +696,10 @@ export default function RegistrationPage() {
                 { !existingRegistration && (
                 <CardFooter className="flex flex-col items-end gap-4 border-t pt-6">
                     <div className="w-full space-y-4">
-                         <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div><div className="flex items-end pb-1"><div className="flex items-center gap-2"><Checkbox id="scholarship" checked={applyScholarship} onCheckedChange={(checked) => setApplyScholarship(checked as boolean)} /><Label htmlFor="scholarship">Apply for Scholarship (100% tuition waiver)</Label></div></div></div>
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div>
+                            <div className="space-y-1"><Label htmlFor="scholarship-select">Scholarship (Optional)</Label><Select onValueChange={setSelectedScholarshipId} value={selectedScholarshipId} disabled={semesterScholarships.length === 0}><SelectTrigger id="scholarship-select"><SelectValue placeholder="No scholarship" /></SelectTrigger><SelectContent><SelectItem value="">None</SelectItem>{semesterScholarships.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.percentage}% Waiver)</SelectItem>))}</SelectContent></Select></div>
+                         </div>
                         <Separator />
                         <div className="space-y-1 text-right text-sm w-full">
                             <div className="flex justify-between">
@@ -696,19 +727,18 @@ export default function RegistrationPage() {
                                 <span>Total Invoice Value:</span>
                                 <span>ZMW {totalCost.toFixed(2)}</span>
                             </div>
-                            {applyScholarship && 
+                            {selectedScholarshipId && 
                                 <div className="flex justify-between font-bold text-blue-600">
                                     <span>Scholarship Applied:</span>
-                                    <span>- ZMW {tuitionCost.toFixed(2)}</span>
+                                    <span>- ZMW {(tuitionCost * ((allScholarships.find(s=>s.id === selectedScholarshipId)?.percentage || 0) / 100)).toFixed(2)}</span>
                                 </div>
                             }
                         </div>
-                        <Alert variant={applyScholarship ? 'default' : 'destructive'} className={applyScholarship ? 'bg-blue-50 border-blue-200 text-blue-800' : ''}>
-                            <DollarSign className={applyScholarship ? 'text-blue-700' : ''} />
-                            <AlertTitle className={applyScholarship ? 'text-blue-900' : ''}>Amount Due for First Installment</AlertTitle>
-                            <AlertDescription className={applyScholarship ? 'text-blue-700' : ''}>
+                        <Alert>
+                            <DollarSign/>
+                            <AlertTitle>Amount Due for First Installment</AlertTitle>
+                            <AlertDescription>
                                 Your initial amount payable is ZMW {payableAmount.toFixed(2)}.
-                                {applyScholarship && " Your scholarship application will be reviewed. If not approved, the standard tuition amount will become due."}
                             </AlertDescription>
                         </Alert>
                     </div>
@@ -723,7 +753,3 @@ export default function RegistrationPage() {
         </div>
     );
 }
-
-    
-
-    
