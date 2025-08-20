@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -84,41 +83,30 @@ export default function CAEntryPage() {
     React.useEffect(() => {
         if (!selectedSemester) return;
         setLoading(true);
-        const semesterData = semesters.find(s => s.id === selectedSemester);
-        if (!semesterData) {
-            setLoading(false);
-            return;
-        }
-
         const fetchCourses = async () => {
-            const offeringsRef = ref(db, `semesterOfferings/${semesterData.name}/courseIds`);
-            const coursesRef = ref(db, 'courses');
-
-            const [offeringsSnap, coursesSnap] = await Promise.all([get(offeringsRef), get(coursesRef)]);
-            
-            if (!offeringsSnap.exists() || !coursesSnap.exists()) {
-                setCourses([]); 
-                setLoading(false); 
-                return;
+            const regsSnap = await get(ref(db, 'registrations'));
+            const coursesSnap = await get(ref(db, 'courses'));
+            if (!regsSnap.exists() || !coursesSnap.exists()) {
+                setCourses([]); setLoading(false); return;
             }
-
-            const courseIdsInSemester = offeringsSnap.val();
             const allCourses = coursesSnap.val();
             
-            const semesterCourses = courseIdsInSemester
-                .map((cid: string) => allCourses[cid] ? { id: cid, ...allCourses[cid] } : null)
-                .filter(Boolean)
-                .sort((a: Course, b: Course) => a.name.localeCompare(b.name));
-
-            setCourses(semesterCourses);
+            const coursesInSemester = new Set<string>();
+            Object.values(regsSnap.val()).forEach((userRegs: any) => {
+                 if (userRegs[selectedSemester]) {
+                    userRegs[selectedSemester].courses.forEach((cid: string) => coursesInSemester.add(cid));
+                }
+            });
+            
+            setCourses(Array.from(coursesInSemester).map(cid => ({ id: cid, ...allCourses[cid] })).sort((a, b) => a.name.localeCompare(b.name)));
             setLoading(false);
         };
         fetchCourses();
-    }, [selectedSemester, semesters]);
+    }, [selectedSemester]);
 
     // Fetch students, template, and scores for selected course
     React.useEffect(() => {
-        if (!selectedCourseId) {
+        if (!selectedCourseId || !selectedSemester) {
             setStudents([]); setScores({}); setTemplateComponents([]); return;
         }
         setLoading(true);
