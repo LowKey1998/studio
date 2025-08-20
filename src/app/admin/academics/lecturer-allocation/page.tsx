@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase';
-import { ref, onValue, update } from 'firebase/database';
+import { ref, onValue, update, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -32,45 +32,62 @@ export default function LecturerAllocationPage() {
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const usersRef = ref(db, 'users');
-        const coursesRef = ref(db, 'courses');
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const usersRef = ref(db, 'users');
+                const coursesRef = ref(db, 'courses');
 
-        const unsubUsers = onValue(usersRef, (snapshot) => {
-            const usersData = snapshot.val() || {};
-            const lecturersList: Lecturer[] = [];
-            for (const uid in usersData) {
-                if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
-                    lecturersList.push({ uid, name: usersData[uid].name });
+                const [usersSnapshot, coursesSnapshot] = await Promise.all([
+                    get(usersRef),
+                    get(coursesRef)
+                ]);
+
+                const usersData = usersSnapshot.val() || {};
+                const lecturersList: Lecturer[] = [];
+                const lecturerMap = new Map<string, string>();
+
+                for (const uid in usersData) {
+                    if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
+                        lecturersList.push({ uid, name: usersData[uid].name });
+                        lecturerMap.set(uid, usersData[uid].name);
+                    }
                 }
-            }
-            setLecturers(lecturersList);
-        });
+                setLecturers(lecturersList);
 
+                const coursesData = coursesSnapshot.val() || {};
+                const coursesList: Course[] = [];
+                for (const id in coursesData) {
+                    const course = coursesData[id];
+                    coursesList.push({
+                        id,
+                        ...course,
+                        lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
+                    });
+                }
+                setCourses(coursesList.sort((a,b) => a.code.localeCompare(b.code)));
+                
+            } catch (error) {
+                console.error("Failed to fetch data:", error);
+                toast({ variant: 'destructive', title: "Data Loading Error" });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+
+        // Set up listeners for real-time updates after initial fetch
+        const coursesRef = ref(db, 'courses');
         const unsubCourses = onValue(coursesRef, (snapshot) => {
-            const coursesData = snapshot.val() || {};
-            const coursesList: Course[] = [];
-             const usersData = usersRef ? usersRef.parent && get(usersRef.parent).then(snap => snap.val().users) : {};
-            
-            const lecturerMap = new Map<string, string>();
-            lecturers.forEach(l => lecturerMap.set(l.uid, l.name));
-
-            for (const id in coursesData) {
-                const course = coursesData[id];
-                coursesList.push({
-                    id,
-                    ...course,
-                    lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
-                });
-            }
-            setCourses(coursesList.sort((a,b) => a.code.localeCompare(b.code)));
-            setLoading(false);
+             // Re-fetch data if changes occur to ensure consistency
+             fetchData();
         });
 
         return () => {
-            unsubUsers();
             unsubCourses();
         };
-    }, [lecturers]);
+    }, [toast]);
 
     const handleAssignLecturer = async (courseId: string, lecturerId: string) => {
         try {
