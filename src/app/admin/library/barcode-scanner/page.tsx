@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,8 @@ const SCANNER_REGION_ID = "barcode-scanner-region";
 
 type ScannedBook = { id: string, title: string, status: string, currentHolder?: string };
 type ScannedUser = { uid: string, name: string };
+type LibraryBook = { id: string, title: string, barcode?: string, status: 'Available' | 'Checked Out' | 'Requested'; [key: string]: any };
+type AppUser = { uid: string, id: string; name: string; [key: string]: any };
 
 export default function BarcodeScannerPage() {
     const [scanner, setScanner] = React.useState<Html5Qrcode | null>(null);
@@ -23,11 +26,35 @@ export default function BarcodeScannerPage() {
     const [scannerError, setScannerError] = React.useState<string | null>(null);
     const [mode, setMode] = React.useState<'checkout' | 'checkin'>('checkout');
 
+    const [allBooks, setAllBooks] = React.useState<LibraryBook[]>([]);
+    const [allUsers, setAllUsers] = React.useState<AppUser[]>([]);
+
     const [scannedBook, setScannedBook] = React.useState<ScannedBook | null>(null);
     const [scannedUser, setScannedUser] = React.useState<ScannedUser | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
     
     const { toast } = useToast();
+    
+    React.useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [booksSnap, usersSnap] = await Promise.all([
+                    get(ref(db, 'libraryBooks')),
+                    get(ref(db, 'users'))
+                ]);
+                if (booksSnap.exists()) {
+                    setAllBooks(Object.entries(booksSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
+                }
+                if (usersSnap.exists()) {
+                    setAllUsers(Object.entries(usersSnap.val()).map(([uid, data]) => ({ uid, ...(data as any) })));
+                }
+            } catch (error) {
+                console.error("Failed to fetch initial data:", error);
+                toast({ variant: "destructive", title: "Error", description: "Could not load library and user data." });
+            }
+        };
+        fetchData();
+    }, [toast]);
 
     const startScanner = React.useCallback(async () => {
         if (isScannerActive) return;
@@ -48,40 +75,30 @@ export default function BarcodeScannerPage() {
                 async (decodedText, decodedResult) => {
                     if (isProcessing) return;
 
-                    // First, always look for a book
-                    const bookSnap = await get(ref(db, `libraryBooks`));
-                    if (bookSnap.exists()) {
-                        const books = bookSnap.val();
-                        const foundBook = Object.entries(books).find(([id, book]: [string, any]) => book.barcode === decodedText);
-                        if (foundBook) {
-                            const [id, data] = foundBook;
-                            let currentHolder;
-                            if (data.status === 'Checked Out' || data.status === 'Requested') {
-                                const reqSnap = await get(ref(db, 'bookRequests'));
-                                if(reqSnap.exists()) {
-                                    const req = Object.values(reqSnap.val()).find((r: any) => r.bookId === id && r.status === 'Checked Out');
-                                    currentHolder = (req as any)?.userName;
-                                }
+                    // Try to find a book first
+                    const foundBook = allBooks.find(b => b.barcode === decodedText);
+                    if (foundBook) {
+                        let currentHolder;
+                        if (foundBook.status === 'Checked Out' || foundBook.status === 'Requested') {
+                            const reqSnap = await get(ref(db, 'bookRequests'));
+                            if (reqSnap.exists()) {
+                                const req = Object.values(reqSnap.val()).find((r: any) => r.bookId === foundBook.id && r.status === 'Checked Out');
+                                currentHolder = (req as any)?.userName;
                             }
-                            setScannedBook({ id, ...(data as any), currentHolder });
-                            toast({ title: "Book Found!", description: (data as any).title });
-                            return; // Stop after finding a book
                         }
+                        setScannedBook({ id: foundBook.id, title: foundBook.title, status: foundBook.status, currentHolder });
+                        toast({ title: "Book Found!", description: foundBook.title });
+                        return;
                     }
 
                     // If checking out and no book is scanned yet, look for a user
                     if (mode === 'checkout' && !scannedBook) {
-                        const userSnap = await get(ref(db, 'users'));
-                         if (userSnap.exists()) {
-                            const users = userSnap.val();
-                            const foundUser = Object.entries(users).find(([uid, user]: [string, any]) => user.id === decodedText);
-                             if (foundUser) {
-                                const [uid, data] = foundUser;
-                                setScannedUser({ uid, name: (data as any).name });
-                                toast({ title: "User Found!", description: (data as any).name });
-                                return; // Stop after finding a user
-                            }
-                         }
+                        const foundUser = allUsers.find(u => u.id === decodedText);
+                        if (foundUser) {
+                            setScannedUser({ uid: foundUser.uid, name: foundUser.name });
+                            toast({ title: "User Found!", description: foundUser.name });
+                            return;
+                        }
                     }
                     
                     toast({ variant: 'destructive', title: "Not Found", description: `Could not find a matching book or user for barcode: ${decodedText}` });
@@ -94,7 +111,7 @@ export default function BarcodeScannerPage() {
             setScannerError("Camera not found or permissions denied.");
             setIsScannerActive(false);
         }
-    }, [isScannerActive, mode, toast, scannedBook, isProcessing]);
+    }, [isScannerActive, mode, toast, scannedBook, isProcessing, allBooks, allUsers]);
 
     const stopScanner = React.useCallback(async () => {
         if (scanner && isScannerActive) {
