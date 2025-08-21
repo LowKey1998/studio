@@ -273,7 +273,10 @@ export default function CoursesPage() {
 
             if (editingCourse) {
                 // Update existing course
-                updates[`/courses/${editingCourse.id}`] = courseData;
+                updates[`/courses/${editingCourse.id}`] = {
+                    ...editingCourse,
+                    ...courseData
+                };
             } else {
                 // Add new course
                 const newCourseRef = push(ref(db, 'courses'));
@@ -335,13 +338,13 @@ export default function CoursesPage() {
 
             toast({
                 variant: 'success',
-                title: `Course ${status === 'archived' ? 'Archived' : 'Restored'}`,
-                description: `The course has been successfully ${status}.`,
+                title: `Course ${status === 'archived' ? 'Deleted' : 'Restored'}`,
+                description: `The course has been successfully moved to ${status === 'archived' ? 'the trash' : 'active courses'}.`,
             });
         } catch (error: any) {
              toast({
                 variant: 'destructive',
-                title: `Failed to ${status} course`,
+                title: `Failed to ${status === 'archived' ? 'delete' : 'restore'} course`,
                 description: error.message || 'An unexpected error occurred.',
             });
         }
@@ -353,7 +356,7 @@ export default function CoursesPage() {
             toast({
                 variant: 'destructive',
                 title: 'Reason Required',
-                description: 'Please provide a reason for archiving the course.',
+                description: 'Please provide a reason for deleting the course.',
             });
             return;
         }
@@ -563,7 +566,7 @@ export default function CoursesPage() {
                                                                                onClick={() => setArchivingCourse(course)}
                                                                            >
                                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                               Archive
+                                                                               Delete
                                                                            </DropdownMenuItem>
                                                                        </AlertDialogTrigger>
                                                                        </>
@@ -592,10 +595,10 @@ export default function CoursesPage() {
                         <AlertDialogHeader>
                             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                This will archive the course and hide it from student registration. You can restore it later from the archived tab.
+                                This will move the course to the trash (archived). You can restore it later from the archived tab.
                             </AlertDialogDescription>
                              <div className="space-y-2 pt-2">
-                                <Label htmlFor="archiveReason">Reason for Archiving</Label>
+                                <Label htmlFor="archiveReason">Reason for Deletion</Label>
                                 <Input 
                                     id="archiveReason" 
                                     placeholder="e.g., Semester Ended, Course Canceled" 
@@ -607,7 +610,7 @@ export default function CoursesPage() {
                         <AlertDialogFooter>
                             <AlertDialogCancel onClick={() => { setArchivingCourse(null); setArchiveReason(''); }}>Cancel</AlertDialogCancel>
                             <AlertDialogAction onClick={handleArchiveSubmit} className="bg-destructive hover:bg-destructive/90">
-                                Yes, archive it
+                                Yes, delete it
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
