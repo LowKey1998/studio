@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 
 // --- TYPE DEFINITIONS ---
@@ -382,6 +383,22 @@ export default function RegistrationManagementPage() {
         }
     }
     
+     const handleDeleteSemester = async () => {
+        if (!currentSemester) return;
+        setSaving(true);
+        try {
+            // Also need to remove semesterOfferings
+            await remove(ref(db, `semesters/${currentSemester.id}`));
+            await remove(ref(db, `semesterOfferings/${currentSemester.name}`));
+            toast({ title: 'Semester Deleted' });
+            setSelectedSemester(''); // Reset selection
+        } catch(e: any) {
+            toast({ variant: 'destructive', title: 'Deletion Failed', description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+    
     const currentSemester = semesters.find(s => s.id === selectedSemester);
     const semesterName = currentSemester?.name || '';
     const canSave = semesterDeadlines.every(d => d.date !== null);
@@ -401,19 +418,25 @@ export default function RegistrationManagementPage() {
                     </Dialog>
                 </div>
                  {currentSemester && (
-                    <div className="space-y-4">
-                        <div className='flex flex-wrap gap-2 items-center'>
-                            <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
-                            {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
-                            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                                <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
-                            </Dialog>
-                             <div className="flex items-center space-x-2 p-2 border rounded-md">
-                                <Switch id="innovation-hub-switch" checked={currentSemester.innovationHubActive} onCheckedChange={() => handleToggleInnovationHub(currentSemester)} />
-                                <Label htmlFor="innovation-hub-switch" className="flex items-center gap-2"><Lightbulb className="h-4 w-4" /> Innovation Hub Active</Label>
-                            </div>
+                    <div className="space-y-4"><div className='flex flex-wrap gap-2'>
+                        <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
+                        {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
+                        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                            <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                        </Dialog>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild><Button variant="destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete</Button></AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action will permanently delete the <strong>{currentSemester.name}</strong> semester and all associated settings. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteSemester}>Yes, delete semester</AlertDialogAction></AlertDialogFooter>
+                            </AlertDialogContent>
+                         </AlertDialog>
+                         <div className="flex items-center space-x-2 p-2 border rounded-md">
+                            <Switch id="innovation-hub-switch" checked={currentSemester.innovationHubActive} onCheckedChange={() => handleToggleInnovationHub(currentSemester)} />
+                            <Label htmlFor="innovation-hub-switch" className="flex items-center gap-2"><Lightbulb className="h-4 w-4" /> Innovation Hub Active</Label>
                         </div>
+                    </div>
                         {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
                     </div>
                  )}
@@ -499,3 +522,6 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+
+    
