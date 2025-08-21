@@ -12,12 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 
 type Student = {
     uid: string;
     id: string; 
     name: string;
+    programmeId: string;
 };
 
 type Semester = {
@@ -30,14 +31,16 @@ type Course = {
     id: string;
     name: string;
     code: string;
+    assessmentTemplateId?: string;
 };
 
-type AssessmentScores = {
-    assignment1?: { score: number };
-    quiz1?: { score: number };
-    midterm?: { score: number };
-    finalExam?: { score: number };
-};
+type AssessmentScore = {
+    score?: number;
+    feedback?: string;
+}
+
+type AssessmentScores = Record<string, AssessmentScore>; // componentId -> score & feedback
+type FinalExamScore = { finalExam?: AssessmentScore };
 
 type GradeResult = {
     student: Student;
@@ -56,7 +59,7 @@ export default function GradeApprovalPage() {
     const [selectedCourse, setSelectedCourse] = React.useState('');
     const [gradeResults, setGradeResults] = React.useState<GradeResult[]>([]);
     const [gradeStatus, setGradeStatus] = React.useState<GradeApprovalStatus>('Pending');
-    const [gradingScale, setGradingScale] = React.useState<any[]>([]);
+    const [allProgrammes, setAllProgrammes] = React.useState<any>({});
 
     const [loading, setLoading] = React.useState(true);
     const [loadingGrades, setLoadingGrades] = React.useState(false);
@@ -119,18 +122,20 @@ export default function GradeApprovalPage() {
                 setGradeStatus(statusSnap.exists() ? statusSnap.val() : 'Pending');
 
                 // Fetch data
-                const [allUsersSnap, allRegsSnap, allAssessmentsSnap, gradingScaleSnap] = await Promise.all([
-                    get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, 'assessments')), get(ref(db, 'settings/gradingScale'))
+                const [allUsersSnap, allRegsSnap, allAssessmentsSnap, programmesSnap, assessmentTemplatesSnap] = await Promise.all([
+                    get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, 'assessments')), get(ref(db, 'programmes')), get(ref(db, 'settings/assessmentTemplates'))
                 ]);
 
-                if (!allUsersSnap.exists() || !allRegsSnap.exists() || !allAssessmentsSnap.exists() || !gradingScaleSnap.exists()) {
+                if (!allUsersSnap.exists() || !allRegsSnap.exists() || !allAssessmentsSnap.exists() || !programmesSnap.exists()) {
                     setGradeResults([]); return;
                 }
                 const allUsers = allUsersSnap.val();
                 const allRegistrations = allRegsSnap.val();
                 const courseAssessments = allAssessmentsSnap.val()[selectedCourse] || {};
-                const scale = Object.values(gradingScaleSnap.val());
-                setGradingScale(scale);
+                const programmesData = programmesSnap.val();
+                const templatesData = assessmentTemplatesSnap.exists() ? assessmentTemplatesSnap.val() : {};
+                
+                setAllProgrammes(programmesData);
 
                 const enrolledStudentUids: string[] = [];
                 for (const userId in allRegistrations) {
@@ -141,13 +146,27 @@ export default function GradeApprovalPage() {
                 }
                 
                 const results: GradeResult[] = enrolledStudentUids.map(uid => {
-                    const scores: AssessmentScores = courseAssessments[uid] || {};
-                    let caScores: number[] = [];
-                    if(scores.assignment1?.score) caScores.push(scores.assignment1.score);
-                    if(scores.quiz1?.score) caScores.push(scores.quiz1.score);
-                    if(scores.midterm?.score) caScores.push(scores.midterm.score);
+                    const studentData = allUsers[uid];
+                    const scores: AssessmentScores & FinalExamScore = courseAssessments[uid] || {};
+                    const programme = programmesData[studentData.programmeId];
+                    const gradingScale: any[] = programme?.gradingScale ? Object.values(programme.gradingScale) : [];
+                    
+                    const course = courses.find(c => c.id === selectedCourse);
+                    const template = course?.assessmentTemplateId ? templatesData[course.assessmentTemplateId] : null;
+                    
+                    let caScore: number | null = null;
+                    if(template && template.components) {
+                        let totalWeightedScore = 0;
+                        let totalWeight = 0;
+                        Object.entries(template.components).forEach(([id, comp]: [string, any]) => {
+                             if(scores[id]?.score !== undefined) {
+                                totalWeightedScore += scores[id]!.score! * (comp.weight / 100);
+                                totalWeight += comp.weight;
+                             }
+                        });
+                        caScore = totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : null;
+                    }
 
-                    const caScore = caScores.length > 0 ? caScores.reduce((a,b) => a + b, 0) / caScores.length : null;
                     const finalExamScore = scores.finalExam?.score ?? null;
 
                     let finalMark: number | null = null;
@@ -155,9 +174,9 @@ export default function GradeApprovalPage() {
                         finalMark = (caScore * 0.4) + (finalExamScore * 0.6);
                     }
                     
-                    const grade = scale.find(g => finalMark! >= g.minScore && finalMark! <= g.maxScore)?.grade || 'F';
+                    const grade = finalMark !== null ? (gradingScale.find(g => finalMark! >= g.minScore && finalMark! <= g.maxScore)?.grade || 'F') : 'N/A';
                     
-                    return { student: { uid, id: allUsers[uid].id, name: allUsers[uid].name }, caScore, finalExamScore, finalMark, grade };
+                    return { student: { uid, id: studentData.id, name: studentData.name, programmeId: studentData.programmeId }, caScore, finalExamScore, finalMark, grade };
                 });
 
                 setGradeResults(results);
@@ -170,7 +189,7 @@ export default function GradeApprovalPage() {
         }
         fetchGrades();
 
-    }, [selectedCourse, selectedSemester]);
+    }, [selectedCourse, selectedSemester, courses]);
 
     const handleApprove = async () => {
         setSaving(true);
@@ -209,16 +228,17 @@ export default function GradeApprovalPage() {
                     <Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge>
                 </div>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Final Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>Programme</TableHead><TableHead>CA (40%)</TableHead><TableHead>Final Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
                     <TableBody>
                     {gradeResults.map(res => (
                         <TableRow key={res.student.uid}>
                             <TableCell>{res.student.name}</TableCell>
                             <TableCell>{res.student.id}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{allProgrammes[res.student.programmeId]?.name || 'N/A'}</TableCell>
                             <TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell>
                             <TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell>
                             <TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell>
-                             <TableCell className="font-bold">{res.finalMark ? res.grade : 'N/A'}</TableCell>
+                             <TableCell className="font-bold">{res.finalMark !== null ? res.grade : 'N/A'}</TableCell>
                         </TableRow>
                     ))}
                     </TableBody>
@@ -237,4 +257,3 @@ export default function GradeApprovalPage() {
         </Card>
     );
 }
-
