@@ -151,8 +151,8 @@ export default function LoginPage() {
               </Button>
             </form>
             <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <Link href="#" className="underline">
+              Having trouble?{" "}
+              <Link href="/contact" className="underline">
                 Contact administration
               </Link>
             </div>
