@@ -21,7 +21,6 @@ export const allMenuItems = [
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/registration-management', label: 'Registration Setup', icon: Settings },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp, isPremium: true },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar, isPremium: true },
@@ -43,6 +42,7 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
+        { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Course Paths', icon: Route },
@@ -364,7 +364,7 @@ export const staffMenuItems = [
       icon: UserCog,
       items: [
            { href: '/staff/onboarding', label: 'My Onboarding', icon: UserPlus },
-           { href: '/admin/hr/payroll', label: 'Payroll', icon: Wallet, permission: '/admin/hr/payroll' },
+           { href: '/admin/hr/payroll', label: 'Payroll', permission: '/admin/hr/payroll' },
       ]
   },
     {
