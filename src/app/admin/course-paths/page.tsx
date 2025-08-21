@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -406,6 +405,3 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
-
-
-    
