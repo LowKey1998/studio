@@ -34,6 +34,13 @@ type Course = {
     assessmentTemplateId?: string;
 };
 
+type Programme = {
+    id: string;
+    name: string;
+    courseIds?: Record<string, boolean>;
+};
+
+
 type AssessmentScore = {
     score?: number;
     feedback?: string;
@@ -54,57 +61,75 @@ type GradeApprovalStatus = 'Pending' | 'Approved';
 
 export default function GradeApprovalPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
+    
+    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [selectedProgramme, setSelectedProgramme] = React.useState('');
     const [selectedCourse, setSelectedCourse] = React.useState('');
+
     const [gradeResults, setGradeResults] = React.useState<GradeResult[]>([]);
     const [gradeStatus, setGradeStatus] = React.useState<GradeApprovalStatus>('Pending');
-    const [allProgrammes, setAllProgrammes] = React.useState<any>({});
-
+    
     const [loading, setLoading] = React.useState(true);
     const [loadingGrades, setLoadingGrades] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
 
-    // Fetch semesters
+    // Fetch static data like semesters and programmes
     React.useEffect(() => {
-        const semestersRef = ref(db, 'semesters');
-        const unsub = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
+        const fetchData = async () => {
+            setLoading(true);
+            const [semestersSnap, programmesSnap] = await Promise.all([
+                get(ref(db, 'semesters')),
+                get(ref(db, 'programmes'))
+            ]);
+
+            if (semestersSnap.exists()) {
+                const data = semestersSnap.val();
                 const list = Object.keys(data).map(id => ({ id, ...data[id] })).filter(s => s.status !== 'Archived');
                 setSemesters(list.sort((a,b) => b.name.localeCompare(a.name)));
                 if(list.length > 0) setSelectedSemester(list[0].id);
             }
-             setLoading(false);
-        });
-        return () => unsub();
-    }, []);
-
-     // Fetch courses for selected semester
-    React.useEffect(() => {
-        if (!selectedSemester) return;
-        setLoading(true);
-        const fetchCourses = async () => {
-            const regsSnap = await get(ref(db, 'registrations'));
-            const coursesSnap = await get(ref(db, 'courses'));
-            if (!regsSnap.exists() || !coursesSnap.exists()) {
-                setCourses([]); setLoading(false); return;
+            if (programmesSnap.exists()) {
+                const data = programmesSnap.val();
+                setAllProgrammes(Object.keys(data).map(id => ({ id, ...data[id] })));
             }
-            const allCourses = coursesSnap.val();
-            
-            const coursesInSemester = new Set<string>();
-            Object.values(regsSnap.val()).forEach((userRegs: any) => {
-                 if (userRegs[selectedSemester]) {
-                    userRegs[selectedSemester].courses.forEach((cid: string) => coursesInSemester.add(cid));
-                }
-            });
-            
-            setCourses(Array.from(coursesInSemester).map(cid => ({ id: cid, ...allCourses[cid] })).sort((a, b) => a.name.localeCompare(b.name)));
             setLoading(false);
         };
+        fetchData();
+    }, []);
+
+     // Fetch courses for selected semester and programme
+    React.useEffect(() => {
+        if (!selectedSemester || !selectedProgramme) {
+            setCourses([]);
+            setSelectedCourse('');
+            return;
+        }
+        
+        const fetchCourses = async () => {
+            const programme = allProgrammes.find(p => p.id === selectedProgramme);
+            if (!programme || !programme.courseIds) {
+                setCourses([]);
+                return;
+            }
+            const courseIds = Object.keys(programme.courseIds);
+            
+            const coursesSnap = await get(ref(db, 'courses'));
+            if (!coursesSnap.exists()) {
+                setCourses([]);
+                return;
+            }
+            const allCoursesData = coursesSnap.val();
+            const relevantCourses = courseIds
+                .map(id => allCoursesData[id] ? { id, ...allCoursesData[id] } : null)
+                .filter((c): c is Course => c !== null);
+            
+            setCourses(relevantCourses);
+        };
         fetchCourses();
-    }, [selectedSemester]);
+    }, [selectedSemester, selectedProgramme, allProgrammes]);
 
     // Fetch grades for selected course
     React.useEffect(() => {
@@ -135,13 +160,13 @@ export default function GradeApprovalPage() {
                 const programmesData = programmesSnap.val();
                 const templatesData = assessmentTemplatesSnap.exists() ? assessmentTemplatesSnap.val() : {};
                 
-                setAllProgrammes(programmesData);
-
                 const enrolledStudentUids: string[] = [];
                 for (const userId in allRegistrations) {
                     const semesterReg = allRegistrations[userId][selectedSemester];
                     if (semesterReg && semesterReg.courses.includes(selectedCourse) && (semesterReg.status === 'Completed')) {
-                        enrolledStudentUids.push(userId);
+                         if(allUsers[userId]?.programmeId === selectedProgramme) { // Filter by selected programme
+                            enrolledStudentUids.push(userId);
+                        }
                     }
                 }
                 
@@ -189,7 +214,7 @@ export default function GradeApprovalPage() {
         }
         fetchGrades();
 
-    }, [selectedCourse, selectedSemester, courses]);
+    }, [selectedCourse, selectedSemester, courses, selectedProgramme]);
 
     const handleApprove = async () => {
         setSaving(true);
@@ -208,15 +233,19 @@ export default function GradeApprovalPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Grade Approval Workflow</CardTitle>
-                <CardDescription>Review and approve final grades before they are published to students.</CardDescription>
-                <div className="grid md:grid-cols-2 gap-4 pt-4">
+                <CardDescription>Select a programme and course to review and approve final grades before they are published to students.</CardDescription>
+                <div className="grid md:grid-cols-3 gap-4 pt-4">
                     <div className="space-y-1">
                         <Label>Semester</Label>
-                        <Select value={selectedSemester} onValueChange={setSelectedSemester}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{semesters.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+                        <Select value={selectedSemester} onValueChange={setSelectedSemester} disabled={loading}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{semesters.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+                    </div>
+                     <div className="space-y-1">
+                        <Label>Programme</Label>
+                        <Select value={selectedProgramme} onValueChange={setSelectedProgramme} disabled={!selectedSemester}><SelectTrigger><SelectValue placeholder="Select programme..."/></SelectTrigger><SelectContent>{allProgrammes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                     </div>
                      <div className="space-y-1">
                         <Label>Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
+                        <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={!selectedProgramme}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
                     </div>
                 </div>
             </CardHeader>
@@ -228,13 +257,12 @@ export default function GradeApprovalPage() {
                     <Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge>
                 </div>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>Programme</TableHead><TableHead>CA (40%)</TableHead><TableHead>Final Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Final Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
                     <TableBody>
                     {gradeResults.map(res => (
                         <TableRow key={res.student.uid}>
                             <TableCell>{res.student.name}</TableCell>
                             <TableCell>{res.student.id}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{allProgrammes[res.student.programmeId]?.name || 'N/A'}</TableCell>
                             <TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell>
                             <TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell>
                             <TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell>
@@ -244,7 +272,9 @@ export default function GradeApprovalPage() {
                     </TableBody>
                 </Table>
                 </>
-                ) : <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>No Results</AlertTitle><AlertDescription>No results available for this course, or no students are enrolled.</AlertDescription></Alert>}
+                ) : <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>No Results</AlertTitle><AlertDescription>
+                    {selectedCourse ? 'No results available for this course, or no students are enrolled under the selected programme.' : 'Please select a semester, programme, and course to view grades.'}
+                </AlertDescription></Alert>}
             </CardContent>
             {gradeResults.length > 0 && (
                 <CardFooter className="flex justify-end">
@@ -257,3 +287,4 @@ export default function GradeApprovalPage() {
         </Card>
     );
 }
+
