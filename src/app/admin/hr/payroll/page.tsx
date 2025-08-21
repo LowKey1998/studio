@@ -1,3 +1,4 @@
+
 // This page has been replaced by the more feature-rich /staff/payroll page.
 // We will redirect users from here to the new page.
 
@@ -8,10 +9,10 @@ import { useEffect } from 'react';
 export default function RedirectPage() {
     const router = useRouter();
     useEffect(() => {
-        router.replace('/staff/payroll');
+        router.replace('/admin/vacancies');
     }, [router]);
 
     return (
-        <div>Redirecting to Payroll Management...</div>
+        <div>Redirecting to Vacancies...</div>
     );
 }

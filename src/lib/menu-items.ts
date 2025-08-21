@@ -156,7 +156,7 @@ export const allMenuItems = [
            { href: '/admin/leave-approvals', label: 'Leave Approvals', icon: UserCheckIcon },
            { href: '/admin/vacancies', label: 'Vacancies', icon: Briefcase },
            { href: '/admin/hr/onboarding', label: 'Digital Onboarding', icon: UserPlus },
-           { href: '/admin/hr/payroll', label: 'Payroll Processing', icon: Wallet },
+           { href: '/staff/payroll', label: 'Payroll Processing', icon: Wallet },
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
@@ -359,6 +359,13 @@ export const staffMenuItems = [
         { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
       ]
     },
+     {
+      label: 'HR',
+      icon: UserCog,
+      items: [
+           { href: '/staff/onboarding', label: 'My Onboarding', icon: UserPlus },
+      ]
+  },
     {
       label: 'General',
       icon: Settings,
