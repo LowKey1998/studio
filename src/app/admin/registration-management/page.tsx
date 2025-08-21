@@ -22,6 +22,7 @@ import { format, parseISO } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerName?: string; status: 'active' | 'archived'; year: number; };
