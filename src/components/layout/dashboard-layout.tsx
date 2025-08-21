@@ -74,7 +74,11 @@ export default function DashboardLayout({
         const baseMenu = staffBaseMenuItems.map(category => {
             if (!category.items) return category;
             const filteredSubItems = category.items.filter(subItem => {
-                 if (!subItem.permission) return true;
+                 if (!subItem.permission) return true; // Always show items without specific permissions
+                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) { // Check against href permissions
+                     return !!staffPermissions[subItem.permission];
+                 }
+                 // Legacy check for sub-role names
                  return userProfile.subRoles?.includes(subItem.permission);
             });
             

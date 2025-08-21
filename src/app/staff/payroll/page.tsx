@@ -16,6 +16,7 @@ import { sendPayslipEmail } from '@/ai/flows/send-payslip-email';
 import { syncPayrollToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncPayrollToSage } from '@/ai/flows/sync-to-sage';
 import { format } from 'date-fns';
+import { useAuth } from '@/hooks/use-auth';
 
 type StaffMember = {
     uid: string;
@@ -36,28 +37,18 @@ const calculatePayroll = (staff: StaffMember) => {
 
 export default function PayrollPage() {
     const [staffList, setStaffList] = React.useState<StaffMember[]>([]);
-    const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [userData, setUserData] = React.useState<any>(null); // For subRoles check
+    const { user, userProfile, loading } = useAuth();
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
     const { toast } = useToast();
 
+    const hasPermission = React.useMemo(() => {
+        if (!userProfile) return false;
+        return userProfile.role === 'Admin' || !!userProfile.permissions?.['/staff/payroll'];
+    }, [userProfile]);
+
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            setCurrentUser(user);
-            const userRef = ref(db, `users/${user.uid}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-                setUserData(snapshot.val());
-            }
-          } else {
-              setLoading(false);
-          }
-        });
-        
         const settingsRef = ref(db, 'settings/integrations');
         const unsubSettings = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
@@ -67,33 +58,16 @@ export default function PayrollPage() {
             }
         });
 
-        return () => {
-            unsubscribe();
-            unsubSettings();
-        };
+        return () => unsubSettings();
     }, []);
-
-    const hasPermission = React.useMemo(() => {
-        if (!userData) return false;
-        return userData.role === 'Admin' || (userData.role === 'Staff' && userData.subRoles?.includes('HR'));
-    }, [userData]);
 
 
     React.useEffect(() => {
-        if (!userData) {
-            if (currentUser === null) {
-                setLoading(false);
-            }
+        if (!user || !hasPermission) {
             return;
-        }
-        
-        if (!hasPermission) {
-             setLoading(false);
-             return;
         }
 
         const fetchStaff = async () => {
-            setLoading(true);
             try {
                 const usersRef = ref(db, 'users');
                 const snapshot = await get(usersRef);
@@ -111,13 +85,11 @@ export default function PayrollPage() {
             } catch (error) {
                 console.error("Error fetching staff data:", error);
                 toast({ variant: "destructive", title: "Error", description: "Could not fetch staff data." });
-            } finally {
-                setLoading(false);
             }
         };
 
         fetchStaff();
-    }, [userData, toast, currentUser, hasPermission]);
+    }, [user, hasPermission, toast]);
     
     const handleSendPayslip = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
         setActionLoading(`payslip-${staff.uid}`);
@@ -204,7 +176,7 @@ export default function PayrollPage() {
                         <Info className="h-4 w-4" />
                         <AlertTitle>Access Denied</AlertTitle>
                         <AlertDescription>
-                            You do not have permission to view the payroll page. This feature is restricted to HR personnel and Administrators.
+                            You do not have permission to view the payroll page. This feature is restricted to authorized personnel.
                         </AlertDescription>
                     </Alert>
                 </CardContent>

@@ -364,6 +364,7 @@ export const staffMenuItems = [
       icon: UserCog,
       items: [
            { href: '/staff/onboarding', label: 'My Onboarding', icon: UserPlus },
+           { href: '/staff/payroll', label: 'Payroll', icon: Wallet, permission: '/staff/payroll' },
       ]
   },
     {
