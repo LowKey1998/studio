@@ -35,22 +35,37 @@ export default function LecturerAllocationPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const usersRef = ref(db, 'users');
-                const coursesRef = ref(db, 'courses');
-
-                const [usersSnapshot, coursesSnapshot] = await Promise.all([
-                    get(usersRef),
-                    get(coursesRef)
+                const [usersSnapshot, coursesSnapshot, subRolesSnap] = await Promise.all([
+                    get(ref(db, 'users')),
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'settings/subRoles'))
                 ]);
 
                 const usersData = usersSnapshot.val() || {};
+                const subRolesData = subRolesSnap.val() || {};
+
+                // Find sub-roles that have the 'canBeAssignedClass' permission
+                const lecturerRoleIds = new Set(
+                    Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
+                );
+
                 const lecturersList: Lecturer[] = [];
                 const lecturerMap = new Map<string, string>();
 
                 for (const uid in usersData) {
-                    if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
-                        lecturersList.push({ uid, name: usersData[uid].name });
-                        lecturerMap.set(uid, usersData[uid].name);
+                    const user = usersData[uid];
+                    if (user.role === 'Staff') {
+                        // Check if the user has any of the designated lecturer sub-roles
+                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => {
+                            // Find the sub-role ID by name
+                            const roleEntry = Object.entries(subRolesData).find(([, roleDetails]: [string, any]) => roleDetails.name === userSubRole);
+                            return roleEntry && lecturerRoleIds.has(roleEntry[0]);
+                        });
+
+                        if (userHasLecturerRole) {
+                           lecturersList.push({ uid, name: usersData[uid].name });
+                           lecturerMap.set(uid, usersData[uid].name);
+                        }
                     }
                 }
                 setLecturers(lecturersList);
@@ -83,9 +98,19 @@ export default function LecturerAllocationPage() {
              // Re-fetch data if changes occur to ensure consistency
              fetchData();
         });
+        const usersRef = ref(db, 'users');
+        const unsubUsers = onValue(usersRef, (snapshot) => {
+             fetchData();
+        });
+        const subRolesRef = ref(db, 'settings/subRoles');
+        const unsubSubRoles = onValue(subRolesRef, (snapshot) => {
+            fetchData();
+        });
 
         return () => {
             unsubCourses();
+            unsubUsers();
+            unsubSubRoles();
         };
     }, [toast]);
 

@@ -34,9 +34,10 @@ export default function TeachingLoadPage() {
         const fetchTeachingLoad = async () => {
             setLoading(true);
             try {
-                const [usersSnap, coursesSnap] = await Promise.all([
+                const [usersSnap, coursesSnap, subRolesSnap] = await Promise.all([
                     get(ref(db, 'users')),
-                    get(ref(db, 'courses'))
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'settings/subRoles'))
                 ]);
 
                 if (!usersSnap.exists() || !coursesSnap.exists()) {
@@ -47,11 +48,24 @@ export default function TeachingLoadPage() {
 
                 const users = usersSnap.val();
                 const courses = coursesSnap.val();
+                const subRolesData = subRolesSnap.val() || {};
+
+                const lecturerRoleIds = new Set(
+                    Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
+                );
 
                 const lecturers: Record<string, { name: string, courses: any[] }> = {};
                 for (const uid in users) {
-                    if (users[uid].role === 'Staff' && users[uid].subRoles?.includes('Lecturer')) {
-                        lecturers[uid] = { name: users[uid].name, courses: [] };
+                    const user = users[uid];
+                    if (user.role === 'Staff') {
+                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => {
+                            const roleEntry = Object.entries(subRolesData).find(([, roleDetails]: [string, any]) => roleDetails.name === userSubRole);
+                            return roleEntry && lecturerRoleIds.has(roleEntry[0]);
+                        });
+
+                        if (userHasLecturerRole) {
+                            lecturers[uid] = { name: users[uid].name, courses: [] };
+                        }
                     }
                 }
 

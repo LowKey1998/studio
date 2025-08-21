@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { allMenuItems } from '@/lib/menu-items';
+import { Separator } from '@/components/ui/separator';
 
 type SubRole = {
     id: string;
@@ -176,6 +177,22 @@ export default function AccessRulesPage() {
                         <div className="grid gap-4 py-4">
                             <Input placeholder="Role Name, e.g., Bursar" value={roleName} onChange={(e) => setRoleName(e.target.value)} />
                              <div className="max-h-[60vh] overflow-y-auto pr-4">
+                                <h4 className="text-sm font-medium mb-2">Special Permissions</h4>
+                                <div className="space-y-2 p-3 border rounded-md">
+                                     <div className="flex items-center gap-2">
+                                        <Checkbox 
+                                            id='canBeAssignedClass' 
+                                            checked={!!permissions['canBeAssignedClass']} 
+                                            onCheckedChange={(checked) => handlePermissionChange('canBeAssignedClass', !!checked)}
+                                        />
+                                        <Label htmlFor='canBeAssignedClass' className="font-normal">Assignable to Class</Label>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pl-6">Allows this role to be assigned to courses as a lecturer in Lecturer Allocation.</p>
+                                </div>
+
+                                <Separator className="my-4"/>
+
+                                 <h4 className="text-sm font-medium mb-2">Page & Menu Access</h4>
                                 <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
                                 {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
                                     <AccordionItem value={item.label} key={item.label}>
