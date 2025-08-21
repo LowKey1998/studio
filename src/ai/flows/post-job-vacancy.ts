@@ -21,6 +21,26 @@ const PostJobVacancyInputSchema = z.object({
 
 export type PostJobVacancyInput = z.infer<typeof PostJobVacancyInputSchema>;
 
+const ExternalPostSchema = z.object({
+    summary: z.string().describe("A concise and engaging summary of the job vacancy, suitable for posting on external platforms like LinkedIn. It should be under 150 words.")
+});
+
+const externalPostPrompt = ai.definePrompt({
+    name: 'externalPostPrompt',
+    input: { schema: PostJobVacancyInputSchema },
+    output: { schema: ExternalPostSchema },
+    prompt: `Based on the following job details, write a compelling and concise summary for an external job board.
+
+Job Title: {{{title}}}
+Department: {{{department}}}
+Employment Type: {{{type}}}
+
+Full Description:
+{{{description}}}
+`,
+});
+
+
 export async function postJobVacancy(input: PostJobVacancyInput): Promise<string> {
   const result = await postJobVacancyFlow(input);
   return result.result;
@@ -46,9 +66,14 @@ const postJobVacancyFlow = ai.defineFlow(
     let resultMessage = `Vacancy "${input.title}" has been posted internally.`;
 
     if (input.syndicate) {
-      // In a real application, this would trigger integrations with external job boards.
-      console.log(`Simulating syndication for job: ${input.title} to external sites.`);
-      resultMessage += ' It will also be posted to external job sites shortly.';
+      const { output } = await externalPostPrompt(input);
+      if (output) {
+        console.log(`--- SIMULATING EXTERNAL POST ---`);
+        console.log(`Syndicating post for: ${input.title}`);
+        console.log(`Generated Summary: ${output.summary}`);
+        console.log(`--- END SIMULATION ---`);
+        resultMessage += ' A summary has been generated for external job sites.';
+      }
     }
 
     return {
