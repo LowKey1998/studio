@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Trash2, FileText, X, Search, Pencil } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, FileText, X, Search, Pencil, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -34,6 +35,7 @@ type Course = {
 type Programme = {
     id: string;
     name: string;
+    tuitionFee?: number;
     courseIds?: Record<string, boolean>;
 };
 
@@ -54,6 +56,7 @@ export default function ProgrammesPage() {
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [editingProgramme, setEditingProgramme] = React.useState<Programme | null>(null);
     const [programmeName, setProgrammeName] = React.useState('');
+    const [programmeTuition, setProgrammeTuition] = React.useState('');
     const [selectedCourses, setSelectedCourses] = React.useState<Record<string, boolean>>({});
     const [courseSearchTerm, setCourseSearchTerm] = React.useState('');
     
@@ -114,6 +117,7 @@ export default function ProgrammesPage() {
         setIsDialogOpen(false);
         setEditingProgramme(null);
         setProgrammeName('');
+        setProgrammeTuition('');
         setSelectedCourses({});
         setCourseSearchTerm('');
     };
@@ -130,10 +134,12 @@ export default function ProgrammesPage() {
         if (programme) {
             setEditingProgramme(programme);
             setProgrammeName(programme.name);
+            setProgrammeTuition(programme.tuitionFee?.toString() || '');
             setSelectedCourses(programme.courseIds || {});
         } else {
             setEditingProgramme(null);
             setProgrammeName('');
+            setProgrammeTuition('');
             setSelectedCourses({});
         }
         setIsDialogOpen(true);
@@ -160,6 +166,7 @@ export default function ProgrammesPage() {
         try {
             const programmeData = {
                 name: programmeName,
+                tuitionFee: programmeTuition ? parseFloat(programmeTuition) : null,
                 courseIds: selectedCourses,
             };
 
@@ -260,7 +267,9 @@ export default function ProgrammesPage() {
                                 <CardHeader className="flex-row items-center justify-between">
                                     <div className="space-y-1">
                                         <CardTitle>{prog.name}</CardTitle>
-                                        <CardDescription>{Object.keys(prog.courseIds || {}).length} courses</CardDescription>
+                                        <CardDescription>
+                                            {prog.tuitionFee ? `ZMW ${prog.tuitionFee.toFixed(2)} / semester` : `${Object.keys(prog.courseIds || {}).length} courses assigned`}
+                                        </CardDescription>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button variant="outline" onClick={() => handleOpenDialog(prog)}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
@@ -284,19 +293,36 @@ export default function ProgrammesPage() {
                     <DialogHeader>
                         <DialogTitle>{editingProgramme ? 'Edit' : 'Create'} Programme</DialogTitle>
                         <DialogDescription>
-                            Enter a name for the programme and select the courses it contains.
+                            Enter a name for the programme. You can either set a flat tuition fee for the whole programme per semester or leave it blank to charge per course.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="space-y-1">
-                            <Label htmlFor="programme-name">Programme Name</Label>
-                            <Input
-                                id="programme-name"
-                                value={programmeName}
-                                onChange={(e) => setProgrammeName(e.target.value)}
-                                placeholder="e.g., Bachelor of Science in Computer Science"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label htmlFor="programme-name">Programme Name</Label>
+                                <Input
+                                    id="programme-name"
+                                    value={programmeName}
+                                    onChange={(e) => setProgrammeName(e.target.value)}
+                                    placeholder="e.g., Bachelor of Science in Computer Science"
+                                />
+                            </div>
+                             <div className="space-y-1">
+                                <Label htmlFor="programme-tuition">Programme Tuition Fee (per Semester)</Label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        id="programme-tuition"
+                                        type="number"
+                                        value={programmeTuition}
+                                        onChange={(e) => setProgrammeTuition(e.target.value)}
+                                        placeholder="Leave blank to charge per course"
+                                        className="pl-8"
+                                    />
+                                </div>
+                            </div>
                         </div>
+                        <Separator />
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label>Courses</Label>

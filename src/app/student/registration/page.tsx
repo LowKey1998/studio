@@ -115,6 +115,7 @@ type Semester = {
 type Programme = {
     id: string;
     name: string;
+    tuitionFee?: number;
     courseIds?: Record<string, boolean>;
 };
 
@@ -169,6 +170,7 @@ export default function RegistrationPage() {
     const [openSemesters, setOpenSemesters] = React.useState<Semester[]>([]);
     const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>("");
     
+    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
@@ -209,6 +211,7 @@ export default function RegistrationPage() {
         const coursePathsRef = ref(db, 'coursePaths');
         const institutionRef = ref(db, 'settings/institution');
         const scholarshipsRef = ref(db, 'scholarships');
+        const programmesRef = ref(db, 'programmes');
 
 
         const unsubPaymentPlans = onValue(paymentPlansRef, (snapshot) => {
@@ -235,6 +238,10 @@ export default function RegistrationPage() {
             if (snapshot.exists()) setAllScholarships(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
             else setAllScholarships([]);
         });
+        const unsubProgrammes = onValue(programmesRef, (snapshot) => {
+            if (snapshot.exists()) setAllProgrammes(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
+            else setAllProgrammes([]);
+        });
         
         return () => {
             unsubPaymentPlans();
@@ -243,6 +250,7 @@ export default function RegistrationPage() {
             unsubCoursePaths();
             unsubInstitution();
             unsubScholarships();
+            unsubProgrammes();
         };
     },[]);
 
@@ -407,8 +415,12 @@ export default function RegistrationPage() {
             if (currentSemester.lateRegistrationActive && policy.lateRegistrationFee > 0) {
                 lateFee = policy.lateRegistrationFee;
             }
+            
+            const programme = allProgrammes.find(p => p.id === userData.programmeId);
+            const useProgrammeFee = programme?.tuitionFee !== undefined && programme.tuitionFee !== null;
 
-            const tuitionCost = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
+            const tuitionCost = useProgrammeFee ? programme.tuitionFee! : selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
+            
             const optionalFeesFromSemester = currentSemester.optionalFees ? Object.entries(currentSemester.optionalFees) : [];
             const selectedOptionalFeesDetails = optionalFeesFromSemester.filter(([feeId, fee]) => selectedFees.includes(feeId));
             const optionalFeesCost = selectedOptionalFeesDetails.reduce((acc, [id, fee]) => acc + (fee?.amount || 0), 0);
@@ -506,10 +518,14 @@ export default function RegistrationPage() {
     const isLateRegistration = currentSemester?.lateRegistrationActive ?? false;
     const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
 
+    const currentProgramme = userData ? allProgrammes.find(p => p.id === userData.programmeId) : null;
+    const useProgrammeFee = currentProgramme?.tuitionFee !== undefined && currentProgramme.tuitionFee !== null;
+
+
     const { tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount } = React.useMemo(() => {
         if (!currentSemester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
     
-        const tuition = selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
+        const tuition = useProgrammeFee ? currentProgramme!.tuitionFee! : selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
     
         const optional = selectedFees.reduce((acc, feeId) => {
             const fee = currentSemester.optionalFees?.[feeId];
@@ -544,7 +560,7 @@ export default function RegistrationPage() {
             totalCost: total, 
             payableAmount: firstInstallmentAmount 
         };
-    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, selectedScholarshipId, allScholarships, allPaymentPlans, selectedPaymentPlanId]);
+    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, selectedScholarshipId, allScholarships, allPaymentPlans, selectedPaymentPlanId, useProgrammeFee, currentProgramme]);
 
     const recommendedCourseIds = React.useMemo(() => {
         if (!userData || !currentSemester) return [];
@@ -610,11 +626,13 @@ export default function RegistrationPage() {
                                              <Table>
                                                 <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
                                                 <TableBody>
-                                                    {registeredCourses.map(course => (
+                                                     {useProgrammeFee ? (
+                                                        <TableRow><TableCell>Tuition: {currentProgramme?.name}</TableCell><TableCell className="text-right">{(currentProgramme?.tuitionFee || 0).toFixed(2)}</TableCell></TableRow>
+                                                     ) : registeredCourses.map(course => (
                                                         <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
                                                     ))}
-                                                    {currentSemester?.mandatoryFees && Object.entries(currentSemester.mandatoryFees).map(([id, fee]) => (
-                                                        <TableRow key={id}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
+                                                    {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
+                                                        <TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
                                                     ))}
                                                     {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
                                                          const fee = currentSemester.optionalFees![feeId];

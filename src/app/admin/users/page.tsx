@@ -60,6 +60,7 @@ type User = {
     role: string;
     subRoles?: string[];
     programmeId?: string;
+    programmeName?: string;
     year?: number;
     exemptedCourses?: Record<string, boolean>;
     status?: 'active' | 'disabled';
@@ -185,42 +186,37 @@ export default function UserManagementPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const usersRef = ref(db, 'users');
-            onValue(usersRef, (snapshot) => {
-                 if (snapshot.exists()) {
-                    const usersData = snapshot.val();
-                    const usersList: User[] = Object.keys(usersData).map(uid => ({
-                        uid,
-                        ...usersData[uid],
-                        status: usersData[uid].status || 'active',
-                    }));
-                    setUsers(usersList);
-                } else { setUsers([]); }
-                setTableLoading(false);
-            })
-
-            const [programmesSnap, coursesSnap, intakesSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
+                get(child(ref(db), 'users')),
+                get(ref(db, 'settings/subRoles')),
             ]);
 
-            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
-            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
-            
-            const subRolesRef = ref(db, 'settings/subRoles');
-            onValue(subRolesRef, (snapshot) => {
-                 if (snapshot.exists()) {
-                    const subRolesData = snapshot.val();
-                    setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
-                } else { setAvailableSubRoles([]) }
-            });
+            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
+            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
 
+            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] }))); else setAllProgrammes([]);
+            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
+            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] }))); else setAllIntakes([]);
+            if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesSnap.val()).map(id => ({id, ...subRolesSnap.val()[id]}))); else setAvailableSubRoles([])
+            
+            if (usersSnap.exists()) {
+                const usersData = usersSnap.val();
+                const usersList: User[] = Object.keys(usersData).map(uid => ({
+                    uid,
+                    ...usersData[uid],
+                    status: usersData[uid].status || 'active',
+                    programmeName: usersData[uid].programmeId ? programmesData[usersData[uid].programmeId]?.name : undefined,
+                }));
+                setUsers(usersList);
+            } else { setUsers([]); }
 
         } catch (error) {
             console.error("Error fetching data:", error);
              toast({ variant: 'destructive', title: 'Failed to fetch data', description: 'Could not load data from the database.' });
+        } finally {
             setTableLoading(false);
         }
     }, [toast]);
@@ -289,6 +285,7 @@ export default function UserManagementPage() {
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
             resetForm(); setOpen(false);
+            fetchInitialData();
         } catch (error: any) {
             console.error("Error creating user:", error);
             toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
@@ -315,8 +312,10 @@ export default function UserManagementPage() {
         try {
             await updateUserStatus({ uid: user.uid, disabled: disabling });
             toast({ variant: 'success', title: 'User Status Updated', description: `${user.name} has been ${disabling ? 'disabled' : 'enabled'}.` });
+            fetchInitialData();
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Update Failed', description: `Failed to ${disabling ? 'disable' : 'enable'} user.` });
+            setTableLoading(false);
         }
     };
 
@@ -351,6 +350,7 @@ export default function UserManagementPage() {
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Updated Successfully', description: `${editName}'s profile has been updated.` });
             setIsEditOpen(false); setEditingUser(null);
+            fetchInitialData();
         } catch (error: any) {
              console.error("Error updating user:", error);
             toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });
@@ -462,12 +462,13 @@ export default function UserManagementPage() {
             <Tabs value={roleFilter} onValueChange={setRoleFilter}><TabsList><TabsTrigger value="All">All</TabsTrigger><TabsTrigger value="Admin">Admin</TabsTrigger><TabsTrigger value="Staff">Staff</TabsTrigger><TabsTrigger value="Student">Student</TabsTrigger></TabsList></Tabs>
         </div>
       </CardHeader>
-      <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+      <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell><Skeleton className="h-5 w-20" /></TableCell><TableCell><Skeleton className="h-5 w-32" /></TableCell><TableCell><Skeleton className="h-5 w-48" /></TableCell><TableCell><Skeleton className="h-5 w-16" /></TableCell><TableCell className="text-right"><Skeleton className="h-8 w-8 inline-block" /></TableCell></TableRow>))
+            {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
             ) : filteredUsers.map((user) => (
               <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}><TableCell className="font-medium">{user.id}</TableCell><TableCell>{user.name}</TableCell><TableCell>{user.email}</TableCell>
                 <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoles && user.subRoles.length > 0 && `(${user.subRoles.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
+                <TableCell>{user.programmeName || 'N/A'}</TableCell>
                 <TableCell className="text-right">
                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleOpenEditDialog(user)}>Edit Profile</DropdownMenuItem><DropdownMenuItem>Reset Password</DropdownMenuItem><DropdownMenuSeparator />
@@ -477,7 +478,7 @@ export default function UserManagementPage() {
                 </TableCell>
               </TableRow>
             ))}
-             {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={5} className="h-24 text-center">No users found.</TableCell></TableRow>)}
+             {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={6} className="h-24 text-center">No users found.</TableCell></TableRow>)}
           </TableBody>
         </Table></CardContent>
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}><DialogContent className="sm:max-w-[425px]">
