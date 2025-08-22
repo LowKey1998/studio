@@ -56,7 +56,7 @@ export default function LeaveApprovalsPage() {
 
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
-    const [currentUser, setCurrentUser] = React.useState<any | null>(null); // Using any to access subRoles
+    const [currentUser, setCurrentUser] = React.useState<any | null>(null);
 
     const { toast } = useToast();
 
@@ -67,70 +67,59 @@ export default function LeaveApprovalsPage() {
                 onValue(userRef, (snapshot) => {
                     if(snapshot.exists()) {
                         setCurrentUser(snapshot.val());
-                    } else {
-                        setLoading(false);
                     }
+                    fetchRequests();
                 });
             } else {
                 setLoading(false);
             }
         });
+
+        const fetchRequests = () => {
+            setLoading(true);
+            const staffRequestsRef = ref(db, 'leaveRequests');
+            const unsubStaff = onValue(staffRequestsRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const allRequests: StaffLeaveRequest[] = Object.keys(data).map(key => ({
+                        id: key,
+                        ...data[key]
+                    }));
+                    const pending = allRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.dateRequested).getTime() - new Date(b.dateRequested).getTime());
+                    const history = allRequests.filter(r => r.status !== 'Pending').sort((a,b) => new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime());
+                    setPendingStaffRequests(pending);
+                    setHistoryStaffRequests(history);
+                } else {
+                    setPendingStaffRequests([]);
+                    setHistoryStaffRequests([]);
+                }
+            });
+
+            const studentRequestsRef = ref(db, 'studentLeaveRequests');
+            const unsubStudent = onValue(studentRequestsRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const allRequests: StudentLeaveRequest[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+                    const pending = allRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.dateRequested).getTime() - new Date(b.dateRequested).getTime());
+                    const history = allRequests.filter(r => r.status !== 'Pending').sort((a,b) => new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime());
+                    setPendingStudentRequests(pending);
+                    setHistoryStudentRequests(history);
+                } else {
+                    setPendingStudentRequests([]);
+                    setHistoryStudentRequests([]);
+                }
+                 setLoading(false);
+            });
+
+            return () => {
+                unsubStaff();
+                unsubStudent();
+            }
+        }
+        
         return () => unsubscribe();
     }, [toast]);
-    
-    const hasPermission = React.useMemo(() => {
-        if (!currentUser) return false;
-        return currentUser.role === 'Admin' || (currentUser.role === 'Staff' && currentUser.subRoles?.includes('HR'));
-    }, [currentUser]);
 
-
-    React.useEffect(() => {
-        if (!hasPermission) {
-            setLoading(false);
-            return;
-        };
-
-        setLoading(true);
-        const staffRequestsRef = ref(db, 'leaveRequests');
-        const unsubStaff = onValue(staffRequestsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const allRequests: StaffLeaveRequest[] = Object.keys(data).map(key => ({
-                    id: key,
-                    ...data[key]
-                }));
-                const pending = allRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.dateRequested).getTime() - new Date(b.dateRequested).getTime());
-                const history = allRequests.filter(r => r.status !== 'Pending').sort((a,b) => new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime());
-                setPendingStaffRequests(pending);
-                setHistoryStaffRequests(history);
-            } else {
-                setPendingStaffRequests([]);
-                setHistoryStaffRequests([]);
-            }
-        });
-
-        const studentRequestsRef = ref(db, 'studentLeaveRequests');
-        const unsubStudent = onValue(studentRequestsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const allRequests: StudentLeaveRequest[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                const pending = allRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.dateRequested).getTime() - new Date(b.dateRequested).getTime());
-                const history = allRequests.filter(r => r.status !== 'Pending').sort((a,b) => new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime());
-                setPendingStudentRequests(pending);
-                setHistoryStudentRequests(history);
-            } else {
-                setPendingStudentRequests([]);
-                setHistoryStudentRequests([]);
-            }
-             setLoading(false);
-        });
-
-
-        return () => {
-            unsubStaff();
-            unsubStudent();
-        }
-    }, [hasPermission]);
     
     const handleStaffApproval = async (request: StaffLeaveRequest, decision: 'Approved' | 'Declined') => {
         if (!currentUser) return;
@@ -178,20 +167,6 @@ export default function LeaveApprovalsPage() {
 
     if (loading) {
         return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
-    }
-    
-    if (!hasPermission) {
-         return (
-            <Card>
-                <CardContent className="pt-6">
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Access Denied</AlertTitle>
-                        <AlertDescription>You do not have permission to view this page. This feature is restricted to HR personnel and Administrators.</AlertDescription>
-                    </Alert>
-                </CardContent>
-            </Card>
-        );
     }
     
     return (

@@ -34,6 +34,7 @@ type PaymentMethods = { flutterwave: { enabled: boolean }; }
 type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }};
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
+type Department = { id: string; name: string; };
 
 export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
@@ -46,12 +47,15 @@ export default function SettingsPage() {
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
     const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false } });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
+    const [departments, setDepartments] = React.useState<Department[]>([]);
     
     // Dialog State
     const [isRoleDialogOpen, setIsRoleDialogOpen] = React.useState(false);
+    const [isDeptDialogOpen, setIsDeptDialogOpen] = React.useState(false);
     const [editingRole, setEditingRole] = React.useState<SubRole | null>(null);
     const [roleName, setRoleName] = React.useState('');
     const [permissions, setPermissions] = React.useState<Record<string, boolean>>({});
+    const [newDeptName, setNewDeptName] = React.useState('');
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -71,6 +75,7 @@ export default function SettingsPage() {
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
                 setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false } });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
+                setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
             }
              setLoading(false);
         });
@@ -131,7 +136,26 @@ export default function SettingsPage() {
         }
         await remove(ref(db, `settings/subRoles/${roleId}`));
         toast({ title: "Role deleted" });
-    }
+    };
+
+     const handleAddDepartment = async () => {
+        if (!newDeptName.trim()) return;
+        setSaving(true);
+        try {
+            await push(ref(db, 'settings/departments'), { name: newDeptName.trim() });
+            toast({ title: "Department added." });
+            setNewDeptName('');
+            setIsDeptDialogOpen(false);
+        } catch(e) {
+             toast({ variant: 'destructive', title: 'Failed to add department.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+    const handleDeleteDepartment = async (deptId: string) => {
+        if (!window.confirm("Are you sure?")) return;
+        await remove(ref(db, `settings/departments/${deptId}`));
+    };
 
     const handleSaveChanges = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -182,6 +206,31 @@ export default function SettingsPage() {
                                     </div>
                                 </CardHeader>
                             </Card>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Department Management</CardTitle>
+                    <CardDescription>Manage departments for staff allocation.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Dialog open={isDeptDialogOpen} onOpenChange={setIsDeptDialogOpen}>
+                        <DialogTrigger asChild><Button type="button" variant="outline"><PlusCircle className="mr-2 h-4"/>Add Department</Button></DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>New Department</DialogTitle></DialogHeader>
+                            <div className="py-4"><Input placeholder="e.g., Academics, Finance" value={newDeptName} onChange={e => setNewDeptName(e.target.value)} /></div>
+                            <DialogFooter><Button onClick={handleAddDepartment}>Add Department</Button></DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <div className="mt-4 space-y-2">
+                        {departments.map(dept => (
+                            <div key={dept.id} className="flex justify-between items-center p-2 border rounded-md">
+                               <span>{dept.name}</span>
+                               <Button type="button" variant="ghost" size="icon" onClick={() => handleDeleteDepartment(dept.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                            </div>
                         ))}
                     </div>
                 </CardContent>
