@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
+  SidebarInput,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut, User, UserX } from 'lucide-react';
@@ -38,6 +39,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const { toast } = useToast();
   const { user, userProfile, loading } = useAuth();
+  const [search, setSearch] = React.useState('');
   
   const handleLogout = async () => {
     try {
@@ -108,12 +110,37 @@ export default function DashboardLayout({
 
         itemsToRender = combinedMenu;
     }
-    
-    const defaultOpen = itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+
+    const filteredItems = itemsToRender
+      .map(category => {
+        if (!search.trim()) {
+          return category;
+        }
+        
+        const searchLower = search.toLowerCase();
+
+        const matchingSubItems = category.items?.filter((subItem: any) =>
+          subItem.label.toLowerCase().includes(searchLower)
+        );
+
+        if (category.label.toLowerCase().includes(searchLower) || (matchingSubItems && matchingSubItems.length > 0)) {
+            // If category name matches, show all its items. If not, show only matching sub-items.
+            return {
+                ...category,
+                items: category.label.toLowerCase().includes(searchLower) ? category.items : matchingSubItems
+            };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    const defaultOpen = search ? filteredItems.map(item => item?.label) : [itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label];
     
     return (
-        <Accordion type="single" collapsible defaultValue={defaultOpen} className="w-full">
-            {itemsToRender.map((item) => {
+        <Accordion type="multiple" defaultValue={defaultOpen as string[]} className="w-full">
+            {filteredItems.map((item) => {
+                if (!item) return null;
                 if (item.isComingSoon) {
                     return (
                         <div key={item.label} className="px-2 py-1.5">
@@ -167,6 +194,9 @@ export default function DashboardLayout({
         <SidebarHeader>
           <Logo />
         </SidebarHeader>
+         <div className="flex flex-col p-2">
+             <SidebarInput placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+         </div>
         <SidebarContent>
           <SidebarMenu>
             {renderMenu()}
