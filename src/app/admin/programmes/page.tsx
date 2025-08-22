@@ -31,6 +31,7 @@ type Course = {
     name: string;
     code: string;
     year: number;
+    status: 'active' | 'archived';
 };
 
 type Programme = {
@@ -231,8 +232,9 @@ export default function ProgrammesPage() {
     
     const filteredAndGroupedCourses = React.useMemo(() => {
         const filtered = allCourses.filter(course => 
-            course.name.toLowerCase().includes(courseSearchTerm.toLowerCase()) ||
-            course.code.toLowerCase().includes(courseSearchTerm.toLowerCase())
+            (course.status === 'active') &&
+            (course.name.toLowerCase().includes(courseSearchTerm.toLowerCase()) ||
+            course.code.toLowerCase().includes(courseSearchTerm.toLowerCase()))
         );
 
         return filtered.reduce((acc, course) => {
@@ -428,3 +430,4 @@ export default function ProgrammesPage() {
         </Card>
     );
 }
+
