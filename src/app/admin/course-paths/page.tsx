@@ -149,14 +149,19 @@ export default function CoursePathsPage() {
     };
 
     const handleDeleteIntake = async (id: string) => {
-        if (window.confirm('Are you sure? This will also delete associated course paths.')) {
-            const pathsToDelete = coursePaths.filter(p => p.intakeId === id);
-            const updates: Record<string, null> = {};
-            pathsToDelete.forEach(p => updates[`/coursePaths/${p.id}`] = null);
-            updates[`/intakes/${id}`] = null;
-            await update(ref(db), updates);
-            toast({ title: 'Intake deleted.' });
+        if (!window.confirm('Are you sure? This will also delete associated course paths.')) return;
+        if (!coursePaths) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Course paths data not loaded yet. Please try again.' });
+            return;
         }
+        const pathsToDelete = coursePaths.filter(p => p.intakeId === id);
+        const updates: Record<string, null> = {};
+        pathsToDelete.forEach(p => {
+            if (p.id) updates[`/coursePaths/${p.id}`] = null;
+        });
+        updates[`/intakes/${id}`] = null;
+        await update(ref(db), updates);
+        toast({ title: 'Intake deleted.' });
     };
     
     const findContainer = (id: string) => {
@@ -337,7 +342,7 @@ export default function CoursePathsPage() {
                  <Dialog open={isIntakeDialogOpen} onOpenChange={(open) => { if (!open) setEditingIntake(null); setIsIntakeDialogOpen(open);}}>
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create New'} Intake</DialogTitle></DialogHeader>
-                        <div className="py-4"><Input placeholder="e.g., 2024 January Intake" value={intakeName} onChange={e => setIntakeName(e.target.value)} /></div>
+                        <div className="py-4"><Input placeholder="e.g., 2024JAN" value={intakeName} onChange={e => setIntakeName(e.target.value.toUpperCase())} /></div>
                         <DialogFooter>
                             <Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button>
                             <Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button>

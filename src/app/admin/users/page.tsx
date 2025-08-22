@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -46,7 +46,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { onAuthStateChanged } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
-import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
@@ -184,7 +184,17 @@ export default function UserManagementPage() {
             }
           }
         });
-        return () => unsubscribe();
+        
+        const subRolesRef = ref(db, 'settings/subRoles');
+        const unsubSubRoles = get(subRolesRef).then((snapshot) => {
+            if (snapshot.exists()) {
+                setAvailableSubRoles(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
     const fetchInitialData = React.useCallback(async () => {
@@ -243,6 +253,15 @@ export default function UserManagementPage() {
     const handleSubRoleChange = (subRoleName: string, setRoles: React.Dispatch<React.SetStateAction<string[]>>) => {
         setRoles(prev => prev.includes(subRoleName) ? prev.filter(r => r !== subRoleName) : [...prev, subRoleName]);
     };
+    
+    React.useEffect(() => {
+        if (role === 'student' && manualId) {
+            const matchedIntake = allIntakes.find(intake => manualId.startsWith(intake.name));
+            if (matchedIntake) {
+                setSelectedIntake(matchedIntake.id);
+            }
+        }
+    }, [manualId, role, allIntakes]);
 
 
     const handleCreateUser = async (e: React.FormEvent) => {
@@ -411,6 +430,19 @@ export default function UserManagementPage() {
         return allCourses.filter(c => prog.courseIds![c.id]);
     }, [programme, allProgrammes, allCourses]);
 
+    const handlePastePrefix = () => {
+        if (!role) {
+            toast({ variant: 'destructive', title: 'Select a Role', description: 'Please select a role first to get its prefix.' });
+            return;
+        }
+        const basePrefix = role === 'student' ? idSettings.student : role === 'staff' ? idSettings.staff : idSettings.admin;
+        let datePart = '';
+        const now = new Date();
+        if(idSettings.includeYear) datePart += format(now, 'yy');
+        if(idSettings.includeMonth) datePart += format(now, 'MM');
+        setManualId(`${basePrefix}${datePart}`);
+    };
+
 
   return (
     <>
@@ -440,7 +472,11 @@ export default function UserManagementPage() {
                                                         <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
                                                         <Label htmlFor="manual-id-switch">{isManualId ? 'Manual ID' : 'Auto-generate ID'}</Label>
                                                     </div>
-                                                    {isManualId && <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />}
+                                                    {isManualId && <div className="flex gap-2">
+                                                        <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />
+                                                        <Button type="button" variant="outline" size="icon" onClick={handlePastePrefix} title="Paste current prefix"><Copy className="h-4 w-4"/></Button>
+                                                        </div>
+                                                    }
                                                 </div>
                                                 <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
