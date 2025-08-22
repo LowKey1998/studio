@@ -48,6 +48,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
 import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
+import { Textarea } from '@/components/ui/textarea';
 
 
 type User = {
@@ -63,6 +64,15 @@ type User = {
     exemptedCourses?: Record<string, boolean>;
     status?: 'active' | 'disabled';
     intakeId?: string;
+    dob?: string;
+    gender?: string;
+    nationalId?: string;
+    passport?: string;
+    address?: string;
+    guardian?: { name: string; contact: string; };
+    emergencyContact?: { name: string; relationship: string; contact: string; };
+    educationBackground?: { school: string; qualifications: string; };
+    medicalHistory?: string;
 };
 
 type Programme = {
@@ -117,6 +127,20 @@ export default function UserManagementPage() {
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
     const [selectedIntake, setSelectedIntake] = React.useState('');
+    
+    const [dob, setDob] = React.useState('');
+    const [gender, setGender] = React.useState('');
+    const [nationalId, setNationalId] = React.useState('');
+    const [passport, setPassport] = React.useState('');
+    const [address, setAddress] = React.useState('');
+    const [guardianName, setGuardianName] = React.useState('');
+    const [guardianContact, setGuardianContact] = React.useState('');
+    const [emergencyName, setEmergencyName] = React.useState('');
+    const [emergencyRelationship, setEmergencyRelationship] = React.useState('');
+    const [emergencyContact, setEmergencyContact] = React.useState('');
+    const [previousSchool, setPreviousSchool] = React.useState('');
+    const [qualifications, setQualifications] = React.useState('');
+    const [medicalHistory, setMedicalHistory] = React.useState('');
 
 
     // State for editing a user
@@ -207,6 +231,10 @@ export default function UserManagementPage() {
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
+        setGuardianName(''); setGuardianContact('');
+        setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
+        setPreviousSchool(''); setQualifications(''); setMedicalHistory('');
     };
     
     const handleSubRoleChange = (subRoleName: string, setRoles: React.Dispatch<React.SetStateAction<string[]>>) => {
@@ -244,7 +272,13 @@ export default function UserManagementPage() {
             const user = userCredential.user;
             
             const newUserRole = role.charAt(0).toUpperCase() + role.slice(1);
-            const newUser: Omit<User, 'uid'> = { id: newId, name, email, phoneNumber, role: newUserRole, status: 'active' };
+            const newUser: Omit<User, 'uid'> = { 
+                id: newId, name, email, phoneNumber, role: newUserRole, status: 'active',
+                dob, gender, nationalId, passport, address, medicalHistory,
+                guardian: { name: guardianName, contact: guardianContact },
+                emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
+                educationBackground: { school: previousSchool, qualifications }
+            };
 
             if (role === 'staff' && subRoles.length > 0) { newUser.subRoles = subRoles; }
             if (role === 'student') { newUser.programmeId = programme; newUser.year = Number(year); newUser.intakeId = selectedIntake; if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses; }
@@ -356,29 +390,70 @@ export default function UserManagementPage() {
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-lg"><form onSubmit={handleCreateUser}><DialogHeader><DialogTitle className="font-headline">Create New User</DialogTitle><DialogDescription>A unique User ID will be generated automatically.</DialogDescription></DialogHeader>
-                            <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-4 pr-4">
-                                <div className="space-y-1"><Label>Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
-                                {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
-                                    <Label>Sub-Roles</Label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
-                                    </div>
-                                </div>)}
-                                {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
-                                    <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                    <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                    <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
-                                    <div className="flex items-center space-x-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student</Label></div>
-                                    {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
-                                </div>)}
+                    <DialogContent className="sm:max-w-4xl">
+                        <form onSubmit={handleCreateUser}>
+                            <DialogHeader>
+                                <DialogTitle className="font-headline">Create New User</DialogTitle>
+                                <DialogDescription>A unique User ID will be generated automatically upon creation.</DialogDescription>
+                            </DialogHeader>
+                            <div className="grid max-h-[70vh] gap-6 overflow-y-auto p-1 py-4">
+                                <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
+                                    {/* Basic Info */}
+                                    <AccordionItem value="item-1">
+                                        <AccordionTrigger className="text-lg font-semibold">Basic Information</AccordionTrigger>
+                                        <AccordionContent className="space-y-4 pt-2">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender} disabled={loading}><SelectTrigger><SelectValue placeholder="Select gender"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
+                                                <div className="space-y-1"><Label>National ID</Label><Input placeholder="e.g., 123456/78/9" value={nationalId} onChange={e => setNationalId(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Passport Number (Optional)</Label><Input placeholder="e.g., ZA12345" value={passport} onChange={e => setPassport(e.target.value)} disabled={loading}/></div>
+                                            </div>
+                                            <div className="space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                    {/* Role & Academic Info */}
+                                    <AccordionItem value="item-2">
+                                        <AccordionTrigger className="text-lg font-semibold">Role & Academic Information</AccordionTrigger>
+                                        <AccordionContent className="space-y-4 pt-2">
+                                            <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
+                                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
+                                                <Label>Sub-Roles</Label>
+                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                    {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                                </div>
+                                            </div>)}
+                                            {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                                    <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                                    <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
+                                                </div>
+                                                <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
+                                                {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
+                                            </div>)}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                     {/* Other Details */}
+                                    <AccordionItem value="item-3">
+                                        <AccordionTrigger className="text-lg font-semibold">Other Details</AccordionTrigger>
+                                        <AccordionContent className="space-y-4 pt-2">
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-2 rounded-md border p-3"><Label>Parent/Guardian</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} /><Input placeholder="Contact Number" value={guardianContact} onChange={e => setGuardianContact(e.target.value)} /></div></div>
+                                                <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
+                                            </div>
+                                            <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
+                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History & Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                </Accordion>
                             </div>
                             <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Create User'}</Button></DialogFooter>
-                        </form></DialogContent>
+                        </form>
+                    </DialogContent>
                 </Dialog>
             </div>
         </div>
@@ -439,4 +514,3 @@ export default function UserManagementPage() {
     </>
   );
 }
-
