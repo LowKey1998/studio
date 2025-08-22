@@ -162,7 +162,7 @@ export default function UserManagementPage() {
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
-    const [idSettings, setIdSettings] = React.useState<any>({});
+    const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
 
 
     // State for filtering and searching
@@ -294,7 +294,8 @@ export default function UserManagementPage() {
                 const counterRef = ref(db, `userCounters/${role}`);
                 await runTransaction(counterRef, (currentCount) => {
                     const count = (currentCount || 0) + 1;
-                    const basePrefix = role === 'student' ? idSettings.student : role === 'staff' ? idSettings.staff : idSettings.admin;
+                    const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
+                    const basePrefix = role === 'student' ? prefixes.student : role === 'staff' ? prefixes.staff : prefixes.admin;
                     
                     let datePart = '';
                     const now = new Date();
@@ -436,7 +437,9 @@ export default function UserManagementPage() {
             toast({ variant: 'destructive', title: 'Select a Role', description: 'Please select a role first to get its prefix.' });
             return;
         }
-        const basePrefix = role === 'student' ? idSettings.student : role === 'staff' ? idSettings.staff : idSettings.admin;
+        const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
+        const basePrefix = role === 'student' ? prefixes.student : role === 'staff' ? prefixes.staff : prefixes.admin;
+        
         let datePart = '';
         const now = new Date();
         if(idSettings.includeYear) datePart += format(now, 'yy');
@@ -452,14 +455,15 @@ export default function UserManagementPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
+                <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
+                <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-4xl">
                         <form onSubmit={handleCreateUser}>
                             <DialogHeader>
                                 <DialogTitle className="font-headline">Create New User</DialogTitle>
                                 <DialogDescription>Fill in the user's details below. An ID will be generated unless you provide one.</DialogDescription>
                             </DialogHeader>
-                            <div className="grid max-h-[70vh] gap-6 overflow-y-auto p-1 py-4">
+                             <div className="grid max-h-[70vh] gap-6 overflow-y-auto p-1 py-4">
                                 <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
 
                                 <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
