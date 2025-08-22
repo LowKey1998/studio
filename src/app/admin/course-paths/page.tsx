@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -150,10 +151,15 @@ export default function CoursePathsPage() {
     };
 
     const handleDeleteIntake = async (id: string) => {
-        if (!window.confirm('Are you sure? This will also delete associated course paths.')) return;
         try {
             const coursePathsSnapshot = await get(ref(db, 'coursePaths'));
-            const allPaths: CoursePath[] = coursePathsSnapshot.exists() ? Object.values(coursePathsSnapshot.val()) : [];
+            const allPaths: CoursePath[] = [];
+            if(coursePathsSnapshot.exists()){
+                Object.entries(coursePathsSnapshot.val()).forEach(([pathId, pathData]) => {
+                    allPaths.push({id: pathId, ...(pathData as any)})
+                })
+            }
+            
             const pathsToDelete = allPaths.filter(p => p.intakeId === id);
 
             const updates: Record<string, null> = {};
@@ -284,7 +290,23 @@ export default function CoursePathsPage() {
                                         {intakes.length > 0 ? intakes.map(i => (
                                             <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right">
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenIntakeDialog(i)}><Pencil className="h-4 w-4"/></Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDeleteIntake(i.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This action will permanently delete the intake "{i.name}" and all of its associated course paths. This cannot be undone.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={() => handleDeleteIntake(i.id)}>Yes, delete it</AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </TableCell></TableRow>
                                         )) : <TableRow><TableCell colSpan={2} className="text-center h-24">No intakes created.</TableCell></TableRow>}
                                     </TableBody>
