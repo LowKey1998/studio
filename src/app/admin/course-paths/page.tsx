@@ -3,20 +3,20 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, onValue, set, push, remove, update } from 'firebase/database';
+import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from '@/lib/utils';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -151,18 +151,23 @@ export default function CoursePathsPage() {
 
     const handleDeleteIntake = async (id: string) => {
         if (!window.confirm('Are you sure? This will also delete associated course paths.')) return;
-        if (!coursePaths) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Course paths data not loaded yet. Please try again.' });
-            return;
+        try {
+            const coursePathsSnapshot = await get(ref(db, 'coursePaths'));
+            const allPaths: CoursePath[] = coursePathsSnapshot.exists() ? Object.values(coursePathsSnapshot.val()) : [];
+            const pathsToDelete = allPaths.filter(p => p.intakeId === id);
+
+            const updates: Record<string, null> = {};
+            pathsToDelete.forEach(p => {
+                if (p.id) updates[`/coursePaths/${p.id}`] = null;
+            });
+            updates[`/intakes/${id}`] = null;
+            
+            await update(ref(db), updates);
+            toast({ title: 'Intake deleted successfully.' });
+        } catch (error) {
+            console.error("Delete failed:", error);
+            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Could not delete the intake and its associated paths.' });
         }
-        const pathsToDelete = coursePaths.filter(p => p.intakeId === id);
-        const updates: Record<string, null> = {};
-        pathsToDelete.forEach(p => {
-            if (p.id) updates[`/coursePaths/${p.id}`] = null;
-        });
-        updates[`/intakes/${id}`] = null;
-        await update(ref(db), updates);
-        toast({ title: 'Intake deleted.' });
     };
     
     const findContainer = (id: string) => {
@@ -257,7 +262,7 @@ export default function CoursePathsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="font-headline text-2xl">Intakes &amp; Course Paths</CardTitle>
+                <CardTitle className="font-headline text-2xl">Intakes / Course Paths</CardTitle>
                 <CardDescription>Define student intakes and map out the required courses for each programme, semester by semester.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -432,3 +437,5 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
+
+    
