@@ -37,7 +37,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove } from 'firebase/database';
+import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { app, auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -49,6 +49,7 @@ import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
 import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 import { Textarea } from '@/components/ui/textarea';
+import { format } from 'date-fns';
 
 
 type User = {
@@ -128,6 +129,8 @@ export default function UserManagementPage() {
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
     const [selectedIntake, setSelectedIntake] = React.useState('');
+    const [manualId, setManualId] = React.useState('');
+    const [isManualId, setIsManualId] = React.useState(false);
     
     const [dob, setDob] = React.useState('');
     const [gender, setGender] = React.useState('');
@@ -158,6 +161,7 @@ export default function UserManagementPage() {
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
+    const [idSettings, setIdSettings] = React.useState<any>({});
 
 
     // State for filtering and searching
@@ -186,12 +190,13 @@ export default function UserManagementPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap, settingsSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
                 get(child(ref(db), 'users')),
                 get(ref(db, 'settings/subRoles')),
+                get(ref(db, 'settings/idPrefixes')),
             ]);
 
             const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
@@ -201,6 +206,7 @@ export default function UserManagementPage() {
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] }))); else setAllIntakes([]);
             if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesSnap.val()).map(id => ({id, ...subRolesSnap.val()[id]}))); else setAvailableSubRoles([])
+            if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             
             if (usersSnap.exists()) {
                 const usersData = usersSnap.val();
@@ -227,6 +233,7 @@ export default function UserManagementPage() {
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
         setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
@@ -242,6 +249,7 @@ export default function UserManagementPage() {
         e.preventDefault();
         if (!name || !email || !password || !role) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
         if (role === 'student' && (!programme || !year || !selectedIntake)) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme and year for the student.' }); return; }
+        if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
 
         setLoading(true);
         
@@ -251,33 +259,54 @@ export default function UserManagementPage() {
         const tempAuth = getAuth(tempApp);
 
         try {
-            const prefixesRef = ref(db, 'settings/idPrefixes');
-            const prefixesSnapshot = await get(prefixesRef);
-            const prefixes = prefixesSnapshot.exists() ? prefixesSnapshot.val() : { student: 'STU', staff: 'STF', admin: 'ADM' };
-            const counterRef = ref(db, `userCounters/${role}`);
-            let newId = '';
+            let newId = manualId.trim();
+
+            if (isManualId) {
+                const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(newId));
+                const snapshot = await get(userQuery);
+                if (snapshot.exists()) {
+                    toast({ variant: 'destructive', title: 'ID already exists', description: 'This User ID is already in use. Please choose another.' });
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                const counterRef = ref(db, `userCounters/${role}`);
+                await runTransaction(counterRef, (currentCount) => {
+                    const count = (currentCount || 0) + 1;
+                    const basePrefix = role === 'student' ? idSettings.student : role === 'staff' ? idSettings.staff : idSettings.admin;
+                    
+                    let datePart = '';
+                    const now = new Date();
+                    if(idSettings.includeYear) datePart += format(now, 'yy');
+                    if(idSettings.includeMonth) datePart += format(now, 'MM');
+
+                    newId = `${basePrefix}${datePart ? `-${datePart}` : ''}-${String(count).padStart(3, '0')}`;
+                    return count;
+                });
+            }
             
-            await runTransaction(counterRef, (currentCount) => {
-                const count = (currentCount || 0) + 1;
-                const prefix = role === 'student' ? prefixes.student : role === 'staff' ? prefixes.staff : prefixes.admin;
-                newId = `${prefix}-${String(count).padStart(3, '0')}`;
-                return count;
-            });
 
             const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
             const user = userCredential.user;
             
             const newUserRole = role.charAt(0).toUpperCase() + role.slice(1);
             const newUser: Omit<User, 'uid'> = { 
-                id: newId, name, email, phoneNumber, role: newUserRole, status: 'active',
-                dob, gender, nationalId, passport, address, medicalHistory,
-                guardian: { name: guardianName, contact: guardianContact },
-                emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
-                educationBackground: { school: previousSchool, qualifications }
+                id: newId, name, email, phoneNumber, role: newUserRole, status: 'active'
             };
+            
+            if (role === 'student') {
+                Object.assign(newUser, {
+                    programmeId: programme, year: Number(year), intakeId: selectedIntake,
+                    dob, gender, nationalId, passport, address, medicalHistory,
+                    guardian: { name: guardianName, contact: guardianContact },
+                    emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
+                    educationBackground: { school: previousSchool, qualifications }
+                });
+                if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses;
+            } else if (role === 'staff' && subRoles.length > 0) {
+                 newUser.subRoles = subRoles;
+            }
 
-            if (role === 'staff' && subRoles.length > 0) { newUser.subRoles = subRoles; }
-            if (role === 'student') { newUser.programmeId = programme; newUser.year = Number(year); newUser.intakeId = selectedIntake; if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses; }
 
             await set(ref(db, `users/${user.uid}`), newUser);
             await set(ref(db, `userRoles/${user.uid}`), { role: role });
@@ -394,15 +423,22 @@ export default function UserManagementPage() {
                         <form onSubmit={handleCreateUser}>
                             <DialogHeader>
                                 <DialogTitle className="font-headline">Create New User</DialogTitle>
-                                <DialogDescription>A unique User ID will be generated automatically upon creation.</DialogDescription>
+                                <DialogDescription>Fill in the user's details below. A User ID will be generated automatically.</DialogDescription>
                             </DialogHeader>
                             <div className="grid max-h-[70vh] gap-6 overflow-y-auto p-1 py-4">
-                                <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
-                                    {/* Basic Info */}
+                                 <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
                                     <AccordionItem value="item-1">
                                         <AccordionTrigger className="text-lg font-semibold">Basic Information</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>User ID</Label>
+                                                    <div className="flex items-center space-x-2">
+                                                        <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
+                                                        <Label htmlFor="manual-id-switch">{isManualId ? 'Manual ID' : 'Auto-generate ID'}</Label>
+                                                    </div>
+                                                    {isManualId && <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />}
+                                                </div>
                                                 <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
@@ -415,7 +451,6 @@ export default function UserManagementPage() {
                                             <div className="space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
                                         </AccordionContent>
                                     </AccordionItem>
-                                    {/* Role & Academic Info */}
                                     <AccordionItem value="item-2">
                                         <AccordionTrigger className="text-lg font-semibold">Role & Academic Information</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
@@ -437,8 +472,7 @@ export default function UserManagementPage() {
                                             </div>)}
                                         </AccordionContent>
                                     </AccordionItem>
-                                     {/* Other Details */}
-                                    <AccordionItem value="item-3">
+                                     {role === 'student' && (<AccordionItem value="item-3">
                                         <AccordionTrigger className="text-lg font-semibold">Other Details</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -448,7 +482,7 @@ export default function UserManagementPage() {
                                             <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
                                             <div className="space-y-2 rounded-md border p-3"><Label>Medical History & Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
                                         </AccordionContent>
-                                    </AccordionItem>
+                                    </AccordionItem>)}
                                 </Accordion>
                             </div>
                             <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Create User'}</Button></DialogFooter>

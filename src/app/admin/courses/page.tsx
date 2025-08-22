@@ -36,10 +36,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ref, set, push, get, child, serverTimestamp, update, remove } from 'firebase/database';
-import { auth, db } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
     DropdownMenu,
@@ -50,6 +46,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ref, set, push, get, child, serverTimestamp, update, remove } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 type Lecturer = {
@@ -544,40 +544,29 @@ export default function CoursesPage() {
                                                            </Button>
                                                        </TableCell>
                                                        {activeTab === 'archived' && <TableCell>{course.archiveReason || 'N/A'}</TableCell>}
-                                                       <TableCell className="text-right">
-                                                           <DropdownMenu>
-                                                               <DropdownMenuTrigger asChild>
-                                                                   <Button variant="ghost" className="h-8 w-8 p-0">
-                                                                       <span className="sr-only">Open menu</span>
-                                                                       <MoreVertical className="h-4 w-4" />
-                                                                   </Button>
-                                                               </DropdownMenuTrigger>
-                                                               <DropdownMenuContent align="end">
-                                                                   <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                                   {activeTab === 'active' ? (
-                                                                       <>
-                                                                       <DropdownMenuItem onClick={() => openEditDialog(course)}>
-                                                                           <Pencil className="mr-2 h-4 w-4" />
-                                                                           Edit
-                                                                       </DropdownMenuItem>
-                                                                       <AlertDialogTrigger asChild>
-                                                                           <DropdownMenuItem 
-                                                                               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                                                                               onClick={() => setArchivingCourse(course)}
-                                                                           >
-                                                                               <Trash2 className="mr-2 h-4 w-4" />
-                                                                               Delete
-                                                                           </DropdownMenuItem>
-                                                                       </AlertDialogTrigger>
-                                                                       </>
-                                                                   ) : (
-                                                                       <DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}>
-                                                                           <Undo2 className="mr-2 h-4 w-4" />
-                                                                           Restore
-                                                                       </DropdownMenuItem>
-                                                                   )}
-                                                               </DropdownMenuContent>
-                                                           </DropdownMenu>
+                                                       <TableCell className="text-right flex justify-end gap-2">
+                                                            {activeTab === 'active' ? (
+                                                                <>
+                                                                <Button variant="outline" size="sm" onClick={() => openEditDialog(course)}>
+                                                                    <Pencil className="mr-2 h-4 w-4" />
+                                                                    Edit
+                                                                </Button>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button 
+                                                                        variant="destructive"
+                                                                        size="icon"
+                                                                        onClick={() => setArchivingCourse(course)}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                </>
+                                                            ) : (
+                                                                <Button variant="ghost" size="sm" onClick={() => handleUpdateCourseStatus(course.id, 'active')}>
+                                                                    <Undo2 className="mr-2 h-4 w-4" />
+                                                                    Restore
+                                                                </Button>
+                                                            )}
                                                        </TableCell>
                                                    </TableRow>
                                                ))}

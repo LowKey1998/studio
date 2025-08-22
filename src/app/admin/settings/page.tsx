@@ -20,7 +20,13 @@ import { allMenuItems } from '@/lib/menu-items';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-type Prefixes = { student: string; staff: string; admin: string; };
+type IDPrefixes = { 
+    student: string; 
+    staff: string; 
+    admin: string; 
+    includeYear: boolean;
+    includeMonth: boolean;
+};
 type Institution = { name: string; logoUrl?: string; }
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
@@ -30,7 +36,7 @@ type SubRole = { id: string; name: string; permissions: Record<string, boolean>;
 type RegistrationPolicy = { lateRegistrationFee: number };
 
 export default function SettingsPage() {
-    const [prefixes, setPrefixes] = React.useState<Prefixes>({ student: 'STU', staff: 'STF', admin: 'ADM' });
+    const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
     const [institution, setInstitution] = React.useState<Institution>({ name: 'Edutrack360' });
     const [logoFile, setLogoFile] = React.useState<File | null>(null);
     const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
@@ -57,7 +63,7 @@ export default function SettingsPage() {
         const unsub = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                setPrefixes(data.idPrefixes || { student: 'STU', staff: 'STF', admin: 'ADM' });
+                setPrefixes(data.idPrefixes || { student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
                 setInstitution(data.institution || { name: 'Edutrack360' });
                 setLeavePolicy(data.leavePolicy || { maxDays: 14 });
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
@@ -191,7 +197,23 @@ export default function SettingsPage() {
 
             <Card className="shadow-lg">
                 <CardHeader><CardTitle className="font-headline text-2xl">User ID Prefixes</CardTitle><CardDescription>Manage system-wide settings for User ID prefixes.</CardDescription></CardHeader>
-                <CardContent className="space-y-6">{loading ? (Array.from({ length: 3 }).map((_, i) => (<div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Skeleton className="h-5 w-32" /><div className="sm:col-span-2"><Skeleton className="h-10 w-full max-w-sm" /></div></div>))) : (['student', 'staff', 'admin'] as const).map(role => (<div key={role} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor={`${role}-prefix`}>{role.charAt(0).toUpperCase() + role.slice(1)} ID Prefix</Label><div className="sm:col-span-2"><Input id={`${role}-prefix`} name={role} value={prefixes[role]} onChange={(e) => setPrefixes(p => ({ ...p, [role]: e.target.value.toUpperCase() }))} className="max-w-sm" disabled={saving}/></div></div>))}</CardContent>
+                <CardContent className="space-y-6">{loading ? (Array.from({ length: 3 }).map((_, i) => (<div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Skeleton className="h-5 w-32" /><div className="sm:col-span-2"><Skeleton className="h-10 w-full max-w-sm" /></div></div>))) : 
+                (<>
+                    {(['student', 'staff', 'admin'] as const).map(role => (
+                    <div key={role} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                        <Label htmlFor={`${role}-prefix`}>{role.charAt(0).toUpperCase() + role.slice(1)} ID Prefix</Label>
+                        <div className="sm:col-span-2"><Input id={`${role}-prefix`} name={role} value={prefixes[role]} onChange={(e) => setPrefixes(p => ({ ...p, [role]: e.target.value.toUpperCase() }))} className="max-w-sm" disabled={saving}/></div>
+                    </div>
+                    ))}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center pt-4 border-t">
+                        <Label>Prefix Options</Label>
+                        <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
+                            <div className="flex items-center space-x-2"><Switch id="include-year" checked={prefixes.includeYear} onCheckedChange={(c) => setPrefixes(p => ({...p, includeYear: c}))} /><Label htmlFor="include-year">Include Year (YY)</Label></div>
+                            <div className="flex items-center space-x-2"><Switch id="include-month" checked={prefixes.includeMonth} onCheckedChange={(c) => setPrefixes(p => ({...p, includeMonth: c}))} /><Label htmlFor="include-month">Include Month (MM)</Label></div>
+                        </div>
+                    </div>
+                </>)}
+                </CardContent>
             </Card>
 
             <Card className="shadow-lg">
@@ -271,5 +293,3 @@ export default function SettingsPage() {
         </form>
     );
 }
-
-    
