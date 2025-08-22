@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -280,7 +279,7 @@ export default function UserManagementPage() {
                     if(idSettings.includeYear) datePart += format(now, 'yy');
                     if(idSettings.includeMonth) datePart += format(now, 'MM');
 
-                    newId = `${basePrefix}${datePart ? `-${datePart}` : ''}-${String(count).padStart(3, '0')}`;
+                    newId = `${basePrefix}${datePart}${String(count).padStart(3, '0')}`;
                     return count;
                 });
             }
@@ -452,7 +451,7 @@ export default function UserManagementPage() {
                                         </AccordionContent>
                                     </AccordionItem>
                                     <AccordionItem value="item-2">
-                                        <AccordionTrigger className="text-lg font-semibold">Role & Academic Information</AccordionTrigger>
+                                        <AccordionTrigger className="text-lg font-semibold">Role &amp; Academic Information</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
                                             {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
@@ -480,7 +479,7 @@ export default function UserManagementPage() {
                                                 <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
                                             </div>
                                             <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
-                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History & Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
+                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
                                         </AccordionContent>
                                     </AccordionItem>)}
                                 </Accordion>

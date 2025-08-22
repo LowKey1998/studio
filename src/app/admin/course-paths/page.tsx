@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update } from 'firebase/database';
@@ -24,7 +24,7 @@ import { CSS } from '@dnd-kit/utilities';
 // --- TYPE DEFINITIONS ---
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
-type Course = { id: string; name: string; code: string; year: number; };
+type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
 
 // --- MAIN PAGE COMPONENT ---
@@ -39,6 +39,7 @@ export default function CoursePathsPage() {
 
     // Intake Dialog State
     const [isIntakeDialogOpen, setIsIntakeDialogOpen] = React.useState(false);
+    const [editingIntake, setEditingIntake] = React.useState<Intake | null>(null);
     const [intakeName, setIntakeName] = React.useState('');
     const [savingIntake, setSavingIntake] = React.useState(false);
 
@@ -93,7 +94,8 @@ export default function CoursePathsPage() {
              setNumYears(4);
         }
         setSemesterCourses(newSemesterCourses);
-        setAvailableCourses(courses.filter(c => !assignedCourseIds.has(c.id)));
+        const activeCourses = courses.filter(c => c.status === 'active');
+        setAvailableCourses(activeCourses.filter(c => !assignedCourseIds.has(c.id)));
     }, [currentPath, courses]);
 
     const handleSaveCoursePath = async () => {
@@ -119,14 +121,30 @@ export default function CoursePathsPage() {
     };
     
     // --- Intake Logic ---
+    const handleOpenIntakeDialog = (intake: Intake | null) => {
+        if(intake) {
+            setEditingIntake(intake);
+            setIntakeName(intake.name);
+        } else {
+            setEditingIntake(null);
+            setIntakeName('');
+        }
+        setIsIntakeDialogOpen(true);
+    };
+
     const handleSaveIntake = async () => {
         if (!intakeName.trim()) return;
         setSavingIntake(true);
         try {
-            await push(ref(db, 'intakes'), { name: intakeName.trim() });
-            toast({ title: 'Intake created.' });
-            setIsIntakeDialogOpen(false); setIntakeName('');
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Failed to create intake.' });
+            if(editingIntake){
+                await update(ref(db, `intakes/${editingIntake.id}`), { name: intakeName.trim() });
+                toast({ title: 'Intake updated.' });
+            } else {
+                await push(ref(db, 'intakes'), { name: intakeName.trim() });
+                toast({ title: 'Intake created.' });
+            }
+            setIsIntakeDialogOpen(false); setIntakeName(''); setEditingIntake(null);
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Failed to save intake.' });
         } finally { setSavingIntake(false); }
     };
 
@@ -233,7 +251,7 @@ export default function CoursePathsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="font-headline text-2xl">Intakes & Course Paths</CardTitle>
+                <CardTitle className="font-headline text-2xl">Intakes &amp; Course Paths</CardTitle>
                 <CardDescription>Define student intakes and map out the required courses for each programme, semester by semester.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -246,24 +264,17 @@ export default function CoursePathsPage() {
                         <Card>
                             <CardHeader className="flex-row items-center justify-between">
                                 <div><CardTitle>Intakes</CardTitle><CardDescription>A list of all student intake periods.</CardDescription></div>
-                                <Dialog open={isIntakeDialogOpen} onOpenChange={setIsIntakeDialogOpen}>
-                                    <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4"/>New Intake</Button></DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader><DialogTitle>Create New Intake</DialogTitle></DialogHeader>
-                                        <div className="py-4"><Input placeholder="e.g., 2024 January Intake" value={intakeName} onChange={e => setIntakeName(e.target.value)} /></div>
-                                        <DialogFooter>
-                                            <Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button>
-                                            <Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
+                                <Button onClick={() => handleOpenIntakeDialog(null)}><PlusCircle className="mr-2 h-4"/>New Intake</Button>
                             </CardHeader>
                             <CardContent>
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Intake Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {intakes.length > 0 ? intakes.map(i => (
-                                            <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right"><Button variant="destructive" size="icon" onClick={() => handleDeleteIntake(i.id)}><Trash2 className="h-4"/></Button></TableCell></TableRow>
+                                            <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" onClick={() => handleOpenIntakeDialog(i)}><Pencil className="h-4 w-4"/></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleDeleteIntake(i.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                            </TableCell></TableRow>
                                         )) : <TableRow><TableCell colSpan={2} className="text-center h-24">No intakes created.</TableCell></TableRow>}
                                     </TableBody>
                                 </Table>
@@ -315,7 +326,7 @@ export default function CoursePathsPage() {
                                         {activeCourse ? <DraggableCourseItem id={activeCourse.id} course={activeCourse} /> : null}
                                     </DragOverlay>
                                     </DndContext>
-                                ) : <Alert><Info className="h-4 w-4"/><AlertTitle>Select Intake & Programme</AlertTitle><AlertDescription>Please select an intake and a programme to begin building a course path.</AlertDescription></Alert>}
+                                ) : <Alert><Info className="h-4 w-4"/><AlertTitle>Select Intake &amp; Programme</AlertTitle><AlertDescription>Please select an intake and a programme to begin building a course path.</AlertDescription></Alert>}
                             </CardContent>
                             <CardFooter className="justify-end">
                                 <Button onClick={handleSaveCoursePath} disabled={loading || !selectedIntake || !selectedProgramme}>Save Course Path</Button>
@@ -323,6 +334,16 @@ export default function CoursePathsPage() {
                         </Card>
                     </TabsContent>
                 </Tabs>
+                 <Dialog open={isIntakeDialogOpen} onOpenChange={(open) => { if (!open) setEditingIntake(null); setIsIntakeDialogOpen(open);}}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create New'} Intake</DialogTitle></DialogHeader>
+                        <div className="py-4"><Input placeholder="e.g., 2024 January Intake" value={intakeName} onChange={e => setIntakeName(e.target.value)} /></div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button>
+                            <Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );

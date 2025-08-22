@@ -1,4 +1,3 @@
-
 import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart } from 'lucide-react';
 
 export const allMenuItems = [
@@ -45,7 +44,7 @@ export const allMenuItems = [
         { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
-        { href: '/admin/course-paths', label: 'Course Paths', icon: Route },
+        { href: '/admin/course-paths', label: 'Intakes &amp; Course Paths', icon: Route },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
         { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
@@ -106,7 +105,7 @@ export const allMenuItems = [
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
+        { href: '/admin/fees', label: 'Fees &amp; Invoicing', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
@@ -125,7 +124,7 @@ export const allMenuItems = [
             { href: '/admin/student-life/leave-of-absence', label: 'Leave of Absence', icon: Calendar },
             { href: '/admin/student-life/complaints', label: 'Complaint Submissions', icon: ShieldAlert },
             { href: '/admin/student-life/events', label: 'Event Calendar', icon: Calendar },
-            { href: '/admin/student-life/clubs', label: 'Clubs & Associations', icon: Users },
+            { href: '/admin/student-life/clubs', label: 'Clubs &amp; Associations', icon: Users },
             { href: '/admin/student-life/mental-health', label: 'Mental Health Logs', icon: HeartPulse },
             { href: '/admin/student-life/welfare-reports', label: 'Welfare Reports', icon: FileText },
         ]
@@ -153,6 +152,7 @@ export const allMenuItems = [
       icon: UserCog,
       roles: ['Admin', 'HR'],
       items: [
+           { href: '/admin/hr/add-staff', label: 'Add Staff', icon: UserPlus },
            { href: '/admin/leave-approvals', label: 'Leave Approvals', icon: UserCheckIcon },
            { href: '/admin/vacancies', label: 'Vacancies', icon: Briefcase },
            { href: '/admin/hr/onboarding', label: 'Digital Onboarding', icon: UserPlus },
@@ -193,7 +193,7 @@ export const allMenuItems = [
             { href: '/admin/innovation/investor-matching', label: 'Investor Matching Tools', icon: Handshake },
             { href: '/admin/innovation/hackathon-logs', label: 'Hackathon Participation Logs', icon: Book },
             { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
-            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration & Team Building Portal', icon: Users },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration &amp; Team Building Portal', icon: Users },
         ]
     },
     {
@@ -300,14 +300,14 @@ export const studentMenuItems = [
         label: 'eLearning',
         icon: MonitorPlay,
         items: [
-            { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
+            { href: '/student/quizzes', label: 'Quizzes &amp; Exams', icon: FileQuestion },
         ]
     },
     {
         label: 'Finances',
         icon: DollarSign,
         items: [
-             { href: '/student/payments', label: 'Payments & Invoices', icon: Wallet },
+             { href: '/student/payments', label: 'Payments &amp; Invoices', icon: Wallet },
         ]
     },
     {
@@ -318,7 +318,7 @@ export const studentMenuItems = [
             { href: '/student/leave', label: 'Request Absence', icon: Calendar },
             { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
             { href: '/student/resources', label: 'Resources', icon: FileText },
-            { href: '/student/student-life/clubs', label: 'Clubs & Associations', icon: Users },
+            { href: '/student/student-life/clubs', label: 'Clubs &amp; Associations', icon: Users },
             { href: '/vacancies', label: 'Job Vacancies', icon: Briefcase },
         ]
     },
@@ -341,29 +341,29 @@ export const studentMenuItems = [
     }
   ];
 
-export const staffMenuItems = [
+export const staffBaseMenuItems = [
     {
       label: 'Academics',
       icon: GraduationCap,
       items: [
-        { href: '/staff/courses', label: 'My Courses', icon: Library, permission: 'Lecturer' },
-        { href: '/staff/student-absences', label: 'Student Absences', icon: UserCheckIcon, permission: 'Lecturer' },
-        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
+        { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
+        { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
+        { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
       ],
     },
     {
       label: 'Leave & Timetable',
       icon: Calendar,
       items: [
-        { href: '/staff/leave', label: 'My Leave', icon: Calendar },
-        { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
+        { href: '/staff/leave', label: 'My Leave' },
+        { href: '/staff/calendar', label: 'Academic Calendar' },
       ]
     },
      {
       label: 'HR',
       icon: UserCog,
       items: [
-           { href: '/staff/onboarding', label: 'My Onboarding', icon: UserPlus },
+           { href: '/staff/onboarding', label: 'My Onboarding' },
            { href: '/admin/hr/payroll', label: 'Payroll', permission: '/admin/hr/payroll' },
       ]
   },
@@ -371,11 +371,9 @@ export const staffMenuItems = [
       label: 'General',
       icon: Settings,
       items: [
-        { href: '/staff/library', label: 'Library', icon: Library },
-        { href: '/staff/profile', label: 'My Profile', icon: User },
+        { href: '/staff/library', label: 'Library' },
+        { href: '/staff/profile', label: 'My Profile' },
       ]
     }
   ];
-
-export const staffBaseMenuItems = staffMenuItems;
     
