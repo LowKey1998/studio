@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -16,7 +17,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
@@ -49,6 +49,7 @@ import { cn } from '@/lib/utils';
 import { allMenuItems, staffBaseMenuItems } from '@/lib/menu-items';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
+import { Switch } from '@/components/ui/switch';
 
 
 type User = {
@@ -266,6 +267,7 @@ export default function UserManagementPage() {
                 if (snapshot.exists()) {
                     toast({ variant: 'destructive', title: 'ID already exists', description: 'This User ID is already in use. Please choose another.' });
                     setLoading(false);
+                    await deleteApp(tempApp);
                     return;
                 }
             } else {
@@ -422,10 +424,12 @@ export default function UserManagementPage() {
                         <form onSubmit={handleCreateUser}>
                             <DialogHeader>
                                 <DialogTitle className="font-headline">Create New User</DialogTitle>
-                                <DialogDescription>Fill in the user's details below. A User ID will be generated automatically.</DialogDescription>
+                                <DialogDescription>Fill in the user's details below. An ID will be generated unless you provide one.</DialogDescription>
                             </DialogHeader>
                             <div className="grid max-h-[70vh] gap-6 overflow-y-auto p-1 py-4">
-                                 <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
+                                <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
+
+                                <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
                                     <AccordionItem value="item-1">
                                         <AccordionTrigger className="text-lg font-semibold">Basic Information</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
@@ -450,10 +454,10 @@ export default function UserManagementPage() {
                                             <div className="space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
                                         </AccordionContent>
                                     </AccordionItem>
+                                    {role !== 'admin' && (
                                     <AccordionItem value="item-2">
-                                        <AccordionTrigger className="text-lg font-semibold">Role &amp; Academic Information</AccordionTrigger>
+                                        <AccordionTrigger className="text-lg font-semibold">{role === 'staff' ? 'Role Information' : 'Academic Information'}</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
-                                            <div className="space-y-1"><Label>Role</Label><Select onValueChange={setRole} value={role} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger><SelectContent><SelectItem value="student">Student</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent></Select></div>
                                             {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
                                                 <Label>Sub-Roles</Label>
                                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -471,6 +475,7 @@ export default function UserManagementPage() {
                                             </div>)}
                                         </AccordionContent>
                                     </AccordionItem>
+                                     )}
                                      {role === 'student' && (<AccordionItem value="item-3">
                                         <AccordionTrigger className="text-lg font-semibold">Other Details</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
