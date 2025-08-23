@@ -64,6 +64,7 @@ type User = {
     programmeId?: string;
     programmeName?: string;
     year?: number;
+    semesterId?: string;
     exemptedCourses?: Record<string, boolean>;
     status?: 'active' | 'disabled';
     intakeId?: string;
@@ -82,6 +83,12 @@ type Programme = {
     id: string;
     name: string;
     courseIds?: Record<string, boolean>;
+};
+
+type Semester = {
+    id: string;
+    name: string;
+    status: string;
 };
 
 type Course = {
@@ -127,6 +134,7 @@ export default function UserManagementPage() {
     const [subRoles, setSubRoles] = React.useState<string[]>([]);
     const [programme, setProgramme] = React.useState('');
     const [year, setYear] = React.useState('');
+    const [semester, setSemester] = React.useState('');
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
     const [selectedIntake, setSelectedIntake] = React.useState('');
@@ -161,6 +169,7 @@ export default function UserManagementPage() {
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
+    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
 
@@ -201,13 +210,14 @@ export default function UserManagementPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap, settingsSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap, settingsSnap, semestersSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
                 get(child(ref(db), 'users')),
                 get(ref(db, 'settings/subRoles')),
                 get(ref(db, 'settings/idPrefixes')),
+                get(ref(db, 'semesters')),
             ]);
 
             const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
@@ -218,6 +228,7 @@ export default function UserManagementPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] }))); else setAllIntakes([]);
             if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesSnap.val()).map(id => ({id, ...subRolesSnap.val()[id]}))); else setAvailableSubRoles([])
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
+            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
             
             if (usersSnap.exists()) {
                 const usersData = usersSnap.val();
@@ -243,7 +254,7 @@ export default function UserManagementPage() {
     }, [fetchInitialData]);
 
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
@@ -268,7 +279,7 @@ export default function UserManagementPage() {
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !email || !password || !role) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
-        if (role === 'student' && (!programme || !year || !selectedIntake)) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme and year for the student.' }); return; }
+        if (role === 'student' && (!programme || !year || !selectedIntake || !semester)) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
         if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
 
         setLoading(true);
@@ -318,7 +329,7 @@ export default function UserManagementPage() {
             
             if (role === 'student') {
                 Object.assign(newUser, {
-                    programmeId: programme, year: Number(year), intakeId: selectedIntake,
+                    programmeId: programme, year: Number(year), semesterId: semester, intakeId: selectedIntake,
                     dob, gender, nationalId, passport, address, medicalHistory,
                     guardian: { name: guardianName, contact: guardianContact },
                     emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
@@ -506,10 +517,11 @@ export default function UserManagementPage() {
                                                 </div>
                                             </div>)}
                                             {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                                     <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                                                     <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
+                                                    <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{allSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                                                 </div>
                                                 <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
                                                 {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
