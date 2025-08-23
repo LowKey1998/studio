@@ -110,18 +110,24 @@ export default function RegistrationManagementPage() {
     };
     
     const handleToggleSemester = (pathId: string, semesterNumber: string) => {
-        setActivePathSemesters(prev => {
-            const newPaths = { ...prev };
-            if (!newPaths[pathId]) newPaths[pathId] = {};
-            if (!newPaths[pathId][semesterNumber]) newPaths[pathId][semesterNumber] = { active: false, showReason: false };
-            newPaths[pathId][semesterNumber].active = !newPaths[pathId][semesterNumber].active;
-            return newPaths;
-        });
+      setActivePathSemesters(prev => {
+        const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
+    
+        if (!newPaths[pathId]) {
+          newPaths[pathId] = {};
+        }
+        if (!newPaths[pathId][semesterNumber]) {
+          newPaths[pathId][semesterNumber] = { active: false, showReason: false };
+        }
+    
+        newPaths[pathId][semesterNumber].active = !newPaths[pathId][semesterNumber].active;
+        return newPaths;
+      });
     };
     
     const handleToggleReasonVisibility = (pathId: string, semesterNumber: string) => {
         setActivePathSemesters(prev => {
-            const newPaths = { ...prev };
+            const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
             if (!newPaths[pathId] || !newPaths[pathId][semesterNumber]) return prev;
             newPaths[pathId][semesterNumber].showReason = !newPaths[pathId][semesterNumber].showReason;
             return newPaths;
@@ -288,14 +294,8 @@ export default function RegistrationManagementPage() {
                             <p className="font-semibold">{item.reason}</p>
                             <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
                             <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
-                                <div>
-                                    <p className="font-bold">Removed:</p>
-                                    <ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul>
-                                </div>
-                                <div>
-                                    <p className="font-bold">Added:</p>
-                                    <ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul>
-                                </div>
+                                <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
                             </div>
                         </div>
                     ))}
