@@ -1,3 +1,4 @@
+
 import { config } from 'dotenv';
 config();
 
@@ -8,3 +9,4 @@ import '@/ai/flows/send-payslip-email.ts';
 import '@/ai/flows/update-user-status.ts';
 import '@/ai/flows/sync-to-quickbooks.ts';
 import '@/ai/flows/sync-to-sage.ts';
+import '@/ai/flows/fetch-facebook-leads.ts';

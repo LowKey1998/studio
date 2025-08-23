@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Facebook } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '@/lib/firebase';
 import { ref, onValue, push, set, remove } from 'firebase/database';
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { fetchFacebookLeads } from '@/ai/flows/fetch-facebook-leads';
 
 type Lead = {
     id: string;
@@ -28,6 +29,7 @@ export default function LeadsCapturePage() {
     const [leads, setLeads] = React.useState<Lead[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [syncing, setSyncing] = React.useState(false);
 
     // Dialog State
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -81,49 +83,74 @@ export default function LeadsCapturePage() {
         if (!window.confirm("Are you sure?")) return;
         await remove(ref(db, `admissions/leads/${leadId}`));
         toast({ title: "Lead removed" });
+    };
+
+    const handleSyncFacebookLeads = async () => {
+        setSyncing(true);
+        try {
+            const result = await fetchFacebookLeads();
+            toast({
+                title: 'Facebook Sync Complete',
+                description: `${result.count} new leads were pulled from Facebook.`,
+            });
+        } catch(error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Facebook Sync Failed',
+                description: error.message || 'Could not sync leads. Please check your settings.'
+            });
+        } finally {
+            setSyncing(false);
+        }
     }
 
     return (
         <Card>
-            <CardHeader className="flex flex-row items-start justify-between">
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between">
                 <div>
                     <CardTitle>Leads Capture</CardTitle>
                     <CardDescription>Manually add and manage prospective student leads.</CardDescription>
                 </div>
-                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button><PlusCircle className="mr-2 h-4"/>Add Lead</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Add New Lead</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="space-y-1">
-                                <Label>Name</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} required/>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleSyncFacebookLeads} disabled={syncing}>
+                        {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Facebook className="mr-2 h-4 w-4"/>}
+                        Sync Facebook Leads
+                    </Button>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button><PlusCircle className="mr-2 h-4"/>Add Lead</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Add New Lead</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="space-y-1">
+                                    <Label>Name</Label>
+                                    <Input value={name} onChange={e => setName(e.target.value)} required/>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Email</Label>
+                                    <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required/>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Phone (Optional)</Label>
+                                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Source (Optional)</Label>
+                                    <Input placeholder="e.g., Facebook, Referral" value={source} onChange={e => setSource(e.target.value)} />
+                                </div>
                             </div>
-                            <div className="space-y-1">
-                                <Label>Email</Label>
-                                <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required/>
-                            </div>
-                             <div className="space-y-1">
-                                <Label>Phone (Optional)</Label>
-                                <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                                <Label>Source (Optional)</Label>
-                                <Input placeholder="e.g., Facebook, Referral" value={source} onChange={e => setSource(e.target.value)} />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                             <DialogClose asChild><Button variant="outline" onClick={resetForm}>Cancel</Button></DialogClose>
-                            <Button onClick={handleSaveLead} disabled={saving}>
-                                {saving && <Loader2 className="mr-2"/>}Save Lead
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline" onClick={resetForm}>Cancel</Button></DialogClose>
+                                <Button onClick={handleSaveLead} disabled={saving}>
+                                    {saving && <Loader2 className="mr-2"/>}Save Lead
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </CardHeader>
             <CardContent>
                  <Table>
@@ -158,3 +185,4 @@ export default function LeadsCapturePage() {
         </Card>
     );
 }
+
