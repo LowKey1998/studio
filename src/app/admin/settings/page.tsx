@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon } from 'lucide-react';
+import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth, storage } from '@/lib/firebase';
 import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { allMenuItems } from '@/lib/menu-items';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Separator } from '@/components/ui/separator';
 
 type IDPrefixes = { 
     student: string; 
@@ -99,11 +100,16 @@ export default function SettingsPage() {
         setIsRoleDialogOpen(true);
     };
 
-    const handlePermissionChange = (permissionKey: string) => {
-        setPermissions(prev => ({
-            ...prev,
-            [permissionKey]: !prev[permissionKey]
-        }));
+    const handlePermissionChange = (permissionKey: string, checked: boolean) => {
+        setPermissions(prev => {
+            const newPermissions = { ...prev };
+            if (checked) {
+                newPermissions[permissionKey] = true;
+            } else {
+                delete newPermissions[permissionKey];
+            }
+            return newPermissions;
+        });
     };
     
     const handleSaveRole = async () => {
@@ -190,7 +196,7 @@ export default function SettingsPage() {
         <form onSubmit={handleSaveChanges} className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Role & Permission Management</CardTitle>
+                    <CardTitle className="font-headline text-2xl">Access Rules &amp; Permissions</CardTitle>
                     <CardDescription>Create staff sub-roles and assign permissions to different parts of the system.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -201,8 +207,8 @@ export default function SettingsPage() {
                                 <CardHeader className="flex flex-row items-center justify-between p-4">
                                     <p className="font-semibold">{role.name}</p>
                                     <div className="flex gap-2">
-                                        <Button type="button" size="sm" variant="outline" onClick={() => openRoleDialog(role)}>Edit</Button>
-                                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteRole(role.id)}>Delete</Button>
+                                        <Button type="button" size="sm" variant="outline" onClick={() => openRoleDialog(role)}><Pencil className="mr-2 h-4"/>Edit</Button>
+                                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteRole(role.id)}><Trash2 className="mr-2 h-4"/>Delete</Button>
                                     </div>
                                 </CardHeader>
                             </Card>
@@ -312,26 +318,28 @@ export default function SettingsPage() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <Input placeholder="Role Name, e.g., Bursar" value={roleName} onChange={(e) => setRoleName(e.target.value)} />
-                        <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
-                            {allMenuItems.map(item => {
-                                if (!item.items || item.items.length === 0) {
-                                    return null;
-                                }
-                                return (
-                                    <AccordionItem value={item.label} key={item.label}>
-                                        <AccordionTrigger>{item.label}</AccordionTrigger>
-                                        <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
-                                            {item.items.map(subItem => (
-                                                <div key={subItem.href} className="flex items-center gap-2">
-                                                    <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={() => handlePermissionChange(subItem.href)}/>
-                                                    <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
-                                                </div>
-                                            ))}
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                );
-                            })}
-                        </Accordion>
+                         <div className="max-h-[60vh] overflow-y-auto pr-4">
+                             <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
+                                {allMenuItems.map(item => {
+                                    if (!item.items || item.items.length === 0) {
+                                        return null;
+                                    }
+                                    return (
+                                        <AccordionItem value={item.label} key={item.label}>
+                                            <AccordionTrigger>{item.label}</AccordionTrigger>
+                                            <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
+                                                {item.items.map(subItem => (
+                                                    <div key={subItem.href} className="flex items-center gap-2">
+                                                        <Checkbox id={subItem.href} checked={!!permissions[subItem.href]} onCheckedChange={(checked) => handlePermissionChange(subItem.href, !!checked)}/>
+                                                        <Label htmlFor={subItem.href} className="font-normal">{subItem.label}</Label>
+                                                    </div>
+                                                ))}
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    );
+                                })}
+                            </Accordion>
+                        </div>
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
