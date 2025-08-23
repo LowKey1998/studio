@@ -1,27 +1,43 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, DollarSign } from 'lucide-react';
+import { Loader2, Save, DollarSign, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+
+
+type SalaryComponents = {
+    baseSalary?: number;
+    housingAllowance?: number;
+    transportAllowance?: number;
+    otherAllowances?: number;
+};
 
 type StaffMember = {
     uid: string;
     id: string;
     name: string;
-    baseSalary: number;
+    salaryComponents?: SalaryComponents;
 };
 
 export default function SalariesPage() {
     const [staffList, setStaffList] = React.useState<StaffMember[]>([]);
-    const [salaries, setSalaries] = React.useState<Record<string, number | string>>({});
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+
+    // Dialog state
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [editingStaff, setEditingStaff] = React.useState<StaffMember | null>(null);
+    const [salaryComponents, setSalaryComponents] = React.useState<SalaryComponents>({});
+
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -35,15 +51,9 @@ export default function SalariesPage() {
                         uid,
                         id: usersData[uid].id,
                         name: usersData[uid].name,
-                        baseSalary: usersData[uid].baseSalary || 0,
+                        salaryComponents: usersData[uid].salaryComponents || {},
                     }));
                 setStaffList(staff.sort((a, b) => a.name.localeCompare(b.name)));
-                
-                const initialSalaries: Record<string, number> = {};
-                staff.forEach(s => {
-                    initialSalaries[s.uid] = s.baseSalary;
-                });
-                setSalaries(initialSalaries);
             }
             setLoading(false);
         });
@@ -51,37 +61,45 @@ export default function SalariesPage() {
         return () => unsubscribe();
     }, []);
 
-    const handleSalaryChange = (uid: string, value: string) => {
-        setSalaries(prev => ({
+    const openEditDialog = (staff: StaffMember) => {
+        setEditingStaff(staff);
+        setSalaryComponents(staff.salaryComponents || {});
+        setIsDialogOpen(true);
+    };
+
+    const handleComponentChange = (field: keyof SalaryComponents, value: string) => {
+        setSalaryComponents(prev => ({
             ...prev,
-            [uid]: value,
+            [field]: value ? parseFloat(value) : 0,
         }));
     };
 
     const handleSaveChanges = async () => {
+        if (!editingStaff) return;
         setSaving(true);
         try {
-            const updates: Record<string, any> = {};
-            for (const uid in salaries) {
-                const newSalary = parseFloat(salaries[uid] as string);
-                if (!isNaN(newSalary)) {
-                    updates[`/users/${uid}/baseSalary`] = newSalary;
-                }
-            }
-            await update(ref(db), updates);
-            toast({ title: "Salaries Updated", description: "All changes have been saved successfully." });
+            await update(ref(db, `users/${editingStaff.uid}`), {
+                salaryComponents: salaryComponents,
+            });
+            toast({ title: "Salary Updated", description: "The salary structure has been saved." });
+            setIsDialogOpen(false);
         } catch (error: any) {
             toast({ variant: 'destructive', title: "Update Failed", description: error.message });
         } finally {
             setSaving(false);
         }
     };
+    
+    const calculateGrossSalary = (components?: SalaryComponents) => {
+        if (!components) return 0;
+        return (components.baseSalary || 0) + (components.housingAllowance || 0) + (components.transportAllowance || 0) + (components.otherAllowances || 0);
+    }
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Staff Salaries</CardTitle>
-                <CardDescription>Set and update the base salary for each staff member.</CardDescription>
+                <CardTitle>Staff Salary Management</CardTitle>
+                <CardDescription>Set and update the salary structure for each staff member.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -89,43 +107,51 @@ export default function SalariesPage() {
                         <TableRow>
                             <TableHead>Staff ID</TableHead>
                             <TableHead>Name</TableHead>
-                            <TableHead className="w-[200px]">Base Salary (ZMW)</TableHead>
+                            <TableHead className="text-right">Gross Salary (ZMW)</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                              Array.from({ length: 5 }).map((_, i) => (
                                 <TableRow key={i}>
-                                    <TableCell colSpan={3}><Skeleton className="h-8 w-full" /></TableCell>
+                                    <TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell>
                                 </TableRow>
                             ))
                         ) : staffList.map(staff => (
                             <TableRow key={staff.uid}>
                                 <TableCell>{staff.id}</TableCell>
                                 <TableCell className="font-medium">{staff.name}</TableCell>
-                                <TableCell>
-                                    <div className="relative">
-                                        <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/>
-                                        <Input
-                                            type="number"
-                                            value={salaries[staff.uid] ?? ''}
-                                            onChange={(e) => handleSalaryChange(staff.uid, e.target.value)}
-                                            className="pl-8"
-                                            placeholder="0.00"
-                                        />
-                                    </div>
+                                <TableCell className="text-right font-bold">{calculateGrossSalary(staff.salaryComponents).toFixed(2)}</TableCell>
+                                <TableCell className="text-right">
+                                     <Button variant="outline" size="sm" onClick={() => openEditDialog(staff)}>
+                                        <Pencil className="mr-2 h-4 w-4"/>
+                                        Edit Salary
+                                    </Button>
                                 </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
+                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Edit Salary for {editingStaff?.name}</DialogTitle>
+                            <DialogDescription>Define the components of the gross salary.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="space-y-1"><Label>Base Salary</Label><Input type="number" value={salaryComponents.baseSalary || ''} onChange={e => handleComponentChange('baseSalary', e.target.value)} /></div>
+                            <div className="space-y-1"><Label>Housing Allowance</Label><Input type="number" value={salaryComponents.housingAllowance || ''} onChange={e => handleComponentChange('housingAllowance', e.target.value)} /></div>
+                            <div className="space-y-1"><Label>Transport Allowance</Label><Input type="number" value={salaryComponents.transportAllowance || ''} onChange={e => handleComponentChange('transportAllowance', e.target.value)} /></div>
+                            <div className="space-y-1"><Label>Other Taxable Allowances</Label><Input type="number" value={salaryComponents.otherAllowances || ''} onChange={e => handleComponentChange('otherAllowances', e.target.value)} /></div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleSaveChanges} disabled={saving}>{saving && <Loader2 className="mr-2"/>}Save Changes</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
-            <CardFooter className="flex justify-end border-t pt-6">
-                 <Button onClick={handleSaveChanges} disabled={saving || loading}>
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Changes
-                </Button>
-            </CardFooter>
         </Card>
     );
 }

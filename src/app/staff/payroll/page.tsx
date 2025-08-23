@@ -18,6 +18,13 @@ import { format } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
 
+type SalaryComponents = {
+    baseSalary?: number;
+    housingAllowance?: number;
+    transportAllowance?: number;
+    otherAllowances?: number;
+};
+
 type StaffMember = {
     uid: string;
     id: string; // STF-001
@@ -25,15 +32,16 @@ type StaffMember = {
     email: string;
     role: string;
     subRoles?: string[];
-    baseSalary: number;
+    salaryComponents?: SalaryComponents;
 };
 
 // Mock payroll data calculation
 const calculatePayroll = (staff: StaffMember) => {
-    const baseSalary = staff.baseSalary || 0;
-    const deductions = baseSalary * 0.15; // Mock 15% deduction
-    const netPay = baseSalary - deductions;
-    return { deductions, netPay };
+    const components = staff.salaryComponents || {};
+    const grossSalary = (components.baseSalary || 0) + (components.housingAllowance || 0) + (components.transportAllowance || 0) + (components.otherAllowances || 0);
+    const deductions = grossSalary * 0.15; // Mock 15% deduction for NAPSA, etc.
+    const netPay = grossSalary - deductions;
+    return { grossSalary, deductions, netPay };
 };
 
 export default function PayrollPage() {
@@ -74,7 +82,6 @@ export default function PayrollPage() {
                         .map(uid => ({
                             uid,
                             ...usersData[uid],
-                            baseSalary: usersData[uid].baseSalary || 0,
                         }));
                     setStaffList(staff);
                 }
@@ -87,7 +94,7 @@ export default function PayrollPage() {
         fetchStaff();
     }, [user, toast]);
     
-    const handleSendPayslip = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
+    const handleSendPayslip = async (staff: StaffMember, payroll: {grossSalary: number, deductions: number, netPay: number}) => {
         setActionLoading(`payslip-${staff.uid}`);
         try {
             const currentMonth = format(new Date(), 'MMMM yyyy');
@@ -95,7 +102,7 @@ export default function PayrollPage() {
                 staffName: staff.name,
                 staffEmail: staff.email,
                 month: currentMonth,
-                grossSalary: staff.baseSalary,
+                grossSalary: payroll.grossSalary,
                 deductions: payroll.deductions,
                 netPay: payroll.netPay
             });
@@ -107,7 +114,7 @@ export default function PayrollPage() {
         }
     }
     
-    const handleSyncToQuickBooks = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
+    const handleSyncToQuickBooks = async (staff: StaffMember, payroll: {grossSalary: number, deductions: number, netPay: number}) => {
          setActionLoading(`sync-qb-${staff.uid}`);
         try {
             const currentMonth = format(new Date(), 'MMMM yyyy');
@@ -115,7 +122,7 @@ export default function PayrollPage() {
                 staffName: staff.name,
                 staffId: staff.id,
                 month: currentMonth,
-                grossSalary: staff.baseSalary,
+                grossSalary: payroll.grossSalary,
                 deductions: payroll.deductions,
                 netPay: payroll.netPay,
             });
@@ -127,7 +134,7 @@ export default function PayrollPage() {
         }
     }
     
-    const handleSyncToSage = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
+    const handleSyncToSage = async (staff: StaffMember, payroll: {grossSalary: number, deductions: number, netPay: number}) => {
          setActionLoading(`sync-sage-${staff.uid}`);
         try {
             const currentMonth = format(new Date(), 'MMMM yyyy');
@@ -135,7 +142,7 @@ export default function PayrollPage() {
                 staffName: staff.name,
                 staffId: staff.id,
                 month: currentMonth,
-                grossSalary: staff.baseSalary,
+                grossSalary: payroll.grossSalary,
                 deductions: payroll.deductions,
                 netPay: payroll.netPay,
             });
@@ -183,7 +190,7 @@ export default function PayrollPage() {
                             <TableHead>Staff ID</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Role</TableHead>
-                            <TableHead className="text-right">Base Salary (ZMW)</TableHead>
+                            <TableHead className="text-right">Gross Salary (ZMW)</TableHead>
                             <TableHead className="text-right">Deductions (ZMW)</TableHead>
                             <TableHead className="text-right">Net Pay (ZMW)</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
@@ -197,7 +204,7 @@ export default function PayrollPage() {
                                     <TableCell className="font-medium">{staff.id}</TableCell>
                                     <TableCell>{staff.name}</TableCell>
                                     <TableCell>{staff.subRoles?.join(', ') || staff.role}</TableCell>
-                                    <TableCell className="text-right">{staff.baseSalary.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">{payroll.grossSalary.toFixed(2)}</TableCell>
                                     <TableCell className="text-right text-red-600">{payroll.deductions.toFixed(2)}</TableCell>
                                     <TableCell className="text-right font-bold">{payroll.netPay.toFixed(2)}</TableCell>
                                     <TableCell className="text-right flex gap-2 justify-end">
