@@ -119,7 +119,7 @@ type Programme = {
     courseIds?: Record<string, boolean>;
 };
 
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }> };
 
 type RegistrationPolicy = {
     lateRegistrationFee: number;
@@ -254,29 +254,45 @@ export default function RegistrationPage() {
         };
     },[]);
 
-    // Listen for open semesters
+    // Determine available semesters for the student
     React.useEffect(() => {
+        if (!userData || !allCoursePaths.length) return;
+
+        const userPath = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
+        if (!userPath) {
+            setOpenSemesters([]);
+            return;
+        }
+
+        const offeringsRef = ref(db, 'semesterOfferings');
         const semestersRef = ref(db, 'semesters');
-        const unsubSemesters = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list: Semester[] = Object.keys(data)
-                    .map(key => ({ id: key, ...data[key] }))
-                    .filter(s => s.status === 'Open');
-                setOpenSemesters(list.sort((a,b) => b.name.localeCompare(a.name)));
-                if (list.length > 0 && !selectedSemesterId) {
-                    setSelectedSemesterId(list[0].id);
-                } else if (list.length === 0) {
-                    setSelectedSemesterId("");
-                }
-            } else {
-                 setOpenSemesters([]);
-                 setSelectedSemesterId("");
+
+        const unsub = onValue(offeringsRef, async (offeringsSnap) => {
+            const offerings = offeringsSnap.val() || {};
+            const semestersSnap = await get(semestersRef);
+            const allSems = semestersSnap.val() || {};
+            
+            const availableForUser: Semester[] = [];
+            if(offerings[userPath.id]){
+                Object.keys(offerings[userPath.id]).forEach(semNum => {
+                    const semId = Object.keys(allSems).find(key => allSems[key].name.endsWith(`Semester ${semNum}`));
+                    if (semId && allSems[semId] && allSems[semId].status === 'Open') {
+                        availableForUser.push({ id: semId, ...allSems[semId] });
+                    }
+                });
+            }
+            
+            setOpenSemesters(availableForUser);
+             if (availableForUser.length > 0 && !selectedSemesterId) {
+                setSelectedSemesterId(availableForUser[0].id);
+            } else if (availableForUser.length === 0) {
+                setSelectedSemesterId("");
             }
         });
+        
+        return () => unsub();
+    }, [userData, allCoursePaths, selectedSemesterId]);
 
-        return () => unsubSemesters();
-    }, [selectedSemesterId]);
 
     // Main data fetching and real-time update logic
     const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
@@ -301,14 +317,16 @@ export default function RegistrationPage() {
                  
                  const semester = openSemesters.find(s => s.id === selectedSemesterId);
                  if (semester) {
-                    const offeringsRef = ref(db, `semesterOfferings/${semester.name}/courseIds`);
-                    const offeringsSnap = await get(offeringsRef);
-                    const availableCourseIds = offeringsSnap.exists() ? offeringsSnap.val() : [];
-                    
-                    const coursesForYear = allCourses.filter(c => {
-                        return availableCourseIds.includes(c.id);
-                    });
-                    setAvailableCourses(coursesForYear);
+                    const path = allCoursePaths.find(p => p.intakeId === uData.intakeId && p.programmeId === uData.programmeId);
+                    const semesterNumberMatch = semester.name.match(/Semester (\d+)/);
+                    if (path && path.semesters && semesterNumberMatch) {
+                        const semNum = semesterNumberMatch[1];
+                        const availableCourseIds = path.semesters[Number(semNum)]?.courses || [];
+                        const coursesForSemester = allCourses.filter(c => availableCourseIds.includes(c.id));
+                        setAvailableCourses(coursesForSemester);
+                    } else {
+                        setAvailableCourses([]);
+                    }
                  }
                  setSelectedCourses([]);
             }
@@ -318,7 +336,7 @@ export default function RegistrationPage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedSemesterId, openSemesters, toast, allCourses]);
+    }, [selectedSemesterId, openSemesters, toast, allCourses, allCoursePaths]);
 
 
     React.useEffect(() => {
@@ -444,13 +462,13 @@ export default function RegistrationPage() {
                 invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedOptionalFeeIds,
                 totalTuition: tuitionCost, totalOptionalFees: optionalFeesCost, totalMandatoryFees: mandatoryFeesCost, lateFee,
                 paymentPlan: selectedPlan.name, amountPaid: 0, status: 'pending', dateCreated: new Date().toISOString(),
-                semester: currentSemester.name, semesterId: currentSemester.id, scholarshipId: selectedScholarshipId, scholarshipWaiver
+                semester: currentSemester.name, semesterId: currentSemester.id, applyScholarship: !!scholarshipId
             });
 
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${currentSemester.id}`);
             await set(registrationRef, {
                 courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedOptionalFeeIds, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
-                registrationDate: new Date().toISOString(), status: 'Pending Approval', scholarshipId: selectedScholarshipId, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
+                registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship: !!scholarshipId, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
             });
 
             const registrarIds = await getRegistrarIds();
@@ -503,9 +521,10 @@ export default function RegistrationPage() {
         const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
         
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
-        if(invoice.scholarshipId) {
-            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.scholarshipWaiver || 0).toFixed(2)})`]);
-            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.scholarshipWaiver || 0)).toFixed(2)}`]);
+        if(invoice.applyScholarship) {
+            const scholarshipWaiver = (invoice.totalTuition || 0) * ((allScholarships.find(s => s.id === existingRegistration?.scholarshipId)?.percentage || 100) / 100);
+            foot.push(['', 'Scholarship Applied', `(ZMW ${scholarshipWaiver.toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${(totalAmount - scholarshipWaiver).toFixed(2)}`]);
         } else {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
@@ -567,10 +586,9 @@ export default function RegistrationPage() {
         const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
         if(!path || !path.semesters) return [];
         
-        const semesterKeys = Object.keys(path.semesters);
-        const relevantSemesterKey = semesterKeys[ (userData.year - 1) * 2 ] || semesterKeys[ (userData.year - 1) * 2 + 1 ];
-        if (relevantSemesterKey && path.semesters[Number(relevantSemesterKey)]) {
-            return path.semesters[Number(relevantSemesterKey)].courses;
+        const semesterNumberMatch = currentSemester.name.match(/Semester (\d+)/);
+        if (semesterNumberMatch && path.semesters[Number(semesterNumberMatch[1])]) {
+            return path.semesters[Number(semesterNumberMatch[1])].courses;
         }
         return [];
     }, [userData, currentSemester, allCoursePaths]);
@@ -640,8 +658,8 @@ export default function RegistrationPage() {
                                                     })}
                                                     {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
                                                     <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
-                                                    {existingRegistration.invoiceDetails?.scholarshipId && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {(existingRegistration.invoiceDetails?.scholarshipWaiver || 0).toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.scholarshipWaiver || 0)).toFixed(2)}</TableCell></TableRow>
+                                                    {existingRegistration.invoiceDetails?.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) * (allScholarships.find(s => s.id === existingRegistration.scholarshipId)?.percentage || 0) / 100).toFixed(2)}</TableCell></TableRow>}
+                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.applyScholarship ? ((existingRegistration.invoiceDetails?.totalTuition || 0) * (allScholarships.find(s => s.id === existingRegistration.scholarshipId)?.percentage || 0) / 100) : 0)).toFixed(2)}</TableCell></TableRow>
                                                 </TableBody>
                                             </Table>
                                         </CollapsibleContent>
@@ -771,3 +789,4 @@ export default function RegistrationPage() {
         </div>
     );
 }
+  

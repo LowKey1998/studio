@@ -1,7 +1,8 @@
 
+
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getDatabase, ref, push, set, serverTimestamp, get } from "firebase/database";
+import { getDatabase, ref, push, set, serverTimestamp, get, query, orderByChild, equalTo } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 import type { Notification } from "./types";
@@ -61,7 +62,11 @@ export const getAllStudentAndStaffIds = async (): Promise<string[]> => {
  */
 export const getRegistrarIds = async (): Promise<string[]> => {
     const usersRef = ref(db, 'users');
-    const snapshot = await get(usersRef);
+    const q = query(usersRef, orderByChild('subRoles/Registrar'), equalTo(true));
+    
+    // A more robust way would be to fetch all staff and filter,
+    // as Realtime DB querying on arrays is limited.
+    const snapshot = await get(ref(db, 'users'));
     if (snapshot.exists()) {
         const users = snapshot.val();
         return Object.keys(users).filter(uid => 
@@ -74,3 +79,4 @@ export const getRegistrarIds = async (): Promise<string[]> => {
 
 
 export { app, auth, db, storage, messaging };
+
