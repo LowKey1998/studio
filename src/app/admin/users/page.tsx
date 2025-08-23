@@ -290,32 +290,43 @@ export default function UserManagementPage() {
         const tempAuth = getAuth(tempApp);
 
         try {
-            let newId = manualId.trim();
+            let newId = '';
+            
+            const isIdTaken = async (id: string) => {
+                 const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
+                 const snapshot = await get(userQuery);
+                 return snapshot.exists();
+            };
 
             if (isManualId) {
-                const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(newId));
-                const snapshot = await get(userQuery);
-                if (snapshot.exists()) {
+                newId = manualId.trim();
+                if (await isIdTaken(newId)) {
                     toast({ variant: 'destructive', title: 'ID already exists', description: 'This User ID is already in use. Please choose another.' });
                     setLoading(false);
                     await deleteApp(tempApp);
                     return;
                 }
             } else {
+                const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
                 const counterRef = ref(db, `userCounters/${role}`);
-                await runTransaction(counterRef, (currentCount) => {
-                    const count = (currentCount || 0) + 1;
-                    const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
-                    const basePrefix = role === 'student' ? prefixes.student : role === 'staff' ? prefixes.staff : prefixes.admin;
-                    
-                    let datePart = '';
-                    const now = new Date();
-                    if(idSettings.includeYear) datePart += format(now, 'yy');
-                    if(idSettings.includeMonth) datePart += format(now, 'MM');
+                let isUniqueIdFound = false;
 
-                    newId = `${basePrefix}${datePart}${String(count).padStart(3, '0')}`;
-                    return count;
-                });
+                while (!isUniqueIdFound) {
+                    await runTransaction(counterRef, (currentCount) => {
+                        const count = (currentCount || 0) + 1;
+                        const basePrefix = role === 'student' ? prefixes.student : role === 'staff' ? prefixes.staff : prefixes.admin;
+                        let datePart = '';
+                        const now = new Date();
+                        if(idSettings.includeYear) datePart += format(now, 'yy');
+                        if(idSettings.includeMonth) datePart += format(now, 'MM');
+                        newId = `${basePrefix}${datePart}${String(count).padStart(3, '0')}`;
+                        return count;
+                    });
+
+                    if (!(await isIdTaken(newId))) {
+                        isUniqueIdFound = true;
+                    }
+                }
             }
             
 
