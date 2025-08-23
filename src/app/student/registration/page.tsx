@@ -256,11 +256,15 @@ export default function RegistrationPage() {
 
     // Determine available semesters for the student
     React.useEffect(() => {
-        if (!userData || !allCoursePaths.length) return;
+        if (!userData || !allCoursePaths.length) {
+            setLoading(false);
+            return;
+        }
 
         const userPath = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
         if (!userPath) {
             setOpenSemesters([]);
+            setLoading(false);
             return;
         }
 
@@ -275,19 +279,23 @@ export default function RegistrationPage() {
             const availableForUser: Semester[] = [];
             if(offerings[userPath.id]){
                 Object.keys(offerings[userPath.id]).forEach(semNum => {
-                    const semId = Object.keys(allSems).find(key => allSems[key].name.endsWith(`Semester ${semNum}`));
-                    if (semId && allSems[semId] && allSems[semId].status === 'Open') {
-                        availableForUser.push({ id: semId, ...allSems[semId] });
+                    const semesterDetails = offerings[userPath.id][semNum];
+                    if (semesterDetails?.active) {
+                        const semId = Object.keys(allSems).find(key => allSems[key].name.endsWith(`Semester ${semNum}`));
+                        if (semId && allSems[semId] && allSems[semId].status === 'Open') {
+                            availableForUser.push({ id: semId, ...allSems[semId] });
+                        }
                     }
                 });
             }
             
             setOpenSemesters(availableForUser);
-             if (availableForUser.length > 0 && !selectedSemesterId) {
+            if (availableForUser.length > 0 && !selectedSemesterId) {
                 setSelectedSemesterId(availableForUser[0].id);
             } else if (availableForUser.length === 0) {
                 setSelectedSemesterId("");
             }
+            setLoading(false);
         });
         
         return () => unsub();
@@ -522,7 +530,7 @@ export default function RegistrationPage() {
         
         const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
         if(invoice.applyScholarship) {
-            const scholarshipWaiver = (invoice.totalTuition || 0) * ((allScholarships.find(s => s.id === existingRegistration?.scholarshipId)?.percentage || 100) / 100);
+            const scholarshipWaiver = (invoice.totalTuition || 0) * ((allScholarships.find(s => s.id === existingRegistration?.scholarshipId)?.percentage || 0) / 100);
             foot.push(['', 'Scholarship Applied', `(ZMW ${scholarshipWaiver.toFixed(2)})`]);
             foot.push(['', 'Total Due', `ZMW ${(totalAmount - scholarshipWaiver).toFixed(2)}`]);
         } else {
@@ -611,7 +619,7 @@ export default function RegistrationPage() {
                 {openSemesters.length > 0 ? (
                 <>
                 <CardContent className="space-y-6">
-                    <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name}</div></SelectItem>))}</SelectContent></Select></div>
                      {isLateRegistration && (
                          <Alert variant="destructive">
                             <ShieldAlert className="h-4 w-4" />
@@ -790,3 +798,5 @@ export default function RegistrationPage() {
     );
 }
   
+
+    
