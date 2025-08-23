@@ -110,39 +110,51 @@ export default function CoursePathsPage() {
     const handleSaveCoursePath = async () => {
         if (!selectedIntake || !selectedProgramme) return;
         setLoading(true);
+
         try {
-            const pathData: Omit<CoursePath, 'id'> = {
+            const pathSemesters: Record<number, CoursePathSemester> = {};
+            let changeReasonPrompted = false;
+
+            for (const [sem, crs] of Object.entries(semesterCourses)) {
+                const newCourses = crs.map(c => c.id);
+                const oldCourses = currentPath?.semesters[Number(sem)]?.courses || [];
+                const hasChanged = JSON.stringify(oldCourses.sort()) !== JSON.stringify(newCourses.sort());
+                let history = currentPath?.semesters[Number(sem)]?.history || {};
+
+                if (hasChanged) {
+                    if (!changeReasonPrompted) {
+                        const reason = prompt("Please provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
+                        if (reason) {
+                            const historyEntry: CoursePathHistoryItem = {
+                                reason,
+                                oldCourses,
+                                newCourses,
+                                timestamp: serverTimestamp()
+                            };
+                            const historyKey = push(ref(db)).key!;
+                            history[historyKey] = historyEntry;
+                            changeReasonPrompted = true; // Prevents multiple prompts
+                        } else {
+                            toast({ variant: 'destructive', title: 'Change Canceled', description: 'A reason is required to update a course path.' });
+                            setLoading(false);
+                            return; // Abort save if user cancels prompt
+                        }
+                    }
+                }
+                pathSemesters[Number(sem)] = { courses: newCourses, history };
+            }
+            
+            // Ensure all potential semesters within numYears are captured, even if empty
+            for(let i = 1; i <= numYears * 2; i++) {
+                if (!pathSemesters[i]) {
+                    pathSemesters[i] = { courses: [] };
+                }
+            }
+            
+            const pathData = {
                 intakeId: selectedIntake,
                 programmeId: selectedProgramme,
-                semesters: Object.entries(semesterCourses).reduce((acc, [sem, crs]) => {
-                    if (crs && crs.length > 0) {
-                        const oldCourses = currentPath?.semesters[Number(sem)]?.courses || [];
-                        const newCourses = crs.map(c => c.id);
-                        
-                        const hasChanged = JSON.stringify(oldCourses.sort()) !== JSON.stringify(newCourses.sort());
-                        
-                        let history = currentPath?.semesters[Number(sem)]?.history || {};
-                        if(hasChanged) {
-                             const reason = prompt("Please provide a reason for this change (e.g., 'Lecturer unavailable', 'Curriculum update').");
-                             if(reason) {
-                                const historyEntry: CoursePathHistoryItem = {
-                                    reason,
-                                    oldCourses,
-                                    newCourses,
-                                    timestamp: serverTimestamp()
-                                };
-                                const historyKey = push(ref(db)).key!;
-                                history[historyKey] = historyEntry;
-                             } else {
-                                toast({ variant: 'destructive', title: 'Change Canceled', description: 'A reason is required to update a course path.'});
-                                return;
-                             }
-                        }
-
-                        acc[Number(sem)] = { courses: newCourses, history };
-                    }
-                    return acc;
-                }, {} as Record<number, CoursePathSemester>)
+                semesters: pathSemesters
             };
 
             if (currentPath) {
@@ -151,8 +163,11 @@ export default function CoursePathsPage() {
                 await push(ref(db, 'coursePaths'), pathData);
             }
             toast({ title: 'Success', description: 'Course path saved successfully.' });
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
-        } finally { setLoading(false); }
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
+        } finally {
+            setLoading(false);
+        }
     };
     
     // --- Intake Logic ---
