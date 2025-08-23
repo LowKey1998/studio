@@ -176,7 +176,7 @@ export default function OnboardingPage() {
                         <CardDescription>Create onboarding checklists and track new staff progress.</CardDescription>
                     </div>
                     <div className="flex gap-2">
-                         <Button variant="outline" onClick={() => openTemplateDialog(null)}>Manage Templates</Button>
+                         <Button variant="outline" onClick={() => openTemplateDialog(null)}>Create / Edit Templates</Button>
                          <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
                             <DialogTrigger asChild>
                                 <Button disabled={templates.length === 0 || staffWithoutOnboarding.length === 0}><UserPlus className="mr-2 h-4 w-4"/> Start Onboarding</Button>
