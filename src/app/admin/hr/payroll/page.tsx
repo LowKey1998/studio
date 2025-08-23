@@ -73,7 +73,7 @@ export default function PayrollPage() {
                         .map(uid => ({
                             uid,
                             ...usersData[uid],
-                            baseSalary: usersData[uid].baseSalary || 50000, // Mock base salary
+                            baseSalary: usersData[uid].baseSalary || 0,
                         }));
                     setStaffList(staff);
                 }

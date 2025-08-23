@@ -19,12 +19,11 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -51,6 +50,7 @@ import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-i
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
+import { DialogTrigger } from '@radix-ui/react-dialog';
 
 
 type User = {
@@ -77,6 +77,7 @@ type User = {
     emergencyContact?: { name: string; relationship: string; contact: string; };
     educationBackground?: { school: string; qualifications: string; };
     medicalHistory?: string;
+    baseSalary?: number;
 };
 
 type Programme = {
@@ -140,6 +141,7 @@ export default function UserManagementPage() {
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [manualId, setManualId] = React.useState('');
     const [isManualId, setIsManualId] = React.useState(false);
+    const [baseSalary, setBaseSalary] = React.useState('');
     
     const [dob, setDob] = React.useState('');
     const [gender, setGender] = React.useState('');
@@ -163,6 +165,7 @@ export default function UserManagementPage() {
     const [editSubRoles, setEditSubRoles] = React.useState<string[]>([]);
     const [editProgramme, setEditProgramme] = React.useState('');
     const [editIntake, setEditIntake] = React.useState('');
+    const [editBaseSalary, setEditBaseSalary] = React.useState('');
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Data for dialogs
@@ -255,7 +258,7 @@ export default function UserManagementPage() {
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
-        setManualId(''); setIsManualId(false);
+        setManualId(''); setIsManualId(false); setBaseSalary('');
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
         setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
@@ -347,8 +350,9 @@ export default function UserManagementPage() {
                     educationBackground: { school: previousSchool, qualifications }
                 });
                 if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses;
-            } else if (role === 'staff' && subRoles.length > 0) {
-                 newUser.subRoles = subRoles;
+            } else if (role === 'staff') {
+                 if (subRoles.length > 0) newUser.subRoles = subRoles;
+                 if (baseSalary) newUser.baseSalary = parseFloat(baseSalary);
             }
 
 
@@ -374,6 +378,7 @@ export default function UserManagementPage() {
         setEditSubRoles(user.subRoles || []); 
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
+        setEditBaseSalary(user.baseSalary?.toString() || '');
         setIsEditOpen(true);
     };
     
@@ -401,6 +406,7 @@ export default function UserManagementPage() {
             const updatedUserData: Partial<User> = { name: editName, role: editRole };
              if (editRole === 'Staff') {
                 updatedUserData.subRoles = editSubRoles;
+                updatedUserData.baseSalary = parseFloat(editBaseSalary) || 0;
              }
              if (editRole === 'Student') {
                 updatedUserData.intakeId = editIntake;
@@ -417,6 +423,9 @@ export default function UserManagementPage() {
             if (editRole === 'Student') {
                  if (editingUser.intakeId !== editIntake) changes.push(`Intake updated`);
                  if (editingUser.programmeId !== editProgramme) changes.push(`Programme updated`);
+            }
+             if (editRole === 'Staff' && editingUser.baseSalary !== parseFloat(editBaseSalary)) {
+                changes.push(`Base salary updated`);
             }
             if(changes.length > 0) action += ` Details: ${changes.join('. ')}.`;
             const activityRef = push(ref(db, 'recentActivities'));
@@ -521,10 +530,12 @@ export default function UserManagementPage() {
                                     <AccordionItem value="item-2">
                                         <AccordionTrigger className="text-lg font-semibold">{role === 'staff' ? 'Role Information' : 'Academic Information'}</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
-                                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
-                                                <Label>Sub-Roles</Label>
-                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                                    {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                            {role === 'staff' && (<div className="space-y-4 rounded-md border p-3">
+                                                 <div className="space-y-1"><Label>Base Salary (ZMW)</Label><Input type="number" placeholder="e.g., 50000" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-2"><Label>Sub-Roles</Label>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                        {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                                    </div>
                                                 </div>
                                             </div>)}
                                             {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
@@ -608,7 +619,12 @@ export default function UserManagementPage() {
                             </div>
                         </>
                     )}
-                    {editRole === 'Staff' && (<div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>)}
+                    {editRole === 'Staff' && (
+                    <>
+                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-salary" className="text-right">Base Salary</Label><Input id="edit-salary" type="number" value={editBaseSalary} onChange={e => setEditBaseSalary(e.target.value)} className="col-span-3" disabled={loading}/></div>
+                        <div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>
+                    </>
+                    )}
                 </div>
                 <DialogFooter><DialogClose asChild><Button variant="outline" type="button" onClick={() => setIsEditOpen(false)}>Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Update User'}</Button></DialogFooter>
             </form></DialogContent>
