@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route } from 'lucide-react';
+import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route, Lightbulb } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -375,6 +375,7 @@ export default function RegistrationManagementPage() {
                 await set(push(ref(db, 'calendarEvents')), { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester?.name });
                 toast({ title: `${title} Added` });
             }
+            
             setDeadlineDates(prev => { const newDates = { ...prev }; delete newDates[title]; return newDates; });
             setEditingDeadlineId(null);
             fetchDataForSemester(); // Refetch data to update deadline list
