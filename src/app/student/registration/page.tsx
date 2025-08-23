@@ -278,15 +278,16 @@ export default function RegistrationPage() {
             
             const availableForUser: Semester[] = [];
             if(offerings[userPath.id]){
-                Object.keys(offerings[userPath.id]).forEach(semNum => {
+                for (const semNum of Object.keys(offerings[userPath.id])) {
                     const semesterDetails = offerings[userPath.id][semNum];
                     if (semesterDetails?.active) {
-                        const semId = Object.keys(allSems).find(key => allSems[key].name.endsWith(`Semester ${semNum}`));
+                        const targetSemesterNamePart = `Year ${Math.ceil(parseInt(semNum)/2)} Semester ${ (parseInt(semNum) - 1) % 2 + 1}`;
+                        const semId = Object.keys(allSems).find(key => allSems[key].name.includes(targetSemesterNamePart));
                         if (semId && allSems[semId] && allSems[semId].status === 'Open') {
                             availableForUser.push({ id: semId, ...allSems[semId] });
                         }
                     }
-                });
+                }
             }
             
             setOpenSemesters(availableForUser);
@@ -327,16 +328,18 @@ export default function RegistrationPage() {
                  if (semester) {
                     const path = allCoursePaths.find(p => p.intakeId === uData.intakeId && p.programmeId === uData.programmeId);
                     const semesterNumberMatch = semester.name.match(/Semester (\d+)/);
-                    if (path && path.semesters && semesterNumberMatch) {
-                        const semNum = semesterNumberMatch[1];
-                        const availableCourseIds = path.semesters[Number(semNum)]?.courses || [];
+                    const yearNumberMatch = semester.name.match(/Year (\d+)/);
+                    if (path && path.semesters && yearNumberMatch && semesterNumberMatch) {
+                        const semNumForPath = (Number(yearNumberMatch[1]) - 1) * 2 + Number(semesterNumberMatch[1]);
+                        const availableCourseIds = path.semesters[semNumForPath]?.courses || [];
                         const coursesForSemester = allCourses.filter(c => availableCourseIds.includes(c.id));
                         setAvailableCourses(coursesForSemester);
+                        setSelectedCourses(coursesForSemester);
                     } else {
                         setAvailableCourses([]);
+                        setSelectedCourses([]);
                     }
                  }
-                 setSelectedCourses([]);
             }
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -595,8 +598,10 @@ export default function RegistrationPage() {
         if(!path || !path.semesters) return [];
         
         const semesterNumberMatch = currentSemester.name.match(/Semester (\d+)/);
-        if (semesterNumberMatch && path.semesters[Number(semesterNumberMatch[1])]) {
-            return path.semesters[Number(semesterNumberMatch[1])].courses;
+        const yearNumberMatch = currentSemester.name.match(/Year (\d+)/);
+        if (yearNumberMatch && semesterNumberMatch) {
+            const semNumForPath = (Number(yearNumberMatch[1]) - 1) * 2 + Number(semesterNumberMatch[1]);
+            return path.semesters[semNumForPath]?.courses || [];
         }
         return [];
     }, [userData, currentSemester, allCoursePaths]);
@@ -619,7 +624,7 @@ export default function RegistrationPage() {
                 {openSemesters.length > 0 ? (
                 <>
                 <CardContent className="space-y-6">
-                    <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name}</div></SelectItem>))}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name} ({s.status})</div></SelectItem>))}</SelectContent></Select></div>
                      {isLateRegistration && (
                          <Alert variant="destructive">
                             <ShieldAlert className="h-4 w-4" />
@@ -798,5 +803,7 @@ export default function RegistrationPage() {
     );
 }
   
+
+    
 
     
