@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, ExternalLink, Users, Calendar, Trash2, Eye, CalendarIcon } from 'lucide-react';
+import { Loader2, PlusCircle, ExternalLink, Users, Calendar as CalendarIcon, Trash2, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -20,7 +20,7 @@ import Link from 'next/link';
 import { postJobVacancy } from '@/ai/flows/post-job-vacancy';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Calendar } from '@/components/ui/calendar';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 
 type Vacancy = {
@@ -261,7 +261,7 @@ export default function VacanciesPage() {
                                                 <a href={app.resumeUrl} target="_blank" rel="noopener noreferrer"><Eye className="mr-2 h-4"/>Resume</a>
                                             </Button>
                                             <Button size="sm" onClick={() => { setInterviewApplicant(app); setIsInterviewDialogOpen(true); }}>
-                                                <Calendar className="mr-2 h-4"/>Interview
+                                                <CalendarIcon className="mr-2 h-4"/>Interview
                                             </Button>
                                         </div>
                                     </TableCell>
@@ -288,7 +288,7 @@ export default function VacanciesPage() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent>
-                                <CalendarComponent mode="single" selected={interviewDate} onSelect={setInterviewDate} />
+                                <Calendar mode="single" selected={interviewDate} onSelect={setInterviewDate} />
                             </PopoverContent>
                         </Popover>
                     </div>
