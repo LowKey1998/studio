@@ -7,7 +7,7 @@ import { Loader2, BookOpen, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update } from 'firebase/database';
+import { ref, get, set, onValue } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -142,7 +142,7 @@ export default function RegistrationManagementPage() {
                            ))}
                         </Accordion>
                     ) : (
-                        <div className="py-16 text-center text-muted-foreground"><BookOpen className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">No Intakes Found</h3><p className="mt-2 text-sm">Create intakes from the "Intakes & Course Paths" page first.</p></div>
+                        <div className="py-16 text-center text-muted-foreground"><BookOpen className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">No Intakes Found</h3><p className="mt-2 text-sm">Create intakes from the "Intakes &amp; Course Paths" page first.</p></div>
                     )
                 }
             </CardContent>
@@ -153,4 +153,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
