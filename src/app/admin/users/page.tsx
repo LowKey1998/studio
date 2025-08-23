@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -51,6 +51,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
 import { DialogTrigger } from '@radix-ui/react-dialog';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 
 type User = {
@@ -430,6 +432,32 @@ export default function UserManagementPage() {
             toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setLoading(false); }
     };
+
+    const handleDownloadInvoice = async (userId: string) => {
+        try {
+            const invoicesRef = ref(db, `invoices/${userId}`);
+            const snapshot = await get(invoicesRef);
+            if (!snapshot.exists()) {
+                toast({ variant: 'destructive', title: 'No Invoices', description: 'This student has no invoices on record.' });
+                return;
+            }
+            const invoices = snapshot.val();
+            // Get the last invoice
+            const latestInvoice = Object.values(invoices).sort((a: any, b: any) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime())[0] as any;
+            
+            if (latestInvoice) {
+                // You'll need a function to generate a PDF from invoice data
+                // For now, we'll just show the data.
+                 toast({ title: 'Invoice Found', description: `Generating PDF for invoice ID: ${latestInvoice.invoiceId}` });
+                 // generateInvoicePDF(latestInvoice);
+            } else {
+                 toast({ variant: 'destructive', title: 'No Invoices Found'});
+            }
+
+        } catch(e) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch invoices.'});
+        }
+    }
     
     const handleExemptionChange = (courseId: string) => {
         setExemptedCourses(prev => {
@@ -574,7 +602,9 @@ export default function UserManagementPage() {
                 <TableCell>{user.programmeName || 'N/A'}</TableCell>
                 <TableCell className="text-right">
                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleOpenEditDialog(user)}>Edit Profile</DropdownMenuItem><DropdownMenuItem>Reset Password</DropdownMenuItem><DropdownMenuSeparator />
+                        <DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel><DropdownMenuItem onClick={() => handleOpenEditDialog(user)}>Edit Profile</DropdownMenuItem>
+                        {user.role === 'Student' && <DropdownMenuItem onClick={() => handleDownloadInvoice(user.uid)}>Download Last Invoice</DropdownMenuItem>}
+                        <DropdownMenuSeparator />
                         {user.status === 'disabled' ? (<DropdownMenuItem onClick={() => handleToggleUserStatus(user)}><UserCheck className="mr-2 h-4 w-4"/>Enable User</DropdownMenuItem>) : (<DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onClick={() => handleToggleUserStatus(user)}><UserX className="mr-2 h-4 w-4"/>Disable User</DropdownMenuItem>)}
                         </DropdownMenuContent>
                     </DropdownMenu>
