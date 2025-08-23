@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Progress } from '@/components/ui/progress';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInDays } from 'date-fns';
 
 type Course = {
     id: string;
@@ -45,6 +45,8 @@ type SemesterCourses = {
     assessments: AssessmentEvent[];
 };
 
+type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const timeToMinutes = (time: string) => {
@@ -58,6 +60,8 @@ export default function StudentSemesterOverviewPage() {
     const [archivedSemesters, setArchivedSemesters] = React.useState<SemesterCourses[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
+    const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
+    const [countdown, setCountdown] = React.useState('');
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -71,11 +75,11 @@ export default function StudentSemesterOverviewPage() {
         return () => unsubscribe();
       }, []);
 
-    const fetchEnrolledCourses = React.useCallback(async () => {
+    const fetchDashboardData = React.useCallback(async () => {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap, timetablesSnap, calendarSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap, timetablesSnap, calendarSnap, settingsSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -83,7 +87,13 @@ export default function StudentSemesterOverviewPage() {
                 get(ref(db, 'attendance')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'calendarEvents')),
+                get(ref(db, 'settings'))
             ]);
+
+            if (settingsSnap.exists()) {
+                const settingsData = settingsSnap.val();
+                if(settingsData.bankDetails) setBankDetails(settingsData.bankDetails);
+            }
 
             if (!registrationsSnap.exists()) {
                 setActiveSemesters([]);
@@ -97,7 +107,7 @@ export default function StudentSemesterOverviewPage() {
             const usersData = usersSnap.exists() ? usersSnap.val() : {};
             const allAttendance = attendanceSnap.exists() ? attendanceSnap.val() : {};
             const allTimetables = timetablesSnap.exists() ? timetablesSnap.val() : {};
-            const allCalendarEvents = calendarSnap.exists() ? calendarSnap.val() : {};
+            const allCalendarEvents = calendarSnap.exists() ? Object.values(calendarSnap.val()) : [];
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
@@ -124,6 +134,8 @@ export default function StudentSemesterOverviewPage() {
 
             const newActiveSemesters: SemesterCourses[] = [];
             const newArchivedSemesters: SemesterCourses[] = [];
+
+            let nextDeadline: Date | null = null;
 
             for (const semesterId in semesterCourseMap) {
                 const semesterInfo = allSemesters[semesterId];
@@ -162,9 +174,15 @@ export default function StudentSemesterOverviewPage() {
                 
                 // Get Assessments
                 const assessmentEvents: AssessmentEvent[] = [];
-                Object.values(allCalendarEvents).forEach((event: any) => {
+                (allCalendarEvents as any[]).forEach((event: any) => {
                     if (event.semester === semesterInfo?.name) {
                         assessmentEvents.push({ title: event.title, date: event.date });
+                        if(event.title.toLowerCase().includes('deadline')) {
+                            const eventDate = parseISO(event.date);
+                            if (!nextDeadline || eventDate < nextDeadline) {
+                                nextDeadline = eventDate;
+                            }
+                        }
                     }
                 });
 
@@ -184,6 +202,13 @@ export default function StudentSemesterOverviewPage() {
                     newArchivedSemesters.push(semesterData);
                 }
             }
+
+            if (nextDeadline) {
+                const daysLeft = differenceInDays(nextDeadline, new Date());
+                if (daysLeft >= 0) {
+                    setCountdown(`${daysLeft} day(s) until next payment deadline.`);
+                }
+            }
             
             setActiveSemesters(newActiveSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
             setArchivedSemesters(newArchivedSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
@@ -199,9 +224,9 @@ export default function StudentSemesterOverviewPage() {
 
     React.useEffect(() => {
         if (currentUser) {
-            fetchEnrolledCourses();
+            fetchDashboardData();
         }
-    }, [currentUser, fetchEnrolledCourses]);
+    }, [currentUser, fetchDashboardData]);
     
     return (
         <div className="space-y-6">
@@ -211,6 +236,13 @@ export default function StudentSemesterOverviewPage() {
                     <CardDescription>An overview of your currently enrolled classes and schedules.</CardDescription>
                 </CardHeader>
             </Card>
+
+             {countdown && (
+              <div className="animate-pulse text-sm font-semibold flex items-center gap-2 rounded-lg bg-destructive/10 text-destructive px-4 py-3">
+                <Clock className="h-4 w-4"/>
+                <span>{countdown}</span>
+              </div>
+            )}
 
             {loading ? (
                 <div className="space-y-4">
@@ -299,6 +331,23 @@ export default function StudentSemesterOverviewPage() {
                         </Alert>
                     </CardContent>
                 </Card>
+            )}
+
+            {bankDetails?.accountName && (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
+                    <CardDescription>Use the following details for bank transfers. Please use your student ID as the reference.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                        <div><dt className="font-semibold">Bank Name</dt><dd className="text-muted-foreground">{bankDetails.bankName}</dd></div>
+                        <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>
+                        <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bankDetails.accountNumber}</dd></div>
+                        <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bankDetails.branchCode}</dd></div>
+                    </dl>
+                </CardContent>
+            </Card>
             )}
 
             {archivedSemesters.length > 0 && (

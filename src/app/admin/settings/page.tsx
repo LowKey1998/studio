@@ -20,6 +20,7 @@ import { allMenuItems } from '@/lib/menu-items';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 
 type IDPrefixes = { 
     student: string; 
@@ -32,10 +33,12 @@ type Institution = { name: string; logoUrl?: string; }
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
-type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }};
+type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }; facebook?: { apiKey?: string; }; };
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
 type Department = { id: string; name: string; };
+type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+
 
 export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
@@ -49,6 +52,7 @@ export default function SettingsPage() {
     const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false } });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
+    const [bankDetails, setBankDetails] = React.useState<BankDetails>({ bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
     
     // Dialog State
     const [isRoleDialogOpen, setIsRoleDialogOpen] = React.useState(false);
@@ -77,6 +81,7 @@ export default function SettingsPage() {
                 setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false } });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
                 setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
+                setBankDetails(data.bankDetails || { bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
             }
              setLoading(false);
         });
@@ -183,6 +188,7 @@ export default function SettingsPage() {
                 overduePolicy: overduePolicy,
                 registrationPolicy: registrationPolicy,
                 integrations: integrations,
+                bankDetails: bankDetails,
             });
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -207,8 +213,8 @@ export default function SettingsPage() {
                                 <CardHeader className="flex flex-row items-center justify-between p-4">
                                     <p className="font-semibold">{role.name}</p>
                                     <div className="flex gap-2">
-                                        <Button type="button" size="sm" variant="outline" onClick={() => openRoleDialog(role)}><Pencil className="mr-2 h-4"/>Edit</Button>
-                                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteRole(role.id)}><Trash2 className="mr-2 h-4"/>Delete</Button>
+                                        <Button type="button" size="sm" variant="outline" onClick={() => openRoleDialog(role)}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
+                                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteRole(role.id)}><Trash2 className="mr-2 h-4 w-4"/>Delete</Button>
                                     </div>
                                 </CardHeader>
                             </Card>
@@ -247,6 +253,34 @@ export default function SettingsPage() {
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="institution-name">Institution Name</Label><div className="sm:col-span-2"><Input id="institution-name" name="name" value={institution.name} onChange={(e) => setInstitution(p => ({...p, name: e.target.value}))} className="max-w-sm" disabled={saving} /></div></div>
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4"><div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">{logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}</div><Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/></div></div>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="font-headline text-2xl">Bank Account Details</CardTitle><CardDescription>Provide bank details for manual student payments.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="space-y-1">
+                            <Label htmlFor="bank-name">Bank Name</Label>
+                            <Input id="bank-name" value={bankDetails.bankName} onChange={(e) => setBankDetails(p => ({ ...p, bankName: e.target.value }))}/>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="account-name">Account Name</Label>
+                            <Input id="account-name" value={bankDetails.accountName} onChange={(e) => setBankDetails(p => ({ ...p, accountName: e.target.value }))}/>
+                        </div>
+                         <div className="space-y-1">
+                            <Label htmlFor="account-number">Account Number</Label>
+                            <Input id="account-number" value={bankDetails.accountNumber} onChange={(e) => setBankDetails(p => ({ ...p, accountNumber: e.target.value }))}/>
+                        </div>
+                         <div className="space-y-1">
+                            <Label htmlFor="branch-code">Branch Code</Label>
+                            <Input id="branch-code" value={bankDetails.branchCode} onChange={(e) => setBankDetails(p => ({ ...p, branchCode: e.target.value }))}/>
+                        </div>
+                         <div className="space-y-1 md:col-span-2">
+                            <Label htmlFor="swift-code">SWIFT Code</Label>
+                            <Input id="swift-code" value={bankDetails.swiftCode} onChange={(e) => setBankDetails(p => ({ ...p, swiftCode: e.target.value }))}/>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -297,6 +331,12 @@ export default function SettingsPage() {
                                 <Label htmlFor="sage-switch">{integrations.sage.enabled ? "Enabled" : "Disabled"}</Label>
                            </div>
                            <Input placeholder="Sage API Key" value={integrations.sage.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage.enabled}/>
+                        </div>
+                    </div>
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                        <Label>Facebook (for Leads)</Label>
+                        <div className="sm:col-span-2 space-y-2">
+                           <Input placeholder="Facebook API Key" value={integrations.facebook?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, apiKey: e.target.value}}))} disabled={saving}/>
                         </div>
                     </div>
                 </CardContent>

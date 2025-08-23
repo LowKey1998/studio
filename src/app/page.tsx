@@ -1,23 +1,56 @@
-'use client';
 
+'use client';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import Logo from '@/components/logo';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BarChart2, CheckCircle2, Library, MessageSquare, MonitorPlay, Shield, Wallet } from 'lucide-react';
+import { ArrowRight, BarChart2, CheckCircle2, Library, MessageSquare, MonitorPlay, Shield, Wallet, Banknote, Clock } from 'lucide-react';
 import Image from 'next/image';
+import { db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
+import { format, parseISO, differenceInDays } from 'date-fns';
+
+type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
 
 export default function LandingPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
+  const [countdown, setCountdown] = React.useState('');
 
   React.useEffect(() => {
     if (user) {
       router.replace('/dashboard');
     }
   }, [user, router]);
+
+  React.useEffect(() => {
+    const fetchSettings = async () => {
+        const settingsRef = ref(db, 'settings');
+        const snapshot = await get(settingsRef);
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            if(data.bankDetails) setBankDetails(data.bankDetails);
+            
+            const calendarEventsRef = ref(db, 'calendarEvents');
+            const calSnap = await get(calendarEventsRef);
+            if(calSnap.exists()){
+                const events = Object.values(calSnap.val()) as {title: string, date: string}[];
+                const deadlineEvent = events.find(e => e.title.toLowerCase().includes('deadline'));
+                if(deadlineEvent){
+                    const deadline = parseISO(deadlineEvent.date);
+                    const daysLeft = differenceInDays(deadline, new Date());
+                    if (daysLeft > 0) {
+                        setCountdown(`${daysLeft} days until next payment deadline.`);
+                    }
+                }
+            }
+        }
+    };
+    fetchSettings();
+  }, []);
 
   if (user) {
     return null; // or a loading spinner
@@ -88,7 +121,32 @@ export default function LandingPage() {
                 <Link href="/vacancies">View Openings</Link>
             </Button>
           </div>
+           {countdown && (
+              <div className="mt-4 animate-pulse text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-2">
+                <Clock className="h-4 w-4"/>
+                <span>{countdown}</span>
+              </div>
+            )}
         </section>
+
+        {bankDetails?.accountName && (
+            <section id="bank-details" className="container pb-12 lg:pb-24">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
+                        <CardDescription>Use the following details for bank transfers. Please use student ID as the reference.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                            <div><dt className="font-semibold">Bank Name</dt><dd className="text-muted-foreground">{bankDetails.bankName}</dd></div>
+                            <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>
+                            <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bankDetails.accountNumber}</dd></div>
+                            <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bankDetails.branchCode}</dd></div>
+                        </dl>
+                    </CardContent>
+                </Card>
+            </section>
+        )}
 
         {/* Features Section */}
         <section id="features" className="container space-y-6 bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">

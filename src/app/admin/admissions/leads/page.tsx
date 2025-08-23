@@ -90,7 +90,40 @@ export default function LeadsCapturePage() {
                     <CardTitle>Leads Capture</CardTitle>
                     <CardDescription>Manually add and manage prospective student leads.</CardDescription>
                 </div>
-                 <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
+                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button><PlusCircle className="mr-2 h-4"/>Add Lead</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add New Lead</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="space-y-1">
+                                <Label>Name</Label>
+                                <Input value={name} onChange={e => setName(e.target.value)} required/>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Email</Label>
+                                <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required/>
+                            </div>
+                             <div className="space-y-1">
+                                <Label>Phone (Optional)</Label>
+                                <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Source (Optional)</Label>
+                                <Input placeholder="e.g., Facebook, Referral" value={source} onChange={e => setSource(e.target.value)} />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                             <DialogClose asChild><Button variant="outline" onClick={resetForm}>Cancel</Button></DialogClose>
+                            <Button onClick={handleSaveLead} disabled={saving}>
+                                {saving && <Loader2 className="mr-2"/>}Save Lead
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardHeader>
             <CardContent>
                  <Table>
@@ -112,7 +145,7 @@ export default function LeadsCapturePage() {
                                 <TableCell>{lead.source}</TableCell>
                                 <TableCell>{lead.status}</TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteLead(lead.id)} disabled>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteLead(lead.id)}>
                                         <Trash2 className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </TableCell>

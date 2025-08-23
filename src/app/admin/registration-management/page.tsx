@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -12,6 +12,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { format, parseISO } from 'date-fns';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
@@ -20,6 +23,15 @@ type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
+type Registration = {
+    invoiceId: string;
+    status: 'Pending Approval' | 'Pending Payment' | 'Completed';
+}
+type Invoice = {
+    dateCreated: string;
+    studentName: string;
+    studentId: string;
+}
 
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
@@ -33,6 +45,9 @@ export default function RegistrationManagementPage() {
     const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, { active: boolean; showReason: boolean; }>>>({});
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
+    
+    const [allRegistrations, setAllRegistrations] = React.useState<any>({});
+    const [allInvoices, setAllInvoices] = React.useState<any>({});
 
     const { toast } = useToast();
     
@@ -43,7 +58,9 @@ export default function RegistrationManagementPage() {
             ref(db, 'programmes'),
             ref(db, 'courses'),
             ref(db, 'coursePaths'),
-            ref(db, 'semesterOfferings')
+            ref(db, 'semesterOfferings'),
+            ref(db, 'registrations'),
+            ref(db, 'invoices'),
         ];
         
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
@@ -54,6 +71,8 @@ export default function RegistrationManagementPage() {
                 case 2: setAllCourses(data); break;
                 case 3: setAllCoursePaths(Object.values(data)); break;
                 case 4: setActivePathSemesters(data); break;
+                case 5: setAllRegistrations(data); break;
+                case 6: setAllInvoices(data); break;
             }
         }));
 
@@ -93,6 +112,28 @@ export default function RegistrationManagementPage() {
     const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
         setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
         setIsHistoryDialogOpen(true);
+    };
+
+    const handleGenerateInvoice = (userId: string, semesterId: string) => {
+        const registration: Registration | undefined = allRegistrations[userId]?.[semesterId];
+        if (!registration) {
+            toast({ variant: 'destructive', title: 'Registration not found' });
+            return;
+        }
+
+        const invoice: Invoice | undefined = allInvoices[userId]?.[registration.invoiceId];
+        if (!invoice) {
+            toast({ variant: 'destructive', title: 'Invoice not found' });
+            return;
+        }
+        
+        const doc = new jsPDF();
+        doc.text(`Invoice for ${invoice.studentName}`, 10, 10);
+        doc.text(`Status: ${registration.status}`, 10, 20);
+        doc.text(`Semester: ${invoice.semester}`, 10, 30);
+        doc.text(`Total Due: ZMW ${invoice.totalTuition.toFixed(2)}`, 10, 40);
+        
+        doc.save(`invoice-${invoice.studentId}-${invoice.semester.replace(' ', '')}.pdf`);
     };
     
     return (
