@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -398,8 +397,8 @@ export default function CoursePathsPage() {
                                                         {yearIndex === numYears - 1 && <Button variant="ghost" size="icon" onClick={() => setNumYears(prev => Math.max(1, prev-1))} disabled={numYears <= 1}><MinusCircle className="h-5 w-5 text-destructive"/></Button>}
                                                     </div>
                                                     <div className="grid md:grid-cols-2 gap-4">
-                                                        <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} currentPath={currentPath} onHistoryClick={setViewingHistory} />
-                                                        <SemesterColumn semesterNum={2} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 2)] || []} currentPath={currentPath} onHistoryClick={setViewingHistory} />
+                                                        <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} currentPath={currentPath} onHistoryClick={openHistoryDialog} />
+                                                        <SemesterColumn semesterNum={2} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 2)] || []} currentPath={currentPath} onHistoryClick={openHistoryDialog} />
                                                     </div>
                                                 </div>
                                             ))}
@@ -439,7 +438,7 @@ export default function CoursePathsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-                 <Dialog open={!!viewingHistory.length} onOpenChange={() => setViewingHistory([])}>
+                 <Dialog open={isHistoryDialogOpen} onOpenChange={() => setViewingHistory([])}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Semester Change History</DialogTitle>
@@ -450,8 +449,8 @@ export default function CoursePathsPage() {
                                     <p className="font-semibold">{item.reason}</p>
                                     <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
                                     <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
-                                        <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
-                                        <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
+                                        <div><p className="font-bold">Removed:</p><ul>{(item.oldCourses || []).filter(c => !(item.newCourses || []).includes(c)).map(id => <li key={id}>- {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
+                                        <div><p className="font-bold">Added:</p><ul>{(item.newCourses || []).filter(c => !(item.oldCourses || []).includes(c)).map(id => <li key={id}>+ {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
                                     </div>
                                 </div>
                             ))}
