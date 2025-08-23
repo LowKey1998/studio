@@ -40,6 +40,7 @@ export default function DashboardLayout({
   const { toast } = useToast();
   const { user, userProfile, loading } = useAuth();
   const [search, setSearch] = React.useState('');
+  const [openAccordion, setOpenAccordion] = React.useState<string[]>([]);
   
   const handleLogout = async () => {
     try {
@@ -59,6 +60,13 @@ export default function DashboardLayout({
     }
   };
   
+  React.useEffect(() => {
+    const activeCategory = allMenuItems.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+    if(activeCategory) {
+        setOpenAccordion([activeCategory]);
+    }
+  }, [pathname]);
+
   const renderMenu = () => {
     if (loading || !userProfile) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
@@ -76,11 +84,10 @@ export default function DashboardLayout({
         const baseMenu = staffBaseMenuItems.map(category => {
             if (!category.items) return category;
             const filteredSubItems = category.items.filter(subItem => {
-                 if (!subItem.permission) return true; // Always show items without specific permissions
-                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) { // Check against href permissions
+                 if (!subItem.permission) return true;
+                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
                      return !!staffPermissions[subItem.permission];
                  }
-                 // Legacy check for sub-role names
                  return userProfile.subRoles?.includes(subItem.permission);
             });
             
@@ -124,7 +131,6 @@ export default function DashboardLayout({
         );
 
         if (category.label.toLowerCase().includes(searchLower) || (matchingSubItems && matchingSubItems.length > 0)) {
-            // If category name matches, show all its items. If not, show only matching sub-items.
             return {
                 ...category,
                 items: category.label.toLowerCase().includes(searchLower) ? category.items : matchingSubItems
@@ -135,10 +141,10 @@ export default function DashboardLayout({
       })
       .filter(Boolean);
 
-    const defaultOpen = search ? filteredItems.map(item => item?.label) : [itemsToRender.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label];
+    const defaultOpen = search ? filteredItems.map(item => item?.label) : openAccordion;
     
     return (
-        <Accordion type="multiple" defaultValue={defaultOpen as string[]} className="w-full">
+        <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
                 if (!item) return null;
                 if (item.isComingSoon) {
@@ -165,7 +171,7 @@ export default function DashboardLayout({
                                  <SidebarMenu>
                                     {item.items.map((subItem: any) => (
                                         <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.isPremium ? '#' : subItem.href}>
+                                            <Link href={subItem.isPremium ? '#' : subItem.href} onClick={() => setOpenAccordion([])}>
                                                 <SidebarMenuButton 
                                                     isActive={pathname.startsWith(subItem.href)}
                                                     disabled={subItem.isPremium}
