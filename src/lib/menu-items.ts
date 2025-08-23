@@ -21,6 +21,7 @@ export const allMenuItems = [
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
       items: [
+        { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp, isPremium: true },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar, isPremium: true },
@@ -154,11 +155,11 @@ export const allMenuItems = [
       roles: ['Admin', 'HR'],
       items: [
            { href: '/admin/hr/add-staff', label: 'Add Staff', icon: UserPlus },
+           { href: '/admin/hr/salaries', label: 'Salaries', icon: DollarSign },
+           { href: '/admin/hr/payroll', label: 'Payroll Processing', icon: Wallet },
            { href: '/admin/leave-approvals', label: 'Leave Approvals', icon: UserCheckIcon },
            { href: '/admin/vacancies', label: 'Vacancies', icon: Briefcase },
            { href: '/admin/hr/onboarding', label: 'Digital Onboarding', icon: UserPlus },
-           { href: '/admin/hr/salaries', label: 'Salaries', icon: DollarSign },
-           { href: '/admin/hr/payroll', label: 'Payroll Processing', icon: Wallet },
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
