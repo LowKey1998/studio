@@ -313,14 +313,14 @@ export default function ProgrammesPage() {
                              <div className="space-y-1">
                                 <Label htmlFor="programme-tuition">Programme Tuition Fee (per Semester)</Label>
                                 <div className="relative">
-                                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ZMW</span>
                                     <Input
                                         id="programme-tuition"
                                         type="number"
                                         value={programmeTuition}
                                         onChange={(e) => setProgrammeTuition(e.target.value)}
                                         placeholder="Leave blank to charge per course"
-                                        className="pl-8"
+                                        className="pl-12"
                                     />
                                 </div>
                             </div>
@@ -430,4 +430,3 @@ export default function ProgrammesPage() {
         </Card>
     );
 }
-
