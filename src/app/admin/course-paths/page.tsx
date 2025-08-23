@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
@@ -289,6 +289,10 @@ export default function CoursePathsPage() {
                                     <TableBody>
                                         {intakes.length > 0 ? intakes.map(i => (
                                             <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right">
+                                                <Button variant="outline" size="sm" className="mr-2" onClick={() => { setSelectedIntake(i.id); setActiveTab('paths'); }}>
+                                                    <Route className="mr-2 h-4 w-4" />
+                                                    Add/Edit Path
+                                                </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenIntakeDialog(i)}><Pencil className="h-4 w-4"/></Button>
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>
