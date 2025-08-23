@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
+import { ref, onValue, set, push, remove, update, get, serverTimestamp } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input";
@@ -22,12 +22,15 @@ import { cn } from '@/lib/utils';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Textarea } from '@/components/ui/textarea';
 
 // --- TYPE DEFINITIONS ---
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
+type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
+type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
 
 // --- MAIN PAGE COMPONENT ---
 export default function CoursePathsPage() {
@@ -53,6 +56,10 @@ export default function CoursePathsPage() {
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
     const [targetSemester, setTargetSemester] = React.useState('');
+
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
+    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
+
 
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
@@ -86,7 +93,7 @@ export default function CoursePathsPage() {
         if (currentPath && currentPath.semesters) {
             setNumYears(Math.ceil(Object.keys(currentPath.semesters).length / 2) || 4);
             for (const semesterNum in currentPath.semesters) {
-                const semesterCourseIds = currentPath.semesters[semesterNum].courses;
+                const semesterCourseIds = currentPath.semesters[Number(semesterNum)].courses;
                 newSemesterCourses[semesterNum] = semesterCourseIds.map(id => {
                     assignedCourseIds.add(id);
                     return courses.find(c => c.id === id)!;
@@ -108,10 +115,36 @@ export default function CoursePathsPage() {
                 intakeId: selectedIntake,
                 programmeId: selectedProgramme,
                 semesters: Object.entries(semesterCourses).reduce((acc, [sem, crs]) => {
-                    if (crs && crs.length > 0) acc[Number(sem)] = { courses: crs.map(c => c.id) };
+                    if (crs && crs.length > 0) {
+                        const oldCourses = currentPath?.semesters[Number(sem)]?.courses || [];
+                        const newCourses = crs.map(c => c.id);
+                        
+                        const hasChanged = JSON.stringify(oldCourses.sort()) !== JSON.stringify(newCourses.sort());
+                        
+                        let history = currentPath?.semesters[Number(sem)]?.history || {};
+                        if(hasChanged) {
+                             const reason = prompt("Please provide a reason for this change (e.g., 'Lecturer unavailable', 'Curriculum update').");
+                             if(reason) {
+                                const historyEntry: CoursePathHistoryItem = {
+                                    reason,
+                                    oldCourses,
+                                    newCourses,
+                                    timestamp: serverTimestamp()
+                                };
+                                const historyKey = push(ref(db)).key!;
+                                history[historyKey] = historyEntry;
+                             } else {
+                                toast({ variant: 'destructive', title: 'Change Canceled', description: 'A reason is required to update a course path.'});
+                                return;
+                             }
+                        }
+
+                        acc[Number(sem)] = { courses: newCourses, history };
+                    }
                     return acc;
-                }, {} as Record<number, { courses: string[] }>)
+                }, {} as Record<number, CoursePathSemester>)
             };
+
             if (currentPath) {
                 await update(ref(db, `coursePaths/${currentPath.id}`), pathData);
             } else {
@@ -340,8 +373,8 @@ export default function CoursePathsPage() {
                                                         {yearIndex === numYears - 1 && <Button variant="ghost" size="icon" onClick={() => setNumYears(prev => Math.max(1, prev-1))} disabled={numYears <= 1}><MinusCircle className="h-5 w-5 text-destructive"/></Button>}
                                                     </div>
                                                     <div className="grid md:grid-cols-2 gap-4">
-                                                        <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} />
-                                                        <SemesterColumn semesterNum={2} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 2)] || []} />
+                                                        <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} currentPath={currentPath} onHistoryClick={setViewingHistory} />
+                                                        <SemesterColumn semesterNum={2} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 2)] || []} currentPath={currentPath} onHistoryClick={setViewingHistory} />
                                                     </div>
                                                 </div>
                                             ))}
@@ -381,6 +414,25 @@ export default function CoursePathsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                 <Dialog open={!!viewingHistory.length} onOpenChange={() => setViewingHistory([])}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Semester Change History</DialogTitle>
+                        </DialogHeader>
+                        <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
+                            {viewingHistory.map((item, index) => (
+                                <div key={index} className="p-3 border rounded-lg">
+                                    <p className="font-semibold">{item.reason}</p>
+                                    <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
+                                    <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
+                                        <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
+                                        <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {courses.find(c=>c.id===id)?.name}</li>)}</ul></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
@@ -408,12 +460,22 @@ function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Cours
 }
 
 // --- Semester Column Component ---
-function SemesterColumn({ semesterNum, courses, year }: { semesterNum: number, courses: Course[], year: number }) {
+function SemesterColumn({ semesterNum, courses, year, currentPath, onHistoryClick }: { semesterNum: number, courses: Course[], year: number, currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void }) {
     const semesterId = String((year - 1) * 2 + semesterNum);
     const { setNodeRef } = useSortable({ id: semesterId, data: { type: 'container', id: semesterId } });
+    const history = currentPath?.semesters?.[Number(semesterId)]?.history;
+    const historyItems = history ? Object.values(history) : [];
+
     return (
         <div ref={setNodeRef} className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
-            <h3 className="font-bold text-center">Semester {semesterNum}</h3>
+             <div className="flex justify-between items-center">
+                <h3 className="font-bold text-center">Semester {semesterNum}</h3>
+                {historyItems.length > 0 && (
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryClick(historyItems)}>
+                        <History className="h-4 w-4 text-blue-600"/>
+                    </Button>
+                )}
+            </div>
             <SortableContext id={semesterId} items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-2">
                     {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} />)}
@@ -463,5 +525,4 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
-
     

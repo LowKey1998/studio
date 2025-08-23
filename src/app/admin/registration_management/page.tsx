@@ -3,20 +3,22 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route } from 'lucide-react';
+import { Loader2, BookOpen, Route, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
+type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
+type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
 
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
@@ -112,10 +114,15 @@ export default function RegistrationManagementPage() {
                                                         <CardTitle className="text-base">{programme.name}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
-                                                        {sortedSemesters.map(([semNum, semData]) => (
+                                                        {sortedSemesters.map(([semNum, semData]) => {
+                                                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
+                                                            const semesterInYear = (Number(semNum) - 1) % 2 + 1;
+                                                            const label = `Year ${year}, Semester ${semesterInYear}`;
+
+                                                            return (
                                                             <div key={semNum} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
-                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">Semester {semNum}</Label>
+                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
                                                                     <Switch 
                                                                         id={`${path.id}-${semNum}`} 
                                                                         checked={!!activePathSemesters[path.id]?.[semNum]}
@@ -129,7 +136,8 @@ export default function RegistrationManagementPage() {
                                                                     })}
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                            )
+                                                        })}
                                                     </CardContent>
                                                 </Card>
                                             )
@@ -142,7 +150,7 @@ export default function RegistrationManagementPage() {
                            ))}
                         </Accordion>
                     ) : (
-                        <div className="py-16 text-center text-muted-foreground"><BookOpen className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">No Intakes Found</h3><p className="mt-2 text-sm">Create intakes from the "Intakes &amp; Course Paths" page first.</p></div>
+                        <div className="py-16 text-center text-muted-foreground"><BookOpen className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">No Intakes Found</h3><p className="mt-2 text-sm">Create intakes from the "Intakes & Course Paths" page first.</p></div>
                     )
                 }
             </CardContent>

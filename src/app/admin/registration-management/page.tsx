@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -11,12 +11,15 @@ import { ref, get, set, onValue } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, { courses: string[] }> };
+type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
+type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
 
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
@@ -27,7 +30,9 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, boolean>>>({});
+    const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, { active: boolean; showReason: boolean; }>>>({});
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
+    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
     const { toast } = useToast();
     
@@ -69,12 +74,25 @@ export default function RegistrationManagementPage() {
     const handleToggleSemester = (pathId: string, semesterNumber: string) => {
         setActivePathSemesters(prev => {
             const newPaths = { ...prev };
-            if (!newPaths[pathId]) {
-                newPaths[pathId] = {};
-            }
-            newPaths[pathId][semesterNumber] = !newPaths[pathId][semesterNumber];
+            if (!newPaths[pathId]) newPaths[pathId] = {};
+            if (!newPaths[pathId][semesterNumber]) newPaths[pathId][semesterNumber] = { active: false, showReason: false };
+            newPaths[pathId][semesterNumber].active = !newPaths[pathId][semesterNumber].active;
             return newPaths;
         });
+    };
+    
+    const handleToggleReasonVisibility = (pathId: string, semesterNumber: string) => {
+        setActivePathSemesters(prev => {
+            const newPaths = { ...prev };
+            if (!newPaths[pathId] || !newPaths[pathId][semesterNumber]) return prev;
+            newPaths[pathId][semesterNumber].showReason = !newPaths[pathId][semesterNumber].showReason;
+            return newPaths;
+        });
+    }
+
+    const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
+        setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
+        setIsHistoryDialogOpen(true);
     };
     
     return (
@@ -116,17 +134,31 @@ export default function RegistrationManagementPage() {
                                                             const year = Math.floor((Number(semNum) - 1) / 2) + 1;
                                                             const semesterInYear = (Number(semNum) - 1) % 2 + 1;
                                                             const label = `Year ${year}, Semester ${semesterInYear}`;
+                                                            const historyItems = semData.history ? Object.values(semData.history) : [];
 
                                                             return (
                                                             <div key={semNum} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
                                                                     <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
-                                                                    <Switch 
-                                                                        id={`${path.id}-${semNum}`} 
-                                                                        checked={!!activePathSemesters[path.id]?.[semNum]}
-                                                                        onCheckedChange={() => handleToggleSemester(path.id, semNum)}
-                                                                    />
+                                                                    <div className="flex items-center gap-2">
+                                                                         {historyItems.length > 0 && (
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
+                                                                                <History className="h-4 w-4 text-blue-600"/>
+                                                                            </Button>
+                                                                        )}
+                                                                        <Switch 
+                                                                            id={`${path.id}-${semNum}`} 
+                                                                            checked={!!activePathSemesters[path.id]?.[semNum]?.active}
+                                                                            onCheckedChange={() => handleToggleSemester(path.id, semNum)}
+                                                                        />
+                                                                    </div>
                                                                 </div>
+                                                                {historyItems.length > 0 && (
+                                                                     <div className="flex items-center space-x-2 my-2">
+                                                                         <Switch id={`show-reason-${path.id}-${semNum}`} checked={!!activePathSemesters[path.id]?.[semNum]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semNum)}/>
+                                                                         <Label htmlFor={`show-reason-${path.id}-${semNum}`} className="text-xs">Show change reason to students</Label>
+                                                                     </div>
+                                                                )}
                                                                  <div className="text-sm text-muted-foreground space-y-1">
                                                                     {semData.courses.map(courseId => {
                                                                         const course = allCourses[courseId];
@@ -156,6 +188,31 @@ export default function RegistrationManagementPage() {
                 <Button onClick={handleSaveChanges} disabled={saving || loading}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{saving ? 'Saving...' : 'Save Changes'}</Button>
             </CardFooter>
         </Card>
+         <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Semester Change History</DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
+                    {viewingHistory.map((item, index) => (
+                        <div key={index} className="p-3 border rounded-lg">
+                            <p className="font-semibold">{item.reason}</p>
+                            <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
+                            <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
+                                <div>
+                                    <p className="font-bold">Removed:</p>
+                                    <ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul>
+                                </div>
+                                <div>
+                                    <p className="font-bold">Added:</p>
+                                    <ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
         </div>
     );
 }
