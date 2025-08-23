@@ -18,11 +18,17 @@ import { format } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
 
+type Deduction = {
+    name: string;
+    amount: number;
+};
+
 type SalaryComponents = {
     baseSalary?: number;
     housingAllowance?: number;
     transportAllowance?: number;
     otherAllowances?: number;
+    deductions?: Deduction[];
 };
 
 type StaffMember = {
@@ -35,11 +41,11 @@ type StaffMember = {
     salaryComponents?: SalaryComponents;
 };
 
-// Mock payroll data calculation
+// Updated payroll data calculation
 const calculatePayroll = (staff: StaffMember) => {
     const components = staff.salaryComponents || {};
     const grossSalary = (components.baseSalary || 0) + (components.housingAllowance || 0) + (components.transportAllowance || 0) + (components.otherAllowances || 0);
-    const deductions = grossSalary * 0.15; // Mock 15% deduction for NAPSA, etc.
+    const deductions = (components.deductions || []).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
     const netPay = grossSalary - deductions;
     return { grossSalary, deductions, netPay };
 };
