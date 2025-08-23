@@ -43,14 +43,6 @@ export default function PayrollPage() {
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
     const { toast } = useToast();
 
-    const hasPermission = React.useMemo(() => {
-        if (!userProfile) return false;
-        // Admins always have access
-        if (userProfile.role === 'Admin') return true;
-        // Staff access is determined by specific permission
-        return !!userProfile.permissions?.['/admin/hr/payroll'];
-    }, [userProfile]);
-
     React.useEffect(() => {
         const settingsRef = ref(db, 'settings/integrations');
         const unsubSettings = onValue(settingsRef, (snapshot) => {
@@ -66,7 +58,7 @@ export default function PayrollPage() {
 
 
     React.useEffect(() => {
-        if (!user || !hasPermission) {
+        if (!user) {
             return;
         }
 
@@ -92,7 +84,7 @@ export default function PayrollPage() {
         };
 
         fetchStaff();
-    }, [user, hasPermission, toast]);
+    }, [user, toast]);
     
     const handleSendPayslip = async (staff: StaffMember, payroll: {deductions: number, netPay: number}) => {
         setActionLoading(`payslip-${staff.uid}`);
@@ -171,22 +163,6 @@ export default function PayrollPage() {
         );
     }
     
-    if (!hasPermission) {
-        return (
-            <Card>
-                <CardContent className="pt-6">
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Access Denied</AlertTitle>
-                        <AlertDescription>
-                            You do not have permission to view the payroll page. This feature is restricted to authorized personnel.
-                        </AlertDescription>
-                    </Alert>
-                </CardContent>
-            </Card>
-        );
-    }
-
     return (
         <Card className="shadow-lg">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
