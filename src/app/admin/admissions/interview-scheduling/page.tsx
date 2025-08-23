@@ -16,7 +16,6 @@ export default function InterviewSchedulingPage() {
                         <CardTitle>Interview Scheduling</CardTitle>
                         <CardDescription>Schedule and manage interviews with prospective students.</CardDescription>
                     </div>
-                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
                 </div>
             </CardHeader>
             <CardContent className="flex justify-center">
@@ -25,7 +24,6 @@ export default function InterviewSchedulingPage() {
                     selected={date}
                     onSelect={setDate}
                     className="rounded-md border"
-                    disabled
                 />
             </CardContent>
         </Card>

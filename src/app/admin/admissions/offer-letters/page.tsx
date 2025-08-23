@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileSignature, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function OfferLettersPage() {
     return (
@@ -16,17 +17,28 @@ export default function OfferLettersPage() {
                         <CardTitle>Offer Letters</CardTitle>
                         <CardDescription>Generate, send, and track offer letters for accepted students.</CardDescription>
                     </div>
-                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
                 </div>
             </CardHeader>
              <CardContent>
                 <div className="flex gap-2 mb-4">
-                    <Input placeholder="Search accepted applicant..." disabled/>
-                    <Button disabled><Search className="mr-2 h-4"/>Search</Button>
+                    <Input placeholder="Search accepted applicant..."/>
+                    <Button><Search className="mr-2 h-4"/>Search</Button>
                 </div>
-                <div className="border rounded-lg p-8 text-center text-muted-foreground">
-                    <p>Accepted applicants will be listed here to generate offer letters.</p>
-                </div>
+                 <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Applicant</TableHead>
+                            <TableHead>Programme</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center h-24">Search for an applicant to generate an offer letter.</TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
             </CardContent>
         </Card>
     );

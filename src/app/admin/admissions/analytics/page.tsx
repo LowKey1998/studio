@@ -5,20 +5,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { Badge } from '@/components/ui/badge';
-
-const chartData = [
-    { stage: "Leads", count: 1200 },
-    { stage: "Applied", count: 850 },
-    { stage: "Interviewed", count: 400 },
-    { stage: "Offered", count: 250 },
-    { stage: "Enrolled", count: 180 },
-];
+import { db } from '@/lib/firebase';
+import { ref, onValue } from 'firebase/database';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const chartConfig = {
   count: { label: "Count", color: "hsl(var(--chart-1))" },
 } satisfies ChartConfig;
 
 export default function AdmissionFunnelAnalyticsPage() {
+    const [chartData, setChartData] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        const leadsRef = ref(db, 'admissions/leads');
+        const unsub = onValue(leadsRef, (snapshot) => {
+            const leads = snapshot.val() || {};
+            const leadsList = Object.values(leads);
+            
+            const funnel = [
+                { stage: "Leads", count: leadsList.length },
+                { stage: "Applied", count: leadsList.filter((l: any) => l.status === 'Applied' || l.status === 'Contacted').length },
+                { stage: "Enrolled", count: 0 }, // Placeholder
+            ];
+
+            setChartData(funnel as any);
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
     return (
         <Card>
             <CardHeader>
@@ -27,11 +43,11 @@ export default function AdmissionFunnelAnalyticsPage() {
                         <CardTitle>Admission Funnel Analytics</CardTitle>
                         <CardDescription>Visualize the entire admission process from lead to enrollment.</CardDescription>
                     </div>
-                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
                 </div>
             </CardHeader>
             <CardContent>
-                <ChartContainer config={chartConfig} className="h-[400px] w-full blur-sm pointer-events-none">
+                {loading ? <Skeleton className="h-[400px] w-full" /> :
+                <ChartContainer config={chartConfig} className="h-[400px] w-full">
                     <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                         <CartesianGrid horizontal={false} />
                         <YAxis dataKey="stage" type="category" tickLine={false} axisLine={false}/>
@@ -40,6 +56,7 @@ export default function AdmissionFunnelAnalyticsPage() {
                         <Bar dataKey="count" fill="var(--color-count)" radius={4} />
                     </BarChart>
                 </ChartContainer>
+                }
             </CardContent>
         </Card>
     );

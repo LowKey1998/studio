@@ -15,14 +15,13 @@ export default function ScoringPage() {
                         <CardTitle>Scoring & Results</CardTitle>
                         <CardDescription>Define scoring criteria and evaluate applicants based on a standardized rubric.</CardDescription>
                     </div>
-                    <Badge variant="outline" className="text-yellow-500 border-yellow-500">Premium</Badge>
                 </div>
             </CardHeader>
             <CardContent>
                 <div className="text-center p-8 border rounded-lg bg-muted/50">
-                    <h3 className="text-xl font-semibold mb-2">Coming Soon!</h3>
+                    <h3 className="text-xl font-semibold mb-2">Create Custom Rubrics</h3>
                     <p className="text-muted-foreground">This section will allow for creating rubrics and scoring applicants.</p>
-                     <Button className="mt-4" disabled><PlusCircle className="mr-2 h-4"/>Create Rubric</Button>
+                     <Button className="mt-4"><PlusCircle className="mr-2 h-4"/>Create Rubric</Button>
                 </div>
             </CardContent>
         </Card>
