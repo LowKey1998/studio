@@ -30,8 +30,9 @@ type StaffMember = {
 
 // Mock payroll data calculation
 const calculatePayroll = (staff: StaffMember) => {
-    const deductions = staff.baseSalary * 0.15; // Mock 15% deduction
-    const netPay = staff.baseSalary - deductions;
+    const baseSalary = staff.baseSalary || 0;
+    const deductions = baseSalary * 0.15; // Mock 15% deduction
+    const netPay = baseSalary - deductions;
     return { deductions, netPay };
 };
 

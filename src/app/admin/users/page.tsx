@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, DollarSign } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -141,7 +141,6 @@ export default function UserManagementPage() {
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [manualId, setManualId] = React.useState('');
     const [isManualId, setIsManualId] = React.useState(false);
-    const [baseSalary, setBaseSalary] = React.useState('');
     
     const [dob, setDob] = React.useState('');
     const [gender, setGender] = React.useState('');
@@ -165,7 +164,6 @@ export default function UserManagementPage() {
     const [editSubRoles, setEditSubRoles] = React.useState<string[]>([]);
     const [editProgramme, setEditProgramme] = React.useState('');
     const [editIntake, setEditIntake] = React.useState('');
-    const [editBaseSalary, setEditBaseSalary] = React.useState('');
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Data for dialogs
@@ -218,9 +216,9 @@ export default function UserManagementPage() {
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
                 get(child(ref(db), 'users')),
-                get(ref(db, 'settings/subRoles')),
-                get(ref(db, 'settings/idPrefixes')),
-                get(ref(db, 'semesters')),
+                get(child(ref(db), 'settings/subRoles')),
+                get(child(ref(db), 'settings/idPrefixes')),
+                get(child(ref(db), 'semesters')),
             ]);
 
             const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
@@ -258,7 +256,7 @@ export default function UserManagementPage() {
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
-        setManualId(''); setIsManualId(false); setBaseSalary('');
+        setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
         setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
@@ -294,6 +292,7 @@ export default function UserManagementPage() {
 
         try {
             let newId = '';
+            const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
             
             const isIdTaken = async (id: string) => {
                  const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
@@ -310,7 +309,6 @@ export default function UserManagementPage() {
                     return;
                 }
             } else {
-                const prefixes = idSettings || { student: 'STU', staff: 'STF', admin: 'ADM' };
                 const counterRef = ref(db, `userCounters/${role}`);
                 let isUniqueIdFound = false;
 
@@ -352,7 +350,6 @@ export default function UserManagementPage() {
                 if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses;
             } else if (role === 'staff') {
                  if (subRoles.length > 0) newUser.subRoles = subRoles;
-                 if (baseSalary) newUser.baseSalary = parseFloat(baseSalary);
             }
 
 
@@ -378,7 +375,6 @@ export default function UserManagementPage() {
         setEditSubRoles(user.subRoles || []); 
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
-        setEditBaseSalary(user.baseSalary?.toString() || '');
         setIsEditOpen(true);
     };
     
@@ -406,7 +402,6 @@ export default function UserManagementPage() {
             const updatedUserData: Partial<User> = { name: editName, role: editRole };
              if (editRole === 'Staff') {
                 updatedUserData.subRoles = editSubRoles;
-                updatedUserData.baseSalary = parseFloat(editBaseSalary) || 0;
              }
              if (editRole === 'Student') {
                 updatedUserData.intakeId = editIntake;
@@ -423,9 +418,6 @@ export default function UserManagementPage() {
             if (editRole === 'Student') {
                  if (editingUser.intakeId !== editIntake) changes.push(`Intake updated`);
                  if (editingUser.programmeId !== editProgramme) changes.push(`Programme updated`);
-            }
-             if (editRole === 'Staff' && editingUser.baseSalary !== parseFloat(editBaseSalary)) {
-                changes.push(`Base salary updated`);
             }
             if(changes.length > 0) action += ` Details: ${changes.join('. ')}.`;
             const activityRef = push(ref(db, 'recentActivities'));
@@ -530,13 +522,11 @@ export default function UserManagementPage() {
                                     <AccordionItem value="item-2">
                                         <AccordionTrigger className="text-lg font-semibold">{role === 'staff' ? 'Role Information' : 'Academic Information'}</AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
-                                            {role === 'staff' && (<div className="space-y-4 rounded-md border p-3">
-                                                 <div className="space-y-1"><Label>Base Salary (ZMW)</Label><Input type="number" placeholder="e.g., 50000" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} disabled={loading}/></div>
-                                                <div className="space-y-2"><Label>Sub-Roles</Label>
+                                            {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
+                                                <Label>Sub-Roles</Label>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                                         {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
                                                     </div>
-                                                </div>
                                             </div>)}
                                             {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -621,7 +611,6 @@ export default function UserManagementPage() {
                     )}
                     {editRole === 'Staff' && (
                     <>
-                        <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-salary" className="text-right">Base Salary</Label><Input id="edit-salary" type="number" value={editBaseSalary} onChange={e => setEditBaseSalary(e.target.value)} className="col-span-3" disabled={loading}/></div>
                         <div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>
                     </>
                     )}
