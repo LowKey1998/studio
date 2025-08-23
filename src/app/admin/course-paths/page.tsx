@@ -88,12 +88,12 @@ export default function CoursePathsPage() {
 
     React.useEffect(() => {
         const newSemesterCourses: Record<string, Course[]> = {};
-        let assignedCourseIds = new Set<string>();
+        const assignedCourseIds = new Set<string>();
 
         if (currentPath && currentPath.semesters) {
             setNumYears(Math.ceil(Object.keys(currentPath.semesters).length / 2) || 4);
-            Object.keys(currentPath.semesters).forEach(semesterNum => {
-                const semesterCourseIds = currentPath.semesters[Number(semesterNum)].courses || [];
+            Object.entries(currentPath.semesters).forEach(([semesterNum, semesterData]) => {
+                const semesterCourseIds = semesterData.courses || [];
                 newSemesterCourses[semesterNum] = semesterCourseIds
                     .map(id => {
                         assignedCourseIds.add(id);
@@ -102,18 +102,13 @@ export default function CoursePathsPage() {
                     .filter((c): c is Course => !!c);
             });
         } else {
-             setNumYears(4);
-             assignedCourseIds = new Set();
+            setNumYears(4);
         }
-
-        // Also add courses from the current drag-and-drop state to the assigned set
-        Object.values(semesterCourses).flat().forEach(c => assignedCourseIds.add(c.id));
         
         setSemesterCourses(newSemesterCourses);
-        
         const activeCourses = courses.filter(c => c.status === 'active');
         setAvailableCourses(activeCourses.filter(c => !assignedCourseIds.has(c.id)));
-    }, [currentPath, courses, semesterCourses]);
+    }, [currentPath, courses]);
     
     const handleSaveCoursePath = async () => {
         if (!selectedIntake || !selectedProgramme) return;
@@ -121,7 +116,6 @@ export default function CoursePathsPage() {
 
         try {
             const pathSemesters: Record<number, CoursePathSemester> = {};
-            let changeReason = '';
             let isAnySemesterChanged = false;
 
             // First, check if any semester has changed to decide if a reason is needed
@@ -137,6 +131,7 @@ export default function CoursePathsPage() {
             }
 
             // If there's a change, optionally prompt for a reason
+            let changeReason = '';
             if (isAnySemesterChanged) {
                 const reason = prompt("Optional: Provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
                 // User can cancel or leave it empty, so we just use the result.
