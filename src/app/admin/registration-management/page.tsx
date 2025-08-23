@@ -50,6 +50,194 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
+// --- DIALOG CONTENT COMPONENT ---
+type CreateOrEditDialogContentProps = {
+    editingSemester: Semester | null;
+    onClose: () => void;
+    onSaveSuccess: () => void;
+    allPaymentPlans: PaymentPlan[];
+    feeTemplates: FeeTemplate[];
+};
+
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: CreateOrEditDialogContentProps) {
+    const [saving, setSaving] = React.useState(false);
+    const [semesterNameInput, setSemesterNameInput] = React.useState('');
+    const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
+    const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>({});
+    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+    const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+    
+    const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
+    const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
+
+    const [selectedFeeTemplate, setSelectedFeeTemplate] = React.useState('');
+    const [feeAmount, setFeeAmount] = React.useState('');
+
+    const { toast } = useToast();
+    
+    React.useEffect(() => {
+        if (editingSemester) {
+            setSemesterNameInput(editingSemester.name || '');
+            setSemesterDates({
+                from: editingSemester.startDate ? parseISO(editingSemester.startDate) : undefined,
+                to: editingSemester.endDate ? parseISO(editingSemester.endDate) : undefined
+            });
+            setSelectedPaymentPlans(editingSemester.paymentPlanIds || {});
+            setMandatoryFees(editingSemester.mandatoryFees || {});
+            setOptionalFees(editingSemester.optionalFees || {});
+        } else {
+             setSemesterNameInput('');
+             setSemesterDates(undefined);
+             setSelectedPaymentPlans({});
+             setMandatoryFees({});
+             setOptionalFees({});
+        }
+    }, [editingSemester]);
+
+
+    const handlePlanSelection = (planId: string) => {
+        setSelectedPaymentPlans(prev => {
+            const newSelection = { ...prev };
+            if (newSelection[planId]) delete newSelection[planId];
+            else newSelection[planId] = true;
+            return newSelection;
+        });
+    };
+
+    const handleImportFee = (isMandatory: boolean) => {
+        if (!selectedFeeTemplate || !feeAmount) { toast({ variant: 'destructive', title: 'Missing Fee Details' }); return; }
+        const template = feeTemplates.find(t => t.id === selectedFeeTemplate);
+        if (!template) return;
+        
+        const newFee = { name: template.name, amount: parseFloat(feeAmount) };
+        const feeId = push(ref(db, 'semesters')).key!;
+        
+        if (isMandatory) {
+            setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
+            setIsMandatoryFeeDialogOpen(false);
+        } else {
+            setOptionalFees(prev => ({ ...prev, [feeId]: newFee }));
+            setIsOptionalFeeDialogOpen(false);
+        }
+        setSelectedFeeTemplate('');
+        setFeeAmount('');
+    };
+    
+    const handleDeleteFee = (feeId: string, isMandatory: boolean) => {
+        if (isMandatory) {
+            setMandatoryFees(prev => {
+                const newFees = { ...prev };
+                delete newFees[feeId];
+                return newFees;
+            });
+        } else {
+            setOptionalFees(prev => {
+                const newFees = { ...prev };
+                delete newFees[feeId];
+                return newFees;
+            });
+        }
+    };
+
+    const handleSaveSemester = async () => {
+        if (!semesterNameInput.trim() || !semesterDates?.from) { toast({ variant: 'destructive', title: 'Missing Semester Details'}); return; }
+        setSaving(true);
+        try {
+            const semesterData: Omit<Semester, 'id'> & { id?: string } = {
+                ...(editingSemester || {}),
+                name: semesterNameInput.trim(),
+                status: editingSemester?.status || 'Closed',
+                lateRegistrationActive: editingSemester?.lateRegistrationActive || false,
+                startDate: format(semesterDates.from, 'yyyy-MM-dd'),
+                endDate: semesterDates.to ? format(semesterDates.to, 'yyyy-MM-dd') : format(semesterDates.from, 'yyyy-MM-dd'),
+                paymentPlanIds: selectedPaymentPlans,
+                mandatoryFees,
+                optionalFees,
+            };
+
+            if (editingSemester) {
+                await update(ref(db, `semesters/${editingSemester.id}`), semesterData);
+                toast({ variant: 'success', title: 'Semester Updated' });
+            } else {
+                await set(push(ref(db, 'semesters')), semesterData);
+                toast({ variant: 'success', title: 'Semester Created' });
+            }
+            onSaveSuccess();
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Operation Failed', description: error.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+    
+    const renderFeeContent = (isMandatory: boolean) => {
+        const fees = isMandatory ? mandatoryFees : optionalFees;
+        const dialogOpenState = isMandatory ? isMandatoryFeeDialogOpen : isOptionalFeeDialogOpen;
+        const setDialogOpenState = isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen;
+
+        return (
+            <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                    <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
+                    <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
+                        <DialogTrigger asChild>
+                            <Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee</Button>
+                        </DialogTrigger>
+                        <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
+                            <DialogHeader>
+                                <DialogTitle>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee Template</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="space-y-1"><Label>Fee Name</Label>
+                                    <Select value={selectedFeeTemplate} onValueChange={(val) => {setSelectedFeeTemplate(val); setFeeAmount(String(feeTemplates.find(t => t.id === val)?.amount || ''));}}>
+                                        <SelectTrigger><SelectValue placeholder={`Select a ${isMandatory ? 'mandatory' : 'optional'} fee...`}/></SelectTrigger>
+                                        <SelectContent>{feeTemplates.filter(t => t.type.toLowerCase() === (isMandatory ? 'mandatory' : 'optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 250" /></div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => {setDialogOpenState(false);}}>Cancel</Button>
+                                <Button onClick={() => handleImportFee(isMandatory)} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Add Fee to Semester</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+                <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
+                    <TableBody>{Object.keys(fees).length > 0 ? Object.entries(fees).map(([id, fee]) =>
+                        <TableRow key={id}><TableCell>{fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteFee(id, isMandatory)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
+                    ) : <TableRow><TableCell colSpan={3} className="text-center h-24">No {isMandatory ? 'mandatory' : 'optional'} fees added.</TableCell></TableRow>}
+                    </TableBody>
+                </Table>
+            </div>
+        );
+    };
+
+
+    return (
+        <><DialogHeader><DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle></DialogHeader>
+        <Tabs defaultValue="details" className="w-full">
+            <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details & Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
+            <TabsContent value="details">
+                <div className="grid gap-4 py-4">
+                    <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} /></div>
+                    <div className="space-y-1"><Label htmlFor="semester-dates">Semester Start & End Dates</Label>
+                        <Popover><PopoverTrigger asChild><Button id="semester-dates" variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent></Popover>
+                    </div>
+                    <div className="space-y-2"><Label>Available Payment Plans</Label>
+                        <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
+                            {allPaymentPlans.filter(p => !p.archived).map(plan => (<div key={plan.id} className="flex items-center gap-2"><Checkbox id={`plan-${plan.id}`} checked={!!selectedPaymentPlans[plan.id]} onCheckedChange={() => handlePlanSelection(plan.id)}/><Label htmlFor={`plan-${plan.id}`} className="font-normal">{plan.name}</Label></div>))}
+                        </div>
+                    </div>
+                </div>
+            </TabsContent>
+            <TabsContent value="fees"><div className="space-y-4 py-4">{renderFeeContent(true)}{renderFeeContent(false)}</div></TabsContent>
+        </Tabs>
+        <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingSemester ? 'Save Changes' : 'Create Semester'}</Button></DialogFooter>
+        </>
+    );
+}
+
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
@@ -256,7 +444,7 @@ export default function RegistrationManagementPage() {
                                                                      </div>
                                                                 )}
                                                                  <div className="text-sm text-muted-foreground space-y-1">
-                                                                    {semData.courses.map(courseId => {
+                                                                    {(semData.courses || []).map(courseId => {
                                                                         const course = allCourses[courseId];
                                                                         return course ? <p key={courseId}>{course.code} - {course.name}</p> : null;
                                                                     })}
@@ -294,8 +482,8 @@ export default function RegistrationManagementPage() {
                             <p className="font-semibold">{item.reason}</p>
                             <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
                             <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
-                                <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
-                                <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Removed:</p><ul>{(item.oldCourses || []).filter(c => !(item.newCourses || []).includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Added:</p><ul>{(item.newCourses || []).filter(c => !(item.oldCourses || []).includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
                             </div>
                         </div>
                     ))}
