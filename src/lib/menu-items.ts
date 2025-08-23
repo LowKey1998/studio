@@ -296,6 +296,10 @@ export const studentMenuItems = [
             { href: '/student/course-path', label: 'My Course Path', icon: Route },
             { href: '/student/registration', label: 'Registration', icon: UserCheckIcon },
             { href: '/student/timetable', label: 'My Timetable', icon: Calendar },
+            { href: '/student/attendance', label: 'My Attendance', icon: Hand },
+            { href: '/student/leave', label: 'Request Absence', icon: Calendar },
+            { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
+            { href: '/student/resources', label: 'Resources', icon: FileText },
             { href: '/student/courses/results', label: 'My Results', icon: ClipboardCheck },
         ]
     },
@@ -303,7 +307,7 @@ export const studentMenuItems = [
         label: 'eLearning',
         icon: MonitorPlay,
         items: [
-            { href: '/student/quizzes', label: 'Quizzes &amp; Exams', icon: FileQuestion },
+            { href: '/student/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
         ]
     },
     {
@@ -318,9 +322,6 @@ export const studentMenuItems = [
         icon: Building,
         items: [
             { href: '/student/library', label: 'Library', icon: BookUp },
-            { href: '/student/leave', label: 'Request Absence', icon: Calendar },
-            { href: '/student/calendar', label: 'Academic Calendar', icon: Calendar },
-            { href: '/student/resources', label: 'Resources', icon: FileText },
             { href: '/student/student-life/clubs', label: 'Clubs & Associations', icon: Users },
             { href: '/vacancies', label: 'Job Vacancies', icon: Briefcase },
         ]
