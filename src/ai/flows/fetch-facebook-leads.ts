@@ -6,7 +6,7 @@
 import { z } from 'genkit';
 import { ai } from '@/ai/genkit';
 import { db } from '@/lib/firebase';
-import { ref, push, set } from 'firebase/database';
+import { ref, push, set, get } from 'firebase/database';
 
 const FetchFacebookLeadsOutputSchema = z.object({
   count: z.number().describe('The number of new leads added to the system.'),
@@ -25,14 +25,20 @@ const fetchFacebookLeadsFlow = ai.defineFlow(
     outputSchema: FetchFacebookLeadsOutputSchema,
   },
   async () => {
-    const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
-    const formId = process.env.FACEBOOK_FORM_ID;
+    const settingsRef = ref(db, 'settings/integrations/facebook');
+    const settingsSnap = await get(settingsRef);
 
-    if (!accessToken || !formId) {
-      throw new Error('Facebook API credentials are not configured in the environment variables.');
+    if (!settingsSnap.exists()) {
+        throw new Error('Facebook API credentials are not configured in System Settings.');
     }
 
-    const url = `https://graph.facebook.com/v19.0/${formId}/leads?access_token=${accessToken}`;
+    const { pageAccessToken, formId } = settingsSnap.val();
+
+    if (!pageAccessToken || !formId) {
+      throw new Error('Facebook Page Access Token and Form ID must be configured in System Settings.');
+    }
+
+    const url = `https://graph.facebook.com/v19.0/${formId}/leads?access_token=${pageAccessToken}`;
     
     let newLeadsCount = 0;
     try {

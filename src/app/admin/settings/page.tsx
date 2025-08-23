@@ -33,7 +33,7 @@ type Institution = { name: string; logoUrl?: string; }
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
-type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }; facebook?: { apiKey?: string; }; };
+type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }; facebook?: { pageAccessToken?: string; formId?: string; }; };
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
 type Department = { id: string; name: string; };
@@ -49,7 +49,7 @@ export default function SettingsPage() {
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
-    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false } });
+    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: ''} });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [bankDetails, setBankDetails] = React.useState<BankDetails>({ bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
@@ -78,7 +78,7 @@ export default function SettingsPage() {
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
                 setOverduePolicy(data.overduePolicy || 'doNothing');
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
-                setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false } });
+                setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: '' } });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
                 setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
                 setBankDetails(data.bankDetails || { bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
@@ -313,30 +313,33 @@ export default function SettingsPage() {
             <Card id="integrations" className="shadow-lg">
                 <CardHeader><CardTitle className="font-headline text-2xl">Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
-                        <Label>QuickBooks</Label>
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">QuickBooks</Label>
                         <div className="sm:col-span-2 space-y-2">
                            <div className="flex items-center space-x-2">
-                                <Switch id="quickbooks-switch" checked={integrations.quickbooks.enabled} onCheckedChange={(checked) => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, enabled: checked}}))} disabled={saving} />
-                                <Label htmlFor="quickbooks-switch">{integrations.quickbooks.enabled ? "Enabled" : "Disabled"}</Label>
+                                <Switch id="quickbooks-switch" checked={integrations.quickbooks?.enabled || false} onCheckedChange={(checked) => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, enabled: checked}}))} disabled={saving} />
+                                <Label htmlFor="quickbooks-switch">{integrations.quickbooks?.enabled ? "Enabled" : "Disabled"}</Label>
                            </div>
-                           <Input placeholder="QuickBooks API Key" value={integrations.quickbooks.apiKey || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, apiKey: e.target.value}}))} disabled={saving || !integrations.quickbooks.enabled}/>
+                           <Input placeholder="QuickBooks API Key" value={integrations.quickbooks?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, apiKey: e.target.value}}))} disabled={saving || !integrations.quickbooks?.enabled}/>
                         </div>
                     </div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
-                        <Label>Sage</Label>
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">Sage</Label>
                         <div className="sm:col-span-2 space-y-2">
                            <div className="flex items-center space-x-2">
-                                <Switch id="sage-switch" checked={integrations.sage.enabled} onCheckedChange={(checked) => setIntegrations(p => ({...p, sage: {...p.sage, enabled: checked}}))} disabled={saving} />
-                                <Label htmlFor="sage-switch">{integrations.sage.enabled ? "Enabled" : "Disabled"}</Label>
+                                <Switch id="sage-switch" checked={integrations.sage?.enabled || false} onCheckedChange={(checked) => setIntegrations(p => ({...p, sage: {...p.sage, enabled: checked}}))} disabled={saving} />
+                                <Label htmlFor="sage-switch">{integrations.sage?.enabled ? "Enabled" : "Disabled"}</Label>
                            </div>
-                           <Input placeholder="Sage API Key" value={integrations.sage.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage.enabled}/>
+                           <Input placeholder="Sage API Key" value={integrations.sage?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage?.enabled}/>
                         </div>
                     </div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
-                        <Label>Facebook (for Leads)</Label>
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">Facebook (for Leads)</Label>
                         <div className="sm:col-span-2 space-y-2">
-                           <Input placeholder="Facebook API Key" value={integrations.facebook?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, apiKey: e.target.value}}))} disabled={saving}/>
+                            <Label htmlFor="fb-token" className="text-xs">Page Access Token</Label>
+                           <Textarea id="fb-token" placeholder="Paste your Page Access Token" value={integrations.facebook?.pageAccessToken || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, pageAccessToken: e.target.value}}))} disabled={saving}/>
+                            <Label htmlFor="fb-form" className="text-xs">Lead Form ID</Label>
+                           <Input id="fb-form" placeholder="Enter your Lead Form ID" value={integrations.facebook?.formId || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, formId: e.target.value}}))} disabled={saving}/>
                         </div>
                     </div>
                 </CardContent>
