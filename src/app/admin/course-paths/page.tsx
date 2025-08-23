@@ -291,7 +291,7 @@ export default function CoursePathsPage() {
                                             <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right">
                                                 <Button variant="outline" size="sm" className="mr-2" onClick={() => { setSelectedIntake(i.id); setActiveTab('paths'); }}>
                                                     <Route className="mr-2 h-4 w-4" />
-                                                    Add/Edit Path
+                                                    Course Path
                                                 </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenIntakeDialog(i)}><Pencil className="h-4 w-4"/></Button>
                                                 <AlertDialog>
