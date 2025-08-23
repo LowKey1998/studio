@@ -88,68 +88,74 @@ export default function CoursePathsPage() {
 
     React.useEffect(() => {
         const newSemesterCourses: Record<string, Course[]> = {};
-        const assignedCourseIds = new Set<string>();
+        let assignedCourseIds = new Set<string>();
 
         if (currentPath && currentPath.semesters) {
             setNumYears(Math.ceil(Object.keys(currentPath.semesters).length / 2) || 4);
-            for (const semesterNum in currentPath.semesters) {
-                const semesterCourseIds = currentPath.semesters[Number(semesterNum)].courses;
-                newSemesterCourses[semesterNum] = semesterCourseIds.map(id => {
-                    assignedCourseIds.add(id);
-                    return courses.find(c => c.id === id)!;
-                }).filter(Boolean);
-            }
+            Object.keys(currentPath.semesters).forEach(semesterNum => {
+                const semesterCourseIds = currentPath.semesters[Number(semesterNum)].courses || [];
+                newSemesterCourses[semesterNum] = semesterCourseIds
+                    .map(id => {
+                        assignedCourseIds.add(id);
+                        return courses.find(c => c.id === id);
+                    })
+                    .filter((c): c is Course => !!c);
+            });
         } else {
              setNumYears(4);
+             assignedCourseIds = new Set();
         }
+
+        // Also add courses from the current drag-and-drop state to the assigned set
+        Object.values(semesterCourses).flat().forEach(c => assignedCourseIds.add(c.id));
+        
         setSemesterCourses(newSemesterCourses);
+        
         const activeCourses = courses.filter(c => c.status === 'active');
         setAvailableCourses(activeCourses.filter(c => !assignedCourseIds.has(c.id)));
-    }, [currentPath, courses]);
-
+    }, [currentPath, courses, semesterCourses]);
+    
     const handleSaveCoursePath = async () => {
         if (!selectedIntake || !selectedProgramme) return;
         setLoading(true);
-    
+
         try {
             const pathSemesters: Record<number, CoursePathSemester> = {};
             let changeReason = '';
             let isAnySemesterChanged = false;
-    
+
             // First, check if any semester has changed to decide if a reason is needed
-            for (const [sem, crs] of Object.entries(semesterCourses)) {
-                const newCourseIds = new Set(crs.map(c => c.id));
-                const oldCourseIds = new Set(currentPath?.semesters[Number(sem)]?.courses || []);
+            for (let i = 1; i <= numYears * 2; i++) {
+                const sem = String(i);
+                const newCourseIds = new Set((semesterCourses[sem] || []).map(c => c.id));
+                const oldCourseIds = new Set(currentPath?.semesters?.[Number(sem)]?.courses || []);
+                
                 if (newCourseIds.size !== oldCourseIds.size || [...newCourseIds].some(id => !oldCourseIds.has(id))) {
                     isAnySemesterChanged = true;
                     break;
                 }
             }
-    
-            // If there's a change, prompt for a reason once
+
+            // If there's a change, optionally prompt for a reason
             if (isAnySemesterChanged) {
-                const reason = prompt("Please provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
-                if (!reason) {
-                    toast({ variant: 'destructive', title: 'Change Canceled', description: 'A reason is required to update a course path.' });
-                    setLoading(false);
-                    return; // Abort save if user cancels prompt
-                }
-                changeReason = reason;
+                const reason = prompt("Optional: Provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
+                // User can cancel or leave it empty, so we just use the result.
+                changeReason = reason || '';
             }
-    
+
             // Now, build the final data structure
             for (let i = 1; i <= numYears * 2; i++) {
                 const sem = String(i);
                 const crs = semesterCourses[sem] || [];
                 const newCourses = crs.map(c => c.id);
-                const oldCourses = currentPath?.semesters[Number(sem)]?.courses || [];
-                let history = currentPath?.semesters[Number(sem)]?.history || {};
-    
+                const oldCourses = currentPath?.semesters?.[Number(sem)]?.courses || [];
+                let history = currentPath?.semesters?.[Number(sem)]?.history || {};
+
                 const hasChanged = JSON.stringify([...oldCourses].sort()) !== JSON.stringify([...newCourses].sort());
-    
-                if (hasChanged && changeReason) {
+
+                if (hasChanged && isAnySemesterChanged) { // Only log history if there was a global change
                     const historyEntry: CoursePathHistoryItem = {
-                        reason: changeReason,
+                        reason: changeReason || "No reason provided",
                         oldCourses,
                         newCourses,
                         timestamp: serverTimestamp()
@@ -159,13 +165,13 @@ export default function CoursePathsPage() {
                 }
                 pathSemesters[Number(sem)] = { courses: newCourses, history };
             }
-    
+
             const pathData = {
                 intakeId: selectedIntake,
                 programmeId: selectedProgramme,
                 semesters: pathSemesters
             };
-    
+
             if (currentPath) {
                 await update(ref(db, `coursePaths/${currentPath.id}`), pathData);
             } else {
@@ -178,7 +184,6 @@ export default function CoursePathsPage() {
             setLoading(false);
         }
     };
-    
     
     // --- Intake Logic ---
     const handleOpenIntakeDialog = (intake: Intake | null) => {
