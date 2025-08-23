@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route, Lightbulb } from 'lucide-react';
+import { Loader2, AlertCircle, PlusCircle, BookOpen, Calendar as CalendarIcon, Trash2, Plus, Power, PowerOff, DollarSign, Pencil, ShieldAlert, Info, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -219,7 +219,6 @@ export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
@@ -247,7 +246,6 @@ export default function RegistrationManagementPage() {
         const intakesRef = ref(db, 'intakes');
         const programmesRef = ref(db, 'programmes');
         const coursePathsRef = ref(db, 'coursePaths');
-        const coursesRef = ref(db, 'courses');
         
         const unsubs = [
             onValue(semestersRef, (snapshot) => {
@@ -272,18 +270,22 @@ export default function RegistrationManagementPage() {
             }),
              onValue(coursePathsRef, (snapshot) => {
                 setAllCoursePaths(snapshot.exists() ? Object.values(snapshot.val()) : []);
-            }),
-             onValue(coursesRef, (snapshot) => {
-                setAllCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})) : []);
-            }),
-            onValue(ref(db, `semesterOfferings/${semesters.find(s => s.id === selectedSemester)?.name}/activePathSemesters`), (snapshot) => {
-                 setActivePathSemesters(snapshot.exists() ? snapshot.val() : {});
             })
         ];
 
         setLoading(false);
         return () => unsubs.forEach(unsub => unsub());
     }, [selectedSemester]);
+    
+     React.useEffect(() => {
+        const semesterName = semesters.find(s => s.id === selectedSemester)?.name;
+        if (!semesterName) return;
+        const offeringsRef = ref(db, `semesterOfferings/${semesterName}/activePathSemesters`);
+        const unsub = onValue(offeringsRef, (snapshot) => {
+            setActivePathSemesters(snapshot.exists() ? snapshot.val() : {});
+        });
+        return () => unsub();
+     },[selectedSemester, semesters])
 
     const fetchDataForSemester = React.useCallback(async () => {
         const semesterData = semesters.find(s => s.id === selectedSemester);
@@ -522,6 +524,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-
-    
