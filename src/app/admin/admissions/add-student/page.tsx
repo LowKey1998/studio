@@ -82,7 +82,7 @@ export default function AddStudentPage() {
             const [programmesSnap, coursesSnap, intakesSnap, semestersSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'programmes')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'intakes')),
+                get(ref(db, 'settings/intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'settings/idPrefixes')),
             ]);
@@ -228,7 +228,8 @@ export default function AddStudentPage() {
                                 <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={loading}/></div>
                                 <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender} disabled={loading}><SelectTrigger><SelectValue placeholder="Select gender"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
                                 <div className="space-y-1"><Label>National ID</Label><Input placeholder="e.g., 123456/78/9" value={nationalId} onChange={e => setNationalId(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1 lg:col-span-3"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
+                                <div className="lg:col-span-3 space-y-1"><Label>Passport Number</Label><Input placeholder="e.g., ZA12345" value={passport} onChange={e => setPassport(e.target.value)} disabled={loading}/></div>
+                                <div className="lg:col-span-3 space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
                             </div>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2 rounded-md border p-3"><Label>Parent/Guardian</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} /><Input placeholder="Contact Number" value={guardianContact} onChange={e => setGuardianContact(e.target.value)} /></div></div>
