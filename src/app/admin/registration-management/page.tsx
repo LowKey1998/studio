@@ -7,7 +7,7 @@ import { Loader2, BookOpen, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update } from 'firebase/database';
+import { ref, get, set, onValue } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -112,10 +112,15 @@ export default function RegistrationManagementPage() {
                                                         <CardTitle className="text-base">{programme.name}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
-                                                        {sortedSemesters.map(([semNum, semData]) => (
+                                                        {sortedSemesters.map(([semNum, semData]) => {
+                                                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
+                                                            const semesterInYear = (Number(semNum) - 1) % 2 + 1;
+                                                            const label = `Year ${year}, Semester ${semesterInYear}`;
+
+                                                            return (
                                                             <div key={semNum} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
-                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">Semester {semNum}</Label>
+                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
                                                                     <Switch 
                                                                         id={`${path.id}-${semNum}`} 
                                                                         checked={!!activePathSemesters[path.id]?.[semNum]}
@@ -129,7 +134,8 @@ export default function RegistrationManagementPage() {
                                                                     })}
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                            )
+                                                        })}
                                                     </CardContent>
                                                 </Card>
                                             )
@@ -153,4 +159,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
