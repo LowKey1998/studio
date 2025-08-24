@@ -9,12 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -64,7 +59,8 @@ type CoursePath = {
     semesters: Record<string, { courses: string[] }>;
 };
 
-type SemesterOffering = Record<string, { active: boolean, showReason: boolean }>; // pathId -> { semesterNumber -> {active, showReason} }
+type SemesterOffering = Record<string, { active: boolean; showReason: boolean; semesterId: string; }>; // semesterNumber -> {active, showReason, semesterId}
+
 
 export default function StudentRegistrationPage() {
     const [loading, setLoading] = React.useState(true);
@@ -123,21 +119,14 @@ export default function StudentRegistrationPage() {
 
                 const userCoursePath = coursePathsSnap.exists() ? Object.values(coursePathsSnap.val() as Record<string, CoursePath>).find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId) : null;
                 setUserPath(userCoursePath || null);
-
+                
                 if (semestersSnap.exists() && semesterOfferingsSnap.exists() && userCoursePath) {
                     const allSemesters = semestersSnap.val();
                     const semesterOfferings = semesterOfferingsSnap.val()[userCoursePath.id] || {};
                     
-                    const openForUser = Object.keys(semesterOfferings)
-                        .filter(semNum => semesterOfferings[semNum]?.active)
-                        .map(semNum => {
-                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
-                            const intakeYear = parseInt(userData.intakeId.substring(0, 4), 10);
-                            const semesterNamePattern = `${intakeYear + year - 1}`;
-                            
-                            const semesterEntry = Object.entries(allSemesters).find(([id, sem]: [string, any]) => sem.name.includes(semesterNamePattern));
-                            return semesterEntry ? { id: semesterEntry[0], ...semesterEntry[1] } : null;
-                        })
+                    const openForUser = Object.values(semesterOfferings)
+                        .filter((offer: any) => offer.active && offer.semesterId && allSemesters[offer.semesterId])
+                        .map((offer: any) => ({ id: offer.semesterId, ...allSemesters[offer.semesterId] }))
                         .filter((s): s is Semester => s !== null && !alreadyRegisteredSemesters.includes(s.id));
                     
                     setOpenSemesters(openForUser);
@@ -167,8 +156,8 @@ export default function StudentRegistrationPage() {
     const selectedSemester = React.useMemo(() => openSemesters.find(s => s.id === selectedSemesterId), [openSemesters, selectedSemesterId]);
 
     const coursesForSemester = React.useMemo(() => {
-        if (!selectedSemester || !userPath) return [];
-        
+        if (!selectedSemester || !userPath || !userData) return [];
+
         const semesterEntry = Object.entries(userPath.semesters).find(([semNum]) => {
             const year = Math.floor((Number(semNum) - 1) / 2) + 1;
             const intakeYear = parseInt(userData.intakeId.substring(0, 4), 10);
@@ -362,5 +351,3 @@ export default function StudentRegistrationPage() {
         </div>
     );
 }
-
-    
