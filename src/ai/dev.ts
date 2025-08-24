@@ -10,3 +10,5 @@ import '@/ai/flows/update-user-status.ts';
 import '@/ai/flows/sync-to-quickbooks.ts';
 import '@/ai/flows/sync-to-sage.ts';
 import '@/ai/flows/fetch-facebook-leads.ts';
+import '@/ai/flows/send-email-flow.ts';
+import '@/ai/flows/send-sms-flow.ts';

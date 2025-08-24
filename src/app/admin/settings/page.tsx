@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound } from 'lucide-react';
+import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth, storage } from '@/lib/firebase';
 import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
@@ -33,7 +33,13 @@ type Institution = { name: string; logoUrl?: string; }
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
-type Integrations = { quickbooks: { enabled: boolean; apiKey?: string; }; sage: { enabled: boolean; apiKey?: string; }; facebook?: { pageAccessToken?: string; formId?: string; }; };
+type Integrations = { 
+    quickbooks: { enabled: boolean; apiKey?: string; }; 
+    sage: { enabled: boolean; apiKey?: string; }; 
+    facebook?: { pageAccessToken?: string; formId?: string; }; 
+    twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
+    smtp?: { host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
+};
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
 type Department = { id: string; name: string; };
@@ -49,7 +55,7 @@ export default function SettingsPage() {
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
-    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: ''} });
+    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: '' }, twilio: {}, smtp: {} });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [bankDetails, setBankDetails] = React.useState<BankDetails>({ bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
@@ -78,7 +84,7 @@ export default function SettingsPage() {
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
                 setOverduePolicy(data.overduePolicy || 'doNothing');
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
-                setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: '' } });
+                setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false }, facebook: {}, twilio: {}, smtp: {} });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
                 setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
                 setBankDetails(data.bankDetails || { bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
@@ -311,7 +317,7 @@ export default function SettingsPage() {
             </Card>
             
             <Card id="integrations" className="shadow-lg">
-                <CardHeader><CardTitle className="font-headline text-2xl">Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
+                <CardHeader><CardTitle className="font-headline text-2xl">API Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
                         <Label className="pt-2">QuickBooks</Label>
@@ -340,6 +346,27 @@ export default function SettingsPage() {
                            <Textarea id="fb-token" placeholder="Paste your Page Access Token" value={integrations.facebook?.pageAccessToken || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, pageAccessToken: e.target.value}}))} disabled={saving}/>
                             <Label htmlFor="fb-form" className="text-xs">Lead Form ID</Label>
                            <Input id="fb-form" placeholder="Enter your Lead Form ID" value={integrations.facebook?.formId || ''} onChange={e => setIntegrations(p => ({...p, facebook: {...p.facebook, formId: e.target.value}}))} disabled={saving}/>
+                        </div>
+                    </div>
+                    <Separator/>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">Twilio (for SMS)</Label>
+                        <div className="sm:col-span-2 space-y-2">
+                            <Input placeholder="Account SID" value={integrations.twilio?.accountSid || ''} onChange={e => setIntegrations(p => ({...p, twilio: {...p.twilio, accountSid: e.target.value}}))} disabled={saving}/>
+                            <Input placeholder="Auth Token" type="password" value={integrations.twilio?.authToken || ''} onChange={e => setIntegrations(p => ({...p, twilio: {...p.twilio, authToken: e.target.value}}))} disabled={saving}/>
+                            <Input placeholder="Twilio 'From' Number (e.g., +15017122661)" value={integrations.twilio?.fromNumber || ''} onChange={e => setIntegrations(p => ({...p, twilio: {...p.twilio, fromNumber: e.target.value}}))} disabled={saving}/>
+                        </div>
+                    </div>
+                     <Separator/>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">SMTP (for Email)</Label>
+                        <div className="sm:col-span-2 grid grid-cols-2 gap-4">
+                            <div className="col-span-2 space-y-1"><Label className="text-xs">From Name</Label><Input placeholder="e.g., Edutrack360 Admissions" value={integrations.smtp?.fromName || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromName: e.target.value}}))} disabled={saving}/></div>
+                             <div className="col-span-2 space-y-1"><Label className="text-xs">From Email</Label><Input placeholder="e.g., no-reply@example.com" value={integrations.smtp?.fromEmail || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromEmail: e.target.value}}))} disabled={saving}/></div>
+                            <div className="space-y-1"><Label className="text-xs">SMTP Host</Label><Input placeholder="smtp.example.com" value={integrations.smtp?.host || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, host: e.target.value}}))} disabled={saving}/></div>
+                            <div className="space-y-1"><Label className="text-xs">SMTP Port</Label><Input type="number" placeholder="587" value={integrations.smtp?.port || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, port: Number(e.target.value)}}))} disabled={saving}/></div>
+                            <div className="space-y-1"><Label className="text-xs">SMTP Username</Label><Input placeholder="Your username" value={integrations.smtp?.user || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, user: e.target.value}}))} disabled={saving}/></div>
+                            <div className="space-y-1"><Label className="text-xs">SMTP Password</Label><Input type="password" value={integrations.smtp?.pass || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, pass: e.target.value}}))} disabled={saving}/></div>
                         </div>
                     </div>
                 </CardContent>
