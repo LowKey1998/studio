@@ -29,7 +29,6 @@ type CoursePath = {
 
 type SemesterOffering = {
     active: boolean;
-    showReason: boolean;
 };
 
 type Semester = {
@@ -42,6 +41,8 @@ type ActiveSemester = {
     semesterName: string;
     year: number;
     semesterInYear: number;
+    pathId: string;
+    pathSemesterNum: string;
 };
 
 export default function StudentRegistrationPage() {
@@ -74,7 +75,6 @@ export default function StudentRegistrationPage() {
                 intakesSnap,
                 coursePathsSnap,
                 semesterOfferingsSnap,
-                semestersSnap,
                 registrationsSnap
             ] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
@@ -82,7 +82,6 @@ export default function StudentRegistrationPage() {
                 get(ref(db, 'intakes')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'semesterOfferings')),
-                get(ref(db, 'semesters')),
                 get(ref(db, `registrations/${currentUser.uid}`))
             ]);
             
@@ -111,7 +110,6 @@ export default function StudentRegistrationPage() {
             }
 
             const pathOfferings = (semesterOfferingsSnap.val() || {})[userPath.id] || {};
-            const allSemesters = semestersSnap.val() || {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
             const activeSemestersList: ActiveSemester[] = [];
@@ -121,19 +119,22 @@ export default function StudentRegistrationPage() {
                     const semNum = Number(semNumStr);
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
-                    
-                    const intakeYear = parseInt(profile.intakeName.substring(0, 4), 10);
-                    const semesterTargetYear = intakeYear + year - 1;
-                    
                     const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
-                    const semesterEntry = Object.entries(allSemesters).find(([, s]: [string, any]) => s.name === semesterName);
                     
-                    if (semesterEntry) {
-                        const semesterId = semesterEntry[0];
-                         if (!userRegistrations.includes(semesterId)) {
-                             activeSemestersList.push({ semesterId, semesterName, year, semesterInYear });
-                         }
-                    }
+                    // Simple check if user already registered for a semester with this name pattern.
+                    // This assumes semester names are unique per intake-year-semester combo.
+                    const isRegistered = userRegistrations.some(regId => regId.startsWith(semesterName.replace(/\s+/g, '-')));
+
+                     if (!isRegistered) {
+                         activeSemestersList.push({ 
+                            semesterId: `${semesterName.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID
+                            semesterName, 
+                            year, 
+                            semesterInYear,
+                            pathId: userPath.id,
+                            pathSemesterNum: semNumStr,
+                        });
+                     }
                 }
             }
             
@@ -206,7 +207,7 @@ export default function StudentRegistrationPage() {
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
                                         <Button asChild>
-                                            <Link href={`/student/registration/${semester.semesterId}`}>
+                                            <Link href={`/student/registration/${semester.pathId}/${semester.pathSemesterNum}`}>
                                                 Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/>
                                             </Link>
                                         </Button>
