@@ -162,7 +162,7 @@ export default function LandingPage() {
       <header className="container z-40 bg-background/80 backdrop-blur-sm sticky top-0">
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
-          <nav className="hidden gap-6 md:flex items-center">
+          <nav className="flex items-center gap-4">
             <Link href="/vacancies" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
               Careers
             </Link>
