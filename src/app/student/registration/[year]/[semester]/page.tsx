@@ -140,7 +140,7 @@ export default function RegisterForSemesterPage() {
                 if (!userPath) {
                     throw new Error("A course path has not been defined for your intake and programme.");
                 }
-
+                
                 // Step 4: Load all necessary data for the page
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
