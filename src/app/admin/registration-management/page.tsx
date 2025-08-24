@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
 import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
@@ -64,7 +64,7 @@ export default function RegistrationManagementPage() {
                 case 0: setAllIntakes(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 1: setAllProgrammes(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 2: setAllCourses(data); break;
-                case 3: setAllCoursePaths(Object.values(data)); break;
+                case 3: setAllCoursePaths(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 4: setActivePathSemesters(data); break;
             }
         }));
@@ -131,19 +131,21 @@ export default function RegistrationManagementPage() {
     };
     
     const handleToggleSemester = (pathId: string, semesterNumber: string, field: 'active' | 'latePaymentActive') => {
-      setActivePathSemesters(prev => {
-        const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
-    
-        if (!newPaths[pathId]) {
-          newPaths[pathId] = {};
-        }
-        if (!newPaths[pathId][semesterNumber]) {
-          newPaths[pathId][semesterNumber] = { active: false, showReason: false, latePaymentActive: false };
-        }
-    
-        newPaths[pathId][semesterNumber][field] = !newPaths[pathId][semesterNumber][field];
-        return newPaths;
-      });
+        setActivePathSemesters(prev => {
+            const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
+        
+            if (!newPaths[pathId]) {
+                newPaths[pathId] = {};
+            }
+            if (!newPaths[pathId][semesterNumber]) {
+                newPaths[pathId][semesterNumber] = { active: false, showReason: false, latePaymentActive: false };
+            }
+        
+            const currentFieldState = newPaths[pathId][semesterNumber][field] || false;
+            newPaths[pathId][semesterNumber][field] = !currentFieldState;
+
+            return newPaths;
+        });
     };
     
     const handleToggleReasonVisibility = (pathId: string, semesterNumber: string) => {
