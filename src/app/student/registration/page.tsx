@@ -3,13 +3,14 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, AlertCircle, Info, ChevronRight } from 'lucide-react';
+import { Loader2, Info, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import Link from 'next/link';
 
 // Type definitions
 type UserProfile = {
@@ -98,9 +99,10 @@ export default function StudentRegistrationPage() {
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
             setUserProfile(profile);
 
-            const userPath = Object.values(coursePathsSnap.val() || {}).find(
-                (p: any) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
-            ) as CoursePath | undefined;
+            const allCoursePaths = coursePathsSnap.exists() ? Object.values(coursePathsSnap.val() as Record<string, CoursePath>) : [];
+            const userPath = allCoursePaths.find(
+                (p: CoursePath) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
+            );
             
             if (!userPath) {
                 setOpenSemesters([]);
@@ -120,7 +122,9 @@ export default function StudentRegistrationPage() {
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    // Find the semester ID based on its name.
+                    const intakeYear = parseInt(profile.intakeName.substring(0, 4), 10);
+                    const semesterTargetYear = intakeYear + year - 1;
+                    
                     const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
                     const semesterEntry = Object.entries(allSemesters).find(([, s]: [string, any]) => s.name === semesterName);
                     
@@ -133,7 +137,7 @@ export default function StudentRegistrationPage() {
                 }
             }
             
-            setOpenSemesters(activeSemestersList);
+            setOpenSemesters(activeSemestersList.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
 
         } catch (error) {
             console.error("Failed to load registration data:", error);
@@ -201,7 +205,11 @@ export default function StudentRegistrationPage() {
                                             <CardTitle>{semester.semesterName}</CardTitle>
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
-                                        <Button>Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/></Button>
+                                        <Button asChild>
+                                            <Link href={`/student/registration/${semester.semesterId}`}>
+                                                Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/>
+                                            </Link>
+                                        </Button>
                                     </CardHeader>
                                 </Card>
                             ))}
