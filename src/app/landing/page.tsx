@@ -175,8 +175,8 @@ export default function LandingPage() {
         </div>
       </header>
       <main className="flex-1">
-        {/* Hero Section */}
-        <section className="container flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
+        
+        <section className="container text-center flex flex-col items-center justify-center gap-6 pb-12 pt-10 md:pb-24 md:pt-16 lg:py-32">
             <div className="mx-auto max-w-4xl">
               <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
                 A modern platform to manage your entire institution
@@ -202,7 +202,7 @@ export default function LandingPage() {
         </section>
 
         {bankDetails?.bankName && (
-            <section id="bank-details" className="container pb-12 lg:pb-24">
+            <section className="container pb-12 lg:pb-24">
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
@@ -222,92 +222,100 @@ export default function LandingPage() {
         )}
 
         {/* Features Section */}
-        <section id="features" className="container space-y-6 bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
-            <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
-                <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Everything You Need</h2>
-                <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                    One platform to manage every aspect of your educational institution, reducing complexity and improving efficiency.
-                </p>
-            </div>
-            <div className="mx-auto grid justify-center gap-4 sm:grid-cols-2 md:max-w-[64rem] md:grid-cols-3">
-                {features.map((feature, i) => (
-                     <div key={i} className="relative overflow-hidden rounded-lg border bg-background p-2">
-                        <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
-                            {feature.icon}
-                            <div className="space-y-2">
-                                <h3 className="font-bold">{feature.title}</h3>
-                                <p className="text-sm text-muted-foreground">{feature.description}</p>
+        <section id="features" className="bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
+            <div className="container">
+                <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
+                    <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Everything You Need</h2>
+                    <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
+                        One platform to manage every aspect of your educational institution, reducing complexity and improving efficiency.
+                    </p>
+                </div>
+                <div className="mx-auto grid justify-center gap-4 sm:grid-cols-2 md:max-w-[64rem] md:grid-cols-3 mt-12">
+                    {features.map((feature, i) => (
+                        <div key={i} className="relative overflow-hidden rounded-lg border bg-background p-2">
+                            <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
+                                {feature.icon}
+                                <div className="space-y-2">
+                                    <h3 className="font-bold">{feature.title}</h3>
+                                    <p className="text-sm text-muted-foreground">{feature.description}</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </section>
         
         {/* Showcase Section */}
-        <section className="container space-y-6 py-12 lg:py-24">
-            <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
-                <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Designed for Everyone</h2>
-                <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                    Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
-                </p>
-            </div>
-             <div className="grid md:grid-cols-2 gap-8 items-start mt-12">
-                <div className="space-y-4">
-                    <h3 className="text-2xl font-bold">For Students</h3>
-                    <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
-                    <ul className="space-y-3">
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
-                    </ul>
+        <section className="py-12 lg:py-24">
+            <div className="container">
+                <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
+                    <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Designed for Everyone</h2>
+                    <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
+                        Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
+                    </p>
                 </div>
-                 <div className="space-y-4">
-                    <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
-                    <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
-                     <ul className="space-y-3">
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
-                    </ul>
+                <div className="grid md:grid-cols-2 gap-8 items-start mt-12">
+                    <div className="space-y-4">
+                        <h3 className="text-2xl font-bold">For Students</h3>
+                        <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
+                        <ul className="space-y-3">
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
+                        </ul>
+                    </div>
+                    <div className="space-y-4">
+                        <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
+                        <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
+                        <ul className="space-y-3">
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
+                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </section>
 
         {/* Inquiry Form */}
-        <section id="inquiry-form" className="container pb-12 lg:pb-24">
-            <Card className="max-w-2xl mx-auto shadow-lg">
-                <CardHeader className="text-center">
-                    <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
-                    <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleInquirySubmit} className="space-y-4">
-                        <div className="grid md:grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
-                            <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
-                        </div>
-                        <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
-                            <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
-                        <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
-                        <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
-                        <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
-                    </form>
-                </CardContent>
-            </Card>
+        <section id="inquiry-form" className="pb-12 lg:pb-24">
+            <div className="container">
+                <Card className="max-w-2xl mx-auto shadow-lg">
+                    <CardHeader className="text-center">
+                        <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
+                        <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleInquirySubmit} className="space-y-4">
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
+                                <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
+                            </div>
+                            <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
+                                <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
+                            </div>
+                            <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
+                            <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
+                            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
         </section>
 
         {/* CTA Section */}
-        <section id="cta" className="container py-12 lg:py-24 bg-slate-50/50 dark:bg-slate-900/50">
-            <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
-                 <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Transform Your Institution Today</h2>
-                  <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                    Ready to streamline your operations and enhance the educational experience? Get started with Edutrack360.
-                </p>
-                 <Button asChild size="lg">
-                    <Link href="/login">Get Started <ArrowRight className="ml-2 h-4 w-4"/></Link>
-                </Button>
+        <section id="cta" className="bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
+            <div className="container">
+                <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
+                    <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Transform Your Institution Today</h2>
+                    <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
+                        Ready to streamline your operations and enhance the educational experience? Get started with Edutrack360.
+                    </p>
+                    <Button asChild size="lg">
+                        <Link href="/login">Get Started <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                    </Button>
+                </div>
             </div>
         </section>
 
