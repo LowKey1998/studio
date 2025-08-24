@@ -1,791 +1,266 @@
 
 'use client';
-import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Checkbox } from "@/components/ui/checkbox";
+import * as React from 'react';
+import { UserPlus, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Trash2, Clock, DollarSign, GraduationCap, MinusCircle, PlusCircle, ShieldAlert, GripVertical, HelpCircle, Star, Download, Banknote, ChevronDown } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, set, child, push, remove, onValue, query, equalTo, orderByChild } from 'firebase/database';
-import { useRouter } from 'next/navigation';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
+import { app, auth, db } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Checkbox } from '@/components/ui/checkbox';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Separator } from '@/components/ui/separator';
-import Link from 'next/link';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import { format, parseISO, isBefore } from 'date-fns';
+import { Textarea } from '@/components/ui/textarea';
+import { format } from 'date-fns';
+import { Switch } from '@/components/ui/switch';
 
+type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; };
+type Semester = { id: string; name: string; status: string; };
+type Course = { id: string; name: string; code: string; year: number; }
+type Intake = { id: string; name: string; };
+type CurrentAdmin = { name: string; id: string; }
 
-type Course = {
-    id: string;
-    name: string;
-    code: string;
-    cost: number;
-    lecturerId: string;
-    lecturerName?: string;
-    status: 'active' | 'archived';
-    year: number;
-};
-
-type Fee = {
-    id: string;
-    name: string;
-    amount: number;
-};
-
-type UserData = {
-    id: string;
-    name: string;
-    programmeId: string;
-    intakeId: string;
-    year: number;
-};
-
-type Invoice = {
-    invoiceId: string;
-    totalTuition: number;
-    totalMandatoryFees: number;
-    totalOptionalFees: number;
-    lateFee?: number;
-    paymentPlan: string;
-    dateCreated: string;
-    semester: string; // Semester Name
-    semesterId: string;
-    courses: string[];
-    optionalFees: string[];
-    scholarshipId?: string;
-    scholarshipWaiver?: number;
-};
-
-type Registration = {
-    courses: string[];
-    coursePriority: string[]; // New field
-    originalCourses?: string[];
-    optionalFees: string[];
-    invoiceId: string;
-    status: 'Pending Approval' | 'Pending Payment' | 'Completed';
-    paymentPlan: string;
-    programmeId: string;
-    scholarshipId?: string;
-    invoiceDetails?: Invoice;
-    semesterName: string;
-    installmentsPaid?: number;
-    totalInstallments?: number;
-}
-
-type PaymentPlan = {
-    id: string;
-    name: string;
-    installments: number;
-    installmentPercentages: number[];
-    archived?: boolean;
-}
-
-type Semester = {
-    id: string;
-    name: string;
-    status: 'Open' | 'Closed' | 'Archived';
-    lateRegistrationActive?: boolean;
-    mandatoryFees?: Record<string, Fee>;
-    optionalFees?: Record<string, Fee>;
-};
-
-type Programme = {
-    id: string;
-    name: string;
-    tuitionFee?: number;
-    courseIds?: Record<string, boolean>;
-};
-
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }> };
-
-type RegistrationPolicy = {
-    lateRegistrationFee: number;
-}
-
-type Scholarship = {
-    id: string;
-    name: string;
-    percentage: number;
-    semesterIds?: Record<string, boolean>;
-};
-
-type Intake = {
-    id: string;
-    name: string;
-};
-
-
-const getOrdinalSuffix = (i: number) => {
-    if (i === 1) return '1st';
-    if (i === 2) return '2nd';
-    if (i === 3) return '3rd';
-    return `${i}th`;
-}
-
-function SortableCourseItem({ course }: { course: Course }) {
-    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: course.id });
-    const style = { transform: CSS.Transform.toString(transform), transition };
-    return (
-        <TableRow ref={setNodeRef} style={style} {...attributes} >
-            <TableCell className="w-8 p-2"><Button variant="ghost" {...listeners} className="cursor-grab"><GripVertical className="h-5 w-5"/></Button></TableCell>
-            <TableCell className="font-medium">{course.code}</TableCell>
-            <TableCell>{course.name}</TableCell>
-            <TableCell className="text-right font-medium">{course.cost.toFixed(2)}</TableCell>
-        </TableRow>
-    );
-}
-
-export default function RegistrationPage() {
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
-    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
+export default function AddStudentPage() {
+    // Form state
+    const [name, setName] = React.useState('');
+    const [email, setEmail] = React.useState('');
+    const [password, setPassword] = React.useState('');
+    const [phoneNumber, setPhoneNumber] = React.useState('');
+    const [programme, setProgramme] = React.useState('');
+    const [year, setYear] = React.useState('');
+    const [semester, setSemester] = React.useState('');
+    const [isTransfer, setIsTransfer] = React.useState(false);
+    const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
+    const [selectedIntake, setSelectedIntake] = React.useState('');
+    const [manualId, setManualId] = React.useState('');
+    const [isManualId, setIsManualId] = React.useState(false);
     
-    const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
-    
-    const [selectedCourses, setSelectedCourses] = React.useState<Course[]>([]);
-    const [selectedFees, setSelectedFees] = React.useState<string[]>([]);
-    const [selectedScholarshipId, setSelectedScholarshipId] = React.useState<string>('');
+    // Detailed info state
+    const [dob, setDob] = React.useState('');
+    const [gender, setGender] = React.useState('');
+    const [nationalId, setNationalId] = React.useState('');
+    const [passport, setPassport] = React.useState('');
+    const [address, setAddress] = React.useState('');
+    const [guardianName, setGuardianName] = React.useState('');
+    const [guardianContact, setGuardianContact] = React.useState('');
+    const [emergencyName, setEmergencyName] = React.useState('');
+    const [emergencyRelationship, setEmergencyRelationship] = React.useState('');
+    const [emergencyContact, setEmergencyContact] = React.useState('');
+    const [previousSchool, setPreviousSchool] = React.useState('');
+    const [qualifications, setQualifications] = React.useState('');
+    const [medicalHistory, setMedicalHistory] = React.useState('');
 
-    const [loading, setLoading] = React.useState(true);
-    const [submitting, setSubmitting] = React.useState(false);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [userData, setUserData] = React.useState<UserData | null>(null);
-    
-    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
-    const [openSemesters, setOpenSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>("");
-    
+    // Data for dropdowns
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
-    const [selectedYear, setSelectedYear] = React.useState('');
+    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
+    const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
 
-
-    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
-    const [semesterScholarships, setSemesterScholarships] = React.useState<Scholarship[]>([]);
-    const [selectedPaymentPlanId, setSelectedPaymentPlanId] = React.useState<string>('');
-    const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
-    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
-
-
-    const [existingRegistration, setExistingRegistration] = React.useState<Registration | null>(null);
-    const [registeredCourses, setRegisteredCourses] = React.useState<Course[]>([]);
-    const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-
-    const router = useRouter();
+    // System state
+    const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
+    const [loading, setLoading] = React.useState(false);
     const { toast } = useToast();
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
           if (user) {
-            setCurrentUser(user);
             const userRef = ref(db, `users/${user.uid}`);
             const snapshot = await get(userRef);
-            if(snapshot.exists()) {
-                setUserData(snapshot.val());
+            if (snapshot.exists()) {
+              setCurrentAdmin({ name: snapshot.val().name, id: snapshot.val().id });
             }
-          } else {
-              router.push('/login');
           }
         });
-        return () => unsubscribe();
-    }, [router]);
-      
-    // Fetch static data once
-    React.useEffect(() => {
-        const paymentPlansRef = ref(db, 'settings/paymentPlans');
-        const regPolicyRef = ref(db, 'settings/registrationPolicy');
-        const coursesRef = ref(db, 'courses');
-        const coursePathsRef = ref(db, 'coursePaths');
-        const institutionRef = ref(db, 'settings/institution');
-        const scholarshipsRef = ref(db, 'scholarships');
-        const programmesRef = ref(db, 'programmes');
-        const intakesRef = ref(db, 'intakes');
-        const semestersRef = ref(db, 'semesters');
-
-        const fetchData = async () => {
-            setLoading(true);
-            const [
-                plansSnap, policySnap, coursesSnap, pathsSnap, instSnap, scholsSnap, progsSnap, intakesSnap, semsSnap
-            ] = await Promise.all([
-                get(paymentPlansRef), get(regPolicyRef), get(coursesRef), get(coursePathsRef), get(institutionRef), get(scholarshipsRef), get(programmesRef), get(intakesRef), get(semestersRef)
-            ]);
-
-            if(plansSnap.exists()) setAllPaymentPlans(Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] }))); else setAllPaymentPlans([]);
-            if(policySnap.exists()) setRegistrationPolicy(policySnap.val());
-            if(coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({id, ...coursesSnap.val()[id]}))); else setAllCourses([]);
-            if(pathsSnap.exists()) setAllCoursePaths(Object.values(pathsSnap.val())); else setAllCoursePaths([]);
-            if(instSnap.exists()) setInstitutionSettings(instSnap.val());
-            if(scholsSnap.exists()) setAllScholarships(Object.keys(scholsSnap.val()).map(id => ({id, ...scholsSnap.val()[id]}))); else setAllScholarships([]);
-            if(progsSnap.exists()) setAllProgrammes(Object.keys(progsSnap.val()).map(id => ({id, ...progsSnap.val()[id]}))); else setAllProgrammes([]);
-            if(intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({id, ...intakesSnap.val()[id]}))); else setAllIntakes([]);
-            if(semsSnap.exists()) setAllSemesters(Object.keys(semsSnap.val()).map(id => ({id, ...semsSnap.val()[id]}))); else setAllSemesters([]);
-            setLoading(false);
-        };
-        fetchData();
-    },[]);
-
-    // Determine available semesters for the student based on intake/year selection
-     React.useEffect(() => {
-        if (!selectedIntakeId || !selectedYear) {
-            setOpenSemesters([]);
-            setSelectedSemesterId('');
-            return;
-        }
-
-        const userPath = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === userData?.programmeId);
-        if (!userPath) {
-            setOpenSemesters([]);
-            return;
-        }
-
-        const offeringsRef = ref(db, `semesterOfferings/${userPath.id}`);
-        const unsub = onValue(offeringsRef, (offeringsSnap) => {
-            const offerings = offeringsSnap.val() || {};
-            const availableForUser: Semester[] = [];
-
-            for (const semNum in offerings) {
-                const semesterDetails = offerings[semNum];
-                if (semesterDetails?.active) {
-                    const yearOfStudy = Math.ceil(parseInt(semNum) / 2);
-                    if(yearOfStudy.toString() === selectedYear) {
-                        const targetSemesterNamePart = `Year ${yearOfStudy} Semester ${(parseInt(semNum) - 1) % 2 + 1}`;
-                        const intake = allIntakes.find(i => i.id === selectedIntakeId);
-                        if (!intake) continue;
-
-                        const sem = allSemesters.find(s => s.name.includes(targetSemesterNamePart) && s.name.includes(intake.name) && s.status === 'Open');
-                        if (sem) {
-                            availableForUser.push(sem);
-                        }
-                    }
-                }
-            }
-            setOpenSemesters(availableForUser);
-        });
         
-        return () => unsub();
-    }, [selectedIntakeId, selectedYear, userData, allCoursePaths, allIntakes, allSemesters]);
+        const fetchDataForDropdowns = async () => {
+            const [programmesSnap, coursesSnap, intakesSnap, semestersSnap, settingsSnap] = await Promise.all([
+                get(ref(db, 'programmes')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'settings/intakes')),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'settings/idPrefixes')),
+            ]);
+            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })));
+            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] })));
+            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
+            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })));
+            if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
+        };
 
+        fetchDataForDropdowns();
 
-    // Main data fetching and real-time update logic
-    const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
+        return () => { unsubscribe(); };
+    }, []);
+
+    const resetForm = () => {
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setManualId(''); setIsManualId(false);
+        setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
+        setGuardianName(''); setGuardianContact('');
+        setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
+        setPreviousSchool(''); setQualifications(''); setMedicalHistory('');
+    };
+
+    const handleCreateStudent = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name || !email || !password || !programme || !year || !selectedIntake || !semester) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required academic and basic information fields.' }); return; }
+        if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
+
         setLoading(true);
+        const tempAppName = `temp-student-creation-${Date.now()}`;
+        const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
+        const tempApp = initializeApp(firebaseConfig, tempAppName);
+        const tempAuth = getAuth(tempApp);
+
         try {
-            const registrationRef = ref(db, `registrations/${user.uid}/${selectedSemesterId}`);
-            const [regSnap, invoiceSnap] = await Promise.all([
-                get(registrationRef),
-                get(ref(db, `invoices/${user.uid}`))
-            ]);
+            let newId = '';
+            const prefixes = idSettings || { student: 'STU' };
+            const isIdTaken = async (id: string) => {
+                 const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
+                 const snapshot = await get(userQuery);
+                 return snapshot.exists();
+            };
 
-            const regData = regSnap.exists() ? regSnap.val() : null;
-            if (regData) {
-                 const courseIds = regData.courses || [];
-                 const regCourses = allCourses.filter(c => courseIds.includes(c.id));
-                 const invoice = invoiceSnap.exists() ? Object.values(invoiceSnap.val() as any).find((inv: any) => inv.invoiceId === regData.invoiceId) : null;
-                 setExistingRegistration({...regData, invoiceDetails: invoice});
-                 setRegisteredCourses(regCourses);
-            } else { 
-                 setExistingRegistration(null);
-                 setRegisteredCourses([]);
-                 
-                 const semester = openSemesters.find(s => s.id === selectedSemesterId);
-                 if (semester && uData) {
-                    const path = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === uData.programmeId);
-                    const semesterNumberMatch = semester.name.match(/Semester (\d+)/);
-                    const yearNumberMatch = semester.name.match(/Year (\d+)/);
-                    if (path && path.semesters && yearNumberMatch && semesterNumberMatch) {
-                        const semNumForPath = (Number(yearNumberMatch[1]) - 1) * 2 + Number(semesterNumberMatch[1]);
-                        const availableCourseIds = path.semesters[semNumForPath]?.courses || [];
-                        const coursesForSemester = allCourses.filter(c => availableCourseIds.includes(c.id));
-                        setAvailableCourses(coursesForSemester);
-                        setSelectedCourses(coursesForSemester);
-                    } else {
-                        setAvailableCourses([]);
-                        setSelectedCourses([]);
-                    }
-                 }
-            }
-        } catch (error) {
-            console.error("Error fetching data:", error);
-            toast({ variant: 'destructive', title: 'Error loading data' });
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedSemesterId, openSemesters, toast, allCourses, allCoursePaths, selectedIntakeId]);
-
-
-    React.useEffect(() => {
-        if (!currentUser || !selectedSemesterId || !userData) {
-            setLoading(false);
-            setExistingRegistration(null);
-            return;
-        }
-
-        fetchDataForSemester(currentUser, userData);
-        const registrationRef = ref(db, `registrations/${currentUser.uid}/${selectedSemesterId}`);
-        const regUnsub = onValue(registrationRef, () => { fetchDataForSemester(currentUser, userData); });
-
-        return () => { regUnsub(); };
-    }, [currentUser, selectedSemesterId, userData, fetchDataForSemester]);
-
-    const currentSemester = openSemesters.find(s => s.id === selectedSemesterId);
-
-    // Update available payment plans & scholarships when semester changes
-    React.useEffect(() => {
-        if (currentSemester) {
-            // Payment Plans
-            if (currentSemester.paymentPlanIds && allPaymentPlans.length > 0) {
-                const planIds = Object.keys(currentSemester.paymentPlanIds);
-                const semesterPlans = allPaymentPlans.filter(p => planIds.includes(p.id) && !p.archived);
-                setSemesterPaymentPlans(semesterPlans);
-                 if (semesterPlans.length > 0) {
-                    setSelectedPaymentPlanId(semesterPlans[0].id);
-                } else {
-                    setSelectedPaymentPlanId('');
+            if (isManualId) {
+                newId = manualId.trim();
+                if (await isIdTaken(newId)) {
+                    toast({ variant: 'destructive', title: 'ID already exists', description: 'This User ID is already in use. Please choose another.' });
+                    setLoading(false); await deleteApp(tempApp); return;
                 }
             } else {
-                setSemesterPaymentPlans([]);
-                setSelectedPaymentPlanId('');
+                const counterRef = ref(db, 'userCounters/student');
+                let isUniqueIdFound = false;
+                while (!isUniqueIdFound) {
+                    await runTransaction(counterRef, (currentCount) => {
+                        const count = (currentCount || 0) + 1;
+                        let datePart = '';
+                        const now = new Date();
+                        if(idSettings.includeYear) datePart += format(now, 'yy');
+                        if(idSettings.includeMonth) datePart += format(now, 'MM');
+                        newId = `${prefixes.student}${datePart}${String(count).padStart(3, '0')}`;
+                        return count;
+                    });
+                    if (!(await isIdTaken(newId))) isUniqueIdFound = true;
+                }
             }
+
+            const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
+            const user = userCredential.user;
             
-            // Scholarships
-            const availableSchols = allScholarships.filter(s => s.semesterIds && s.semesterIds[currentSemester.id]);
-            setSemesterScholarships(availableSchols);
-            setSelectedScholarshipId('');
+            const newStudentUser: any = { 
+                id: newId, name, email, phoneNumber, role: 'Student', status: 'active',
+                programmeId: programme, year: Number(year), semesterId: semester, intakeId: selectedIntake,
+                dob, gender, nationalId, passport, address, medicalHistory,
+                guardian: { name: guardianName, contact: guardianContact },
+                emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
+                educationBackground: { school: previousSchool, qualifications }
+            };
+            if(isTransfer && Object.keys(exemptedCourses).length > 0) newStudentUser.exemptedCourses = exemptedCourses;
 
-        }
-    }, [currentSemester, allPaymentPlans, allScholarships]);
-
-    const handleSelectCourse = (courseId: string) => {
-        const course = availableCourses.find(c => c.id === courseId);
-        if(!course) return;
-
-        setSelectedCourses(prev => {
-            if (prev.some(c => c.id === courseId)) {
-                return prev.filter(c => c.id !== courseId);
-            } else {
-                return [...prev, course];
-            }
-        });
-    };
-    
-    function handleDragEnd(event: DragEndEvent) {
-        const {active, over} = event;
-        if (active.id !== over?.id) {
-          setSelectedCourses((items) => {
-            const oldIndex = items.findIndex(item => item.id === active.id);
-            const newIndex = items.findIndex(item => item.id === over?.id);
-            return arrayMove(items, oldIndex, newIndex);
-          });
-        }
-    }
-
-
-    const handleSelectFee = (feeId: string) => {
-        setSelectedFees(prev => {
-            if (prev.includes(feeId)) {
-                return prev.filter(id => id !== feeId);
-            } else {
-                return [...prev, feeId];
-            }
-        });
-    };
-
-    const handleRegister = async () => {
-        if (!userData?.programmeId) { toast({ variant: 'destructive', title: 'No Programme Assigned' }); return; }
-        if (selectedCourses.length === 0) { toast({ variant: 'destructive', title: 'No Courses Selected' }); return; }
-        if (!currentUser || !userData) { toast({ variant: 'destructive', title: 'Not Authenticated' }); return; }
-        if (!selectedPaymentPlanId) { toast({ variant: 'destructive', title: 'Please select a payment plan.' }); return; }
-
-        setSubmitting(true);
-        if (!currentSemester) { toast({ variant: 'destructive', title: 'Invalid semester.' }); setSubmitting(false); return; }
-
-        try {
-            const settingsSnap = await get(ref(db, 'settings/registrationPolicy'));
-            const policy = settingsSnap.exists() ? settingsSnap.val() : { lateRegistrationFee: 0 };
-            
-            let lateFee = 0;
-            if (currentSemester.lateRegistrationActive && policy.lateRegistrationFee > 0) {
-                lateFee = policy.lateRegistrationFee;
-            }
-            
-            const programme = allProgrammes.find(p => p.id === userData.programmeId);
-            const useProgrammeFee = programme?.tuitionFee !== undefined && programme.tuitionFee !== null;
-
-            const tuitionCost = useProgrammeFee ? programme.tuitionFee! : selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-            
-            const optionalFeesFromSemester = currentSemester.optionalFees ? Object.entries(currentSemester.optionalFees) : [];
-            const selectedOptionalFeesDetails = optionalFeesFromSemester.filter(([feeId, fee]) => selectedFees.includes(feeId));
-            const optionalFeesCost = selectedOptionalFeesDetails.reduce((acc, [id, fee]) => acc + (fee?.amount || 0), 0);
-            const selectedOptionalFeeIds = selectedOptionalFeesDetails.map(([id, fee]) => id);
-
-            const mandatoryFees = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees) : [];
-            const mandatoryFeesCost = mandatoryFees.reduce((acc, fee) => acc + fee.amount, 0);
-
-            const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
-            if (!selectedPlan) { toast({ variant: 'destructive', title: 'Invalid payment plan selected.' }); setSubmitting(false); return; }
-            
-            const scholarship = allScholarships.find(s => s.id === selectedScholarshipId);
-            const scholarshipWaiver = scholarship ? tuitionCost * (scholarship.percentage / 100) : 0;
-
-
-            const invoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
-            const invoiceId = invoiceRef.key!;
-            const coursePriority = selectedCourses.map(c => c.id);
-
-            await set(invoiceRef, {
-                invoiceId, courses: selectedCourses.map(c => c.id), optionalFees: selectedOptionalFeeIds,
-                totalTuition: tuitionCost, totalOptionalFees: optionalFeesCost, totalMandatoryFees: mandatoryFeesCost, lateFee,
-                paymentPlan: selectedPlan.name, amountPaid: 0, status: 'pending', dateCreated: new Date().toISOString(),
-                semester: currentSemester.name, semesterId: currentSemester.id, applyScholarship: !!scholarshipId
-            });
-
-            const registrationRef = ref(db, `registrations/${currentUser.uid}/${currentSemester.id}`);
-            await set(registrationRef, {
-                courses: selectedCourses.map(c => c.id), coursePriority, optionalFees: selectedOptionalFeeIds, invoiceId, paymentPlan: selectedPlan.name, programmeId: userData.programmeId,
-                registrationDate: new Date().toISOString(), status: 'Pending Approval', applyScholarship: !!scholarshipId, semesterName: currentSemester.name, installmentsPaid: 0, totalInstallments: selectedPlan.installments
-            });
-
-            const registrarIds = await getRegistrarIds();
-            const notificationPromises = registrarIds.map(id => createNotification(id, `${userData.name} (${userData.id}) submitted registration for approval.`, '/admin/approve-registrations'));
-            await Promise.all(notificationPromises);
-            
-            toast({ variant: 'success', title: 'Registration Submitted' });
+            await set(ref(db, `users/${user.uid}`), newStudentUser);
+            await set(ref(db, `userRoles/${user.uid}`), { role: 'student' });
+            const activityRef = push(ref(db, 'recentActivities'));
+            await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new student account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
+            toast({ variant: 'success', title: 'Student Created Successfully', description: `${name} has been created with User ID: ${newId}` });
+            resetForm();
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Registration Failed' });
+            console.error("Error creating student user:", error);
+            toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
         } finally {
-            setSubmitting(false);
+            await deleteApp(tempApp); setLoading(false);
         }
     };
     
-    const handleCancelRegistration = async () => {
-        if (!currentUser || !selectedSemesterId || !existingRegistration) return;
-        if (!window.confirm("Are you sure you want to cancel this registration? All payment records for this semester will also be deleted.")) return;
-        setSubmitting(true);
-        try {
-            await remove(ref(db, `invoices/${currentUser.uid}/${existingRegistration.invoiceId}`));
-            await remove(ref(db, `registrations/${currentUser.uid}/${selectedSemesterId}`));
-            
-            toast({ title: "Registration Canceled" });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Cancellation Failed', description: error.message });
-        } finally {
-            setSubmitting(false);
-        }
+    const handlePastePrefix = () => {
+        const prefixes = idSettings || { student: 'STU' };
+        let datePart = '';
+        const now = new Date();
+        if (idSettings.includeYear) datePart += format(now, 'yy');
+        if (idSettings.includeMonth) datePart += format(now, 'MM');
+        setManualId(`${prefixes.student}${datePart}`);
     };
 
-    const generateInvoicePDF = (invoice: Invoice) => {
-        if (!currentSemester) return;
-    
-        const doc = new jsPDF();
-        if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
-        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
-        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`Student: ${userData?.name || ''} (${userData?.id || ''})`, 14, 40);
-        doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
-        doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
-        doc.text(`Semester: ${invoice.semester}`, 14, 45);
-    
-        const courseItems = invoice.courses.map(id => [allCourses.find(c => c.id === id)?.code || 'N/A', `Tuition: ${allCourses.find(c => c.id === id)?.name || 'Unknown Course'}`, `ZMW ${(allCourses.find(c => c.id === id)?.cost || 0).toFixed(2)}`]);
-        const mandatoryFeeItems = currentSemester?.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = currentSemester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${currentSemester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(currentSemester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
-
-        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
-        const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-        
-        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
-        if(invoice.applyScholarship) {
-            const scholarshipWaiver = (invoice.totalTuition || 0) * ((allScholarships.find(s => s.id === existingRegistration?.scholarshipId)?.percentage || 0) / 100);
-            foot.push(['', 'Scholarship Applied', `(ZMW ${scholarshipWaiver.toFixed(2)})`]);
-            foot.push(['', 'Total Due', `ZMW ${(totalAmount - scholarshipWaiver).toFixed(2)}`]);
-        } else {
-            foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
-        }
-        
-        (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
-        
-        doc.save(`invoice-${invoice.invoiceId}.pdf`);
-    };
-    
-    const isLateRegistration = currentSemester?.lateRegistrationActive ?? false;
-    const lateFeeAmount = registrationPolicy?.lateRegistrationFee || 0;
-
-    const currentProgramme = userData ? allProgrammes.find(p => p.id === userData.programmeId) : null;
-    const useProgrammeFee = currentProgramme?.tuitionFee !== undefined && currentProgramme.tuitionFee !== null;
-
-
-    const { tuitionCost, optionalFeesCost, mandatoryFeesCost, totalCost, payableAmount } = React.useMemo(() => {
-        if (!currentSemester) return { tuitionCost: 0, optionalFeesCost: 0, mandatoryFeesCost: 0, totalCost: 0, payableAmount: 0 };
-    
-        const tuition = useProgrammeFee ? currentProgramme!.tuitionFee! : selectedCourses.reduce((acc, course) => acc + (course.cost || 0), 0);
-    
-        const optional = selectedFees.reduce((acc, feeId) => {
-            const fee = currentSemester.optionalFees?.[feeId];
-            return acc + (fee?.amount || 0);
-        }, 0);
+    const availableSemesters = React.useMemo(() => {
+        return allSemesters.filter(s => {
+            const intake = allIntakes.find(i => i.id === selectedIntake);
+            const intakeYear = intake ? parseInt(intake.name.substring(0, 4), 10) : null;
+            if (!intakeYear || !year) return false;
             
-        const mandatory = currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).reduce((acc, fee) => acc + fee.amount, 0) : 0;
-            
-        const lateFee = isLateRegistration ? lateFeeAmount : 0;
-        
-        const total = tuition + optional + mandatory + lateFee;
-        
-        const scholarship = allScholarships.find(s => s.id === selectedScholarshipId);
-        const scholarshipWaiver = scholarship ? tuition * (scholarship.percentage / 100) : 0;
-        
-        let payableBase = total - scholarshipWaiver;
-    
-        const selectedPlan = allPaymentPlans.find(p => p.id === selectedPaymentPlanId);
-        let firstInstallmentAmount = payableBase;
-    
-        if (selectedPlan && selectedPlan.installments > 1 && selectedPlan.installmentPercentages && selectedPlan.installmentPercentages.length > 0) {
-            const firstInstallmentPercentage = selectedPlan.installmentPercentages[0] / 100;
-            const tuitionAfterWaiver = tuition - scholarshipWaiver;
-            const tuitionPortion = tuitionAfterWaiver * firstInstallmentPercentage;
-            firstInstallmentAmount = tuitionPortion + optional + mandatory + lateFee;
-        }
-    
-        return { 
-            tuitionCost: tuition, 
-            optionalFeesCost: optional, 
-            mandatoryFeesCost: mandatory, 
-            totalCost: total, 
-            payableAmount: firstInstallmentAmount 
-        };
-    }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, selectedScholarshipId, allScholarships, allPaymentPlans, selectedPaymentPlanId, useProgrammeFee, currentProgramme]);
-
-    const availableYears = React.useMemo(() => {
-        if (!selectedIntakeId || !userData?.programmeId) return [];
-        const path = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === userData.programmeId);
-        if (!path || !path.semesters) return [];
-        const years = new Set<number>();
-        Object.keys(path.semesters).forEach(semNum => years.add(Math.ceil(Number(semNum) / 2)));
-        return Array.from(years).sort();
-    }, [selectedIntakeId, userData, allCoursePaths]);
-
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                <Card><CardHeader><Skeleton className="h-8 w-1/3"/><Skeleton className="h-4 w-1/2 mt-2"/></CardHeader><CardContent><Skeleton className="h-64 w-full" /></CardContent></Card>
-            </div>
-        )
-    }
+            const expectedYearInSemester = intakeYear + (Number(year) - 1);
+            return s.name.includes(String(expectedYearInSemester));
+        });
+    }, [allSemesters, allIntakes, selectedIntake, year]);
 
     return (
-        <div className="space-y-6">
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Course Registration</CardTitle>
-                    <CardDescription>{openSemesters.length > 0 ? "Select your intake, year, and semester, then choose your courses." : "Course registration is not currently open."}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1"><Label htmlFor="intake-select">Select Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger id="intake-select"><SelectValue placeholder="Select an intake..." /></SelectTrigger><SelectContent>{allIntakes.map(i => (<SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>))}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label htmlFor="year-select">Select Year</Label><Select value={selectedYear} onValueChange={setSelectedYear} disabled={!selectedIntakeId}><SelectTrigger id="year-select"><SelectValue placeholder="Select year of study..." /></SelectTrigger><SelectContent>{availableYears.map(y => (<SelectItem key={y} value={String(y)}>Year {y}</SelectItem>))}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId} disabled={!selectedYear}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : 'bg-red-500')}></span>{s.name}</div></SelectItem>))}</SelectContent></Select></div>
-                    </div>
-                     {isLateRegistration && selectedSemesterId && (
-                         <Alert variant="destructive">
-                            <ShieldAlert className="h-4 w-4" />
-                            <AlertTitle>Late Registration</AlertTitle>
-                            <AlertDescription>
-                                This is a late registration. A non-refundable penalty fee of <strong>ZMW {lateFeeAmount.toFixed(2)}</strong> will be added to your invoice.
-                            </AlertDescription>
-                        </Alert>
-                    )}
-
-                    {existingRegistration && selectedSemesterId ? (
-                         <div>
-                            <h3 className="font-bold text-lg mb-2">My Current Registration for {existingRegistration.semesterName}</h3>
-                             <Card className="bg-muted/50">
-                                <CardHeader>
-                                    <CardTitle>Status: {existingRegistration.status}</CardTitle>
-                                    <CardDescription>
-                                        Your registration is currently being processed. You can view payment details on the{" "}
-                                        <Link href="/student/payments" className="underline text-primary">Payments</Link> page.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Collapsible>
-                                        <CollapsibleTrigger asChild>
-                                            <Button variant="link" className="p-0 h-auto text-sm mb-2">
-                                                View Registration Summary <ChevronDown className="h-4 w-4 ml-1" />
-                                            </Button>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent>
-                                             <Table>
-                                                <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead></TableRow></TableHeader>
-                                                <TableBody>
-                                                     {useProgrammeFee ? (
-                                                        <TableRow><TableCell>Tuition: {currentProgramme?.name}</TableCell><TableCell className="text-right">{(currentProgramme?.tuitionFee || 0).toFixed(2)}</TableCell></TableRow>
-                                                     ) : registeredCourses.map(course => (
-                                                        <TableRow key={course.id}><TableCell>Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">{course.cost.toFixed(2)}</TableCell></TableRow>
-                                                    ))}
-                                                    {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
-                                                        <TableRow key={`mand-${i}`}><TableCell>Mandatory Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow>
-                                                    ))}
-                                                    {currentSemester?.optionalFees && (existingRegistration.optionalFees || []).map(feeId => {
-                                                         const fee = currentSemester.optionalFees![feeId];
-                                                         return fee ? <TableRow key={feeId}><TableCell>Optional Fee: {fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell></TableRow> : null;
-                                                    })}
-                                                    {existingRegistration.invoiceDetails?.lateFee && existingRegistration.invoiceDetails.lateFee > 0 && <TableRow className="text-destructive"><TableCell>Late Registration Fee</TableCell><TableCell className="text-right">{existingRegistration.invoiceDetails.lateFee.toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold bg-muted hover:bg-muted"><TableCell>Total Invoice Value</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0)).toFixed(2)}</TableCell></TableRow>
-                                                    {existingRegistration.invoiceDetails?.applyScholarship && <TableRow className="font-bold text-blue-600"><TableCell>Scholarship Applied</TableCell><TableCell className="text-right">- ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) * (allScholarships.find(s => s.id === existingRegistration.scholarshipId)?.percentage || 0) / 100).toFixed(2)}</TableCell></TableRow>}
-                                                    <TableRow className="font-bold"><TableCell>Final Amount Due</TableCell><TableCell className="text-right">ZMW {((existingRegistration.invoiceDetails?.totalTuition || 0) + (existingRegistration.invoiceDetails?.totalMandatoryFees || 0) + (existingRegistration.invoiceDetails?.totalOptionalFees || 0) + (existingRegistration.invoiceDetails?.lateFee || 0) - (existingRegistration.invoiceDetails?.applyScholarship ? ((existingRegistration.invoiceDetails?.totalTuition || 0) * (allScholarships.find(s => s.id === existingRegistration.scholarshipId)?.percentage || 0) / 100) : 0)).toFixed(2)}</TableCell></TableRow>
-                                                </TableBody>
-                                            </Table>
-                                        </CollapsibleContent>
-                                    </Collapsible>
-                                </CardContent>
-                                <CardFooter className="justify-between">
-                                    <Button asChild variant="secondary"><Link href="/student/payments">Go to Payments</Link></Button>
-                                    {(existingRegistration.status === 'Pending Approval' || existingRegistration.status === 'Pending Payment') && (
-                                        <Button variant="destructive" onClick={handleCancelRegistration} disabled={submitting}>{submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4" />}Cancel Registration</Button>
-                                    )}
-                                     {existingRegistration.status !== 'Pending Approval' && existingRegistration.invoiceDetails && (
-                                        <Button variant="outline" size="sm" onClick={() => generateInvoicePDF(existingRegistration.invoiceDetails!)}>
-                                            <Download className="mr-2 h-4 w-4" /> Download Invoice
-                                        </Button>
-                                    )}
-                                </CardFooter>
-                            </Card>
-                        </div>
-                    ) : selectedSemesterId ? (
-                    <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Available Courses */}
-                        <div>
-                            <h3 className="font-bold text-lg mb-2">Available Courses</h3>
-                            <div className="max-h-96 overflow-y-auto border rounded-md p-2">
-                                <Table>
-                                     <TableHeader><TableRow><TableHead className="w-[50px]"></TableHead><TableHead>Course</TableHead></TableRow></TableHeader>
-                                     <TableBody>
-                                        {availableCourses.map((course) => (
-                                            <TableRow key={course.id}>
-                                                <TableCell><Checkbox id={`course-${course.id}`} checked={selectedCourses.some(c => c.id === course.id)} onCheckedChange={() => handleSelectCourse(course.id)}/></TableCell>
-                                                <TableCell>
-                                                    <Label htmlFor={`course-${course.id}`}>{course.name} ({course.code})</Label>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                     </TableBody>
-                                </Table>
-                            </div>
-                        </div>
-
-                        {/* Selected Courses with Priority */}
-                        <div>
-                            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">My Selected Courses (Prioritized) 
-                                <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5"><HelpCircle className="h-4 w-4"/></Button></TooltipTrigger><TooltipContent><p>Drag and drop courses to set their unlock priority.<br/> Courses at the top will be unlocked first as you pay.</p></TooltipContent></Tooltip></TooltipProvider>
-                            </h3>
-                            <div className="max-h-96 overflow-y-auto border rounded-md p-2">
-                                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                                    <Table>
-                                         <TableHeader><TableRow><TableHead className="w-8"></TableHead><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
-                                        <SortableContext items={selectedCourses} strategy={verticalListSortingStrategy}>
-                                            <TableBody>
-                                                {selectedCourses.map((course) => <SortableCourseItem key={course.id} course={course} />)}
-                                            </TableBody>
-                                        </SortableContext>
-                                    </Table>
-                                </DndContext>
-                                {selectedCourses.length === 0 && <p className="text-center text-sm text-muted-foreground p-4">Select courses from the left to add them here.</p>}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Fees Section */}
-                     {(currentSemester?.optionalFees && Object.keys(currentSemester.optionalFees).length > 0) && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{Object.entries(currentSemester.optionalFees).map(([id, fee]) => (<div key={id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${id}`} checked={selectedFees.includes(id)} onCheckedChange={() => handleSelectFee(id)}/><Label htmlFor={`fee-${id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
-                    </>
-                    ) : null}
-                </CardContent>
-                )}
-
-                { !existingRegistration && selectedSemesterId && (
-                <CardFooter className="flex flex-col items-end gap-4 border-t pt-6">
-                    <div className="w-full space-y-4">
-                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label htmlFor="payment-plan">Payment Plan</Label><Select onValueChange={setSelectedPaymentPlanId} value={selectedPaymentPlanId} disabled={semesterPaymentPlans.length === 0}><SelectTrigger id="payment-plan"><SelectValue placeholder="Select a payment plan" /></SelectTrigger><SelectContent>{semesterPaymentPlans.map(plan => (<SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>))}</SelectContent></Select>{semesterPaymentPlans.length === 0 && !loading && (<p className="text-xs text-destructive">No valid payment plans for this semester. Deadlines may be missing.</p>)}</div>
-                            <div className="space-y-1"><Label htmlFor="scholarship-select">Scholarship (Optional)</Label><Select onValueChange={setSelectedScholarshipId} value={selectedScholarshipId} disabled={semesterScholarships.length === 0}><SelectTrigger id="scholarship-select"><SelectValue placeholder="No scholarship" /></SelectTrigger><SelectContent><SelectItem value="">None</SelectItem>{semesterScholarships.map(s => (<SelectItem key={s.id} value={s.id}>{s.name} ({s.percentage}% Waiver)</SelectItem>))}</SelectContent></Select></div>
-                         </div>
-                        <Separator />
-                        <div className="space-y-1 text-right text-sm w-full">
-                            <div className="flex justify-between">
-                                <span>Tuition Cost:</span>
-                                <span>ZMW {tuitionCost.toFixed(2)}</span>
-                            </div>
-                             {currentSemester?.mandatoryFees && Object.values(currentSemester.mandatoryFees).map((fee, i) => (
-                                <div key={i} className="flex justify-between">
-                                    <span>Mandatory Fee: {fee.name}</span>
-                                    <span>ZMW {fee.amount.toFixed(2)}</span>
+        <Card className="max-w-4xl mx-auto">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-headline text-2xl"><UserPlus/> Add New Student</CardTitle>
+                <CardDescription>Create a new account for a student. An ID will be generated unless you provide one.</CardDescription>
+            </CardHeader>
+            <form onSubmit={handleCreateStudent}>
+            <CardContent>
+                 <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
+                    <AccordionItem value="item-1">
+                        <AccordionTrigger className="text-lg font-semibold">Basic & Academic Information</AccordionTrigger>
+                        <AccordionContent className="space-y-4 pt-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="lg:col-span-3">
+                                    <Label>User ID</Label>
+                                    <div className="flex items-center space-x-2 mt-1">
+                                        <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
+                                        <Label htmlFor="manual-id-switch">{isManualId ? 'Manual ID' : 'Auto-generate ID'}</Label>
+                                    </div>
+                                    {isManualId && <div className="flex gap-2 mt-2">
+                                        <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />
+                                        <Button type="button" variant="outline" size="icon" onClick={handlePastePrefix} title="Paste current prefix"><Copy className="h-4 w-4"/></Button>
+                                    </div>}
                                 </div>
-                            ))}
-                            <div className="flex justify-between">
-                                <span>Optional Fees:</span>
-                                <span>ZMW {optionalFeesCost.toFixed(2)}</span>
+                                <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading} required/></div>
+                                <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} required/></div>
+                                <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Initial Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} required/></div>
+                                
+                                <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading || !selectedIntake} required/></div>
+                                
+                                <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading || !year} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                             </div>
-                            {isLateRegistration && 
-                                <div className="flex justify-between text-destructive">
-                                    <span>Late Registration Fee:</span> 
-                                    <span>ZMW {lateFeeAmount.toFixed(2)}</span>
-                                </div>
-                            }
-                            <Separator className="my-1"/>
-                            <div className="flex justify-between font-bold">
-                                <span>Total Invoice Value:</span>
-                                <span>ZMW {totalCost.toFixed(2)}</span>
+                        </AccordionContent>
+                    </AccordionItem>
+                    <AccordionItem value="item-2">
+                        <AccordionTrigger className="text-lg font-semibold">Other Details</AccordionTrigger>
+                        <AccordionContent className="space-y-4 pt-2">
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={loading}/></div>
+                                <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender} disabled={loading}><SelectTrigger><SelectValue placeholder="Select gender"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
+                                <div className="space-y-1"><Label>National ID</Label><Input placeholder="e.g., 123456/78/9" value={nationalId} onChange={e => setNationalId(e.target.value)} disabled={loading}/></div>
+                                <div className="lg:col-span-3 space-y-1"><Label>Passport Number</Label><Input placeholder="e.g., ZA12345" value={passport} onChange={e => setPassport(e.target.value)} disabled={loading}/></div>
+                                <div className="lg:col-span-3 space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
                             </div>
-                            {selectedScholarshipId && 
-                                <div className="flex justify-between font-bold text-blue-600">
-                                    <span>Scholarship Applied:</span>
-                                    <span>- ZMW {(tuitionCost * ((allScholarships.find(s=>s.id === selectedScholarshipId)?.percentage || 0) / 100)).toFixed(2)}</span>
-                                </div>
-                            }
-                        </div>
-                        <Alert>
-                            <DollarSign/>
-                            <AlertTitle>Amount Due for First Installment</AlertTitle>
-                            <AlertDescription>
-                                Your initial amount payable is ZMW {payableAmount.toFixed(2)}.
-                            </AlertDescription>
-                        </Alert>
-                    </div>
-                    <Button onClick={handleRegister} disabled={submitting || loading || selectedCourses.length === 0} size="lg" className="mt-4">{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{submitting ? 'Submitting...' : 'Submit for Approval'}</Button>
-                </CardFooter>
-                )}
-            </Card>
-        </div>
-    );
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2 rounded-md border p-3"><Label>Parent/Guardian</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} /><Input placeholder="Contact Number" value={guardianContact} onChange={e => setGuardianContact(e.target.value)} /></div></div>
+                                <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
+                            </div>
+                            <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
+                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            </CardContent>
+            <CardFooter className="justify-end">
+                 <Button type="submit" disabled={loading}>
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                    Create Student Account
+                </Button>
+            </CardFooter>
+            </form>
+        </Card>
+    )
 }
-  
-
-    
-
-    
-
-    
