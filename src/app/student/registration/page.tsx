@@ -140,25 +140,32 @@ export default function StudentRegistrationPage() {
     const activeSemesterForYear = React.useMemo(() => {
         if (!selectedYear || !userPath || !userData) return null;
 
-        const pathOfferings = userPath ? allOfferings[userPath.id] : null;
+        const pathOfferings = allOfferings[userPath.id];
         if(!pathOfferings) return null;
         
-        const semesterNumberForYear = Object.keys(userPath.semesters).find(semNum => {
+        // Find the semester number in the path that corresponds to the selected year and is active
+        const activeSemesterNumber = Object.keys(pathOfferings).find(semNum => {
+            if (!pathOfferings[semNum]?.active) return false;
             const yearOfPath = Math.floor((Number(semNum) - 1) / 2) + 1;
-            const semesterInYear = ((Number(semNum) - 1) % 2) + 1;
-            const semesterNameGuess = `${userData.intakeId} Year ${yearOfPath} Semester ${semesterInYear}`;
-            const targetSemester = Object.values(allSemesters).find(s => s.name === semesterNameGuess);
-
-            return yearOfPath === selectedYear && targetSemester && pathOfferings[semNum]?.active && !alreadyRegisteredSemesters.includes(targetSemester.id);
+            return yearOfPath === selectedYear;
         });
-        
-        if(!semesterNumberForYear) return null;
 
-        const semesterNameGuess = `${userData.intakeId} Year ${selectedYear} Semester ${((Number(semesterNumberForYear) - 1) % 2) + 1}`;
-        return Object.values(allSemesters).find(s => s.name === semesterNameGuess) || null;
+        if (!activeSemesterNumber) return null;
+        
+        const yearOfPath = Math.floor((Number(activeSemesterNumber) - 1) / 2) + 1;
+        const semesterInYear = ((Number(activeSemesterNumber) - 1) % 2) + 1;
+        const semesterNameGuess = `${userData.intakeId} Year ${yearOfPath} Semester ${semesterInYear}`;
+        
+        const targetSemester = Object.entries(allSemesters).find(([, s]) => s.name === semesterNameGuess);
+
+        if (targetSemester && !alreadyRegisteredSemesters.includes(targetSemester[0])) {
+            return { id: targetSemester[0], ...targetSemester[1] };
+        }
+
+        return null;
 
     }, [selectedYear, userPath, userData, allOfferings, allSemesters, alreadyRegisteredSemesters]);
-
+    
     const coursesForSemester = React.useMemo(() => {
         if (!activeSemesterForYear || !userPath || !userData) return [];
 
@@ -170,7 +177,8 @@ export default function StudentRegistrationPage() {
         if(!pathSemesterKey) return [];
         
         const courseIds = userPath.semesters[pathSemesterKey]?.courses || [];
-        return availableCourses.filter(c => courseIds.includes(c.id));
+        const allAvailableCourses = Object.values(availableCourses);
+        return allAvailableCourses.filter(c => courseIds.includes(c.id));
     }, [activeSemesterForYear, availableCourses, userPath, userData, selectedYear]);
 
     React.useEffect(() => {
@@ -192,7 +200,11 @@ export default function StudentRegistrationPage() {
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${activeSemesterForYear.id}`);
             const invoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             
-            const totalTuition = selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c=>c.id===id)?.cost || 0), 0);
+            const totalTuition = selectedCourseIds.reduce((sum, id) => {
+                const course = availableCourses.find(c => c.id === id);
+                return sum + (course?.cost || 0);
+            }, 0);
+            
             const totalMandatoryFees = activeSemesterForYear.mandatoryFees ? Object.values(activeSemesterForYear.mandatoryFees).reduce((sum, fee) => sum + fee.amount, 0) : 0;
             const finalOptionalFees = activeSemesterForYear.optionalFees ? Object.entries(activeSemesterForYear.optionalFees).filter(([id]) => selectedOptionalFees[id]).map(([,fee])=>fee.amount).reduce((sum,amt) => sum+amt, 0) : 0;
 
@@ -205,7 +217,8 @@ export default function StudentRegistrationPage() {
                 programmeId: userData.programmeId,
                 applyScholarship,
                 invoiceId: invoiceRef.key,
-                registrationDate: new Date().toISOString()
+                registrationDate: new Date().toISOString(),
+                semesterName: activeSemesterForYear.name,
             });
 
             await set(invoiceRef, {
@@ -243,7 +256,7 @@ export default function StudentRegistrationPage() {
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Course Registration</CardTitle>
-                    <CardDescription>Select a year of study to see available semesters and register for your courses.</CardDescription>
+                    <CardDescription>Select your current year of study to see available semesters and register for your courses.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {userPath ? (
@@ -285,6 +298,7 @@ export default function StudentRegistrationPage() {
                                     <div key={course.id} className="flex items-center space-x-2 py-2 border-b">
                                         <Checkbox id={course.id} checked={selectedCourseIds.includes(course.id)} onCheckedChange={() => handleCourseSelection(course.id)} disabled={userData?.exemptedCourses?.[course.id]} />
                                         <Label htmlFor={course.id} className="flex-1 cursor-pointer">{course.name} ({course.code})</Label>
+                                        {userData?.exemptedCourses?.[course.id] && <Badge variant="secondary">Exempted</Badge>}
                                         <span className="text-sm font-mono">ZMW {course.cost.toFixed(2)}</span>
                                     </div>
                                 ))}
