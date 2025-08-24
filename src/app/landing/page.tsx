@@ -162,8 +162,8 @@ export default function LandingPage() {
       <header className="container z-40 bg-background/80 backdrop-blur-sm sticky top-0">
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
-          <nav className="flex items-center gap-4">
-            <Link href="/vacancies" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
+          <nav className="flex items-center gap-1 sm:gap-4">
+            <Link href="/vacancies" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary px-2">
               Careers
             </Link>
             <Button asChild>
@@ -282,12 +282,12 @@ export default function LandingPage() {
                     </ul>
                 </div>
                 <div className="rounded-lg border bg-card p-4 shadow-sm">
-                    <Image src="https://placehold.co/600x400.png" alt="Student Dashboard" width={600} height={400} className="rounded-md" data-ai-hint="student dashboard"/>
+                    <Image src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop" alt="Student Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="student dashboard"/>
                 </div>
             </div>
              <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
                  <div className="rounded-lg border bg-card p-4 shadow-sm md:order-2">
-                    <Image src="https://placehold.co/600x400.png" alt="Staff Dashboard" width={600} height={400} className="rounded-md" data-ai-hint="lecturer dashboard"/>
+                    <Image src="https://images.unsplash.com/photo-1580894742597-87bc8789db3d?q=80&w=2070&auto=format&fit=crop" alt="Staff Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="lecturer dashboard"/>
                 </div>
                 <div className="md:order-1">
                     <h3 className="text-2xl font-bold mb-4">For Staff & Lecturers</h3>
