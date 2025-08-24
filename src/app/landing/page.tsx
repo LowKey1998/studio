@@ -10,7 +10,7 @@ import { ArrowRight, BarChart2, CheckCircle2, Library, MessageSquare, MonitorPla
 import Image from 'next/image';
 import { db } from '@/lib/firebase';
 import { ref, get, push, serverTimestamp } from 'firebase/database';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO, differenceInDays, isBefore } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -163,7 +163,7 @@ export default function LandingPage() {
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
           <nav className="flex items-center gap-1 sm:gap-4">
-            <Link href="/vacancies" className="hidden sm:inline-flex text-sm font-medium text-muted-foreground transition-colors hover:text-primary px-2">
+            <Link href="/vacancies" className="flex items-center text-sm font-medium text-muted-foreground transition-colors hover:text-primary px-2">
               Careers
             </Link>
             <Button asChild>
