@@ -1,7 +1,7 @@
 
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -45,6 +45,7 @@ type Semester = {
 type ActiveSemester = {
     semesterId: string;
     semesterName: string;
+    intakeId: string;
     year: number;
     semesterInYear: number;
     pathId: string;
@@ -133,10 +134,10 @@ export default function StudentRegistrationPage() {
                     const semNum = Number(semNumStr);
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
-                    const semesterNamePattern = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
                     
+                    const semesterNamePattern = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
                     const semesterId = Object.keys(allSemestersData).find(key => allSemestersData[key].name === semesterNamePattern);
-
+                    
                     const isRegistered = userRegistrations.includes(semesterId || '');
                     
                      if (!isRegistered) {
@@ -148,8 +149,9 @@ export default function StudentRegistrationPage() {
                          }));
 
                          activeSemestersList.push({ 
-                            semesterId: semesterId || `${semesterNamePattern.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID if not found
+                            semesterId: semesterId || '',
                             semesterName: semesterNamePattern,
+                            intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
                             pathId: userPath.id,
@@ -222,14 +224,14 @@ export default function StudentRegistrationPage() {
                     {openSemesters.length > 0 ? (
                         <div className="space-y-4">
                             {openSemesters.map(semester => (
-                                <Card key={semester.semesterId}>
+                                <Card key={semester.pathSemesterNum}>
                                     <CardHeader className="flex-row items-center justify-between">
                                         <div className="space-y-1">
                                             <CardTitle>{semester.semesterName}</CardTitle>
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
                                         <Button asChild>
-                                            <Link href={`/student/registration/${semester.year}/${semester.semesterInYear}`}>
+                                            <Link href={`/student/registration/${semester.intakeId}/${semester.year}/${semester.semesterInYear}`}>
                                                 Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/>
                                             </Link>
                                         </Button>
