@@ -34,7 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isBefore } from 'date-fns';
 
 
 type Course = {
@@ -107,7 +107,6 @@ type Semester = {
     name: string;
     status: 'Open' | 'Closed' | 'Archived';
     lateRegistrationActive?: boolean;
-    paymentPlanIds?: Record<string, boolean>;
     mandatoryFees?: Record<string, Fee>;
     optionalFees?: Record<string, Fee>;
 };
@@ -131,6 +130,12 @@ type Scholarship = {
     percentage: number;
     semesterIds?: Record<string, boolean>;
 };
+
+type Intake = {
+    id: string;
+    name: string;
+};
+
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -167,10 +172,16 @@ export default function RegistrationPage() {
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
     
+    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [openSemesters, setOpenSemesters] = React.useState<Semester[]>([]);
     const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>("");
     
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
+    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
+    const [selectedYear, setSelectedYear] = React.useState('');
+
+
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semesterPaymentPlans, setSemesterPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
@@ -201,7 +212,7 @@ export default function RegistrationPage() {
           }
         });
         return () => unsubscribe();
-      }, [router]);
+    }, [router]);
       
     // Fetch static data once
     React.useEffect(() => {
@@ -212,93 +223,71 @@ export default function RegistrationPage() {
         const institutionRef = ref(db, 'settings/institution');
         const scholarshipsRef = ref(db, 'scholarships');
         const programmesRef = ref(db, 'programmes');
+        const intakesRef = ref(db, 'intakes');
+        const semestersRef = ref(db, 'semesters');
 
+        const fetchData = async () => {
+            setLoading(true);
+            const [
+                plansSnap, policySnap, coursesSnap, pathsSnap, instSnap, scholsSnap, progsSnap, intakesSnap, semsSnap
+            ] = await Promise.all([
+                get(paymentPlansRef), get(regPolicyRef), get(coursesRef), get(coursePathsRef), get(institutionRef), get(scholarshipsRef), get(programmesRef), get(intakesRef), get(semestersRef)
+            ]);
 
-        const unsubPaymentPlans = onValue(paymentPlansRef, (snapshot) => {
-            if (snapshot.exists()) setAllPaymentPlans(Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })));
-            else setAllPaymentPlans([]);
-        });
-        const unsubRegPolicy = onValue(regPolicyRef, (snapshot) => {
-            if(snapshot.exists()) setRegistrationPolicy(snapshot.val());
-        });
-        const unsubCourses = onValue(coursesRef, (snapshot) => {
-             if(snapshot.exists()) {
-                const coursesData = snapshot.val();
-                setAllCourses(Object.keys(coursesData).map(id => ({id, ...coursesData[id]})));
-            }
-        });
-         const unsubCoursePaths = onValue(coursePathsRef, (snapshot) => {
-            if (snapshot.exists()) setAllCoursePaths(Object.values(snapshot.val()));
-            else setAllCoursePaths([]);
-        });
-        const unsubInstitution = onValue(institutionRef, (snapshot) => {
-            if (snapshot.exists()) setInstitutionSettings(snapshot.val());
-        });
-        const unsubScholarships = onValue(scholarshipsRef, (snapshot) => {
-            if (snapshot.exists()) setAllScholarships(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
-            else setAllScholarships([]);
-        });
-        const unsubProgrammes = onValue(programmesRef, (snapshot) => {
-            if (snapshot.exists()) setAllProgrammes(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
-            else setAllProgrammes([]);
-        });
-        
-        return () => {
-            unsubPaymentPlans();
-            unsubRegPolicy();
-            unsubCourses();
-            unsubCoursePaths();
-            unsubInstitution();
-            unsubScholarships();
-            unsubProgrammes();
+            if(plansSnap.exists()) setAllPaymentPlans(Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] }))); else setAllPaymentPlans([]);
+            if(policySnap.exists()) setRegistrationPolicy(policySnap.val());
+            if(coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({id, ...coursesSnap.val()[id]}))); else setAllCourses([]);
+            if(pathsSnap.exists()) setAllCoursePaths(Object.values(pathsSnap.val())); else setAllCoursePaths([]);
+            if(instSnap.exists()) setInstitutionSettings(instSnap.val());
+            if(scholsSnap.exists()) setAllScholarships(Object.keys(scholsSnap.val()).map(id => ({id, ...scholsSnap.val()[id]}))); else setAllScholarships([]);
+            if(progsSnap.exists()) setAllProgrammes(Object.keys(progsSnap.val()).map(id => ({id, ...progsSnap.val()[id]}))); else setAllProgrammes([]);
+            if(intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({id, ...intakesSnap.val()[id]}))); else setAllIntakes([]);
+            if(semsSnap.exists()) setAllSemesters(Object.keys(semsSnap.val()).map(id => ({id, ...semsSnap.val()[id]}))); else setAllSemesters([]);
+            setLoading(false);
         };
+        fetchData();
     },[]);
 
-    // Determine available semesters for the student
-    React.useEffect(() => {
-        if (!userData || !allCoursePaths.length) {
-            setLoading(false);
+    // Determine available semesters for the student based on intake/year selection
+     React.useEffect(() => {
+        if (!selectedIntakeId || !selectedYear) {
+            setOpenSemesters([]);
+            setSelectedSemesterId('');
             return;
         }
 
-        const userPath = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
+        const userPath = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === userData?.programmeId);
         if (!userPath) {
             setOpenSemesters([]);
-            setLoading(false);
             return;
         }
 
         const offeringsRef = ref(db, `semesterOfferings/${userPath.id}`);
-        const semestersRef = ref(db, 'semesters');
-
-        const unsub = onValue(offeringsRef, async (offeringsSnap) => {
+        const unsub = onValue(offeringsRef, (offeringsSnap) => {
             const offerings = offeringsSnap.val() || {};
-            const semestersSnap = await get(semestersRef);
-            const allSems = semestersSnap.val() || {};
-            
             const availableForUser: Semester[] = [];
+
             for (const semNum in offerings) {
                 const semesterDetails = offerings[semNum];
                 if (semesterDetails?.active) {
-                    const targetSemesterNamePart = `Year ${Math.ceil(parseInt(semNum)/2)} Semester ${ (parseInt(semNum) - 1) % 2 + 1}`;
-                    const semId = Object.keys(allSems).find(key => allSems[key].name.includes(targetSemesterNamePart) && allSems[key].name.includes(userData.intakeId.substring(0,4))); // Match year part of intake too
-                    if (semId && allSems[semId] && allSems[semId].status === 'Open') {
-                        availableForUser.push({ id: semId, ...allSems[semId] });
+                    const yearOfStudy = Math.ceil(parseInt(semNum) / 2);
+                    if(yearOfStudy.toString() === selectedYear) {
+                        const targetSemesterNamePart = `Year ${yearOfStudy} Semester ${(parseInt(semNum) - 1) % 2 + 1}`;
+                        const intake = allIntakes.find(i => i.id === selectedIntakeId);
+                        if (!intake) continue;
+
+                        const sem = allSemesters.find(s => s.name.includes(targetSemesterNamePart) && s.name.includes(intake.name) && s.status === 'Open');
+                        if (sem) {
+                            availableForUser.push(sem);
+                        }
                     }
                 }
             }
-            
             setOpenSemesters(availableForUser);
-            if (availableForUser.length > 0 && !selectedSemesterId) {
-                setSelectedSemesterId(availableForUser[0].id);
-            } else if (availableForUser.length === 0) {
-                setSelectedSemesterId("");
-            }
-            setLoading(false);
         });
         
         return () => unsub();
-    }, [userData, allCoursePaths, selectedSemesterId]);
+    }, [selectedIntakeId, selectedYear, userData, allCoursePaths, allIntakes, allSemesters]);
 
 
     // Main data fetching and real-time update logic
@@ -323,8 +312,8 @@ export default function RegistrationPage() {
                  setRegisteredCourses([]);
                  
                  const semester = openSemesters.find(s => s.id === selectedSemesterId);
-                 if (semester) {
-                    const path = allCoursePaths.find(p => p.intakeId === uData.intakeId && p.programmeId === uData.programmeId);
+                 if (semester && uData) {
+                    const path = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === uData.programmeId);
                     const semesterNumberMatch = semester.name.match(/Semester (\d+)/);
                     const yearNumberMatch = semester.name.match(/Year (\d+)/);
                     if (path && path.semesters && yearNumberMatch && semesterNumberMatch) {
@@ -345,7 +334,7 @@ export default function RegistrationPage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedSemesterId, openSemesters, toast, allCourses, allCoursePaths]);
+    }, [selectedSemesterId, openSemesters, toast, allCourses, allCoursePaths, selectedIntakeId]);
 
 
     React.useEffect(() => {
@@ -590,19 +579,14 @@ export default function RegistrationPage() {
         };
     }, [selectedCourses, selectedFees, currentSemester, isLateRegistration, lateFeeAmount, selectedScholarshipId, allScholarships, allPaymentPlans, selectedPaymentPlanId, useProgrammeFee, currentProgramme]);
 
-    const recommendedCourseIds = React.useMemo(() => {
-        if (!userData || !currentSemester) return [];
-        const path = allCoursePaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
-        if(!path || !path.semesters) return [];
-        
-        const semesterNumberMatch = currentSemester.name.match(/Semester (\d+)/);
-        const yearNumberMatch = currentSemester.name.match(/Year (\d+)/);
-        if (yearNumberMatch && semesterNumberMatch) {
-            const semNumForPath = (Number(yearNumberMatch[1]) - 1) * 2 + Number(semesterNumberMatch[1]);
-            return path.semesters[semNumForPath]?.courses || [];
-        }
-        return [];
-    }, [userData, currentSemester, allCoursePaths]);
+    const availableYears = React.useMemo(() => {
+        if (!selectedIntakeId || !userData?.programmeId) return [];
+        const path = allCoursePaths.find(p => p.intakeId === selectedIntakeId && p.programmeId === userData.programmeId);
+        if (!path || !path.semesters) return [];
+        const years = new Set<number>();
+        Object.keys(path.semesters).forEach(semNum => years.add(Math.ceil(Number(semNum) / 2)));
+        return Array.from(years).sort();
+    }, [selectedIntakeId, userData, allCoursePaths]);
 
     if (loading) {
         return (
@@ -617,13 +601,15 @@ export default function RegistrationPage() {
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Course Registration</CardTitle>
-                    <CardDescription>{openSemesters.length > 0 ? "Select a semester, choose your courses, and set their priority." : "Course registration is not currently open."}</CardDescription>
+                    <CardDescription>{openSemesters.length > 0 ? "Select your intake, year, and semester, then choose your courses." : "Course registration is not currently open."}</CardDescription>
                 </CardHeader>
-                {openSemesters.length > 0 ? (
-                <>
                 <CardContent className="space-y-6">
-                    <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name} ({s.status})</div></SelectItem>))}</SelectContent></Select></div>
-                     {isLateRegistration && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1"><Label htmlFor="intake-select">Select Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger id="intake-select"><SelectValue placeholder="Select an intake..." /></SelectTrigger><SelectContent>{allIntakes.map(i => (<SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>))}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label htmlFor="year-select">Select Year</Label><Select value={selectedYear} onValueChange={setSelectedYear} disabled={!selectedIntakeId}><SelectTrigger id="year-select"><SelectValue placeholder="Select year of study..." /></SelectTrigger><SelectContent>{availableYears.map(y => (<SelectItem key={y} value={String(y)}>Year {y}</SelectItem>))}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label htmlFor="semester-select">Select Semester</Label><Select value={selectedSemesterId} onValueChange={setSelectedSemesterId} disabled={!selectedYear}><SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger><SelectContent>{openSemesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : 'bg-red-500')}></span>{s.name}</div></SelectItem>))}</SelectContent></Select></div>
+                    </div>
+                     {isLateRegistration && selectedSemesterId && (
                          <Alert variant="destructive">
                             <ShieldAlert className="h-4 w-4" />
                             <AlertTitle>Late Registration</AlertTitle>
@@ -633,7 +619,7 @@ export default function RegistrationPage() {
                         </Alert>
                     )}
 
-                    {existingRegistration ? (
+                    {existingRegistration && selectedSemesterId ? (
                          <div>
                             <h3 className="font-bold text-lg mb-2">My Current Registration for {existingRegistration.semesterName}</h3>
                              <Card className="bg-muted/50">
@@ -689,7 +675,7 @@ export default function RegistrationPage() {
                                 </CardFooter>
                             </Card>
                         </div>
-                    ) : (
+                    ) : selectedSemesterId ? (
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Available Courses */}
@@ -704,7 +690,6 @@ export default function RegistrationPage() {
                                                 <TableCell><Checkbox id={`course-${course.id}`} checked={selectedCourses.some(c => c.id === course.id)} onCheckedChange={() => handleSelectCourse(course.id)}/></TableCell>
                                                 <TableCell>
                                                     <Label htmlFor={`course-${course.id}`}>{course.name} ({course.code})</Label>
-                                                    {recommendedCourseIds.includes(course.id) && <Badge variant="secondary" className="ml-2">Recommended</Badge>}
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -737,10 +722,11 @@ export default function RegistrationPage() {
                     {/* Fees Section */}
                      {(currentSemester?.optionalFees && Object.keys(currentSemester.optionalFees).length > 0) && (<div className="pt-4"><h3 className="font-bold text-lg mb-2">Optional Fees</h3><div className="space-y-2 rounded-md border p-4">{Object.entries(currentSemester.optionalFees).map(([id, fee]) => (<div key={id} className="flex items-center justify-between"><div className="flex items-center gap-2"><Checkbox id={`fee-${id}`} checked={selectedFees.includes(id)} onCheckedChange={() => handleSelectFee(id)}/><Label htmlFor={`fee-${id}`}>{fee.name}</Label></div><span className="font-medium">ZMW {fee.amount.toFixed(2)}</span></div>))}</div></div>)}
                     </>
-                    )}
+                    ) : null}
                 </CardContent>
-                
-                { !existingRegistration && (
+                )}
+
+                { !existingRegistration && selectedSemesterId && (
                 <CardFooter className="flex flex-col items-end gap-4 border-t pt-6">
                     <div className="w-full space-y-4">
                          <div className="grid grid-cols-2 gap-4">
@@ -791,10 +777,6 @@ export default function RegistrationPage() {
                     </div>
                     <Button onClick={handleRegister} disabled={submitting || loading || selectedCourses.length === 0} size="lg" className="mt-4">{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{submitting ? 'Submitting...' : 'Submit for Approval'}</Button>
                 </CardFooter>
-                )}
-                </>
-                ) : (
-                <CardContent><div className="text-center py-12"><Clock className="mx-auto h-12 w-12 text-muted-foreground" /><h3 className="mt-4 text-lg font-semibold">Registration Closed</h3><p className="mt-2 text-sm text-muted-foreground">There are no semesters currently open for registration.</p></div></CardContent>
                 )}
             </Card>
         </div>
