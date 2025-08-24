@@ -86,6 +86,7 @@ export default function RegisterForSemesterPage() {
     const [applyScholarship, setApplyScholarship] = React.useState(false);
 
     const [availablePaymentPlans, setAvailablePaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [error, setError] = React.useState<string | null>(null);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -96,93 +97,108 @@ export default function RegisterForSemesterPage() {
         return () => unsubscribe();
     }, [router]);
     
-    const fetchData = React.useCallback(async () => {
+    React.useEffect(() => {
         if (!currentUser || !pathId || !semesterNum) return;
-        setLoading(true);
-        try {
-            const [
-                userSnap, 
-                pathSnap, 
-                coursesSnap, 
-                semestersSnap, 
-                paymentPlansSnap, 
-                programmesSnap,
-                intakeSnap,
-            ] = await Promise.all([
-                get(ref(db, `users/${currentUser.uid}`)),
-                get(ref(db, `coursePaths/${pathId}`)),
-                get(ref(db, 'courses')),
-                get(ref(db, 'semesters')),
-                get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'programmes')),
-                get(ref(db, 'intakes'))
-            ]);
-            
-            const userDataVal = userSnap.val();
-            const pathData: CoursePath = { id: pathId as string, ...pathSnap.val() };
-            
-            // Validation step: Does this path belong to this user?
-            if (!userDataVal || !pathData || userDataVal.intakeId !== pathData.intakeId || userDataVal.programmeId !== pathData.programmeId) {
-                toast({ variant: 'destructive', title: 'Invalid registration link.' });
-                router.push('/student/registration');
-                return;
-            }
+        
+        const fetchData = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                // Step 1: Get all necessary data in parallel
+                const [
+                    userSnap, 
+                    coursePathsSnap, 
+                    coursesSnap, 
+                    semestersSnap, 
+                    paymentPlansSnap, 
+                    programmesSnap,
+                    intakesSnap
+                ] = await Promise.all([
+                    get(ref(db, `users/${currentUser.uid}`)),
+                    get(ref(db, 'coursePaths')),
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'settings/paymentPlans')),
+                    get(ref(db, 'programmes')),
+                    get(ref(db, 'intakes'))
+                ]);
 
-            setUserData(userDataVal);
+                // Step 2: Validate user and find their correct course path
+                if (!userSnap.exists()) throw new Error("Could not find your user profile.");
+                const userDataVal: UserProfile = userSnap.val();
+                setUserData(userDataVal);
 
-            const programmeData = programmesSnap.val()?.[userDataVal.programmeId];
-            if (programmeData) {
-                setProgramme({ id: userDataVal.programmeId, ...programmeData });
-            }
+                if (!coursePathsSnap.exists()) throw new Error("Course paths have not been set up by the administration.");
 
-            const allCourses = coursesSnap.val() || {};
-            const allSemesters = semestersSnap.val() || {};
+                const allCoursePaths: CoursePath[] = Object.entries(coursePathsSnap.val()).map(([id, data]) => ({ id, ...(data as any) }));
+                const userPath = allCoursePaths.find(p => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId);
 
-            const semesterCourseIds = pathData.semesters[semesterNum as string]?.courses || [];
-            const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
-            setCoursesForSemester(semesterCourses);
-            
-            const year = Math.floor((Number(semesterNum) - 1) / 2) + 1;
-            const intakeName = intakeSnap.val()?.[pathData.intakeId]?.name || '';
-            const semesterNamePattern = `${intakeName} Year ${year} Semester ${((Number(semesterNum) - 1) % 2) + 1}`;
+                if (!userPath) throw new Error("A course path has not been defined for your intake and programme.");
 
-            const foundSemester = Object.values(allSemesters as Record<string, Semester>).find(s => s.name === semesterNamePattern);
-            
-            if(foundSemester) {
+                // Step 3: THIS IS THE CRITICAL VALIDATION
+                if (userPath.id !== pathId) {
+                    throw new Error("Invalid registration link. You are not authorized to register for this path.");
+                }
+
+                // Step 4: Load all necessary data for the page
+                const allCourses = coursesSnap.val() || {};
+                const allSemesters = semestersSnap.val() || {};
+                const allPaymentPlans = paymentPlansSnap.val() || {};
+                const allProgrammes = programmesSnap.val() || {};
+                const allIntakes = intakesSnap.val() || {};
+
+                const programmeData = allProgrammes[userDataVal.programmeId];
+                if (programmeData) {
+                    setProgramme({ id: userDataVal.programmeId, ...programmeData });
+                }
+
+                const semesterCourseIds = userPath.semesters[semesterNum as string]?.courses || [];
+                const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
+                setCoursesForSemester(semesterCourses);
+                
+                // Determine semester name based on path and find the matching semester object
+                const year = Math.floor((Number(semesterNum) - 1) / 2) + 1;
+                const intakeName = allIntakes[userPath.intakeId]?.name || '';
+                const semesterInYear = ((Number(semesterNum) - 1) % 2) + 1;
+                const semesterNamePattern = `${intakeName} Year ${year} Semester ${semesterInYear}`;
+
+                const foundSemester = Object.values(allSemesters as Record<string, Semester>).find(s => s.name === semesterNamePattern);
+                
+                if(!foundSemester) throw new Error(`Semester details for "${semesterNamePattern}" could not be found. Please contact administration.`);
+                
                 setSemesterDetails(foundSemester);
-                 if (paymentPlansSnap.exists() && foundSemester.paymentPlanIds) {
-                    const allPlans = paymentPlansSnap.val();
+
+                if (foundSemester.paymentPlanIds) {
                     const available = Object.keys(foundSemester.paymentPlanIds)
-                        .map(planId => allPlans[planId] ? { id: planId, ...allPlans[planId] } : null)
+                        .map(planId => allPaymentPlans[planId] ? { id: planId, ...allPaymentPlans[planId] } : null)
                         .filter(p => p && !p.archived) as PaymentPlan[];
                     setAvailablePaymentPlans(available);
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
+
+                const initialSelectedCourses = semesterCourses
+                    .map(c => c.id)
+                    .filter(id => !userDataVal.exemptedCourses?.[id]);
+                setSelectedCourseIds(initialSelectedCourses);
+
+            } catch (error: any) {
+                console.error(error);
+                setError(error.message);
+                toast({ variant: 'destructive', title: 'Error', description: error.message });
+            } finally {
+                setLoading(false);
             }
-            
-            const initialSelectedCourses = semesterCourses
-                .map(c => c.id)
-                .filter(id => !userDataVal.exemptedCourses?.[id]);
-            setSelectedCourseIds(initialSelectedCourses);
-            
-        } catch (error) {
-            console.error(error);
-            toast({ variant: 'destructive', title: 'Error loading registration data.' });
-        } finally {
-            setLoading(false);
-        }
+        };
+
+        fetchData();
     }, [currentUser, pathId, semesterNum, router, toast]);
 
-    React.useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
     const toggleCourseSelection = (courseId: string) => {
-        if (programme?.tuitionFee) return; // Cannot modify if flat fee
+        if (programme?.tuitionFee) return;
         setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
 
-     const toggleOptionalFee = (feeId: string) => {
+    const toggleOptionalFee = (feeId: string) => {
         setSelectedOptionalFees(prev => prev.includes(feeId) ? prev.filter(id => id !== feeId) : [...prev, feeId]);
     };
 
@@ -202,7 +218,6 @@ export default function RegisterForSemesterPage() {
             const registrationId = semesterDetails.id;
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${registrationId}`);
             
-            // Create Invoice First
             const newInvoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             const invoiceId = newInvoiceRef.key!;
 
@@ -225,10 +240,9 @@ export default function RegisterForSemesterPage() {
                 applyScholarship: applyScholarship,
             });
 
-            // Then create registration record linking to the invoice
             await set(registrationRef, {
                 courses: selectedCourseIds,
-                coursePriority: selectedCourseIds, // Default priority
+                coursePriority: selectedCourseIds,
                 optionalFees: selectedOptionalFees,
                 invoiceId,
                 status: 'Pending Approval',
@@ -256,22 +270,31 @@ export default function RegisterForSemesterPage() {
         }
     };
     
-    if (loading || !userData || !programme) {
+    if (loading) {
         return <div className="space-y-4"><Skeleton className="h-96 w-full"/></div>
     }
 
-    if (!semesterDetails) {
-        return <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Semester Not Found</AlertTitle><AlertDescription>The selected semester could not be found. It may no longer be active.</AlertDescription></Alert>
+    if (error) {
+        return (
+             <div className="space-y-6">
+                <Button variant="outline" asChild><Link href="/student/registration"><ChevronLeft className="mr-2 h-4 w-4"/>Back to Semesters</Link></Button>
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Registration Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+            </div>
+        )
     }
 
-    const isFlatFee = !!programme.tuitionFee && programme.tuitionFee > 0;
+    const isFlatFee = !!programme?.tuitionFee && programme.tuitionFee > 0;
 
     return (
         <div className="space-y-6">
             <Button variant="outline" asChild><Link href="/student/registration"><ChevronLeft className="mr-2 h-4 w-4"/>Back to Semesters</Link></Button>
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Register for {semesterDetails.name}</CardTitle>
+                    <CardTitle className="font-headline text-2xl">Register for {semesterDetails?.name}</CardTitle>
                     <CardDescription>Confirm your courses, select fees and a payment plan to complete your registration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -296,11 +319,11 @@ export default function RegisterForSemesterPage() {
                             ))}
                         </div>
                     </div>
-                    {Object.keys(semesterDetails.optionalFees || {}).length > 0 && (
+                    {Object.keys(semesterDetails?.optionalFees || {}).length > 0 && (
                         <div className="space-y-2">
                             <h3 className="font-semibold">Optional Fees</h3>
                              <div className="grid md:grid-cols-2 gap-2">
-                                {Object.entries(semesterDetails.optionalFees!).map(([id, fee]) => (
+                                {Object.entries(semesterDetails!.optionalFees!).map(([id, fee]) => (
                                     <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
                                         <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} />
                                         <Label htmlFor={id} className="flex-1 cursor-pointer">
@@ -317,7 +340,7 @@ export default function RegisterForSemesterPage() {
                         <div className="space-y-1">
                             <Label>Payment Plan</Label>
                             <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan}>
-                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder="Select a payment plan..." /></SelectTrigger>
                                 <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installment{p.installments > 1 ? 's' : ''})</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
