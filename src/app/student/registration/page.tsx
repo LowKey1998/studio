@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -18,6 +18,12 @@ type UserProfile = {
     programmeId: string;
     programmeName: string;
     intakeName: string;
+};
+
+type Course = {
+    id: string;
+    name: string;
+    code: string;
 };
 
 type CoursePath = {
@@ -43,6 +49,7 @@ type ActiveSemester = {
     semesterInYear: number;
     pathId: string;
     pathSemesterNum: string;
+    courses: Course[];
 };
 
 export default function StudentRegistrationPage() {
@@ -75,14 +82,16 @@ export default function StudentRegistrationPage() {
                 intakesSnap,
                 coursePathsSnap,
                 semesterOfferingsSnap,
-                registrationsSnap
+                registrationsSnap,
+                coursesSnap, // Fetch courses
             ] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'semesterOfferings')),
-                get(ref(db, `registrations/${currentUser.uid}`))
+                get(ref(db, `registrations/${currentUser.uid}`)),
+                get(ref(db, 'courses')), // Fetch courses
             ]);
             
             if (!userSnap.exists()) {
@@ -94,6 +103,8 @@ export default function StudentRegistrationPage() {
             const profile = userSnap.val();
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
+            const allCoursesData = coursesSnap.val() || {};
+
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
             setUserProfile(profile);
@@ -121,18 +132,27 @@ export default function StudentRegistrationPage() {
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
                     
-                    // Simple check if user already registered for a semester with this name pattern.
-                    // This assumes semester names are unique per intake-year-semester combo.
-                    const isRegistered = userRegistrations.some(regId => regId.startsWith(semesterName.replace(/\s+/g, '-')));
+                    const allSemesters = await get(ref(db, 'semesters'));
+                    const semesterId = Object.keys(allSemesters.val() || {}).find(key => allSemesters.val()[key].name === semesterName);
 
+                    const isRegistered = userRegistrations.includes(semesterId || '');
+                    
                      if (!isRegistered) {
+                         const semesterCourses = userPath.semesters[semNumStr]?.courses || [];
+                         const courseDetails: Course[] = semesterCourses.map((id: string) => ({
+                             id,
+                             name: allCoursesData[id]?.name || 'Unknown Course',
+                             code: allCoursesData[id]?.code || 'N/A'
+                         }));
+
                          activeSemestersList.push({ 
-                            semesterId: `${semesterName.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID
+                            semesterId: semesterId || `${semesterName.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID if not found
                             semesterName, 
                             year, 
                             semesterInYear,
                             pathId: userPath.id,
                             pathSemesterNum: semNumStr,
+                            courses: courseDetails,
                         });
                      }
                 }
@@ -212,6 +232,17 @@ export default function StudentRegistrationPage() {
                                             </Link>
                                         </Button>
                                     </CardHeader>
+                                    <CardContent>
+                                        <h4 className="text-sm font-semibold mb-2">Courses</h4>
+                                        <div className="grid sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                                            {semester.courses.map(course => (
+                                                <div key={course.id} className="flex items-center gap-2">
+                                                    <BookCopy className="h-4 w-4 flex-shrink-0" />
+                                                    <span>{course.name} ({course.code})</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
                                 </Card>
                             ))}
                         </div>
