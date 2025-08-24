@@ -38,13 +38,6 @@ export default function LandingPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { toast } = useToast();
 
-
-  React.useEffect(() => {
-    if (user) {
-      router.replace('/dashboard');
-    }
-  }, [user, router]);
-
   React.useEffect(() => {
     const fetchSettings = async () => {
         const settingsRef = ref(db, 'settings');
@@ -120,10 +113,6 @@ export default function LandingPage() {
       }
   }
 
-  if (user) {
-    return null; // or a loading spinner
-  }
-
   const features = [
     {
         icon: <Library className="h-8 w-8 text-primary" />,
@@ -167,7 +156,9 @@ export default function LandingPage() {
               Careers
             </Link>
             <Button asChild>
-                <Link href="/login">Login</Link>
+                <Link href={user ? "/dashboard" : "/login"}>
+                    {user ? 'Dashboard' : 'Login'}
+                </Link>
             </Button>
           </nav>
         </div>
@@ -248,23 +239,25 @@ export default function LandingPage() {
                     Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
                 </p>
             </div>
-            <div className="space-y-12">
+             <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
                 <div className="space-y-4">
-                    <h3 className="text-2xl font-bold text-center">For Students</h3>
-                    <p className="text-muted-foreground text-center max-w-3xl mx-auto">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
-                    <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3">
+                    <h3 className="text-2xl font-bold">For Students</h3>
+                    <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
+                    <ul className="space-y-3">
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
                     </ul>
                 </div>
-                 <div className="space-y-4">
-                    <h3 className="text-2xl font-bold text-center">For Staff & Lecturers</h3>
-                    <p className="text-muted-foreground text-center max-w-3xl mx-auto">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
-                     <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3">
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
-                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
+            </div>
+             <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
+                 <div className="space-y-4 md:text-right md:order-2">
+                    <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
+                    <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
+                     <ul className="space-y-3">
+                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
+                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
+                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
                     </ul>
                 </div>
             </div>
