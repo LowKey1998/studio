@@ -287,7 +287,7 @@ export default function LandingPage() {
             </div>
              <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
                  <div className="rounded-lg border bg-card p-4 shadow-sm md:order-2">
-                    <Image src="https://images.unsplash.com/photo-1580894742597-87bc8789db3d?q=80&w=2070&auto=format&fit=crop" alt="Staff Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="lecturer dashboard"/>
+                    <Image src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2232&auto=format&fit=crop" alt="Staff Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="lecturer staff dashboard"/>
                 </div>
                 <div className="md:order-1">
                     <h3 className="text-2xl font-bold mb-4">For Staff & Lecturers</h3>
