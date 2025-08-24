@@ -186,11 +186,20 @@ export default function AddStudentPage() {
         setManualId(`${prefixes.student}${datePart}`);
     };
 
+    const availableSemesters = allSemesters.filter(s => {
+        const intake = allIntakes.find(i => i.id === selectedIntake);
+        const intakeYear = intake ? parseInt(intake.name.substring(0, 4), 10) : null;
+        if (!intakeYear || !year) return false;
+        
+        const expectedYearInSemester = intakeYear + (Number(year) - 1);
+        return s.name.includes(String(expectedYearInSemester));
+    });
+
     return (
         <Card className="max-w-4xl mx-auto">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 font-headline text-2xl"><UserPlus/> Add New Student</CardTitle>
-                <CardDescription>Create a new account for a student. An ID will be generated unless you provide one manually.</CardDescription>
+                <CardDescription>Create a new account for a student. An ID will be generated unless you provide one.</CardDescription>
             </CardHeader>
             <form onSubmit={handleCreateStudent}>
             <CardContent>
@@ -214,10 +223,12 @@ export default function AddStudentPage() {
                                 <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} required/></div>
                                 <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
                                 <div className="space-y-1"><Label>Initial Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} required/></div>
+                                
                                 <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading || !selectedIntake} required/></div>
+                                
                                 <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading} required/></div>
-                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{allSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading || !year} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                             </div>
                         </AccordionContent>
                     </AccordionItem>

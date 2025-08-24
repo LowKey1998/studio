@@ -38,12 +38,12 @@ type Integrations = {
     sage: { enabled: boolean; apiKey?: string; }; 
     facebook?: { pageAccessToken?: string; formId?: string; }; 
     twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
-    smtp?: { host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
+    smtp?: { service?: string; host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
 };
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number };
 type Department = { id: string; name: string; };
-type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 
 
 export default function SettingsPage() {
@@ -271,8 +271,8 @@ export default function SettingsPage() {
                             <Input id="bank-name" value={bankDetails.bankName} onChange={(e) => setBankDetails(p => ({ ...p, bankName: e.target.value }))}/>
                         </div>
                         <div className="space-y-1">
-                            <Label htmlFor="account-name">Account Name</Label>
-                            <Input id="account-name" value={bankDetails.accountName} onChange={(e) => setBankDetails(p => ({ ...p, accountName: e.target.value }))}/>
+                            <Label htmlFor="account-name">Account Name (Optional)</Label>
+                            <Input id="account-name" value={bankDetails.accountName || ''} onChange={(e) => setBankDetails(p => ({ ...p, accountName: e.target.value }))}/>
                         </div>
                          <div className="space-y-1">
                             <Label htmlFor="account-number">Account Number</Label>
@@ -283,8 +283,8 @@ export default function SettingsPage() {
                             <Input id="branch-code" value={bankDetails.branchCode} onChange={(e) => setBankDetails(p => ({ ...p, branchCode: e.target.value }))}/>
                         </div>
                          <div className="space-y-1 md:col-span-2">
-                            <Label htmlFor="swift-code">SWIFT Code</Label>
-                            <Input id="swift-code" value={bankDetails.swiftCode} onChange={(e) => setBankDetails(p => ({ ...p, swiftCode: e.target.value }))}/>
+                            <Label htmlFor="swift-code">SWIFT Code (Optional)</Label>
+                            <Input id="swift-code" value={bankDetails.swiftCode || ''} onChange={(e) => setBankDetails(p => ({ ...p, swiftCode: e.target.value }))}/>
                         </div>
                     </div>
                 </CardContent>
@@ -360,13 +360,12 @@ export default function SettingsPage() {
                      <Separator/>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
                         <Label className="pt-2">SMTP (for Email)</Label>
-                        <div className="sm:col-span-2 grid grid-cols-2 gap-4">
-                            <div className="col-span-2 space-y-1"><Label className="text-xs">From Name</Label><Input placeholder="e.g., Edutrack360 Admissions" value={integrations.smtp?.fromName || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromName: e.target.value}}))} disabled={saving}/></div>
-                             <div className="col-span-2 space-y-1"><Label className="text-xs">From Email</Label><Input placeholder="e.g., no-reply@example.com" value={integrations.smtp?.fromEmail || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromEmail: e.target.value}}))} disabled={saving}/></div>
-                            <div className="space-y-1"><Label className="text-xs">SMTP Host</Label><Input placeholder="smtp.example.com" value={integrations.smtp?.host || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, host: e.target.value}}))} disabled={saving}/></div>
-                            <div className="space-y-1"><Label className="text-xs">SMTP Port</Label><Input type="number" placeholder="587" value={integrations.smtp?.port || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, port: Number(e.target.value)}}))} disabled={saving}/></div>
-                            <div className="space-y-1"><Label className="text-xs">SMTP Username</Label><Input placeholder="Your username" value={integrations.smtp?.user || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, user: e.target.value}}))} disabled={saving}/></div>
-                            <div className="space-y-1"><Label className="text-xs">SMTP Password</Label><Input type="password" value={integrations.smtp?.pass || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, pass: e.target.value}}))} disabled={saving}/></div>
+                        <div className="sm:col-span-2 space-y-2">
+                            <Input placeholder="From Name (e.g., Edutrack360)" value={integrations.smtp?.fromName || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromName: e.target.value}}))} disabled={saving}/>
+                            <Input placeholder="From Email (e.g., no-reply@yourdomain.com)" value={integrations.smtp?.fromEmail || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, fromEmail: e.target.value}}))} disabled={saving}/>
+                            <Input placeholder="SMTP User (e.g., your-email@gmail.com)" value={integrations.smtp?.user || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, user: e.target.value}}))} disabled={saving}/>
+                            <Input type="password" placeholder="SMTP Password or App Key" value={integrations.smtp?.pass || ''} onChange={e => setIntegrations(p => ({...p, smtp: {...p.smtp, pass: e.target.value}}))} disabled={saving}/>
+                             <p className="text-xs text-muted-foreground">For Gmail, use an <a href="https://support.google.com/accounts/answer/185833?hl=en" target="_blank" rel="noopener noreferrer" className="underline">App Password</a>. The system will automatically use the correct Gmail settings if your SMTP User is a gmail.com address.</p>
                         </div>
                     </div>
                 </CardContent>

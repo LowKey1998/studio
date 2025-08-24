@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -6,6 +7,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { sendEmail } from './send-email-flow';
 
 const SendPayslipEmailInputSchema = z.object({
   staffName: z.string().describe('The name of the staff member.'),
@@ -30,29 +32,32 @@ const sendPayslipEmailFlow = ai.defineFlow(
     outputSchema: z.object({ result: z.string() }),
   },
   async (input) => {
-    // In a real application, you would integrate a service like SendGrid, Nodemailer, or Resend here.
-    // For this demonstration, we will log the intended action to the console.
-    console.log(`Simulating sending email to ${input.staffEmail}`);
-    console.log(`Subject: Your Payslip for ${input.month}`);
-    console.log(`
-      Hi ${input.staffName},
+    const subject = `Your Payslip for ${input.month}`;
+    const body = `
+      <p>Hi ${input.staffName},</p>
+      <p>Please find your payslip details for ${input.month} below.</p>
+      <h3>Payslip Summary</h3>
+      <ul>
+        <li>Gross Salary: ZMW ${input.grossSalary.toFixed(2)}</li>
+        <li>Deductions: ZMW ${input.deductions.toFixed(2)}</li>
+        <li><strong>Net Pay: ZMW ${input.netPay.toFixed(2)}</strong></li>
+      </ul>
+      <p>If you have any questions, please contact the HR department.</p>
+      <p>Best regards,<br/>Edutrack360 Finance Team</p>
+    `;
 
-      Please find your payslip details for ${input.month} attached.
-
-      Summary:
-      - Gross Salary: ZMW ${input.grossSalary.toFixed(2)}
-      - Deductions: ZMW ${input.deductions.toFixed(2)}
-      - Net Pay: ZMW ${input.netPay.toFixed(2)}
-
-      If you have any questions, please contact the HR department.
-
-      Best regards,
-      Edutrack360 Finance Team
-    `);
-
-    // We return a success message as we are simulating the email sending.
-    return {
-      result: `Successfully sent payslip to ${input.staffEmail}.`,
-    };
+    try {
+      await sendEmail({
+        to: [input.staffEmail],
+        subject: subject,
+        body: body,
+      });
+      return {
+        result: `Successfully sent payslip to ${input.staffEmail}.`,
+      };
+    } catch (error: any) {
+      console.error(`Failed to send payslip email to ${input.staffEmail}:`, error);
+      throw new Error(`Failed to send payslip email: ${error.message}`);
+    }
   }
 );

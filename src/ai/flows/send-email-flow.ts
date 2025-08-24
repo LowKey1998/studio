@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent for sending emails.
@@ -35,19 +36,36 @@ const sendEmailFlow = ai.defineFlow(
     }
     const smtpConfig = settingsSnap.val();
 
-    if (!smtpConfig.host || !smtpConfig.port || !smtpConfig.user || !smtpConfig.pass) {
-      throw new Error('SMTP host, port, user, and password must be configured.');
+    if (!smtpConfig.user || !smtpConfig.pass) {
+        throw new Error('SMTP user and password/key must be configured.');
     }
 
-    const transporter = nodemailer.createTransport({
-      host: smtpConfig.host,
-      port: smtpConfig.port,
-      secure: smtpConfig.port === 465, // true for 465, false for other ports
-      auth: {
-        user: smtpConfig.user,
-        pass: smtpConfig.pass,
-      },
-    });
+    let transporter;
+    // Check if it's a Gmail address to use the simplified service config
+    if (smtpConfig.user.endsWith('@gmail.com')) {
+        transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: smtpConfig.user,
+                pass: smtpConfig.pass,
+            },
+        });
+    } else {
+        // Fallback to generic SMTP for other providers
+        if (!smtpConfig.host || !smtpConfig.port) {
+            throw new Error('SMTP host and port must be configured for non-Gmail providers.');
+        }
+         transporter = nodemailer.createTransport({
+            host: smtpConfig.host,
+            port: smtpConfig.port,
+            secure: smtpConfig.port === 465, // true for 465, false for other ports
+            auth: {
+                user: smtpConfig.user,
+                pass: smtpConfig.pass,
+            },
+        });
+    }
+
 
     try {
       const info = await transporter.sendMail({
