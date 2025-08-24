@@ -197,30 +197,6 @@ export default function LandingPage() {
             )}
         </section>
 
-        {/* Inquiry Form */}
-        <section id="inquiry-form" className="container pb-12 lg:pb-24">
-            <Card className="max-w-2xl mx-auto shadow-lg">
-                <CardHeader className="text-center">
-                    <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
-                    <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleInquirySubmit} className="space-y-4">
-                        <div className="grid md:grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
-                            <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
-                        </div>
-                        <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
-                            <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
-                        <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
-                        <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
-                        <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
-                    </form>
-                </CardContent>
-            </Card>
-        </section>
-
         {bankDetails?.bankName && (
             <section id="bank-details" className="container pb-12 lg:pb-24">
                 <Card>
@@ -292,6 +268,30 @@ export default function LandingPage() {
                     </ul>
                 </div>
             </div>
+        </section>
+
+        {/* Inquiry Form */}
+        <section id="inquiry-form" className="container pb-12 lg:pb-24">
+            <Card className="max-w-2xl mx-auto shadow-lg">
+                <CardHeader className="text-center">
+                    <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
+                    <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleInquirySubmit} className="space-y-4">
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
+                            <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
+                        </div>
+                        <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
+                            <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
+                        <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
+                        <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
+                        <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
+                    </form>
+                </CardContent>
+            </Card>
         </section>
 
         {/* CTA Section */}
