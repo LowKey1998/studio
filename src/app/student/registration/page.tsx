@@ -12,9 +12,9 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 
 type UserData = {
     id: string;
@@ -69,6 +69,7 @@ export default function StudentRegistrationPage() {
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
     
+    // Data from DB
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [paymentPlans, setPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [scholarships, setScholarships] = React.useState<Scholarship[]>([]);
@@ -76,7 +77,6 @@ export default function StudentRegistrationPage() {
     const [userPath, setUserPath] = React.useState<CoursePath | null>(null);
     const [allOfferings, setAllOfferings] = React.useState<SemesterOffering>({});
     const [allSemesters, setAllSemesters] = React.useState<Record<string, Semester>>({});
-
 
     // Form state
     const [selectedYear, setSelectedYear] = React.useState<number | null>(null);
@@ -138,36 +138,32 @@ export default function StudentRegistrationPage() {
     }, [userData, alreadyRegisteredSemesters]);
 
     const activeSemesterForYear = React.useMemo(() => {
-        if (!selectedYear || !userPath || !userData) return null;
-
-        const pathOfferings = allOfferings[userPath.id];
-        if(!pathOfferings) return null;
+        if (!selectedYear || !userPath || !allOfferings) return null;
         
-        // Find the semester number in the path that corresponds to the selected year and is active
-        const activeSemesterNumber = Object.keys(pathOfferings).find(semNum => {
-            if (!pathOfferings[semNum]?.active) return false;
-            const yearOfPath = Math.floor((Number(semNum) - 1) / 2) + 1;
-            return yearOfPath === selectedYear;
+        const pathOfferings = allOfferings[userPath.id];
+        if (!pathOfferings) return null;
+
+        const activeSemesterNumber = Object.keys(pathOfferings).find(semNumStr => {
+            const semNum = Number(semNumStr);
+            const yearOfSemester = Math.floor((semNum - 1) / 2) + 1;
+            return yearOfSemester === selectedYear && pathOfferings[semNumStr]?.active;
         });
 
         if (!activeSemesterNumber) return null;
         
-        const yearOfPath = Math.floor((Number(activeSemesterNumber) - 1) / 2) + 1;
-        const semesterInYear = ((Number(activeSemesterNumber) - 1) % 2) + 1;
-        const semesterNameGuess = `${userData.intakeId} Year ${yearOfPath} Semester ${semesterInYear}`;
-        
-        const targetSemester = Object.entries(allSemesters).find(([, s]) => s.name === semesterNameGuess);
+        // Find the actual semester object from allSemesters that matches the name convention
+        const semesterNameGuess = `${userPath.intakeId} Year ${selectedYear} Semester ${((Number(activeSemesterNumber) - 1) % 2) + 1}`;
+        const targetSemesterEntry = Object.entries(allSemesters).find(([, s]) => s.name === semesterNameGuess);
 
-        if (targetSemester && !alreadyRegisteredSemesters.includes(targetSemester[0])) {
-            return { id: targetSemester[0], ...targetSemester[1] };
+        if (targetSemesterEntry && !alreadyRegisteredSemesters.includes(targetSemesterEntry[0])) {
+            return { id: targetSemesterEntry[0], ...targetSemesterEntry[1] };
         }
 
         return null;
-
-    }, [selectedYear, userPath, userData, allOfferings, allSemesters, alreadyRegisteredSemesters]);
+    }, [selectedYear, userPath, allOfferings, allSemesters, alreadyRegisteredSemesters]);
     
     const coursesForSemester = React.useMemo(() => {
-        if (!activeSemesterForYear || !userPath || !userData) return [];
+        if (!activeSemesterForYear || !userPath || !userData || !selectedYear) return [];
 
         const pathSemesterKey = Object.keys(userPath.semesters).find(semNum => {
             const yearOfPath = Math.floor((Number(semNum) - 1) / 2) + 1;
@@ -266,7 +262,7 @@ export default function StudentRegistrationPage() {
                                 <Select value={selectedYear?.toString() || ''} onValueChange={(v) => setSelectedYear(v ? Number(v) : null)}>
                                     <SelectTrigger id="year-select"><SelectValue placeholder="Select your current year..."/></SelectTrigger>
                                     <SelectContent>
-                                        {Object.keys(userPath.semesters).map(num => Math.floor((Number(num) - 1) / 2) + 1).filter((v,i,a) => a.indexOf(v)===i).map(yearNum => <SelectItem key={yearNum} value={String(yearNum)}>Year {yearNum}</SelectItem>)}
+                                        {Array.from(new Set(Object.keys(userPath.semesters).map(num => Math.floor((Number(num) - 1) / 2) + 1))).map(yearNum => <SelectItem key={yearNum} value={String(yearNum)}>Year {yearNum}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -305,6 +301,56 @@ export default function StudentRegistrationPage() {
                             </AccordionContent>
                         </AccordionItem>
                      </Accordion>
+                     <Accordion type="multiple" className="w-full">
+                        <AccordionItem value="optional-fees">
+                            <AccordionTrigger className="text-lg font-semibold">Optional Fees</AccordionTrigger>
+                            <AccordionContent>
+                                {activeSemesterForYear.optionalFees && Object.keys(activeSemesterForYear.optionalFees).length > 0 ? (
+                                    Object.entries(activeSemesterForYear.optionalFees).map(([id, fee]) => (
+                                        <div key={id} className="flex items-center space-x-2 py-2 border-b">
+                                            <Checkbox id={id} checked={!!selectedOptionalFees[id]} onCheckedChange={(checked) => setSelectedOptionalFees(prev => ({...prev, [id]: !!checked}))} />
+                                            <Label htmlFor={id} className="flex-1 cursor-pointer">{fee.name}</Label>
+                                            <span className="text-sm font-mono">ZMW {fee.amount.toFixed(2)}</span>
+                                        </div>
+                                    ))
+                                ) : <p className="text-muted-foreground text-sm py-4">No optional fees for this semester.</p>}
+                            </AccordionContent>
+                        </AccordionItem>
+                     </Accordion>
+                     <Accordion type="multiple" className="w-full">
+                        <AccordionItem value="payment-plan">
+                            <AccordionTrigger className="text-lg font-semibold">Payment Plan</AccordionTrigger>
+                            <AccordionContent>
+                                <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan}>
+                                    <SelectTrigger><SelectValue placeholder="Select a payment plan..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {paymentPlans.filter(p => activeSemesterForYear.paymentPlanIds?.[p.id]).map(plan => <SelectItem key={plan.id} value={plan.name}>{plan.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </AccordionContent>
+                        </AccordionItem>
+                     </Accordion>
+                      <Accordion type="multiple" className="w-full">
+                        <AccordionItem value="scholarship">
+                            <AccordionTrigger className="text-lg font-semibold">Scholarship</AccordionTrigger>
+                            <AccordionContent className="pt-4">
+                               {scholarships.filter(s => s.semesterIds?.[activeSemesterForYear.id]).length > 0 ? (
+                                   scholarships.filter(s => s.semesterIds?.[activeSemesterForYear.id]).map(scholarship => (
+                                       <div key={scholarship.id} className="flex items-start space-x-2 rounded-md border p-4">
+                                            <div className="flex items-center h-5">
+                                                <Checkbox id={`scholarship-${scholarship.id}`} checked={applyScholarship} onCheckedChange={(checked) => setApplyScholarship(!!checked)} />
+                                            </div>
+                                            <div className="grid gap-1.5 leading-none">
+                                                <Label htmlFor={`scholarship-${scholarship.id}`} className="flex items-center gap-2"><GraduationCap/>{scholarship.name} ({scholarship.percentage}% Tuition Waiver)</Label>
+                                                <p className="text-sm text-muted-foreground">{scholarship.description}</p>
+                                            </div>
+                                       </div>
+                                   ))
+                               ) : <p className="text-sm text-muted-foreground">No scholarships available for this semester.</p>}
+                            </AccordionContent>
+                        </AccordionItem>
+                     </Accordion>
+
                 </CardContent>
                 <CardFooter className="justify-end">
                     <Button onClick={handleSubmit} disabled={saving}>
@@ -314,7 +360,8 @@ export default function StudentRegistrationPage() {
                 </CardFooter>
             </Card>
             )}
-
         </div>
     );
 }
+
+    
