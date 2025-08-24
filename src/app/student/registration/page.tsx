@@ -268,7 +268,7 @@ export default function RegistrationPage() {
             return;
         }
 
-        const offeringsRef = ref(db, 'semesterOfferings');
+        const offeringsRef = ref(db, `semesterOfferings/${userPath.id}`);
         const semestersRef = ref(db, 'semesters');
 
         const unsub = onValue(offeringsRef, async (offeringsSnap) => {
@@ -277,15 +277,13 @@ export default function RegistrationPage() {
             const allSems = semestersSnap.val() || {};
             
             const availableForUser: Semester[] = [];
-            if(offerings[userPath.id]){
-                for (const semNum of Object.keys(offerings[userPath.id])) {
-                    const semesterDetails = offerings[userPath.id][semNum];
-                    if (semesterDetails?.active) {
-                        const targetSemesterNamePart = `Year ${Math.ceil(parseInt(semNum)/2)} Semester ${ (parseInt(semNum) - 1) % 2 + 1}`;
-                        const semId = Object.keys(allSems).find(key => allSems[key].name.includes(targetSemesterNamePart));
-                        if (semId && allSems[semId] && allSems[semId].status === 'Open') {
-                            availableForUser.push({ id: semId, ...allSems[semId] });
-                        }
+            for (const semNum in offerings) {
+                const semesterDetails = offerings[semNum];
+                if (semesterDetails?.active) {
+                    const targetSemesterNamePart = `Year ${Math.ceil(parseInt(semNum)/2)} Semester ${ (parseInt(semNum) - 1) % 2 + 1}`;
+                    const semId = Object.keys(allSems).find(key => allSems[key].name.includes(targetSemesterNamePart) && allSems[key].name.includes(userData.intakeId.substring(0,4))); // Match year part of intake too
+                    if (semId && allSems[semId] && allSems[semId].status === 'Open') {
+                        availableForUser.push({ id: semId, ...allSems[semId] });
                     }
                 }
             }
@@ -803,6 +801,8 @@ export default function RegistrationPage() {
     );
 }
   
+
+    
 
     
 
