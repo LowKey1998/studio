@@ -43,6 +43,8 @@ type CoursePath = {
 type Semester = {
     id: string;
     name: string;
+    year: number;
+    semesterInYear: number;
     mandatoryFees?: Record<string, Fee>;
     optionalFees?: Record<string, Fee>;
     paymentPlanIds?: Record<string, boolean>;
@@ -141,23 +143,23 @@ export default function RegisterForSemesterPage() {
                     throw new Error("A course path has not been defined for your intake and programme.");
                 }
 
-                // Step 4: Load all necessary data for the page
+                // Step 3: Load all necessary data for the page
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
                 const allPaymentPlans = paymentPlansSnap.val() || {};
                 const allProgrammes = programmesSnap.val() || {};
-                const allIntakes = intakesSnap.val() || {};
 
                 const programmeData = allProgrammes[userDataVal.programmeId];
                 if (programmeData) {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
                 }
 
-                const intakeName = allIntakes[userPath.intakeId]?.name || '';
-                const semesterNamePattern = `${intakeName} Year ${yearParam} Semester ${semesterInYearParam}`;
-                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.name === semesterNamePattern);
-
-                if(!foundSemesterEntry) throw new Error(`Semester details for "${semesterNamePattern}" could not be found. Please contact administration.`);
+                // Find the semester by year and semester number instead of name
+                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => 
+                    sem.year === Number(yearParam) && sem.semesterInYear === Number(semesterInYearParam)
+                );
+                
+                if(!foundSemesterEntry) throw new Error(`Semester details for Year ${yearParam}, Semester ${semesterInYearParam} could not be found. Please contact administration.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
 
                 const offerings = semesterOfferingsSnap.val() || {};
