@@ -19,7 +19,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
-type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 type Programme = { id: string; name: string; };
 
 export default function LandingPage() {
@@ -221,7 +221,7 @@ export default function LandingPage() {
             </Card>
         </section>
 
-        {bankDetails?.accountName && (
+        {bankDetails?.bankName && (
             <section id="bank-details" className="container pb-12 lg:pb-24">
                 <Card>
                     <CardHeader>
@@ -231,9 +231,10 @@ export default function LandingPage() {
                     <CardContent>
                         <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                             <div><dt className="font-semibold">Bank Name</dt><dd className="text-muted-foreground">{bankDetails.bankName}</dd></div>
-                            <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>
+                            {bankDetails.accountName && <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>}
                             <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bankDetails.accountNumber}</dd></div>
                             <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bankDetails.branchCode}</dd></div>
+                             {bankDetails.swiftCode && <div><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bankDetails.swiftCode}</dd></div>}
                         </dl>
                     </CardContent>
                 </Card>
@@ -271,28 +272,20 @@ export default function LandingPage() {
                     Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
                 </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-8 items-center">
-                <div>
-                    <h3 className="text-2xl font-bold mb-4">For Students</h3>
-                    <p className="text-muted-foreground mb-6">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
-                    <ul className="space-y-3">
+            <div className="space-y-12">
+                <div className="space-y-4">
+                    <h3 className="text-2xl font-bold text-center">For Students</h3>
+                    <p className="text-muted-foreground text-center max-w-3xl mx-auto">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
+                    <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3">
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
                     </ul>
                 </div>
-                <div className="rounded-lg border bg-card p-4 shadow-sm">
-                    <Image src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2071&auto=format&fit=crop" alt="Student Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="student dashboard"/>
-                </div>
-            </div>
-             <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
-                 <div className="rounded-lg border bg-card p-4 shadow-sm md:order-2">
-                    <Image src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2232&auto=format&fit=crop" alt="Staff Dashboard" width={600} height={400} className="rounded-md object-cover aspect-[3/2]" data-ai-hint="lecturer staff dashboard"/>
-                </div>
-                <div className="md:order-1">
-                    <h3 className="text-2xl font-bold mb-4">For Staff & Lecturers</h3>
-                    <p className="text-muted-foreground mb-6">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
-                     <ul className="space-y-3">
+                 <div className="space-y-4">
+                    <h3 className="text-2xl font-bold text-center">For Staff & Lecturers</h3>
+                    <p className="text-muted-foreground text-center max-w-3xl mx-auto">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
+                     <ul className="flex flex-wrap justify-center gap-x-6 gap-y-3">
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
