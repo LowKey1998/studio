@@ -1,266 +1,316 @@
 
 'use client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import * as React from 'react';
-import { UserPlus, Copy, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
-import { app, auth, db } from '@/lib/firebase';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, BookOpen, AlertCircle, CheckCircle, Info, HandCoins, GraduationCap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Checkbox } from '@/components/ui/checkbox';
-import { initializeApp, deleteApp } from 'firebase/app';
+import { Skeleton } from '@/components/ui/skeleton';
+import { db, auth, createNotification } from '@/lib/firebase';
+import { ref, get, set, push, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Textarea } from '@/components/ui/textarea';
-import { format } from 'date-fns';
-import { Switch } from '@/components/ui/switch';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
 
-type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; };
-type Semester = { id: string; name: string; status: string; };
-type Course = { id: string; name: string; code: string; year: number; }
-type Intake = { id: string; name: string; };
-type CurrentAdmin = { name: string; id: string; }
+type UserData = {
+    id: string;
+    name: string;
+    intakeId: string;
+    programmeId: string;
+    exemptedCourses?: Record<string, boolean>;
+};
 
-export default function AddStudentPage() {
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+    year: number;
+    cost: number;
+};
+
+type Semester = {
+    id: string;
+    name: string;
+    paymentPlanIds: Record<string, boolean>;
+    mandatoryFees: Record<string, {name: string, amount: number}>;
+    optionalFees: Record<string, {name: string, amount: number}>;
+};
+
+type PaymentPlan = {
+    id: string;
+    name: string;
+};
+
+type Scholarship = {
+    id: string;
+    name: string;
+    percentage: number;
+};
+
+type CoursePath = {
+    semesters: Record<string, { courses: string[] }>;
+};
+
+export default function StudentRegistrationPage() {
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+    const [userData, setUserData] = React.useState<UserData | null>(null);
+    const [openSemesters, setOpenSemesters] = React.useState<Semester[]>([]);
+    const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
+    const [paymentPlans, setPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [scholarships, setScholarships] = React.useState<Scholarship[]>([]);
+    const [alreadyRegisteredSemesters, setAlreadyRegisteredSemesters] = React.useState<string[]>([]);
+
     // Form state
-    const [name, setName] = React.useState('');
-    const [email, setEmail] = React.useState('');
-    const [password, setPassword] = React.useState('');
-    const [phoneNumber, setPhoneNumber] = React.useState('');
-    const [programme, setProgramme] = React.useState('');
-    const [year, setYear] = React.useState('');
-    const [semester, setSemester] = React.useState('');
-    const [isTransfer, setIsTransfer] = React.useState(false);
-    const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
-    const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [manualId, setManualId] = React.useState('');
-    const [isManualId, setIsManualId] = React.useState(false);
-    
-    // Detailed info state
-    const [dob, setDob] = React.useState('');
-    const [gender, setGender] = React.useState('');
-    const [nationalId, setNationalId] = React.useState('');
-    const [passport, setPassport] = React.useState('');
-    const [address, setAddress] = React.useState('');
-    const [guardianName, setGuardianName] = React.useState('');
-    const [guardianContact, setGuardianContact] = React.useState('');
-    const [emergencyName, setEmergencyName] = React.useState('');
-    const [emergencyRelationship, setEmergencyRelationship] = React.useState('');
-    const [emergencyContact, setEmergencyContact] = React.useState('');
-    const [previousSchool, setPreviousSchool] = React.useState('');
-    const [qualifications, setQualifications] = React.useState('');
-    const [medicalHistory, setMedicalHistory] = React.useState('');
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
+    const [selectedCourseIds, setSelectedCourseIds] = React.useState<string[]>([]);
+    const [selectedOptionalFees, setSelectedOptionalFees] = React.useState<Record<string, boolean>>({});
+    const [selectedPaymentPlan, setSelectedPaymentPlan] = React.useState('');
+    const [applyScholarship, setApplyScholarship] = React.useState(false);
 
-    // Data for dropdowns
-    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
-    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
-    const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
-
-    // System state
-    const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
-    const [loading, setLoading] = React.useState(false);
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            const userRef = ref(db, `users/${user.uid}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-              setCurrentAdmin({ name: snapshot.val().name, id: snapshot.val().id });
+        const unsubscribe = onAuthStateChanged(auth, user => {
+            if (user) {
+                setCurrentUser(user);
+                const userRef = ref(db, `users/${user.uid}`);
+                onValue(userRef, snapshot => setUserData(snapshot.val()));
+
+                const regRef = ref(db, `registrations/${user.uid}`);
+                onValue(regRef, snapshot => {
+                    if(snapshot.exists()) setAlreadyRegisteredSemesters(Object.keys(snapshot.val()));
+                });
             }
-          }
+            setLoading(false);
         });
-        
-        const fetchDataForDropdowns = async () => {
-            const [programmesSnap, coursesSnap, intakesSnap, semestersSnap, settingsSnap] = await Promise.all([
-                get(ref(db, 'programmes')),
-                get(ref(db, 'courses')),
-                get(ref(db, 'settings/intakes')),
-                get(ref(db, 'semesters')),
-                get(ref(db, 'settings/idPrefixes')),
-            ]);
-            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })));
-            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] })));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
-            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })));
-            if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
-        };
-
-        fetchDataForDropdowns();
-
-        return () => { unsubscribe(); };
+        return () => unsubscribe();
     }, []);
 
-    const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
-        setManualId(''); setIsManualId(false);
-        setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
-        setGuardianName(''); setGuardianContact('');
-        setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
-        setPreviousSchool(''); setQualifications(''); setMedicalHistory('');
-    };
-
-    const handleCreateStudent = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name || !email || !password || !programme || !year || !selectedIntake || !semester) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required academic and basic information fields.' }); return; }
-        if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
-
+    React.useEffect(() => {
+        if (!userData) return;
         setLoading(true);
-        const tempAppName = `temp-student-creation-${Date.now()}`;
-        const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
-        const tempApp = initializeApp(firebaseConfig, tempAppName);
-        const tempAuth = getAuth(tempApp);
+        
+        const fetchData = async () => {
+            try {
+                const [semestersSnap, coursePathsSnap, coursesSnap, paymentPlansSnap, scholarshipsSnap] = await Promise.all([
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'coursePaths')),
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'settings/paymentPlans')),
+                    get(ref(db, 'scholarships'))
+                ]);
 
-        try {
-            let newId = '';
-            const prefixes = idSettings || { student: 'STU' };
-            const isIdTaken = async (id: string) => {
-                 const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
-                 const snapshot = await get(userQuery);
-                 return snapshot.exists();
-            };
+                if (semestersSnap.exists()) {
+                    setOpenSemesters(Object.entries(semestersSnap.val())
+                        .filter(([id, sem]: [string, any]) => sem.status === 'Open')
+                        .map(([id, sem]: [string, any]) => ({ id, ...sem }))
+                        .sort((a,b) => b.name.localeCompare(a.name)));
+                }
 
-            if (isManualId) {
-                newId = manualId.trim();
-                if (await isIdTaken(newId)) {
-                    toast({ variant: 'destructive', title: 'ID already exists', description: 'This User ID is already in use. Please choose another.' });
-                    setLoading(false); await deleteApp(tempApp); return;
+                if (coursePathsSnap.exists() && coursesSnap.exists()) {
+                    const allPaths: CoursePath[] = Object.values(coursePathsSnap.val());
+                    const userPath = allPaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
+
+                    if (userPath) {
+                        const allCourseData = coursesSnap.val();
+                        const semesterCourses = Object.values(userPath.semesters).flatMap(s => s.courses);
+                        setAvailableCourses(semesterCourses.map(id => ({ id, ...allCourseData[id] })).filter(Boolean));
+                    }
                 }
-            } else {
-                const counterRef = ref(db, 'userCounters/student');
-                let isUniqueIdFound = false;
-                while (!isUniqueIdFound) {
-                    await runTransaction(counterRef, (currentCount) => {
-                        const count = (currentCount || 0) + 1;
-                        let datePart = '';
-                        const now = new Date();
-                        if(idSettings.includeYear) datePart += format(now, 'yy');
-                        if(idSettings.includeMonth) datePart += format(now, 'MM');
-                        newId = `${prefixes.student}${datePart}${String(count).padStart(3, '0')}`;
-                        return count;
-                    });
-                    if (!(await isIdTaken(newId))) isUniqueIdFound = true;
+                
+                if (paymentPlansSnap.exists()) {
+                    setPaymentPlans(Object.entries(paymentPlansSnap.val()).filter(([,p]: [string, any]) => !p.archived).map(([id, p]: [string, any]) => ({ id, ...p })));
                 }
+
+                if (scholarshipsSnap.exists()) {
+                     setScholarships(Object.values(scholarshipsSnap.val() as Record<string, any>).filter((s: any) => s.semesterIds?.[selectedSemesterId]));
+                }
+            } catch (error) {
+                console.error("Error fetching registration data:", error);
+            } finally {
+                setLoading(false);
             }
+        };
 
-            const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
-            const user = userCredential.user;
-            
-            const newStudentUser: any = { 
-                id: newId, name, email, phoneNumber, role: 'Student', status: 'active',
-                programmeId: programme, year: Number(year), semesterId: semester, intakeId: selectedIntake,
-                dob, gender, nationalId, passport, address, medicalHistory,
-                guardian: { name: guardianName, contact: guardianContact },
-                emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
-                educationBackground: { school: previousSchool, qualifications }
-            };
-            if(isTransfer && Object.keys(exemptedCourses).length > 0) newStudentUser.exemptedCourses = exemptedCourses;
+        fetchData();
+    }, [userData, selectedSemesterId]);
 
-            await set(ref(db, `users/${user.uid}`), newStudentUser);
-            await set(ref(db, `userRoles/${user.uid}`), { role: 'student' });
-            const activityRef = push(ref(db, 'recentActivities'));
-            await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new student account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
-            toast({ variant: 'success', title: 'Student Created Successfully', description: `${name} has been created with User ID: ${newId}` });
-            resetForm();
-        } catch (error: any) {
-            console.error("Error creating student user:", error);
-            toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
-        } finally {
-            await deleteApp(tempApp); setLoading(false);
-        }
-    };
+    const selectedSemester = React.useMemo(() => openSemesters.find(s => s.id === selectedSemesterId), [openSemesters, selectedSemesterId]);
+
+    const coursesForSemester = React.useMemo(() => {
+        const semesterYear = selectedSemester?.name.match(/Year (\d+)/)?.[1];
+        if (!semesterYear) return [];
+        return availableCourses.filter(c => c.year === Number(semesterYear));
+    }, [selectedSemester, availableCourses]);
     
-    const handlePastePrefix = () => {
-        const prefixes = idSettings || { student: 'STU' };
-        let datePart = '';
-        const now = new Date();
-        if (idSettings.includeYear) datePart += format(now, 'yy');
-        if (idSettings.includeMonth) datePart += format(now, 'MM');
-        setManualId(`${prefixes.student}${datePart}`);
+    const handleCourseSelection = (courseId: string) => {
+        setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
 
-    const availableSemesters = React.useMemo(() => {
-        return allSemesters.filter(s => {
-            const intake = allIntakes.find(i => i.id === selectedIntake);
-            const intakeYear = intake ? parseInt(intake.name.substring(0, 4), 10) : null;
-            if (!intakeYear || !year) return false;
+    const handleFeeSelection = (feeId: string) => {
+        setSelectedOptionalFees(prev => ({...prev, [feeId]: !prev[feeId]}));
+    }
+    
+    const handleSubmit = async () => {
+        if (!currentUser || !userData || !selectedSemester || !selectedPaymentPlan || selectedCourseIds.length === 0) {
+            toast({ variant: 'destructive', title: 'Missing required fields' });
+            return;
+        }
+        setSaving(true);
+        try {
+            const registrationRef = ref(db, `registrations/${currentUser.uid}/${selectedSemester.id}`);
+            const invoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             
-            const expectedYearInSemester = intakeYear + (Number(year) - 1);
-            return s.name.includes(String(expectedYearInSemester));
-        });
-    }, [allSemesters, allIntakes, selectedIntake, year]);
+            const totalTuition = selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c=>c.id===id)?.cost || 0), 0);
+            const totalMandatoryFees = selectedSemester.mandatoryFees ? Object.values(selectedSemester.mandatoryFees).reduce((sum, fee) => sum + fee.amount, 0) : 0;
+            const finalOptionalFees = selectedSemester.optionalFees ? Object.entries(selectedSemester.optionalFees).filter(([id]) => selectedOptionalFees[id]).map(([,fee])=>fee.amount).reduce((sum,amt) => sum+amt, 0) : 0;
+
+            await set(registrationRef, {
+                status: 'Pending Approval',
+                courses: selectedCourseIds,
+                optionalFees: Object.keys(selectedOptionalFees).filter(key => selectedOptionalFees[key]),
+                paymentPlan: selectedPaymentPlan,
+                programmeId: userData.programmeId,
+                applyScholarship,
+                invoiceId: invoiceRef.key,
+                registrationDate: new Date().toISOString()
+            });
+
+            await set(invoiceRef, {
+                invoiceId: invoiceRef.key,
+                dateCreated: new Date().toISOString(),
+                semester: selectedSemester.name,
+                semesterId: selectedSemester.id,
+                totalTuition,
+                totalMandatoryFees,
+                totalOptionalFees: finalOptionalFees,
+                courses: selectedCourseIds,
+                optionalFees: Object.keys(selectedOptionalFees).filter(key => selectedOptionalFees[key]),
+                paymentPlan: selectedPaymentPlan,
+                applyScholarship,
+            });
+
+            const registrarIds = await get(ref(db, 'users')).then(snap => {
+                 if(!snap.exists()) return [];
+                 return Object.keys(snap.val()).filter(uid => snap.val()[uid].subRoles?.includes('Registrar'));
+            });
+
+            const notificationPromises = registrarIds.map(id => createNotification(id, `${userData.name} has submitted a new course registration.`, '/admin/approve-registrations'));
+            await Promise.all(notificationPromises);
+
+            toast({ title: 'Registration Submitted!', description: 'Your course selection is pending approval.' });
+            setSelectedSemesterId('');
+        } catch (e: any) {
+            console.error(e);
+            toast({ variant: 'destructive', title: 'Submission Failed' });
+        } finally {
+            setSaving(false);
+        }
+    }
+
+
+    if (loading) return <Skeleton className="h-64 w-full" />;
 
     return (
-        <Card className="max-w-4xl mx-auto">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 font-headline text-2xl"><UserPlus/> Add New Student</CardTitle>
-                <CardDescription>Create a new account for a student. An ID will be generated unless you provide one.</CardDescription>
-            </CardHeader>
-            <form onSubmit={handleCreateStudent}>
-            <CardContent>
-                 <Accordion type="multiple" defaultValue={['item-1', 'item-2']} className="w-full">
-                    <AccordionItem value="item-1">
-                        <AccordionTrigger className="text-lg font-semibold">Basic & Academic Information</AccordionTrigger>
-                        <AccordionContent className="space-y-4 pt-2">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className="lg:col-span-3">
-                                    <Label>User ID</Label>
-                                    <div className="flex items-center space-x-2 mt-1">
-                                        <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
-                                        <Label htmlFor="manual-id-switch">{isManualId ? 'Manual ID' : 'Auto-generate ID'}</Label>
+        <div className="space-y-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Course Registration</CardTitle>
+                    <CardDescription>Select a semester to register for your courses.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {openSemesters.filter(s => !alreadyRegisteredSemesters.includes(s.id)).length > 0 ? (
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <Label htmlFor="semester-select">Select Semester</Label>
+                                <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
+                                    <SelectTrigger id="semester-select"><SelectValue placeholder="Select an open semester..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {openSemesters.filter(s => !alreadyRegisteredSemesters.includes(s.id)).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    ) : (
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>No Open Registrations</AlertTitle>
+                            <AlertDescription>
+                                There are no semesters currently open for registration, or you have already registered. Please check back later.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                </CardContent>
+            </Card>
+
+            {selectedSemester && (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Register for {selectedSemester.name}</CardTitle>
+                    <CardDescription>Select the courses you wish to take this semester.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                     <Accordion type="multiple" defaultValue={['courses']} className="w-full">
+                        <AccordionItem value="courses">
+                            <AccordionTrigger className="text-lg font-semibold">Courses</AccordionTrigger>
+                            <AccordionContent>
+                                {coursesForSemester.map(course => (
+                                    <div key={course.id} className="flex items-center space-x-2 py-2 border-b">
+                                        <Checkbox id={course.id} onCheckedChange={() => handleCourseSelection(course.id)} />
+                                        <Label htmlFor={course.id} className="flex-1 cursor-pointer">{course.name} ({course.code})</Label>
+                                        <span className="text-sm font-mono">ZMW {course.cost.toFixed(2)}</span>
                                     </div>
-                                    {isManualId && <div className="flex gap-2 mt-2">
-                                        <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />
-                                        <Button type="button" variant="outline" size="icon" onClick={handlePastePrefix} title="Paste current prefix"><Copy className="h-4 w-4"/></Button>
-                                    </div>}
-                                </div>
-                                <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading} required/></div>
-                                <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} required/></div>
-                                <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Initial Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} required/></div>
-                                
-                                <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading || !selectedIntake} required/></div>
-                                
-                                <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading || !year} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                    <AccordionItem value="item-2">
-                        <AccordionTrigger className="text-lg font-semibold">Other Details</AccordionTrigger>
-                        <AccordionContent className="space-y-4 pt-2">
-                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={loading}/></div>
-                                <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender} disabled={loading}><SelectTrigger><SelectValue placeholder="Select gender"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-1"><Label>National ID</Label><Input placeholder="e.g., 123456/78/9" value={nationalId} onChange={e => setNationalId(e.target.value)} disabled={loading}/></div>
-                                <div className="lg:col-span-3 space-y-1"><Label>Passport Number</Label><Input placeholder="e.g., ZA12345" value={passport} onChange={e => setPassport(e.target.value)} disabled={loading}/></div>
-                                <div className="lg:col-span-3 space-y-1"><Label>Address</Label><Textarea placeholder="Residential Address" value={address} onChange={e => setAddress(e.target.value)} disabled={loading}/></div>
-                            </div>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2 rounded-md border p-3"><Label>Parent/Guardian</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} /><Input placeholder="Contact Number" value={guardianContact} onChange={e => setGuardianContact(e.target.value)} /></div></div>
-                                <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
-                            </div>
-                            <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
-                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-            </CardContent>
-            <CardFooter className="justify-end">
-                 <Button type="submit" disabled={loading}>
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                    Create Student Account
-                </Button>
-            </CardFooter>
-            </form>
-        </Card>
-    )
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
+                        <AccordionItem value="fees">
+                            <AccordionTrigger className="text-lg font-semibold">Other Fees</AccordionTrigger>
+                            <AccordionContent>
+                                <p className="font-semibold text-sm mb-2">Mandatory Fees:</p>
+                                <ul className="list-disc pl-5 mb-4 text-sm">
+                                    {selectedSemester.mandatoryFees ? Object.values(selectedSemester.mandatoryFees).map((fee,i) => <li key={i}>{fee.name} - ZMW {fee.amount.toFixed(2)}</li>) : <li>None</li>}
+                                </ul>
+                                 <p className="font-semibold text-sm mb-2">Optional Fees:</p>
+                                  {selectedSemester.optionalFees ? Object.entries(selectedSemester.optionalFees).map(([id, fee]) => (
+                                    <div key={id} className="flex items-center space-x-2 py-2 border-b">
+                                        <Checkbox id={id} onCheckedChange={() => handleFeeSelection(id)} />
+                                        <Label htmlFor={id} className="flex-1 cursor-pointer">{fee.name}</Label>
+                                        <span className="text-sm font-mono">ZMW {fee.amount.toFixed(2)}</span>
+                                    </div>
+                                  )) : <p className="text-sm text-muted-foreground">None</p>}
+                            </AccordionContent>
+                        </AccordionItem>
+                        <AccordionItem value="payment">
+                             <AccordionTrigger className="text-lg font-semibold">Payment Options</AccordionTrigger>
+                             <AccordionContent className="space-y-4">
+                                <div><Label>Payment Plan</Label><Select onValueChange={setSelectedPaymentPlan} value={selectedPaymentPlan}><SelectTrigger><SelectValue placeholder="Select a plan..."/></SelectTrigger><SelectContent>
+                                    {(paymentPlans || []).filter(p => selectedSemester.paymentPlanIds?.[p.id]).map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
+                                </SelectContent></Select></div>
+                                {scholarships.length > 0 && <div className="flex items-center space-x-2 pt-2"><Checkbox id="scholarship" onCheckedChange={(c) => setApplyScholarship(!!c)}/><Label htmlFor="scholarship">Apply for available scholarship (<span className="font-bold">{scholarships[0].name} - {scholarships[0].percentage}%</span>)</Label></div>}
+                             </AccordionContent>
+                        </AccordionItem>
+                     </Accordion>
+                </CardContent>
+                <CardFooter className="justify-end">
+                    <Button onClick={handleSubmit} disabled={saving}>
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle className="mr-2 h-4 w-4"/>}
+                        Submit Registration
+                    </Button>
+                </CardFooter>
+            </Card>
+            )}
+
+        </div>
+    );
 }
