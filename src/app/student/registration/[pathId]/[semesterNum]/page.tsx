@@ -34,6 +34,9 @@ type Programme = {
 };
 
 type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
     semesters: Record<string, { courses: string[] }>;
 };
 
@@ -60,6 +63,7 @@ type PaymentPlan = {
 type UserProfile = {
     name: string;
     programmeId: string;
+    intakeId: string;
     exemptedCourses?: Record<string, boolean>;
 };
 
@@ -84,44 +88,66 @@ export default function RegisterForSemesterPage() {
     const [availablePaymentPlans, setAvailablePaymentPlans] = React.useState<PaymentPlan[]>([]);
     const { toast } = useToast();
 
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, user => {
+            if (user) setCurrentUser(user);
+            else router.push('/login');
+        });
+        return () => unsubscribe();
+    }, [router]);
+    
     const fetchData = React.useCallback(async () => {
         if (!currentUser || !pathId || !semesterNum) return;
         setLoading(true);
         try {
-            const [userSnap, pathSnap, coursesSnap, semestersSnap, paymentPlansSnap, programmesSnap] = await Promise.all([
+            const [
+                userSnap, 
+                pathSnap, 
+                coursesSnap, 
+                semestersSnap, 
+                paymentPlansSnap, 
+                programmesSnap,
+                intakeSnap,
+            ] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `coursePaths/${pathId}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'programmes'))
+                get(ref(db, 'programmes')),
+                get(ref(db, 'intakes'))
             ]);
-
-            if (!userSnap.exists() || !pathSnap.exists() || !programmesSnap.exists()) {
+            
+            const userDataVal = userSnap.val();
+            const pathData: CoursePath = { id: pathId as string, ...pathSnap.val() };
+            
+            // Validation step: Does this path belong to this user?
+            if (!userDataVal || !pathData || userDataVal.intakeId !== pathData.intakeId || userDataVal.programmeId !== pathData.programmeId) {
                 toast({ variant: 'destructive', title: 'Invalid registration link.' });
                 router.push('/student/registration');
                 return;
             }
 
-            const userDataVal = userSnap.val();
             setUserData(userDataVal);
 
-            const programmeData = programmesSnap.val()[userDataVal.programmeId];
-            setProgramme({ id: userDataVal.programmeId, ...programmeData });
+            const programmeData = programmesSnap.val()?.[userDataVal.programmeId];
+            if (programmeData) {
+                setProgramme({ id: userDataVal.programmeId, ...programmeData });
+            }
 
             const allCourses = coursesSnap.val() || {};
             const allSemesters = semestersSnap.val() || {};
 
-            const pathData: CoursePath = pathSnap.val();
             const semesterCourseIds = pathData.semesters[semesterNum as string]?.courses || [];
             const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
             setCoursesForSemester(semesterCourses);
             
             const year = Math.floor((Number(semesterNum) - 1) / 2) + 1;
-            const intakeSnap = await get(ref(db, `intakes/${pathSnap.val().intakeId}`));
-            const semesterNamePattern = `${intakeSnap.val().name} Year ${year} Semester ${((Number(semesterNum) - 1) % 2) + 1}`;
-            
+            const intakeName = intakeSnap.val()?.[pathData.intakeId]?.name || '';
+            const semesterNamePattern = `${intakeName} Year ${year} Semester ${((Number(semesterNum) - 1) % 2) + 1}`;
+
             const foundSemester = Object.values(allSemesters as Record<string, Semester>).find(s => s.name === semesterNamePattern);
+            
             if(foundSemester) {
                 setSemesterDetails(foundSemester);
                  if (paymentPlansSnap.exists() && foundSemester.paymentPlanIds) {
@@ -134,7 +160,10 @@ export default function RegisterForSemesterPage() {
                 }
             }
             
-            setSelectedCourseIds(semesterCourses.map(c => c.id).filter(id => !userSnap.val().exemptedCourses?.[id]));
+            const initialSelectedCourses = semesterCourses
+                .map(c => c.id)
+                .filter(id => !userDataVal.exemptedCourses?.[id]);
+            setSelectedCourseIds(initialSelectedCourses);
             
         } catch (error) {
             console.error(error);
@@ -143,14 +172,6 @@ export default function RegisterForSemesterPage() {
             setLoading(false);
         }
     }, [currentUser, pathId, semesterNum, router, toast]);
-
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            if (user) setCurrentUser(user);
-            else router.push('/login');
-        });
-        return () => unsubscribe();
-    }, [router]);
 
     React.useEffect(() => {
         fetchData();
