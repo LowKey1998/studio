@@ -63,12 +63,16 @@ export default function LandingPage() {
             const calSnap = await get(calendarEventsRef);
             if(calSnap.exists()){
                 const events = Object.values(calSnap.val()) as {title: string, date: string}[];
-                const deadlineEvent = events.find(e => e.title.toLowerCase().includes('deadline'));
-                if(deadlineEvent){
-                    const deadline = parseISO(deadlineEvent.date);
-                    const daysLeft = differenceInDays(deadline, new Date());
-                    if (daysLeft > 0) {
-                        setCountdown(`${daysLeft} days until next payment deadline.`);
+                const now = new Date();
+                const deadlineEvents = events
+                    .filter(e => e.title.toLowerCase().includes('deadline') && isBefore(now, parseISO(e.date)))
+                    .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                if(deadlineEvents.length > 0){
+                    const nextDeadline = parseISO(deadlineEvents[0].date);
+                    const daysLeft = differenceInDays(nextDeadline, now);
+                     if (daysLeft >= 0) {
+                        setCountdown(`${daysLeft} day(s) until next payment deadline.`);
                     }
                 }
             }
@@ -159,7 +163,7 @@ export default function LandingPage() {
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
           <nav className="flex items-center gap-1 sm:gap-4">
-            <Link href="/vacancies" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary px-2">
+            <Link href="/vacancies" className="hidden sm:inline-flex text-sm font-medium text-muted-foreground transition-colors hover:text-primary px-2">
               Careers
             </Link>
             <Button asChild>
@@ -173,12 +177,14 @@ export default function LandingPage() {
       <main className="flex-1">
         {/* Hero Section */}
         <section className="container flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
-          <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
-            A modern platform to manage your entire institution
-          </h1>
-          <p className="max-w-[750px] text-lg text-muted-foreground sm:text-xl">
-            Edutrack360 provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
-          </p>
+            <div className="mx-auto max-w-4xl">
+              <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
+                A modern platform to manage your entire institution
+              </h1>
+              <p className="mt-6 max-w-[750px] mx-auto text-lg text-muted-foreground sm:text-xl">
+                Edutrack360 provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
+              </p>
+            </div>
           <div className="flex w-full items-center justify-center gap-4">
             <Button asChild size="lg">
                 <Link href="#inquiry-form">Inquire Now</Link>
@@ -310,7 +316,7 @@ export default function LandingPage() {
             <div className="flex flex-col items-center justify-between gap-4 border-t py-10 md:h-24 md:flex-row md:py-0">
                 <div className="flex flex-col items-center gap-4 px-8 md:flex-row md:gap-2 md:px-0">
                     <Logo />
-                    <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">© {new Date().getFullYear()} Edutrack360. All rights reserved.</p>
+                    <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">© {new Date().getFullYear()} TechElevate SaaS. All rights reserved.</p>
                 </div>
             </div>
         </footer>
