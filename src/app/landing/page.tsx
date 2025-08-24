@@ -246,7 +246,7 @@ export default function LandingPage() {
                     Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
                 </p>
             </div>
-             <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
+             <div className="grid md:grid-cols-2 gap-8 items-start mt-12">
                 <div className="space-y-4">
                     <h3 className="text-2xl font-bold">For Students</h3>
                     <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
@@ -256,8 +256,6 @@ export default function LandingPage() {
                         <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
                     </ul>
                 </div>
-            </div>
-             <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
                  <div className="space-y-4">
                     <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
                     <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
