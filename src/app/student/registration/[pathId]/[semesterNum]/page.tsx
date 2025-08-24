@@ -130,11 +130,15 @@ export default function RegisterForSemesterPage() {
 
                 if (!coursePathsSnap.exists()) throw new Error("Course paths have not been set up by the administration.");
 
-                const allCoursePaths: CoursePath[] = Object.entries(coursePathsSnap.val()).map(([id, data]) => ({ id, ...(data as any) }));
+                const allCoursePathsData = coursePathsSnap.val();
+                const allCoursePaths: CoursePath[] = Object.keys(allCoursePathsData).map(id => ({ id, ...allCoursePathsData[id] }));
+                
                 const userPath = allCoursePaths.find(p => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId);
-
-                if (!userPath) throw new Error("A course path has not been defined for your intake and programme.");
-
+                
+                if (!userPath) {
+                    throw new Error("A course path has not been defined for your intake and programme.");
+                }
+                
                 // Step 3: THIS IS THE CRITICAL VALIDATION
                 if (userPath.id !== pathId) {
                     throw new Error("Invalid registration link. You are not authorized to register for this path.");
