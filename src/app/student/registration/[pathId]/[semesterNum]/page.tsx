@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 // --- TYPE DEFINITIONS ---
 type Course = {
@@ -24,6 +25,12 @@ type Course = {
     code: string;
     year: number;
     cost: number;
+};
+
+type Programme = {
+    id: string;
+    name: string;
+    tuitionFee?: number;
 };
 
 type CoursePath = {
@@ -66,6 +73,7 @@ export default function RegisterForSemesterPage() {
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserProfile | null>(null);
 
+    const [programme, setProgramme] = React.useState<Programme | null>(null);
     const [coursesForSemester, setCoursesForSemester] = React.useState<Course[]>([]);
     const [semesterDetails, setSemesterDetails] = React.useState<Semester | null>(null);
     const [selectedCourseIds, setSelectedCourseIds] = React.useState<string[]>([]);
@@ -80,21 +88,27 @@ export default function RegisterForSemesterPage() {
         if (!currentUser || !pathId || !semesterNum) return;
         setLoading(true);
         try {
-            const [userSnap, pathSnap, coursesSnap, semestersSnap, paymentPlansSnap] = await Promise.all([
+            const [userSnap, pathSnap, coursesSnap, semestersSnap, paymentPlansSnap, programmesSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `coursePaths/${pathId}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'settings/paymentPlans'))
+                get(ref(db, 'settings/paymentPlans')),
+                get(ref(db, 'programmes'))
             ]);
 
-            if (!userSnap.exists() || !pathSnap.exists()) {
+            if (!userSnap.exists() || !pathSnap.exists() || !programmesSnap.exists()) {
                 toast({ variant: 'destructive', title: 'Invalid registration link.' });
                 router.push('/student/registration');
                 return;
             }
 
-            setUserData(userSnap.val());
+            const userDataVal = userSnap.val();
+            setUserData(userDataVal);
+
+            const programmeData = programmesSnap.val()[userDataVal.programmeId];
+            setProgramme({ id: userDataVal.programmeId, ...programmeData });
+
             const allCourses = coursesSnap.val() || {};
             const allSemesters = semestersSnap.val() || {};
 
@@ -103,7 +117,6 @@ export default function RegisterForSemesterPage() {
             const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
             setCoursesForSemester(semesterCourses);
             
-            // Find the semester by name matching the path
             const year = Math.floor((Number(semesterNum) - 1) / 2) + 1;
             const intakeSnap = await get(ref(db, `intakes/${pathSnap.val().intakeId}`));
             const semesterNamePattern = `${intakeSnap.val().name} Year ${year} Semester ${((Number(semesterNum) - 1) % 2) + 1}`;
@@ -115,7 +128,7 @@ export default function RegisterForSemesterPage() {
                     const allPlans = paymentPlansSnap.val();
                     const available = Object.keys(foundSemester.paymentPlanIds)
                         .map(planId => allPlans[planId] ? { id: planId, ...allPlans[planId] } : null)
-                        .filter(Boolean) as PaymentPlan[];
+                        .filter(p => p && !p.archived) as PaymentPlan[];
                     setAvailablePaymentPlans(available);
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
@@ -144,6 +157,7 @@ export default function RegisterForSemesterPage() {
     }, [fetchData]);
 
     const toggleCourseSelection = (courseId: string) => {
+        if (programme?.tuitionFee) return; // Cannot modify if flat fee
         setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
 
@@ -164,13 +178,15 @@ export default function RegisterForSemesterPage() {
 
         setSaving(true);
         try {
-            const registrationId = `${semesterDetails.name.replace(/\s+/g, '-')}-${pathId}`;
+            const registrationId = semesterDetails.id;
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${registrationId}`);
             
             // Create Invoice First
             const newInvoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             const invoiceId = newInvoiceRef.key!;
-            const tuitionCost = selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c => c.id === id)?.cost || 0), 0);
+
+            const tuitionCost = programme?.tuitionFee ? programme.tuitionFee : selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c => c.id === id)?.cost || 0), 0);
+            
             const mandatoryFeesCost = Object.values(semesterDetails.mandatoryFees || {}).reduce((sum, fee) => sum + fee.amount, 0);
             const optionalFeesCost = selectedOptionalFees.reduce((sum, id) => sum + (semesterDetails.optionalFees?.[id]?.amount || 0), 0);
 
@@ -219,13 +235,15 @@ export default function RegisterForSemesterPage() {
         }
     };
     
-    if (loading || !userData) {
+    if (loading || !userData || !programme) {
         return <div className="space-y-4"><Skeleton className="h-96 w-full"/></div>
     }
 
     if (!semesterDetails) {
         return <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Semester Not Found</AlertTitle><AlertDescription>The selected semester could not be found. It may no longer be active.</AlertDescription></Alert>
     }
+
+    const isFlatFee = !!programme.tuitionFee && programme.tuitionFee > 0;
 
     return (
         <div className="space-y-6">
@@ -238,6 +256,7 @@ export default function RegisterForSemesterPage() {
                 <CardContent className="space-y-6">
                      <div className="space-y-2">
                         <h3 className="font-semibold">Courses for this Semester</h3>
+                        {isFlatFee && <Alert><Info className="h-4 w-4"/><AlertDescription>This programme has a flat semester fee, so all courses below are required and pre-selected.</AlertDescription></Alert>}
                         <div className="grid md:grid-cols-2 gap-2">
                             {coursesForSemester.map(course => (
                                 <div key={course.id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
@@ -245,9 +264,9 @@ export default function RegisterForSemesterPage() {
                                         id={course.id} 
                                         checked={selectedCourseIds.includes(course.id)} 
                                         onCheckedChange={() => toggleCourseSelection(course.id)}
-                                        disabled={!!userData?.exemptedCourses?.[course.id]}
+                                        disabled={isFlatFee || !!userData?.exemptedCourses?.[course.id]}
                                     />
-                                    <Label htmlFor={course.id} className="flex-1 cursor-pointer">
+                                    <Label htmlFor={course.id} className={`flex-1 ${isFlatFee ? 'cursor-default' : 'cursor-pointer'}`}>
                                         <p>{course.name}</p>
                                         <p className="text-xs text-muted-foreground">{course.code} - ZMW {course.cost.toFixed(2)}</p>
                                     </Label>
@@ -278,7 +297,7 @@ export default function RegisterForSemesterPage() {
                             <Label>Payment Plan</Label>
                             <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
-                                <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installments)</SelectItem>)}</SelectContent>
+                                <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installment{p.installments > 1 ? 's' : ''})</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                          <div className="flex items-end">
