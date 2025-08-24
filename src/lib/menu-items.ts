@@ -42,7 +42,7 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
+        { href: '/admin/registration-management', label: 'Activate Course Registrations', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },

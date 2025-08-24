@@ -65,7 +65,7 @@ export default function LandingPage() {
                 const events = Object.values(calSnap.val()) as {title: string, date: string}[];
                 const now = new Date();
                 const deadlineEvents = events
-                    .filter(e => e.title.toLowerCase().includes('deadline') && isBefore(now, parseISO(e.date)))
+                    .filter(e => e.title.toLowerCase().includes('deadline') && isBefore(parseISO(e.date), now))
                     .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                 if(deadlineEvents.length > 0){
@@ -176,7 +176,8 @@ export default function LandingPage() {
       </header>
       <main className="flex-1">
         
-        <section className="container text-center flex flex-col items-center justify-center gap-6 pb-12 pt-10 md:pb-24 md:pt-16 lg:py-32">
+        <section className="container">
+          <div className="flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
             <div className="mx-auto max-w-4xl">
               <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
                 A modern platform to manage your entire institution
@@ -185,20 +186,21 @@ export default function LandingPage() {
                 Edutrack360 provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
               </p>
             </div>
-          <div className="flex w-full items-center justify-center gap-4">
-            <Button asChild size="lg">
-                <Link href="#inquiry-form">Inquire Now</Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-                <Link href="/vacancies">View Openings</Link>
-            </Button>
+            <div className="flex w-full items-center justify-center gap-4">
+              <Button asChild size="lg">
+                  <Link href="#inquiry-form">Inquire Now</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                  <Link href="/vacancies">View Openings</Link>
+              </Button>
+            </div>
+            {countdown && (
+                <div className="mt-4 animate-pulse text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-2">
+                  <Clock className="h-4 w-4"/>
+                  <span>{countdown}</span>
+                </div>
+              )}
           </div>
-           {countdown && (
-              <div className="mt-4 animate-pulse text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-2">
-                <Clock className="h-4 w-4"/>
-                <span>{countdown}</span>
-              </div>
-            )}
         </section>
 
         {bankDetails?.bankName && (
@@ -247,76 +249,72 @@ export default function LandingPage() {
         </section>
         
         {/* Showcase Section */}
-        <section className="py-12 lg:py-24">
-            <div className="container">
-                <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
-                    <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Designed for Everyone</h2>
-                    <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                        Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
-                    </p>
-                </div>
-                <div className="grid md:grid-cols-2 gap-8 items-start mt-12">
-                    <div className="space-y-4">
-                        <h3 className="text-2xl font-bold">For Students</h3>
-                        <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
-                        <ul className="space-y-3">
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
-                        </ul>
-                    </div>
-                    <div className="space-y-4">
-                        <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
-                        <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
-                        <ul className="space-y-3">
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
-                            <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+        <section className="container py-12 lg:py-24">
+          <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
+              <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Designed for Everyone</h2>
+              <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
+                  Tailored dashboards and tools for every role within your institution, empowering users and simplifying daily tasks.
+              </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-8 items-start mt-12">
+              <div className="space-y-4">
+                  <h3 className="text-2xl font-bold">For Students</h3>
+                  <p className="text-muted-foreground">Empower your students with a modern, mobile-friendly portal. They can register for courses, view their timetable, access learning materials, track their results, and stay connected with the campus community, all in one place.</p>
+                  <ul className="space-y-3">
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Easy Course Registration & Payments</li>
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Access to Grades & Attendance</li>
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Integrated E-Learning Resources</li>
+                  </ul>
+              </div>
+              <div className="space-y-4">
+                  <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
+                  <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
+                  <ul className="space-y-3">
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
+                      <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
+                  </ul>
+              </div>
+          </div>
         </section>
 
         {/* Inquiry Form */}
-        <section id="inquiry-form" className="pb-12 lg:pb-24">
-            <div className="container">
-                <Card className="max-w-2xl mx-auto shadow-lg">
-                    <CardHeader className="text-center">
-                        <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
-                        <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleInquirySubmit} className="space-y-4">
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
-                                <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
-                            </div>
-                            <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
-                                <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                            <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
-                            <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
-                            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
-                        </form>
-                    </CardContent>
-                </Card>
-            </div>
+        <section id="inquiry-form" className="container pb-12 lg:pb-24">
+          <Card className="max-w-2xl mx-auto shadow-lg">
+              <CardHeader className="text-center">
+                  <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
+                  <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                  <form onSubmit={handleInquirySubmit} className="space-y-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                          <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
+                          <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
+                      </div>
+                      <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
+                          <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
+                      </div>
+                      <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
+                      <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
+                      <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
+                  </form>
+              </CardContent>
+          </Card>
         </section>
 
         {/* CTA Section */}
         <section id="cta" className="bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
-            <div className="container">
-                <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
-                    <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Transform Your Institution Today</h2>
-                    <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                        Ready to streamline your operations and enhance the educational experience? Get started with Edutrack360.
-                    </p>
-                    <Button asChild size="lg">
-                        <Link href="/login">Get Started <ArrowRight className="ml-2 h-4 w-4"/></Link>
-                    </Button>
-                </div>
-            </div>
+          <div className="container">
+              <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
+                  <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Transform Your Institution Today</h2>
+                  <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
+                      Ready to streamline your operations and enhance the educational experience? Get started with Edutrack360.
+                  </p>
+                  <Button asChild size="lg">
+                      <Link href="/login">Get Started <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                  </Button>
+              </div>
+          </div>
         </section>
 
       </main>
