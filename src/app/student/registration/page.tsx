@@ -83,7 +83,8 @@ export default function StudentRegistrationPage() {
                 coursePathsSnap,
                 semesterOfferingsSnap,
                 registrationsSnap,
-                coursesSnap, // Fetch courses
+                coursesSnap,
+                semestersSnap,
             ] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, 'programmes')),
@@ -91,7 +92,8 @@ export default function StudentRegistrationPage() {
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'semesterOfferings')),
                 get(ref(db, `registrations/${currentUser.uid}`)),
-                get(ref(db, 'courses')), // Fetch courses
+                get(ref(db, 'courses')),
+                get(ref(db, 'semesters')),
             ]);
             
             if (!userSnap.exists()) {
@@ -104,13 +106,14 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
+            const allSemestersData = semestersSnap.val() || {};
 
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
             setUserProfile(profile);
-
-            const allCoursePaths = coursePathsSnap.exists() ? Object.values(coursePathsSnap.val() as Record<string, CoursePath>) : [];
-            const userPath = allCoursePaths.find(
+            
+            const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
+            const userPath = Object.values(coursePathsData as Record<string, CoursePath>).find(
                 (p: CoursePath) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
             );
             
@@ -130,10 +133,9 @@ export default function StudentRegistrationPage() {
                     const semNum = Number(semNumStr);
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
-                    const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
+                    const semesterNamePattern = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
                     
-                    const allSemesters = await get(ref(db, 'semesters'));
-                    const semesterId = Object.keys(allSemesters.val() || {}).find(key => allSemesters.val()[key].name === semesterName);
+                    const semesterId = Object.keys(allSemestersData).find(key => allSemestersData[key].name === semesterNamePattern);
 
                     const isRegistered = userRegistrations.includes(semesterId || '');
                     
@@ -146,8 +148,8 @@ export default function StudentRegistrationPage() {
                          }));
 
                          activeSemestersList.push({ 
-                            semesterId: semesterId || `${semesterName.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID if not found
-                            semesterName, 
+                            semesterId: semesterId || `${semesterNamePattern.replace(/\s+/g, '-')}-${userPath.id}`, // Create a synthetic ID if not found
+                            semesterName: semesterNamePattern,
                             year, 
                             semesterInYear,
                             pathId: userPath.id,
@@ -227,7 +229,7 @@ export default function StudentRegistrationPage() {
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
                                         <Button asChild>
-                                            <Link href={`/student/registration/${semester.pathId}/${semester.pathSemesterNum}`}>
+                                            <Link href={`/student/registration/${semester.year}/${semester.semesterInYear}`}>
                                                 Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/>
                                             </Link>
                                         </Button>
