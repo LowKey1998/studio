@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, AlertCircle, CheckCircle, Info, HandCoins, GraduationCap } from 'lucide-react';
+import { Loader2, BookOpen, AlertCircle, CheckCircle, Info, HandCoins, GraduationCap, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification } from '@/lib/firebase';
@@ -43,6 +43,7 @@ type Semester = {
     paymentPlanIds: Record<string, boolean>;
     mandatoryFees: Record<string, {name: string, amount: number}>;
     optionalFees: Record<string, {name: string, amount: number}>;
+    lateRegistrationActive?: boolean;
 };
 
 type PaymentPlan = {
@@ -57,19 +58,26 @@ type Scholarship = {
 };
 
 type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
     semesters: Record<string, { courses: string[] }>;
 };
+
+type SemesterOffering = Record<string, { active: boolean, showReason: boolean }>; // pathId -> { semesterNumber -> {active, showReason} }
 
 export default function StudentRegistrationPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
+    
     const [openSemesters, setOpenSemesters] = React.useState<Semester[]>([]);
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [paymentPlans, setPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [scholarships, setScholarships] = React.useState<Scholarship[]>([]);
     const [alreadyRegisteredSemesters, setAlreadyRegisteredSemesters] = React.useState<string[]>([]);
+    const [userPath, setUserPath] = React.useState<CoursePath | null>(null);
 
     // Form state
     const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
@@ -77,6 +85,7 @@ export default function StudentRegistrationPage() {
     const [selectedOptionalFees, setSelectedOptionalFees] = React.useState<Record<string, boolean>>({});
     const [selectedPaymentPlan, setSelectedPaymentPlan] = React.useState('');
     const [applyScholarship, setApplyScholarship] = React.useState(false);
+    const [isLate, setIsLate] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -103,30 +112,39 @@ export default function StudentRegistrationPage() {
         
         const fetchData = async () => {
             try {
-                const [semestersSnap, coursePathsSnap, coursesSnap, paymentPlansSnap, scholarshipsSnap] = await Promise.all([
+                const [semestersSnap, coursePathsSnap, coursesSnap, paymentPlansSnap, scholarshipsSnap, semesterOfferingsSnap] = await Promise.all([
                     get(ref(db, 'semesters')),
                     get(ref(db, 'coursePaths')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'settings/paymentPlans')),
-                    get(ref(db, 'scholarships'))
+                    get(ref(db, 'scholarships')),
+                    get(ref(db, 'semesterOfferings'))
                 ]);
 
-                if (semestersSnap.exists()) {
-                    setOpenSemesters(Object.entries(semestersSnap.val())
-                        .filter(([id, sem]: [string, any]) => sem.status === 'Open')
-                        .map(([id, sem]: [string, any]) => ({ id, ...sem }))
-                        .sort((a,b) => b.name.localeCompare(a.name)));
+                const userCoursePath = coursePathsSnap.exists() ? Object.values(coursePathsSnap.val() as Record<string, CoursePath>).find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId) : null;
+                setUserPath(userCoursePath || null);
+
+                if (semestersSnap.exists() && semesterOfferingsSnap.exists() && userCoursePath) {
+                    const allSemesters = semestersSnap.val();
+                    const semesterOfferings = semesterOfferingsSnap.val()[userCoursePath.id] || {};
+                    
+                    const openForUser = Object.keys(semesterOfferings)
+                        .filter(semNum => semesterOfferings[semNum]?.active)
+                        .map(semNum => {
+                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
+                            const intakeYear = parseInt(userData.intakeId.substring(0, 4), 10);
+                            const semesterNamePattern = `${intakeYear + year - 1}`;
+                            
+                            const semesterEntry = Object.entries(allSemesters).find(([id, sem]: [string, any]) => sem.name.includes(semesterNamePattern));
+                            return semesterEntry ? { id: semesterEntry[0], ...semesterEntry[1] } : null;
+                        })
+                        .filter((s): s is Semester => s !== null && !alreadyRegisteredSemesters.includes(s.id));
+                    
+                    setOpenSemesters(openForUser);
                 }
 
-                if (coursePathsSnap.exists() && coursesSnap.exists()) {
-                    const allPaths: CoursePath[] = Object.values(coursePathsSnap.val());
-                    const userPath = allPaths.find(p => p.intakeId === userData.intakeId && p.programmeId === userData.programmeId);
-
-                    if (userPath) {
-                        const allCourseData = coursesSnap.val();
-                        const semesterCourses = Object.values(userPath.semesters).flatMap(s => s.courses);
-                        setAvailableCourses(semesterCourses.map(id => ({ id, ...allCourseData[id] })).filter(Boolean));
-                    }
+                if (coursesSnap.exists()) {
+                    setAvailableCourses(Object.values(coursesSnap.val()));
                 }
                 
                 if (paymentPlansSnap.exists()) {
@@ -134,7 +152,7 @@ export default function StudentRegistrationPage() {
                 }
 
                 if (scholarshipsSnap.exists()) {
-                     setScholarships(Object.values(scholarshipsSnap.val() as Record<string, any>).filter((s: any) => s.semesterIds?.[selectedSemesterId]));
+                     setScholarships(Object.values(scholarshipsSnap.val() as Record<string, any>));
                 }
             } catch (error) {
                 console.error("Error fetching registration data:", error);
@@ -144,16 +162,28 @@ export default function StudentRegistrationPage() {
         };
 
         fetchData();
-    }, [userData, selectedSemesterId]);
+    }, [userData, alreadyRegisteredSemesters]);
 
     const selectedSemester = React.useMemo(() => openSemesters.find(s => s.id === selectedSemesterId), [openSemesters, selectedSemesterId]);
 
     const coursesForSemester = React.useMemo(() => {
-        const semesterYear = selectedSemester?.name.match(/Year (\d+)/)?.[1];
-        if (!semesterYear) return [];
-        return availableCourses.filter(c => c.year === Number(semesterYear));
-    }, [selectedSemester, availableCourses]);
-    
+        if (!selectedSemester || !userPath) return [];
+        
+        const semesterEntry = Object.entries(userPath.semesters).find(([semNum]) => {
+            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
+            const intakeYear = parseInt(userData.intakeId.substring(0, 4), 10);
+            return selectedSemester.name.includes(String(intakeYear + year - 1));
+        });
+
+        if (!semesterEntry) return [];
+        const courseIds = semesterEntry[1].courses || [];
+        return availableCourses.filter(c => courseIds.includes(c.id));
+    }, [selectedSemester, availableCourses, userPath, userData]);
+
+    React.useEffect(() => {
+        setSelectedCourseIds(coursesForSemester.map(c => c.id).filter(id => !userData?.exemptedCourses?.[id]));
+    }, [coursesForSemester, userData]);
+
     const handleCourseSelection = (courseId: string) => {
         setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
@@ -179,6 +209,7 @@ export default function StudentRegistrationPage() {
             await set(registrationRef, {
                 status: 'Pending Approval',
                 courses: selectedCourseIds,
+                coursePriority: coursesForSemester.map(c => c.id), // Store course order
                 optionalFees: Object.keys(selectedOptionalFees).filter(key => selectedOptionalFees[key]),
                 paymentPlan: selectedPaymentPlan,
                 programmeId: userData.programmeId,
@@ -230,14 +261,14 @@ export default function StudentRegistrationPage() {
                     <CardDescription>Select a semester to register for your courses.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {openSemesters.filter(s => !alreadyRegisteredSemesters.includes(s.id)).length > 0 ? (
+                    {openSemesters.length > 0 ? (
                         <div className="space-y-4">
                             <div className="space-y-1">
                                 <Label htmlFor="semester-select">Select Semester</Label>
                                 <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
                                     <SelectTrigger id="semester-select"><SelectValue placeholder="Select an open semester..."/></SelectTrigger>
                                     <SelectContent>
-                                        {openSemesters.filter(s => !alreadyRegisteredSemesters.includes(s.id)).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        {openSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -247,7 +278,7 @@ export default function StudentRegistrationPage() {
                             <AlertCircle className="h-4 w-4" />
                             <AlertTitle>No Open Registrations</AlertTitle>
                             <AlertDescription>
-                                There are no semesters currently open for registration, or you have already registered. Please check back later.
+                                There are no semesters currently open for registration. Please check back later.
                             </AlertDescription>
                         </Alert>
                     )}
@@ -259,6 +290,15 @@ export default function StudentRegistrationPage() {
                 <CardHeader>
                     <CardTitle>Register for {selectedSemester.name}</CardTitle>
                     <CardDescription>Select the courses you wish to take this semester.</CardDescription>
+                     {selectedSemester.lateRegistrationActive && (
+                        <Alert variant="destructive" className="mt-4">
+                            <ShieldAlert className="h-4 w-4"/>
+                            <AlertTitle>Late Registration Active</AlertTitle>
+                            <AlertDescription>
+                                You are registering during the late registration period. A late fee may be applied to your invoice.
+                            </AlertDescription>
+                        </Alert>
+                     )}
                 </CardHeader>
                 <CardContent className="space-y-6">
                      <Accordion type="multiple" defaultValue={['courses']} className="w-full">
@@ -267,7 +307,7 @@ export default function StudentRegistrationPage() {
                             <AccordionContent>
                                 {coursesForSemester.map(course => (
                                     <div key={course.id} className="flex items-center space-x-2 py-2 border-b">
-                                        <Checkbox id={course.id} onCheckedChange={() => handleCourseSelection(course.id)} />
+                                        <Checkbox id={course.id} checked={selectedCourseIds.includes(course.id)} onCheckedChange={() => handleCourseSelection(course.id)} />
                                         <Label htmlFor={course.id} className="flex-1 cursor-pointer">{course.name} ({course.code})</Label>
                                         <span className="text-sm font-mono">ZMW {course.cost.toFixed(2)}</span>
                                     </div>
@@ -297,7 +337,15 @@ export default function StudentRegistrationPage() {
                                 <div><Label>Payment Plan</Label><Select onValueChange={setSelectedPaymentPlan} value={selectedPaymentPlan}><SelectTrigger><SelectValue placeholder="Select a plan..."/></SelectTrigger><SelectContent>
                                     {(paymentPlans || []).filter(p => selectedSemester.paymentPlanIds?.[p.id]).map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
                                 </SelectContent></Select></div>
-                                {scholarships.length > 0 && <div className="flex items-center space-x-2 pt-2"><Checkbox id="scholarship" onCheckedChange={(c) => setApplyScholarship(!!c)}/><Label htmlFor="scholarship">Apply for available scholarship (<span className="font-bold">{scholarships[0].name} - {scholarships[0].percentage}%</span>)</Label></div>}
+                                {scholarships.filter(s => s.semesterIds?.[selectedSemesterId]).map(scholarship => (
+                                    <div key={scholarship.id} className="flex items-center space-x-2 pt-2">
+                                        <Checkbox id="scholarship" onCheckedChange={(c) => setApplyScholarship(!!c)}/>
+                                        <Label htmlFor="scholarship" className="flex items-center gap-2">
+                                            <GraduationCap className="h-4 w-4 text-blue-600"/>
+                                            <span>Apply for available scholarship (<span className="font-bold">{scholarship.name} - {scholarship.percentage}%</span>)</span>
+                                        </Label>
+                                    </div>
+                                ))}
                              </AccordionContent>
                         </AccordionItem>
                      </Accordion>
@@ -314,3 +362,5 @@ export default function StudentRegistrationPage() {
         </div>
     );
 }
+
+    
