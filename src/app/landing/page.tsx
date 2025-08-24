@@ -23,7 +23,7 @@ type BankDetails = { bankName: string; accountName?: string; accountNumber: stri
 type Programme = { id: string; name: string; };
 
 export default function LandingPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
   const [countdown, setCountdown] = React.useState('');
@@ -37,6 +37,13 @@ export default function LandingPage() {
   const [inquiryFile, setInquiryFile] = React.useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { toast } = useToast();
+
+  React.useEffect(() => {
+    if (!authLoading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, authLoading, router]);
+
 
   React.useEffect(() => {
     const fetchSettings = async () => {
@@ -251,13 +258,13 @@ export default function LandingPage() {
                 </div>
             </div>
              <div className="grid md:grid-cols-2 gap-8 items-center mt-12">
-                 <div className="space-y-4 md:text-right md:order-2">
+                 <div className="space-y-4">
                     <h3 className="text-2xl font-bold">For Staff & Lecturers</h3>
                     <p className="text-muted-foreground">Equip your faculty with the tools they need to succeed. Manage courses, mark attendance, enter grades, and communicate with students effortlessly. HR and finance staff get dedicated modules to streamline their workflows.</p>
                      <ul className="space-y-3">
-                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
-                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
-                        <li className="flex items-center md:justify-end gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
+                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Simplified Grade & Attendance Entry</li>
+                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Course & Resource Management</li>
+                        <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-primary"/> Leave and Payroll Management</li>
                     </ul>
                 </div>
             </div>
