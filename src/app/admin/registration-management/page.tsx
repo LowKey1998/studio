@@ -24,14 +24,11 @@ type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
-
-// This now includes a flag for late payments
 type SemesterOffering = {
     active: boolean;
     showReason: boolean;
     latePaymentActive?: boolean; 
 };
-
 
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
@@ -151,7 +148,10 @@ export default function RegistrationManagementPage() {
     const handleToggleReasonVisibility = (pathId: string, semesterNumber: string) => {
         setActivePathSemesters(prev => {
             const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
-            if (!newPaths[pathId] || !newPaths[pathId][semesterNumber]) return prev;
+            if (!newPaths[pathId]) newPaths[pathId] = {};
+            if (!newPaths[pathId][semesterNumber]) {
+                newPaths[pathId][semesterNumber] = { active: false, showReason: false, latePaymentActive: false };
+            }
             newPaths[pathId][semesterNumber].showReason = !newPaths[pathId][semesterNumber].showReason;
             return newPaths;
         });
