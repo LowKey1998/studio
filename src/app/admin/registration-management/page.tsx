@@ -6,28 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
-import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import type { DateRange } from 'react-day-picker';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
@@ -36,10 +24,14 @@ type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
+
+// This now includes a flag for late payments
 type SemesterOffering = {
     active: boolean;
     showReason: boolean;
+    latePaymentActive?: boolean; 
 };
+
 
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
@@ -84,23 +76,72 @@ export default function RegistrationManagementPage() {
 
     const handleSaveChanges = async () => {
         setSaving(true);
-        try { 
+        try {
+            const oldOfferingsSnap = await get(ref(db, 'semesterOfferings'));
+            const oldOfferings = oldOfferingsSnap.exists() ? oldOfferingsSnap.val() : {};
+
             await set(ref(db, `semesterOfferings`), activePathSemesters);
+
+            const usersSnap = await get(ref(db, 'users'));
+            const allUsers = usersSnap.exists() ? usersSnap.val() : {};
+
+            const notificationPromises: Promise<void>[] = [];
+
+            for (const pathId in activePathSemesters) {
+                for (const semNum in activePathSemesters[pathId]) {
+                    const wasActive = oldOfferings[pathId]?.[semNum]?.active || false;
+                    const isNowActive = activePathSemesters[pathId][semNum].active;
+
+                    if (isNowActive && !wasActive) {
+                        const path = allCoursePaths.find(p => p.id === pathId);
+                        if (path) {
+                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
+                            const semesterInYear = ((Number(semNum) - 1) % 2) + 1;
+                            const intake = allIntakes.find(i => i.id === path.intakeId);
+                            const semesterName = `${intake?.name || ''} Year ${year} Semester ${semesterInYear}`;
+
+                            for (const userId in allUsers) {
+                                const user = allUsers[userId];
+                                if (user.role === 'Student' && user.intakeId === path.intakeId && user.programmeId === path.programmeId) {
+                                     notificationPromises.push(
+                                        createNotification(
+                                            userId,
+                                            `Registration for ${semesterName} is now open.`,
+                                            '/student/registration'
+                                        )
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(notificationPromises.length > 0) {
+                 await Promise.all(notificationPromises);
+                 toast({ title: `${notificationPromises.length} students notified.` });
+            }
+
             toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings have been updated.` });
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
-        } finally { setSaving(false); }
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
+        } finally { 
+            setSaving(false); 
+        }
     };
     
-    const handleToggleSemester = (pathId: string, semesterNumber: string) => {
+    const handleToggleSemester = (pathId: string, semesterNumber: string, field: 'active' | 'latePaymentActive') => {
       setActivePathSemesters(prev => {
         const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
     
-        if (!newPaths[pathId]) newPaths[pathId] = {};
+        if (!newPaths[pathId]) {
+          newPaths[pathId] = {};
+        }
         if (!newPaths[pathId][semesterNumber]) {
-          newPaths[pathId][semesterNumber] = { active: false, showReason: false };
+          newPaths[pathId][semesterNumber] = { active: false, showReason: false, latePaymentActive: false };
         }
     
-        newPaths[pathId][semesterNumber].active = !newPaths[pathId][semesterNumber].active;
+        newPaths[pathId][semesterNumber][field] = !newPaths[pathId][semesterNumber][field];
         return newPaths;
       });
     };
@@ -118,6 +159,7 @@ export default function RegistrationManagementPage() {
         setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
         setIsHistoryDialogOpen(true);
     };
+    
 
     return (
         <div className="space-y-6">
@@ -158,7 +200,8 @@ export default function RegistrationManagementPage() {
                                                             const semesterInYear = (Number(semNum) - 1) % 2 + 1;
                                                             const label = `Year ${year}, Semester ${semesterInYear}`;
                                                             const historyItems = semData.history ? Object.values(semData.history) : [];
-                                                            const isActive = !!activePathSemesters[path.id]?.[semNum]?.active;
+                                                            const offering = activePathSemesters[path.id]?.[semNum] || { active: false, latePaymentActive: false, showReason: false };
+
 
                                                             return (
                                                             <div key={semNum} className="p-4 border rounded-lg bg-card">
@@ -170,16 +213,27 @@ export default function RegistrationManagementPage() {
                                                                                 <History className="h-4 w-4 text-blue-600"/>
                                                                             </Button>
                                                                         )}
-                                                                        <Switch 
-                                                                            id={`${path.id}-${semNum}`} 
-                                                                            checked={isActive}
-                                                                            onCheckedChange={() => handleToggleSemester(path.id, semNum)}
-                                                                        />
+                                                                        <div className="flex items-center space-x-2 border-r pr-2">
+                                                                            <Label htmlFor={`late-pay-${path.id}-${semNum}`} className="text-xs">Late Fee</Label>
+                                                                            <Switch 
+                                                                                id={`late-pay-${path.id}-${semNum}`} 
+                                                                                checked={!!offering.latePaymentActive}
+                                                                                onCheckedChange={() => handleToggleSemester(path.id, semNum, 'latePaymentActive')}
+                                                                            />
+                                                                        </div>
+                                                                         <div className="flex items-center space-x-2">
+                                                                            <Label htmlFor={`${path.id}-${semNum}`} className="text-xs">Active</Label>
+                                                                            <Switch 
+                                                                                id={`${path.id}-${semNum}`} 
+                                                                                checked={!!offering.active}
+                                                                                onCheckedChange={() => handleToggleSemester(path.id, semNum, 'active')}
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 {historyItems.length > 0 && (
                                                                      <div className="flex items-center space-x-2 my-2">
-                                                                         <Switch id={`show-reason-${path.id}-${semNum}`} checked={!!activePathSemesters[path.id]?.[semNum]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semNum)}/>
+                                                                         <Switch id={`show-reason-${path.id}-${semNum}`} checked={!!offering.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semNum)}/>
                                                                          <Label htmlFor={`show-reason-${path.id}-${semNum}`} className="text-xs">Show change reason to students</Label>
                                                                      </div>
                                                                 )}
