@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -33,13 +32,12 @@ type CoursePath = {
     semesters: Record<string, { courses: string[] }>;
 };
 
-type SemesterOffering = {
-    active: boolean;
-};
-
 type Semester = {
     id: string;
     name: string;
+    intakeId: string;
+    year: number;
+    semesterInYear: number;
 };
 
 type ActiveSemester = {
@@ -107,7 +105,7 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
-            const allSemestersData = semestersSnap.val() || {};
+            const allSemestersData = semestersSnap.val() ? Object.entries(semestersSnap.val() as Record<string, Semester>).map(([id, data]) => ({id, ...data})) : [];
 
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
@@ -135,10 +133,14 @@ export default function StudentRegistrationPage() {
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
-                    const semesterId = Object.keys(allSemestersData).find(key => allSemestersData[key].name === semesterName);
-                    
-                    const isRegistered = userRegistrations.includes(semesterId || '');
+                    const foundSemester = allSemestersData.find(
+                        s => s.intakeId === profile.intakeId && s.year === year && s.semesterInYear === semesterInYear
+                    );
+
+                    if (!foundSemester) continue;
+
+                    const semesterId = foundSemester.id;
+                    const isRegistered = userRegistrations.includes(semesterId);
                     
                      if (!isRegistered) {
                          const semesterCourses = userPath.semesters[semNumStr]?.courses || [];
@@ -149,8 +151,8 @@ export default function StudentRegistrationPage() {
                          }));
 
                          activeSemestersList.push({ 
-                            semesterId: semesterId || '',
-                            semesterName: semesterName,
+                            semesterId: semesterId,
+                            semesterName: foundSemester.name,
                             intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
