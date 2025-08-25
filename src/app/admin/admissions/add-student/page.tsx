@@ -183,7 +183,7 @@ export default function AddStudentPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
-            if (coursePathsSnap.exists()) setAllCoursePaths(Object.keys(coursePathsSnap.val()).map(id => ({id, ...coursePathsSnap.val()[id]}))); else setAllCoursePaths([]);
+            if (coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val())); else setAllCoursePaths([]);
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -202,20 +202,23 @@ export default function AddStudentPage() {
         if (!selectedIntake || !programme) {
             setAvailableYears([]);
             setSelectedYear('');
+            setAvailableSemesters([]);
+            setSelectedSemester('');
             return;
         }
 
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
+        
         if (!relevantPath || !relevantPath.semesters) {
             setAvailableYears([]);
             return;
         }
 
         const years = new Set(
-            Object.keys(relevantPath.semesters).map(semNum => Math.floor((Number(semNum) - 1) / 2) + 1)
+            Object.keys(relevantPath.semesters).map(semNum => Math.ceil(Number(semNum) / 2))
         );
         
-        setAvailableYears(Array.from(years).sort());
+        setAvailableYears(Array.from(years).sort((a, b) => a - b));
         setSelectedYear('');
         setAvailableSemesters([]);
         setSelectedSemester('');
