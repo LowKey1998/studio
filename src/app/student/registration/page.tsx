@@ -131,6 +131,9 @@ export default function StudentRegistrationPage() {
             
             for (const semNumStr in pathOfferings) {
                 if (pathOfferings[semNumStr]?.active) {
+                    const yearMatch = profile.intakeName.match(/(\d{4})/);
+                    const intakeYear = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
+                    
                     const semNum = Number(semNumStr);
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
