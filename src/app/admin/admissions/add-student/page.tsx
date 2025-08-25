@@ -3,18 +3,17 @@
 
 import * as React from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -23,32 +22,19 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove, query, orderByChild, equalTo } from 'firebase/database';
-import { app, auth, db } from '@/lib/firebase';
+import { PlusCircle, Loader2, Copy } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
+import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
+import { app, db, auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { onAuthStateChanged } from 'firebase/auth';
-import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
-import { DialogTrigger } from '@radix-ui/react-dialog';
 
 
 type User = {
@@ -88,6 +74,8 @@ type Semester = {
     id: string;
     name: string;
     status: string;
+    year: number;
+    semesterInYear: number;
 };
 
 type Course = {
@@ -107,27 +95,17 @@ type Intake = {
     name: string;
 }
 
-type SubRole = {
-    id: string;
-    name: string;
-    permissions: Record<string, boolean>;
-}
-
 export default function AddStudentPage() {
-    const [open, setOpen] = React.useState(true); // Default dialog to open
+    const role = 'student'; // Hardcoded role
     
-    // State for creating a user
+    // Form State
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
-    const role = 'student'; // Hardcoded role
     const [programme, setProgramme] = React.useState('');
-    const [year, setYear] = React.useState('');
-    const [semesterInYear, setSemesterInYear] = React.useState('');
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
-    const [selectedIntake, setSelectedIntake] = React.useState('');
     const [manualId, setManualId] = React.useState('');
     const [isManualId, setIsManualId] = React.useState(false);
     
@@ -145,6 +123,13 @@ export default function AddStudentPage() {
     const [qualifications, setQualifications] = React.useState('');
     const [medicalHistory, setMedicalHistory] = React.useState('');
     
+    // Cascading Dropdown State
+    const [selectedIntake, setSelectedIntake] = React.useState('');
+    const [selectedYear, setSelectedYear] = React.useState('');
+    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [availableYears, setAvailableYears] = React.useState<number[]>([]);
+    const [availableSemesters, setAvailableSemesters] = React.useState<Semester[]>([]);
+
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Data for dialogs
@@ -176,11 +161,11 @@ export default function AddStudentPage() {
         setTableLoading(true);
         try {
             const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap] = await Promise.all([
-                get(child(ref(db), 'programmes')),
-                get(child(ref(db), 'courses')),
-                get(child(ref(db), 'intakes')),
-                get(child(ref(db), 'settings/idPrefixes')),
-                get(child(ref(db), 'semesters')),
+                get(ref(db, 'programmes')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'intakes')),
+                get(ref(db, 'settings/idPrefixes')),
+                get(ref(db, 'semesters')),
             ]);
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
@@ -201,25 +186,52 @@ export default function AddStudentPage() {
         fetchInitialData();
     }, [fetchInitialData]);
 
+    // Update available years when intake changes
+    React.useEffect(() => {
+        if (!selectedIntake) {
+            setAvailableYears([]);
+            setSelectedYear('');
+            return;
+        }
+        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
+        if (!intakeName) return;
+
+        const years = new Set(allSemesters.filter(s => s.name.startsWith(intakeName)).map(s => s.year));
+        setAvailableYears(Array.from(years).sort());
+        setSelectedYear('');
+    }, [selectedIntake, allSemesters, allIntakes]);
+
+    // Update available semesters when year changes
+    React.useEffect(() => {
+        if (!selectedIntake || !selectedYear) {
+            setAvailableSemesters([]);
+            setSelectedSemester('');
+            return;
+        }
+        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
+        if (!intakeName) return;
+        
+        const semesters = allSemesters.filter(s => s.name.startsWith(intakeName) && s.year === Number(selectedYear));
+        setAvailableSemesters(semesters.sort((a, b) => a.semesterInYear - b.semesterInYear));
+        setSelectedSemester('');
+    }, [selectedYear, selectedIntake, allSemesters, allIntakes]);
+
+
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setYear(''); setSemesterInYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
         setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
         setPreviousSchool(''); setQualifications(''); setMedicalHistory('');
+        setSelectedYear(''); setSelectedSemester('');
     };
     
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
-        const fullSemesterName = `${intakeName} Year ${year} Semester ${semesterInYear}`;
-        const semester = allSemesters.find(s => s.name === fullSemesterName);
-
         if (!name || !email || !password || !role) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
-        if (!programme || !year || !selectedIntake || !semesterInYear) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
-        if(!semester) { toast({ variant: 'destructive', title: 'Invalid Semester', description: `The semester "${fullSemesterName}" could not be found. Please check your inputs or create it in Semester Management.` }); return; }
+        if (!programme || !selectedYear || !selectedIntake || !selectedSemester) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
         if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
 
         setLoading(true);
@@ -278,7 +290,7 @@ export default function AddStudentPage() {
             };
             
             Object.assign(newUser, {
-                programmeId: programme, year: Number(year), semesterId: semester.id, intakeId: selectedIntake,
+                programmeId: programme, year: Number(selectedYear), semesterId: selectedSemester, intakeId: selectedIntake,
                 dob, gender, nationalId, passport, address, medicalHistory,
                 guardian: { name: guardianName, contact: guardianContact },
                 emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
@@ -292,7 +304,6 @@ export default function AddStudentPage() {
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
             resetForm(); 
-            setOpen(false); // Close dialog on success
         } catch (error: any) {
             console.error("Error creating user:", error);
             toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
@@ -369,10 +380,10 @@ export default function AddStudentPage() {
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="space-y-4 rounded-md border p-3">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                             <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                            <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading}/></div>
-                                            <div className="space-y-1"><Label>Semester in Year</Label><Input type="number" placeholder="e.g., 1 or 2" value={semesterInYear} onChange={e => setSemesterInYear(e.target.value)} disabled={loading} /></div>
+                                             <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Year of Study</Label><Select onValueChange={setSelectedYear} value={selectedYear} disabled={loading || !selectedIntake}><SelectTrigger><SelectValue placeholder="Select year..."/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSelectedSemester} value={selectedSemester} disabled={loading || !selectedYear}><SelectTrigger><SelectValue placeholder="Select semester..."/></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>Semester {s.semesterInYear}</SelectItem>)}</SelectContent></Select></div>
                                         </div>
                                         <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
                                         {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
