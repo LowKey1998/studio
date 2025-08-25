@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent for sending SMS messages via Twilio.
@@ -5,12 +6,14 @@
 import { z } from 'genkit';
 import { ai } from '@/ai/genkit';
 import { db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, push, set } from 'firebase/database';
 import twilio from 'twilio';
 
 const SendSmsInputSchema = z.object({
   to: z.array(z.string()).describe('A list of recipient phone numbers in E.164 format.'),
   body: z.string().describe('The content of the SMS message.'),
+  log: z.boolean().optional().default(false).describe("Whether to log this communication in the parent communication logs."),
+  userIds: z.array(z.string()).optional().describe("The user IDs of the recipients, if logging is enabled.")
 });
 export type SendSmsInput = z.infer<typeof SendSmsInputSchema>;
 
@@ -19,13 +22,13 @@ export async function sendSms(input: SendSmsInput): Promise<{ result: string }> 
   return result;
 }
 
-const sendSmsFlow = ai.defineFlow(
+export const sendSmsFlow = ai.defineFlow(
   {
     name: 'sendSmsFlow',
     inputSchema: SendSmsInputSchema,
     outputSchema: z.object({ result: z.string() }),
   },
-  async ({ to, body }) => {
+  async ({ to, body, log, userIds }) => {
     const settingsRef = ref(db, 'settings/integrations/twilio');
     const settingsSnap = await get(settingsRef);
 
@@ -59,6 +62,16 @@ const sendSmsFlow = ai.defineFlow(
     });
 
     await Promise.all(promises);
+    
+     if (log) {
+        const logRef = push(ref(db, 'communicationLogs'));
+        await set(logRef, {
+            type: 'SMS',
+            recipients: userIds || to,
+            body,
+            timestamp: new Date().toISOString()
+        });
+    }
     
     return { result: `SMS sending complete. Successful: ${successCount}. Failed: ${failCount}.` };
   }

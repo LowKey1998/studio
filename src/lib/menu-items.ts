@@ -25,8 +25,9 @@ export const allMenuItems = [
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
-        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
-        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
+        { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2, isComingSoon: true },
+        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature, isComingSoon: true },
+        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2, isComingSoon: true },
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
@@ -42,13 +43,13 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/registration-management', label: 'Activate Course Registrations', icon: Settings },
+        { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
-        { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
+        { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building, isComingSoon: true },
         { href: '/admin/academics/lecturer-allocation', label: 'Lecturer Allocation', icon: UserPlus },
         { href: '/admin/academics/teaching-load', label: 'Teaching Load Balance', icon: Scale },
         { href: '/admin/academics/assessment-setup', label: 'Continous Assessment Setup', icon: ClipboardEdit },
@@ -66,8 +67,8 @@ export const allMenuItems = [
         { href: '/admin/exams/final-exam-entry', label: 'Final Exam Entry', icon: PenSquare },
         { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
         { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
-        { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
-        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper },
+        { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText, isComingSoon: true },
+        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper, isComingSoon: true },
         { href: '/admin/exams/result-publishing', label: 'Result Publishing', icon: Upload },
         { href: '/admin/exams/student-appeals', label: 'Student Appeals Tracking', icon: Search },
       ]
@@ -101,10 +102,10 @@ export const allMenuItems = [
         { href: '/admin/payments', label: 'Student Invoicing', icon: FileText },
         { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
-        { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
-        { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
+        { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link, isComingSoon: true },
+        { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw, isComingSoon: true },
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
-        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
+        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText, isComingSoon: true },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
         { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
@@ -112,7 +113,7 @@ export const allMenuItems = [
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
-        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
+        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote, isComingSoon: true },
       ]
     },
     {
@@ -147,7 +148,11 @@ export const allMenuItems = [
         icon: Users,
         roles: ['Admin'],
         items: [
-             { href: '/admin/parents', label: 'Parent Portal', icon: Users },
+             { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
+             { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: HandCoins },
+             { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
+             { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: ShieldAlert },
+             { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
         ]
     },
     {
@@ -166,7 +171,7 @@ export const allMenuItems = [
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
-           { href: '/admin/hr/contracts', label: 'Staff Contracts', icon: FileText },
+           { href: '/admin/hr/contracts', label: 'Staff Contracts', icon: FileText, isComingSoon: true },
       ]
   },
     {
@@ -246,7 +251,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/mentorship/assignments', label: 'Advisor Assignments', icon: Users2 },
             { href: '/admin/mentorship/logs', label: 'Mentorship Logs', icon: Book },
-            { href: '/admin/mentorship/reports', label: 'Advisory Reports', icon: FileText },
+            { href: '/admin/mentorship/reports', label: 'Advisory Reports', icon: FileText, isComingSoon: true },
         ]
     },
     {
