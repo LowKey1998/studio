@@ -82,7 +82,7 @@ export default function AddStudentPage() {
             const [programmesSnap, coursesSnap, intakesSnap, semestersSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'programmes')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'settings/intakes')),
+                get(ref(db, 'intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'settings/idPrefixes')),
             ]);
