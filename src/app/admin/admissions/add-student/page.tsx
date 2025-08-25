@@ -89,7 +89,10 @@ export default function AddStudentPage() {
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })));
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] })));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
-            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })));
+            if (semestersSnap.exists()) {
+                const semestersData = semestersSnap.val();
+                setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })).filter(s => s.status !== 'Archived'));
+            }
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
         };
 
@@ -185,16 +188,7 @@ export default function AddStudentPage() {
         if (idSettings.includeMonth) datePart += format(now, 'MM');
         setManualId(`${prefixes.student}${datePart}`);
     };
-
-    const availableSemesters = allSemesters.filter(s => {
-        const intake = allIntakes.find(i => i.id === selectedIntake);
-        const intakeYear = intake ? parseInt(intake.name.substring(0, 4), 10) : null;
-        if (!intakeYear || !year) return false;
-        
-        const expectedYearInSemester = intakeYear + (Number(year) - 1);
-        return s.name.includes(String(expectedYearInSemester));
-    });
-
+    
     return (
         <Card className="max-w-4xl mx-auto">
             <CardHeader>
@@ -228,7 +222,7 @@ export default function AddStudentPage() {
                                 <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={e => setYear(e.target.value)} disabled={loading || !selectedIntake} required/></div>
                                 
                                 <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading} required><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading || !year} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading || !year} required><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{allSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                             </div>
                         </AccordionContent>
                     </AccordionItem>
