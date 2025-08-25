@@ -137,7 +137,7 @@ export default function UserManagementPage() {
     const [subRoles, setSubRoles] = React.useState<string[]>([]);
     const [programme, setProgramme] = React.useState('');
     const [year, setYear] = React.useState('');
-    const [semester, setSemester] = React.useState('');
+    const [semesterInYear, setSemesterInYear] = React.useState('');
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
     const [selectedIntake, setSelectedIntake] = React.useState('');
@@ -257,7 +257,7 @@ export default function UserManagementPage() {
     }, [fetchInitialData]);
 
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setSemester(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setYear(''); setSemesterInYear(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
@@ -281,8 +281,14 @@ export default function UserManagementPage() {
 
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
+        const fullSemesterName = `${intakeName} Year ${year} Semester ${semesterInYear}`;
+        const semester = allSemesters.find(s => s.name === fullSemesterName);
+
         if (!name || !email || !password || !role) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
-        if (role === 'student' && (!programme || !year || !selectedIntake || !semester)) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
+        if (role === 'student' && (!programme || !year || !selectedIntake || !semesterInYear)) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
+        if (role === 'student' && !semester) { toast({ variant: 'destructive', title: 'Invalid Semester', description: `The semester "${fullSemesterName}" could not be found. Please check your inputs or create it in Semester Management.` }); return; }
         if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
 
         setLoading(true);
@@ -343,7 +349,7 @@ export default function UserManagementPage() {
             
             if (role === 'student') {
                 Object.assign(newUser, {
-                    programmeId: programme, year: Number(year), semesterId: semester, intakeId: selectedIntake,
+                    programmeId: programme, year: Number(year), semesterId: semester.id, intakeId: selectedIntake,
                     dob, gender, nationalId, passport, address, medicalHistory,
                     guardian: { name: guardianName, contact: guardianContact },
                     emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
@@ -558,7 +564,7 @@ export default function UserManagementPage() {
                                                     <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                                     <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                                                     <div className="space-y-1"><Label>Year of Study</Label><Input type="number" placeholder="e.g. 1" value={year} onChange={(e) => setYear(e.target.value)} disabled={loading}/></div>
-                                                    <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSemester} value={semester} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a semester" /></SelectTrigger><SelectContent>{allSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                                                    <div className="space-y-1"><Label>Semester in Year</Label><Input type="number" placeholder="e.g., 1 or 2" value={semesterInYear} onChange={e => setSemesterInYear(e.target.value)} disabled={loading}/></div>
                                                 </div>
                                                 <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
                                                 {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
