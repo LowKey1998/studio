@@ -183,7 +183,7 @@ export default function AddStudentPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
-            if (coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val())); else setAllCoursePaths([]);
+            if (coursePathsSnap.exists()) setAllCoursePaths(Object.keys(coursePathsSnap.val()).map(id => ({id, ...coursePathsSnap.val()[id]}))); else setAllCoursePaths([]);
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -228,15 +228,30 @@ export default function AddStudentPage() {
             setSelectedSemester('');
             return;
         }
-        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
-        if (!intakeName) return;
         
-        const semestersForYear = allSemesters.filter(s => 
-            s.name.startsWith(intakeName) && s.year === Number(selectedYear)
-        );
-        setAvailableSemesters(semestersForYear.sort((a, b) => a.semesterInYear - b.semesterInYear));
+        const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
+        if (!relevantPath || !relevantPath.semesters) {
+            setAvailableSemesters([]);
+            return;
+        }
+        
+        const semesterNumbersForYear = Object.keys(relevantPath.semesters)
+            .map(Number)
+            .filter(semNum => Math.floor((semNum - 1) / 2) + 1 === Number(selectedYear))
+            .map(semNum => ((semNum - 1) % 2) + 1);
+
+        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
+        if(!intakeName) return;
+
+        const filteredSemesters = allSemesters.filter(semester => {
+            return semester.name.startsWith(intakeName) &&
+                   semester.year === Number(selectedYear) &&
+                   semesterNumbersForYear.includes(semester.semesterInYear);
+        });
+        
+        setAvailableSemesters(filteredSemesters.sort((a, b) => a.semesterInYear - b.semesterInYear));
         setSelectedSemester('');
-    }, [selectedYear, selectedIntake, allSemesters, allIntakes]);
+    }, [selectedYear, selectedIntake, programme, allSemesters, allIntakes, allCoursePaths]);
 
 
     const resetForm = () => {
@@ -436,3 +451,4 @@ export default function AddStudentPage() {
         </>
     );
 }
+
