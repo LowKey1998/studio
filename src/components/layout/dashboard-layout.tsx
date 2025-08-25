@@ -196,33 +196,35 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader>
-          <Logo />
-        </SidebarHeader>
-         <div className="flex flex-col p-2">
-             <SidebarInput placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
-         </div>
-        <SidebarContent>
-          <SidebarMenu>
-            {renderMenu()}
-          </SidebarMenu>
-        </SidebarContent>
-        <SidebarFooter>
+      <div className="flex min-h-screen w-full">
+        <Sidebar>
+          <SidebarHeader>
+            <Logo />
+          </SidebarHeader>
+          <div className="flex flex-col p-2">
+              <SidebarInput placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <SidebarContent>
             <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton onClick={handleLogout}>
-                        <LogOut />
-                        <span>Log out</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
+              {renderMenu()}
             </SidebarMenu>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <Header />
-        <main className="p-4 sm:p-6">{children}</main>
-      </SidebarInset>
+          </SidebarContent>
+          <SidebarFooter>
+              <SidebarMenu>
+                  <SidebarMenuItem>
+                      <SidebarMenuButton onClick={handleLogout}>
+                          <LogOut />
+                          <span>Log out</span>
+                      </SidebarMenuButton>
+                  </SidebarMenuItem>
+              </SidebarMenu>
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset>
+          <Header />
+          <main className="p-4 sm:p-6">{children}</main>
+        </SidebarInset>
+      </div>
     </SidebarProvider>
   );
 }
