@@ -146,7 +146,9 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+             { href: '/admin/parents', label: 'Parent Portal', icon: Users },
+        ]
     },
     {
       label: 'HR',
