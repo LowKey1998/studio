@@ -153,7 +153,7 @@ export default function RegisterForSemesterPage() {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
                 }
 
-                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.year === Number(yearParam) && sem.semesterInYear === Number(semesterInYearParam));
+                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.name.includes(`Year ${yearParam}`) && sem.name.includes(`Semester ${semesterInYearParam}`) && sem.name.startsWith(intakesSnap.val()[intakeId].name));
                 
                 if(!foundSemesterEntry) throw new Error(`Semester details for Year ${yearParam}, Semester ${semesterInYearParam} could not be found. Please contact administration.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
@@ -348,7 +348,7 @@ export default function RegisterForSemesterPage() {
                             </div>
                         </div>
                     )}
-                    <Separator/>
+                    <Separator />
                      <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <Label>Payment Plan</Label>

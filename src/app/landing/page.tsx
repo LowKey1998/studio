@@ -176,8 +176,8 @@ export default function LandingPage() {
       </header>
       <main className="flex-1">
         
-        <section className="container">
-          <div className="flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
+        <section className="w-full">
+          <div className="container flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
             <div className="mx-auto max-w-4xl">
               <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
                 A modern platform to manage your entire institution
@@ -204,7 +204,8 @@ export default function LandingPage() {
         </section>
 
         {bankDetails?.bankName && (
-            <section className="container pb-12 lg:pb-24">
+            <section className="w-full pb-12 lg:pb-24">
+                <div className="container">
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
@@ -220,6 +221,7 @@ export default function LandingPage() {
                         </dl>
                     </CardContent>
                 </Card>
+                </div>
             </section>
         )}
 
@@ -279,7 +281,8 @@ export default function LandingPage() {
         </section>
 
         {/* Inquiry Form */}
-        <section id="inquiry-form" className="container pb-12 lg:pb-24">
+        <section id="inquiry-form" className="w-full pb-12 lg:pb-24">
+            <div className="container">
           <Card className="max-w-2xl mx-auto shadow-lg">
               <CardHeader className="text-center">
                   <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
@@ -300,6 +303,7 @@ export default function LandingPage() {
                   </form>
               </CardContent>
           </Card>
+          </div>
         </section>
 
         {/* CTA Section */}
