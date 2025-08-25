@@ -133,7 +133,7 @@ export default function AddStudentPage() {
     
     // Cascading Dropdown State
     const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [selectedYear, setSelectedYear] = React.useState('');
+    const [selectedYear, setSelectedYear] = React.useState<number | ''>('');
     const [selectedSemester, setSelectedSemester] = React.useState('');
     const [availableYears, setAvailableYears] = React.useState<number[]>([]);
     const [availableSemesters, setAvailableSemesters] = React.useState<Semester[]>([]);
@@ -229,29 +229,17 @@ export default function AddStudentPage() {
             return;
         }
         
-        const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
-        if (!relevantPath || !relevantPath.semesters) {
-            setAvailableSemesters([]);
-            return;
-        }
-        
-        const semesterNumbersForYear = Object.keys(relevantPath.semesters)
-            .map(Number)
-            .filter(semNum => Math.floor((semNum - 1) / 2) + 1 === Number(selectedYear))
-            .map(semNum => ((semNum - 1) % 2) + 1);
+        const intake = allIntakes.find(i => i.id === selectedIntake);
+        if(!intake) return;
 
-        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
-        if(!intakeName) return;
-
-        const filteredSemesters = allSemesters.filter(semester => {
-            return semester.name.startsWith(intakeName) &&
-                   semester.year === Number(selectedYear) &&
-                   semesterNumbersForYear.includes(semester.semesterInYear);
-        });
+        // Filter semesters that contain BOTH the intake name and the selected year string (e.g., "Year 1")
+        const filteredSemesters = allSemesters.filter(semester => 
+            semester.name.includes(intake.name) && semester.name.includes(`Year ${selectedYear}`)
+        );
         
         setAvailableSemesters(filteredSemesters.sort((a, b) => a.semesterInYear - b.semesterInYear));
         setSelectedSemester('');
-    }, [selectedYear, selectedIntake, programme, allSemesters, allIntakes, allCoursePaths]);
+    }, [selectedYear, selectedIntake, allSemesters, allIntakes]);
 
 
     const resetForm = () => {
@@ -267,7 +255,7 @@ export default function AddStudentPage() {
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!name || !email || !password || !role) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
+        if (!name || !email || !password) { toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all required fields.' }); return; }
         if (!programme || !selectedYear || !selectedIntake || !selectedSemester) { toast({ variant: 'destructive', title: 'Missing Student Info', description: 'Please assign an intake, programme, year, and semester for the student.' }); return; }
         if (isManualId && !manualId.trim()) { toast({ variant: 'destructive', title: 'Manual ID cannot be empty.'}); return; }
 
@@ -417,9 +405,9 @@ export default function AddStudentPage() {
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="space-y-4 rounded-md border p-3">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                                             <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                             <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                            <div className="space-y-1"><Label>Year of Study</Label><Select onValueChange={setSelectedYear} value={selectedYear} disabled={loading || !selectedIntake || !programme}><SelectTrigger><SelectValue placeholder="Select year..."/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Year of Study</Label><Select onValueChange={(v) => setSelectedYear(Number(v))} value={String(selectedYear)} disabled={loading || !selectedIntake || !programme}><SelectTrigger><SelectValue placeholder="Select year..."/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                                             <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSelectedSemester} value={selectedSemester} disabled={loading || !selectedYear}><SelectTrigger><SelectValue placeholder="Select semester..."/></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                                         </div>
                                         <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
@@ -451,4 +439,3 @@ export default function AddStudentPage() {
         </>
     );
 }
-
