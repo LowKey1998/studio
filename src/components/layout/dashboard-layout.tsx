@@ -220,10 +220,10 @@ export default function DashboardLayout({
               </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
-        <SidebarInset>
+        <div className="flex-1 flex flex-col">
           <Header />
-          <main className="p-4 sm:p-6">{children}</main>
-        </SidebarInset>
+          <main className="p-4 sm:p-6 flex-1">{children}</main>
+        </div>
       </div>
     </SidebarProvider>
   );
