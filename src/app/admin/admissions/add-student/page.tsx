@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Loader2, Copy } from 'lucide-react';
-import { getAuth } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
 import { app, db, auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -95,6 +95,14 @@ type Intake = {
     name: string;
 }
 
+type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
+    semesters: Record<string, { courses: string[] }>;
+};
+
+
 export default function AddStudentPage() {
     const role = 'student'; // Hardcoded role
     
@@ -137,6 +145,7 @@ export default function AddStudentPage() {
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
+    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
     
     const [loading, setLoading] = React.useState(false);
@@ -160,12 +169,13 @@ export default function AddStudentPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap, coursePathsSnap] = await Promise.all([
                 get(ref(db, 'programmes')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/idPrefixes')),
                 get(ref(db, 'semesters')),
+                get(ref(db, 'coursePaths')),
             ]);
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
@@ -173,6 +183,7 @@ export default function AddStudentPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
+            if (coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val())); else setAllCoursePaths([]);
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -186,20 +197,29 @@ export default function AddStudentPage() {
         fetchInitialData();
     }, [fetchInitialData]);
 
-    // Update available years when intake changes
+    // Update available years when intake or programme changes
     React.useEffect(() => {
-        if (!selectedIntake) {
+        if (!selectedIntake || !programme) {
             setAvailableYears([]);
             setSelectedYear('');
             return;
         }
-        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
-        if (!intakeName) return;
 
-        const years = new Set(allSemesters.filter(s => s.name.startsWith(intakeName)).map(s => s.year));
+        const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
+        if (!relevantPath || !relevantPath.semesters) {
+            setAvailableYears([]);
+            return;
+        }
+
+        const years = new Set(
+            Object.keys(relevantPath.semesters).map(semNum => Math.floor((Number(semNum) - 1) / 2) + 1)
+        );
+        
         setAvailableYears(Array.from(years).sort());
         setSelectedYear('');
-    }, [selectedIntake, allSemesters, allIntakes]);
+        setAvailableSemesters([]);
+        setSelectedSemester('');
+    }, [selectedIntake, programme, allCoursePaths]);
 
     // Update available semesters when year changes
     React.useEffect(() => {
@@ -211,8 +231,10 @@ export default function AddStudentPage() {
         const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
         if (!intakeName) return;
         
-        const semesters = allSemesters.filter(s => s.name.startsWith(intakeName) && s.year === Number(selectedYear));
-        setAvailableSemesters(semesters.sort((a, b) => a.semesterInYear - b.semesterInYear));
+        const semestersForYear = allSemesters.filter(s => 
+            s.name.startsWith(intakeName) && s.year === Number(selectedYear)
+        );
+        setAvailableSemesters(semestersForYear.sort((a, b) => a.semesterInYear - b.semesterInYear));
         setSelectedSemester('');
     }, [selectedYear, selectedIntake, allSemesters, allIntakes]);
 
@@ -380,10 +402,10 @@ export default function AddStudentPage() {
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="space-y-4 rounded-md border p-3">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                                             <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                            <div className="space-y-1"><Label>Year of Study</Label><Select onValueChange={setSelectedYear} value={selectedYear} disabled={loading || !selectedIntake}><SelectTrigger><SelectValue placeholder="Select year..."/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
-                                            <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSelectedSemester} value={selectedSemester} disabled={loading || !selectedYear}><SelectTrigger><SelectValue placeholder="Select semester..."/></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>Semester {s.semesterInYear}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Intake</Label><Select onValueChange={setSelectedIntake} value={selectedIntake} disabled={loading}><SelectTrigger><SelectValue placeholder="Select an intake" /></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                             <div className="space-y-1"><Label>Programme</Label><Select onValueChange={setProgramme} value={programme} disabled={loading}><SelectTrigger><SelectValue placeholder="Select a programme" /></SelectTrigger><SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Year of Study</Label><Select onValueChange={setSelectedYear} value={selectedYear} disabled={loading || !selectedIntake || !programme}><SelectTrigger><SelectValue placeholder="Select year..."/></SelectTrigger><SelectContent>{availableYears.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Current Semester</Label><Select onValueChange={setSelectedSemester} value={selectedSemester} disabled={loading || !selectedYear}><SelectTrigger><SelectValue placeholder="Select semester..."/></SelectTrigger><SelectContent>{availableSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                                         </div>
                                         <div className="flex items-center space-x-2 pt-2"><Checkbox id="isTransfer" checked={isTransfer} onCheckedChange={(checked) => setIsTransfer(checked as boolean)} disabled={loading}/><Label htmlFor="isTransfer">This is a transfer student (grant course exemptions)</Label></div>
                                         {isTransfer && (<Accordion type="single" collapsible className="w-full"><AccordionItem value="exemptions"><AccordionTrigger>Course Exemptions</AccordionTrigger><AccordionContent>{coursesForSelectedProgramme.length > 0 ? coursesForSelectedProgramme.map(course => (<div key={course.id} className="flex items-center gap-2"><Checkbox id={`exempt-${course.id}`} checked={!!exemptedCourses[course.id]} onCheckedChange={() => handleExemptionChange(course.id)}/><Label htmlFor={`exempt-${course.id}`} className="font-normal">{course.name} ({course.code})</Label></div>)) : <p className="text-sm text-muted-foreground">Select a programme to see courses.</p>}</AccordionContent></AccordionItem></Accordion>)}
