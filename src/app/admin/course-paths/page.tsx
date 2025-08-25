@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -321,6 +322,11 @@ export default function CoursePathsPage() {
         setSemesterCourses(newSemesters);
     };
 
+    const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
+        setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
+        setIsHistoryDialogOpen(true);
+    };
+
 
     return (
         <Card>
@@ -438,7 +444,7 @@ export default function CoursePathsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-                 <Dialog open={isHistoryDialogOpen} onOpenChange={() => setViewingHistory([])}>
+                 <Dialog open={isHistoryDialogOpen} onOpenChange={() => { setIsHistoryDialogOpen(false); setViewingHistory([]); }}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Semester Change History</DialogTitle>
@@ -549,4 +555,6 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
+    
+
     
