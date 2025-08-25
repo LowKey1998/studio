@@ -131,15 +131,12 @@ export default function StudentRegistrationPage() {
             
             for (const semNumStr in pathOfferings) {
                 if (pathOfferings[semNumStr]?.active) {
-                    const yearMatch = profile.intakeName.match(/(\d{4})/);
-                    const intakeYear = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
-                    
                     const semNum = Number(semNumStr);
                     const year = Math.floor((semNum - 1) / 2) + 1;
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    const semesterNamePattern = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
-                    const semesterId = Object.keys(allSemestersData).find(key => allSemestersData[key].name === semesterNamePattern);
+                    const semesterName = `${profile.intakeName} Year ${year} Semester ${semesterInYear}`;
+                    const semesterId = Object.keys(allSemestersData).find(key => allSemestersData[key].name === semesterName);
                     
                     const isRegistered = userRegistrations.includes(semesterId || '');
                     
@@ -153,7 +150,7 @@ export default function StudentRegistrationPage() {
 
                          activeSemestersList.push({ 
                             semesterId: semesterId || '',
-                            semesterName: semesterNamePattern,
+                            semesterName: semesterName,
                             intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
