@@ -113,17 +113,18 @@ export default function StudentRegistrationPage() {
             setUserProfile(profile);
             
             const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
-            const userPath = Object.values(coursePathsData as Record<string, CoursePath>).find(
-                (p: CoursePath) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
+            const userPathEntry = Object.entries(coursePathsData as Record<string, CoursePath>).find(
+                ([id, p]) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
             );
             
-            if (!userPath) {
+            if (!userPathEntry) {
                 setOpenSemesters([]);
                 setLoading(false);
                 return;
             }
+            const [userPathId, userPath] = userPathEntry;
 
-            const pathOfferings = (semesterOfferingsSnap.val() || {})[userPath.id] || {};
+            const pathOfferings = (semesterOfferingsSnap.val() || {})[userPathId] || {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
             const activeSemestersList: ActiveSemester[] = [];
