@@ -106,7 +106,6 @@ export default function RegisterForSemesterPage() {
             setLoading(true);
             setError(null);
             try {
-                // Step 1: Get all necessary data in parallel
                 const [
                     userSnap, 
                     coursePathsSnap, 
@@ -115,7 +114,6 @@ export default function RegisterForSemesterPage() {
                     paymentPlansSnap, 
                     programmesSnap,
                     semesterOfferingsSnap,
-                    intakesSnap,
                 ] = await Promise.all([
                     get(ref(db, `users/${currentUser.uid}`)),
                     get(ref(db, 'coursePaths')),
@@ -124,10 +122,8 @@ export default function RegisterForSemesterPage() {
                     get(ref(db, 'settings/paymentPlans')),
                     get(ref(db, 'programmes')),
                     get(ref(db, 'semesterOfferings')),
-                    get(ref(db, 'intakes'))
                 ]);
 
-                // Step 2: Validate user and find their correct course path
                 if (!userSnap.exists()) throw new Error("Could not find your user profile.");
                 const userDataVal: UserProfile = userSnap.val();
                 setUserData(userDataVal);
@@ -147,30 +143,26 @@ export default function RegisterForSemesterPage() {
                     throw new Error("A course path has not been defined for your intake and programme.");
                 }
 
-                // Step 3: Load all necessary data for the page
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
                 const allPaymentPlans = paymentPlansSnap.val() || {};
                 const allProgrammes = programmesSnap.val() || {};
-                const allIntakes = intakesSnap.val() || {};
 
                 const programmeData = allProgrammes[userDataVal.programmeId];
                 if (programmeData) {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
                 }
 
-                const intakeName = allIntakes[intakeId]?.name || 'Unknown Intake';
-                const constructedSemesterName = `${intakeName} Year ${yearParam} Semester ${semesterInYearParam}`;
-                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.name === constructedSemesterName);
+                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.year === Number(yearParam) && sem.semesterInYear === Number(semesterInYearParam));
                 
-                if(!foundSemesterEntry) throw new Error(`Semester details for "${constructedSemesterName}" could not be found. Please contact administration.`);
+                if(!foundSemesterEntry) throw new Error(`Semester details for Year ${yearParam}, Semester ${semesterInYearParam} could not be found. Please contact administration.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
 
                 const offerings = semesterOfferingsSnap.val() || {};
                 const pathOfferings = offerings[userPath.id] || {};
                 
                 let semNumForPath = -1;
-                 for (const semNumKey in userPath.semesters) {
+                for (const semNumKey in userPath.semesters) {
                     const year = Math.floor((Number(semNumKey) - 1) / 2) + 1;
                     const semesterInYear = ((Number(semNumKey) - 1) % 2) + 1;
                     if(year === Number(yearParam) && semesterInYear === Number(semesterInYearParam)){
@@ -383,4 +375,3 @@ export default function RegisterForSemesterPage() {
         </div>
     );
 }
-
