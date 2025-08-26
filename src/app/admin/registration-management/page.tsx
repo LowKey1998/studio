@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle, DollarSign, HandCoins } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle, Wallet, HandCoins } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -117,7 +117,6 @@ export default function RegistrationManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -137,7 +136,6 @@ export default function RegistrationManagementPage() {
                 case 0: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 1: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 2: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
-                case 3: setAllCourses(data); break;
             }
         }));
         setLoading(false);
@@ -189,7 +187,7 @@ export default function RegistrationManagementPage() {
                 </div>
                  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                     <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} /></DialogContent>
+                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                 </Dialog>
             </CardHeader>
             <CardContent>
@@ -206,7 +204,6 @@ export default function RegistrationManagementPage() {
                                                 <span className="mr-4">Status: <Badge variant={semester.status === 'Open' ? 'default' : 'secondary'}>{semester.status}</Badge></span>
                                                 <span>Late Reg: <Badge variant={semester.lateRegistrationActive ? 'default' : 'secondary'}>{semester.lateRegistrationActive ? 'Active' : 'Inactive'}</Badge></span>
                                             </CardDescription>
-                                             <p className="text-sm mt-2 text-muted-foreground">Approximate Cost: ZMW {calculateSemesterCost(semester).toFixed(2)} (Excluding Tuition)</p>
                                         </div>
                                         <div className="flex gap-2">
                                             <Button variant="outline" size="sm" onClick={() => handleToggleSemesterStatus(semester)}>{semester.status === 'Open' ? <PowerOff className="mr-2 h-4"/> : <Power className="mr-2 h-4"/>}{semester.status === 'Open' ? 'Close' : 'Open'}</Button>
@@ -233,7 +230,7 @@ export default function RegistrationManagementPage() {
         </Card>
         
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-             {editingSemester && <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} /></DialogContent>}
+             {editingSemester && <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>}
         </Dialog>
 
         <Dialog open={isPlansDialogOpen} onOpenChange={setIsPlansDialogOpen}>
@@ -298,7 +295,7 @@ function FeesDialogContent({ semester, feeTemplates, onClose }: { semester: Seme
     const { toast } = useToast();
 
     const handleImportFee = (template: FeeTemplate) => {
-        const feeId = push(ref(db)).key!;
+        const feeId = push(ref(db, 'semesters')).key!;
         const newFee = { name: template.name, amount: template.amount };
         if (template.type === 'Mandatory') setMandatoryFees(p => ({...p, [feeId]: newFee}));
         else setOptionalFees(p => ({...p, [feeId]: newFee}));
@@ -475,3 +472,4 @@ function DeadlinesDialogContent({ semester, allPaymentPlans, semesters, onClose 
         </DialogContent>
     );
 }
+
