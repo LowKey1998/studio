@@ -28,9 +28,12 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; cost: number; };
+type Course = { id: string; name: string; code: string; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
@@ -39,7 +42,7 @@ type CoursePath = { id: string; intakeId: string; programmeId: string; semesters
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Omit<Fee, 'id'>>; optionalFees?: Record<string, Omit<Fee, 'id'>>; };
+type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
 
@@ -64,7 +67,19 @@ export default function RegistrationManagementPage() {
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
     
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    
+    const [semesters, setSemesters] = React.useState<Semester[]>([]);
+
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+    const [isPlansDialogOpen, setIsPlansDialogOpen] = React.useState(false);
+    const [isFeesDialogOpen, setIsFeesDialogOpen] = React.useState(false);
+    const [isDeadlinesDialogOpen, setIsDeadlinesDialogOpen] = React.useState(false);
+    const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
+
+    // Fee Dialog State
+    const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+    const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
@@ -81,6 +96,8 @@ export default function RegistrationManagementPage() {
             ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'),
             ref(db, 'settings/paymentPlans'),
+            ref(db, 'semesters'),
+            ref(db, 'settings/feeTemplates'),
         ];
         
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
@@ -92,13 +109,14 @@ export default function RegistrationManagementPage() {
                 case 3: setAllCoursePaths(Object.values(data)); break;
                 case 4: setActivePathSemesters(data); break;
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
+                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
+                case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
             }
         }));
         
         setLoading(false);
         return () => unsubs.forEach(unsub => unsub());
     }, []);
-    
 
     const handleSaveChanges = async () => {
         setSaving(true);
@@ -161,6 +179,7 @@ export default function RegistrationManagementPage() {
             const existing = eventMap.get(title.trim());
             return { title: title.replace(` - ${semester.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
         }));
+        setIsDeadlinesDialogOpen(true);
     }
     
     const handleSaveDeadline = async (title: string, eventId: string | null) => {
@@ -179,14 +198,15 @@ export default function RegistrationManagementPage() {
             toast({ title: "Deadline Updated" });
             setDeadlineDates(prev => ({...prev, [title]: undefined}));
             setEditingDeadlineId(null);
-            handleOpenDeadlineDialog(editingDeadlinesFor); // Re-fetch
+            if (editingDeadlinesFor) {
+                handleOpenDeadlineDialog(editingDeadlinesFor); // Re-fetch
+            }
         } catch (error: any) { 
             toast({ variant: 'destructive', title: 'Failed to save deadline' }); 
         } finally { 
             setSaving(false); 
         }
     }
-    
 
     return (
         <div className="space-y-6">
@@ -220,10 +240,10 @@ export default function RegistrationManagementPage() {
                                                         <CardTitle className="text-base">{programme.name}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
-                                                        {Object.entries(userPath.semesters).map(([semId, semData]) => {
+                                                        {Object.entries(path.semesters).map(([semId, semData]) => {
                                                             const semester = semesters.find(s => s.id === semId);
                                                             if (!semester) return null;
-                                                            const label = `${semester.name} (Year ${semester.year}, Sem ${semester.semesterInYear})`;
+                                                            const label = `${semester.name}`;
                                                             const historyItems = semData.history ? Object.values(semData.history) : [];
 
                                                             return (
