@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { DollarSign, Download, Info, Mail, Link as LinkIcon } from 'lucide-react';
+import { DollarSign, Download, Info, Mail, Link as LinkIcon, Search } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
@@ -17,6 +17,7 @@ import { syncPayrollToSage } from '@/ai/flows/sync-to-sage';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 type Deduction = {
     name: string;
@@ -56,6 +57,7 @@ export default function PayrollPage() {
     const { user, userProfile, loading } = useAuth();
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
+    const [searchTerm, setSearchTerm] = React.useState('');
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -161,6 +163,16 @@ export default function PayrollPage() {
         }
     }
 
+    const filteredStaff = React.useMemo(() => {
+        const lowercasedFilter = searchTerm.toLowerCase();
+        return staffList.filter((staff) => {
+            return (
+                staff.name.toLowerCase().includes(lowercasedFilter) ||
+                staff.id.toLowerCase().includes(lowercasedFilter)
+            );
+        });
+    }, [staffList, searchTerm]);
+
 
     if (loading) {
          return (
@@ -185,10 +197,16 @@ export default function PayrollPage() {
                     <CardTitle className="font-headline text-2xl">Staff Payroll</CardTitle>
                     <CardDescription>View and manage monthly payroll for all staff members.</CardDescription>
                 </div>
-                <Button disabled>
-                    <Download className="mr-2 h-4 w-4" />
-                    Export as CSV
-                </Button>
+                <div className="flex gap-2">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="Search by name or ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    </div>
+                    <Button disabled>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export as CSV
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -204,7 +222,7 @@ export default function PayrollPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {staffList.map((staff) => {
+                        {filteredStaff.map((staff) => {
                             const payroll = calculatePayroll(staff);
                             return (
                                 <TableRow key={staff.uid}>
@@ -236,6 +254,9 @@ export default function PayrollPage() {
                 </Table>
                  {!loading && staffList.length === 0 && (
                     <div className="text-center py-16 text-muted-foreground">No staff data found.</div>
+                )}
+                 {!loading && staffList.length > 0 && filteredStaff.length === 0 && (
+                    <div className="text-center py-16 text-muted-foreground">No staff members match your search.</div>
                 )}
             </CardContent>
         </Card>
