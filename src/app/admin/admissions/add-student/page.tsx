@@ -206,8 +206,6 @@ export default function AddStudentPage() {
     React.useEffect(() => {
         setAvailableYears([]);
         setSelectedYear('');
-        setAvailableSemesters([]);
-        setSelectedSemester('');
     
         if (!selectedIntake || !programme || allCoursePaths.length === 0 || allSemesters.length === 0) return;
     

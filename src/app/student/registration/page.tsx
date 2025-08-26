@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -41,12 +41,9 @@ type Semester = {
     semesterInYear: number;
 };
 
-type ActiveSemester = {
-    semesterId: string;
-    semesterName: string;
-    intakeId: string;
-    year: number;
-    semesterInYear: number;
+type SemesterWithStatus = Semester & {
+    isRegistered: boolean;
+    isOpen: boolean;
     courses: Course[];
 };
 
@@ -54,7 +51,7 @@ export default function StudentRegistrationPage() {
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
-    const [openSemesters, setOpenSemesters] = React.useState<ActiveSemester[]>([]);
+    const [semestersForPath, setSemestersForPath] = React.useState<SemesterWithStatus[]>([]);
 
     const { toast } = useToast();
 
@@ -116,7 +113,7 @@ export default function StudentRegistrationPage() {
             );
             
             if (!userPathEntry) {
-                setOpenSemesters([]);
+                setSemestersForPath([]);
                 setLoading(false);
                 return;
             }
@@ -126,35 +123,32 @@ export default function StudentRegistrationPage() {
             const pathOfferings = (semesterOfferingsSnap.val() || {})[userPathId] || {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
-            const activeSemestersList: ActiveSemester[] = [];
+            const semesterList: SemesterWithStatus[] = [];
             
             for (const semId in userPath.semesters) {
+                const semesterDetails = allSemestersData[semId];
+                if (!semesterDetails) continue;
+
+                const semesterCourses = userPath.semesters[semId]?.courses || [];
+                const courseDetails: Course[] = semesterCourses.map((id: string) => ({
+                    id,
+                    name: allCoursesData[id]?.name || 'Unknown Course',
+                    code: allCoursesData[id]?.code || 'N/A'
+                }));
+
                 const isActive = pathOfferings[semId]?.active;
-                const isAlreadyRegistered = userRegistrations.includes(semId);
+                const isRegistered = userRegistrations.includes(semId);
 
-                if (isActive && !isAlreadyRegistered) {
-                    const semesterDetails = allSemestersData[semId];
-                    if (!semesterDetails) continue;
-                    
-                    const semesterCourses = userPath.semesters[semId]?.courses || [];
-                    const courseDetails: Course[] = semesterCourses.map((id: string) => ({
-                        id,
-                        name: allCoursesData[id]?.name || 'Unknown Course',
-                        code: allCoursesData[id]?.code || 'N/A'
-                    }));
-
-                     activeSemestersList.push({ 
-                        semesterId: semId,
-                        semesterName: semesterDetails.name,
-                        intakeId: profile.intakeId,
-                        year: semesterDetails.year, 
-                        semesterInYear: semesterDetails.semesterInYear,
-                        courses: courseDetails,
-                    });
-                }
+                semesterList.push({ 
+                    ...semesterDetails,
+                    id: semId,
+                    isRegistered,
+                    isOpen: isActive && !isRegistered,
+                    courses: courseDetails,
+                });
             }
             
-            setOpenSemesters(activeSemestersList.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
+            setSemestersForPath(semesterList.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
 
         } catch (error) {
             console.error("Failed to load registration data:", error);
@@ -209,24 +203,34 @@ export default function StudentRegistrationPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Open Registrations</CardTitle>
-                    <CardDescription>Below are the semesters currently open for registration.</CardDescription>
+                    <CardTitle>My Academic Path</CardTitle>
+                    <CardDescription>Below are the semesters for your programme. Semesters open for registration will have a "Register" button.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {openSemesters.length > 0 ? (
+                    {semestersForPath.length > 0 ? (
                         <div className="space-y-4">
-                            {openSemesters.map(semester => (
-                                <Card key={semester.semesterId}>
+                            {semestersForPath.map(semester => (
+                                <Card key={semester.id}>
                                     <CardHeader className="flex-row items-center justify-between">
                                         <div className="space-y-1">
-                                            <CardTitle>{semester.semesterName}</CardTitle>
+                                            <CardTitle>{semester.name}</CardTitle>
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
-                                        <Button asChild>
-                                            <Link href={`/student/registration/${semester.intakeId}/${semester.year}/${semester.semesterInYear}`}>
-                                                Register for this Semester <ChevronRight className="h-4 w-4 ml-2"/>
-                                            </Link>
-                                        </Button>
+                                        {semester.isRegistered ? (
+                                             <Button disabled variant="secondary">
+                                                <CheckCircle2 className="h-4 w-4 mr-2"/> Registered
+                                            </Button>
+                                        ) : semester.isOpen ? (
+                                            <Button asChild>
+                                                <Link href={`/student/registration/${semester.intakeId}/${semester.year}/${semester.semesterInYear}`}>
+                                                    Register Now <ChevronRight className="h-4 w-4 ml-2"/>
+                                                </Link>
+                                            </Button>
+                                        ) : (
+                                            <Button disabled variant="outline">
+                                                Registration Closed
+                                            </Button>
+                                        )}
                                     </CardHeader>
                                     <CardContent>
                                         <h4 className="text-sm font-semibold mb-2">Courses</h4>
@@ -245,9 +249,9 @@ export default function StudentRegistrationPage() {
                     ) : (
                         <Alert>
                             <Info className="h-4 w-4" />
-                            <AlertTitle>No Open Registrations</AlertTitle>
+                            <AlertTitle>No Semesters Found</AlertTitle>
                             <AlertDescription>
-                                There are currently no semesters open for registration for your programme. Please check back later or contact administration for more details.
+                                A course path has not been configured for your programme and intake. Please contact administration.
                             </AlertDescription>
                         </Alert>
                     )}
