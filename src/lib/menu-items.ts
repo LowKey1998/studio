@@ -44,7 +44,6 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/academics/semester-management', label: 'Semester Management', icon: Calendar },
         { href: '/admin/registration-management', label: 'Registration Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
@@ -248,7 +247,14 @@ export const allMenuItems = [
         label: 'Add-ons',
         icon: Puzzle,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/addons/alumni', label: 'EduConnect360-Alumni', icon: Users2 },
+            { href: '/admin/addons/portal', label: 'Job & Internal Portal', icon: Briefcase },
+            { href: '/admin/addons/multi-campus', label: 'Multi-Campus Managment', icon: Building },
+            { href: '/admin/addons/quickbooks', label: 'QuickBooks Integration', icon: Link },
+            { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
+            { href: '/admin/addons/mobile-app', label: 'Edutrack360 Mobile App', icon: Smartphone },
+        ]
     },
      {
         label: 'Admin',
@@ -356,3 +362,5 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
+
+    

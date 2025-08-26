@@ -16,20 +16,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { cn } from '@/lib/utils';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 
 // --- TYPE DEFINITIONS ---
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; };
 type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; };
-
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
@@ -45,11 +41,15 @@ export default function CoursePathsPage() {
     const [activeTab, setActiveTab] = React.useState('intakes');
     const { toast } = useToast();
 
-    // Intake Dialog State
+    // Dialog States
     const [isIntakeDialogOpen, setIsIntakeDialogOpen] = React.useState(false);
     const [editingIntake, setEditingIntake] = React.useState<Intake | null>(null);
     const [intakeName, setIntakeName] = React.useState('');
     const [savingIntake, setSavingIntake] = React.useState(false);
+    
+    const [isSemesterDialogOpen, setIsSemesterDialogOpen] = React.useState(false);
+    const [newSemesterYear, setNewSemesterYear] = React.useState<number | ''>(1);
+    const [newSemesterInYear, setNewSemesterInYear] = React.useState<number | ''>(1);
 
     // Course Path State
     const [selectedIntake, setSelectedIntake] = React.useState('');
@@ -78,7 +78,7 @@ export default function CoursePathsPage() {
             const data = snapshot.val() || {};
             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
             switch(i) {
-                case 0: setIntakes(list); break;
+                case 0: setIntakes(list.sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 1: setProgrammes(list); break;
                 case 2: setCourses(list); break;
                 case 3: setCoursePaths(list); break;
@@ -129,8 +129,7 @@ export default function CoursePathsPage() {
             const pathSemesters: Record<string, CoursePathSemester> = {}; // key is semesterId
             let isAnySemesterChanged = false;
 
-            // First, check if any semester has changed to decide if a reason is needed
-             for (const semester of semestersForPath) {
+            for (const semester of semestersForPath) {
                 const semId = semester.id;
                 const newCourseIds = new Set((semesterCourses[semId] || []).map(c => c.id));
                 const oldCourseIds = new Set(currentPath?.semesters?.[semId]?.courses || []);
@@ -142,7 +141,7 @@ export default function CoursePathsPage() {
             }
             
             let changeReason = '';
-            if (isAnySemesterChanged && currentPath) { // Only prompt for reason on updates
+            if (isAnySemesterChanged && currentPath) {
                 const reason = prompt("Optional: Provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
                 changeReason = reason || '';
             }
@@ -156,25 +155,15 @@ export default function CoursePathsPage() {
 
                 const hasChanged = JSON.stringify([...oldCourses].sort()) !== JSON.stringify([...newCourses].sort());
 
-                if (hasChanged && isAnySemesterChanged && currentPath) { // Only log history if there was a global change
-                    const historyEntry: CoursePathHistoryItem = {
-                        reason: changeReason || "No reason provided",
-                        oldCourses,
-                        newCourses,
-                        timestamp: serverTimestamp()
-                    };
+                if (hasChanged && isAnySemesterChanged && currentPath) {
+                    const historyEntry: CoursePathHistoryItem = { reason: changeReason || "No reason provided", oldCourses, newCourses, timestamp: serverTimestamp() };
                     const historyKey = push(ref(db)).key!;
                     history[historyKey] = historyEntry;
                 }
                 pathSemesters[semId] = { courses: newCourses, history };
             }
 
-
-            const pathData = {
-                intakeId: selectedIntake,
-                programmeId: selectedProgramme,
-                semesters: pathSemesters
-            };
+            const pathData = { intakeId: selectedIntake, programmeId: selectedProgramme, semesters: pathSemesters };
 
             if (currentPath) {
                 await update(ref(db, `coursePaths/${currentPath.id}`), pathData);
@@ -189,15 +178,10 @@ export default function CoursePathsPage() {
         }
     };
     
-    // --- Intake Logic ---
+    // --- Intake & Semester Logic ---
     const handleOpenIntakeDialog = (intake: Intake | null) => {
-        if(intake) {
-            setEditingIntake(intake);
-            setIntakeName(intake.name);
-        } else {
-            setEditingIntake(null);
-            setIntakeName('');
-        }
+        if(intake) { setEditingIntake(intake); setIntakeName(intake.name); } 
+        else { setEditingIntake(null); setIntakeName(''); }
         setIsIntakeDialogOpen(true);
     };
 
@@ -220,55 +204,50 @@ export default function CoursePathsPage() {
     const handleDeleteIntake = async (id: string) => {
         try {
             const coursePathsSnapshot = await get(ref(db, 'coursePaths'));
-            const allPaths: CoursePath[] = [];
-            if(coursePathsSnapshot.exists()){
-                Object.entries(coursePathsSnapshot.val()).forEach(([pathId, pathData]) => {
-                    allPaths.push({id: pathId, ...(pathData as any)})
-                })
-            }
-            
+            const allPaths: CoursePath[] = coursePathsSnapshot.exists() ? Object.entries(coursePathsSnapshot.val()).map(([pathId, pathData]) => ({id: pathId, ...(pathData as any)})) : [];
             const pathsToDelete = allPaths.filter(p => p.intakeId === id);
-
             const updates: Record<string, null> = {};
-            pathsToDelete.forEach(p => {
-                if (p.id) updates[`/coursePaths/${p.id}`] = null;
-            });
+            pathsToDelete.forEach(p => { if (p.id) updates[`/coursePaths/${p.id}`] = null; });
             updates[`/intakes/${id}`] = null;
-            
             await update(ref(db), updates);
             toast({ title: 'Intake deleted successfully.' });
         } catch (error) {
-            console.error("Delete failed:", error);
-            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Could not delete the intake and its associated paths.' });
+            toast({ variant: 'destructive', title: 'Delete Failed', description: 'Could not delete the intake.' });
+        }
+    };
+
+    const handleAddSemester = async () => {
+        const intakeName = intakes.find(i => i.id === selectedIntake)?.name;
+        if (!intakeName || !newSemesterYear || !newSemesterInYear) {
+            toast({ variant: 'destructive', title: 'Missing Details' }); return;
+        }
+        setSavingIntake(true);
+        try {
+            const semesterName = `${intakeName} Year ${newSemesterYear} Semester ${newSemesterInYear}`;
+            await push(ref(db, 'semesters'), { name: semesterName, intakeId: selectedIntake, year: Number(newSemesterYear), semesterInYear: Number(newSemesterInYear), status: 'Closed' });
+            toast({ title: 'Semester Created' });
+            setIsSemesterDialogOpen(false);
+            setNewSemesterYear(1);
+            setNewSemesterInYear(1);
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to create semester' });
+        } finally {
+            setSavingIntake(false);
         }
     };
     
+    // --- DnD and UI Logic ---
     const findContainer = (id: string) => {
         if (id === 'available') return 'available';
-        if (availableCourses.some(c => c.id === id)) {
-            return 'available';
-        }
-        for (const semesterId in semesterCourses) {
-            if (semesterCourses[semesterId]?.some(c => c.id === id)) {
-                return semesterId;
-            }
-        }
+        if (availableCourses.some(c => c.id === id)) return 'available';
+        for (const semesterId in semesterCourses) { if (semesterCourses[semesterId]?.some(c => c.id === id)) return semesterId; }
         return null;
     };
     
     const handleAddCourseToSemester = (courseId: string) => {
-        if (!targetSemester) {
-            toast({
-                variant: 'destructive',
-                title: 'No Target Semester',
-                description: 'Please select a semester from the dropdown above the "Available Courses" list.',
-            });
-            return;
-        }
-
+        if (!targetSemester) { toast({ variant: 'destructive', title: 'No Target Semester Selected' }); return; }
         const courseToAdd = availableCourses.find(c => c.id === courseId);
         if (!courseToAdd) return;
-
         setAvailableCourses(prev => prev.filter(c => c.id !== courseId));
         setSemesterCourses(prev => {
             const newSemesters = { ...prev };
@@ -280,55 +259,35 @@ export default function CoursePathsPage() {
     };
 
     const handleDragStart = (event: DragStartEvent) => {
-        const { active } = event;
-        const activeId = active.id as string;
-        const course = courses.find((c) => c.id === activeId);
+        const course = courses.find((c) => c.id === event.active.id as string);
         setActiveCourse(course || null);
     }
 
     const handleDragEnd = (event: DragEndEvent) => {
         setActiveCourse(null);
         const { active, over } = event;
-
         if (!over) return;
-        
         const activeId = active.id as string;
-        
         const activeContainer = findContainer(activeId);
         const overContainer = findContainer(over.id as string) || over.id as string;
-
         if (!activeContainer || !overContainer || activeContainer === overContainer) return;
-        
         const activeItem = courses.find(c => c.id === activeId);
         if(!activeItem) return;
 
-        const newAvailable = [...availableCourses];
-        const newSemesters = {...semesterCourses};
-
-        // Remove from source
-        if(activeContainer === 'available') {
-            const index = newAvailable.findIndex(c => c.id === activeId);
-            if (index > -1) newAvailable.splice(index, 1);
-        } else {
-            const sourceSemCourses = newSemesters[activeContainer] ? [...newSemesters[activeContainer]] : [];
-            const index = sourceSemCourses.findIndex(c => c.id === activeId);
-            if (index > -1) {
-                sourceSemCourses.splice(index, 1);
-                newSemesters[activeContainer] = sourceSemCourses;
+        setAvailableCourses(prev => activeContainer === 'available' ? prev.filter(c => c.id !== activeId) : prev);
+        setSemesterCourses(prev => {
+            const newSemesters = { ...prev };
+            if (activeContainer !== 'available') {
+                newSemesters[activeContainer] = newSemesters[activeContainer].filter(c => c.id !== activeId);
             }
-        }
-
-        // Add to destination
-        if (overContainer === 'available') {
-            newAvailable.push(activeItem);
-        } else {
-            const destSemCourses = newSemesters[overContainer] ? [...newSemesters[overContainer]] : [];
-            destSemCourses.push(activeItem);
-            newSemesters[overContainer] = destSemCourses;
-        }
-
-        setAvailableCourses(newAvailable);
-        setSemesterCourses(newSemesters);
+            if (overContainer === 'available') {
+                 setAvailableCourses(currentAvail => [...currentAvail, activeItem]);
+            } else {
+                 if (!newSemesters[overContainer]) newSemesters[overContainer] = [];
+                 newSemesters[overContainer].push(activeItem);
+            }
+            return newSemesters;
+        });
     };
 
     const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
@@ -378,16 +337,8 @@ export default function CoursePathsPage() {
                                                         <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                                     </AlertDialogTrigger>
                                                     <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This action will permanently delete the intake "{i.name}" and all of its associated course paths. This cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={() => handleDeleteIntake(i.id)}>Yes, delete it</AlertDialogAction>
-                                                        </AlertDialogFooter>
+                                                        <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This action will permanently delete the intake "{i.name}" and all of its associated course paths. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteIntake(i.id)}>Yes, delete it</AlertDialogAction></AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
                                             </TableCell></TableRow>
@@ -400,8 +351,27 @@ export default function CoursePathsPage() {
                     <TabsContent value="paths" className="pt-4">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Course Path Builder</CardTitle>
-                                <CardDescription>Select an intake and programme, then drag courses into the correct semesters.</CardDescription>
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <CardTitle>Course Path Builder</CardTitle>
+                                        <CardDescription>Select an intake and programme, then drag courses into the correct semesters.</CardDescription>
+                                    </div>
+                                    <Dialog open={isSemesterDialogOpen} onOpenChange={setIsSemesterDialogOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="secondary" disabled={!selectedIntake}>
+                                                <PlusCircle className="mr-2 h-4 w-4"/>Add Semester
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader><DialogTitle>Add New Semester</DialogTitle></DialogHeader>
+                                            <div className="py-4 grid grid-cols-2 gap-4">
+                                                <div className="space-y-1"><Label>Year</Label><Input type="number" min="1" value={newSemesterYear} onChange={e => setNewSemesterYear(Number(e.target.value))}/></div>
+                                                <div className="space-y-1"><Label>Semester in Year</Label><Input type="number" min="1" max="3" value={newSemesterInYear} onChange={e => setNewSemesterInYear(Number(e.target.value))}/></div>
+                                            </div>
+                                            <DialogFooter><Button onClick={handleAddSemester} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Create Semester</Button></DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
@@ -455,17 +425,12 @@ export default function CoursePathsPage() {
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create New'} Intake</DialogTitle></DialogHeader>
                         <div className="py-4"><Input placeholder="e.g., 2024JAN" value={intakeName} onChange={e => setIntakeName(e.target.value.toUpperCase())} /></div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button>
-                        </DialogFooter>
+                        <DialogFooter><Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
                  <Dialog open={isHistoryDialogOpen} onOpenChange={() => { setIsHistoryDialogOpen(false); setViewingHistory([]); }}>
                     <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Semester Change History</DialogTitle>
-                        </DialogHeader>
+                        <DialogHeader><DialogTitle>Semester Change History</DialogTitle></DialogHeader>
                         <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
                             {viewingHistory.map((item, index) => (
                                 <div key={index} className="p-3 border rounded-lg">
@@ -571,4 +536,6 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
+    
+
     
