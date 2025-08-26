@@ -106,9 +106,8 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
-            const allSemesters = semestersSnap.exists() ? Object.values(semestersSnap.val() as Record<string, Semester>) : [];
-            const allSemestersWithId = semestersSnap.exists() ? semestersSnap.val() : {};
-
+            const allSemestersData = semestersSnap.val() || {};
+            
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
             setUserProfile(profile);
@@ -124,7 +123,7 @@ export default function StudentRegistrationPage() {
                 return;
             }
             const [userPathId, userPath] = userPathEntry;
-
+            
             const pathOfferings = (semesterOfferingsSnap.val() || {})[userPathId] || {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
@@ -136,14 +135,14 @@ export default function StudentRegistrationPage() {
                     const year = Math.ceil(semNum / 2);
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    const foundSemester = allSemesters.find(
-                        s => s.intakeId === profile.intakeId && s.year === year && s.semesterInYear === semesterInYear
-                    );
-
-                    if (!foundSemester) continue;
-
-                    const semesterId = Object.keys(allSemestersWithId).find(key => allSemestersWithId[key].name === foundSemester.name)!;
-
+                    // Direct lookup for semesterId
+                    const semesterId = Object.keys(allSemestersData).find(key => {
+                        const sem = allSemestersData[key];
+                        return sem.intakeId === profile.intakeId && sem.year === year && sem.semesterInYear === semesterInYear;
+                    });
+                     
+                    if (!semesterId) continue;
+                    
                     const isRegistered = userRegistrations.includes(semesterId);
                     
                      if (!isRegistered) {
@@ -156,7 +155,7 @@ export default function StudentRegistrationPage() {
 
                          activeSemestersList.push({ 
                             semesterId: semesterId,
-                            semesterName: foundSemester.name,
+                            semesterName: allSemestersData[semesterId].name,
                             intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
