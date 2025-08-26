@@ -227,30 +227,27 @@ export default function AddStudentPage() {
             setSelectedSemester('');
             return;
         }
-
+    
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         if (!relevantPath || !relevantPath.semesters) {
-             setAvailableSemesters([]);
+            setAvailableSemesters([]);
             return;
         }
-
+    
         const semesterNumbersInYear = Object.keys(relevantPath.semesters)
             .map(Number)
-            .filter(semNum => Math.ceil(semNum / 2) === selectedYear)
-            .map(semNum => (semNum - 1) % 2 + 1);
+            .filter(semNum => Math.ceil(semNum / 2) === selectedYear);
+    
+        const semestersForYear = allSemesters
+            .filter(s => s.intakeId === selectedIntake && Math.ceil(Number(s.semesterInYear) / 2) === selectedYear && semesterNumbersInYear.includes(s.semesterInYear))
+            .map(s => ({
+                id: s.id,
+                name: `Semester ${s.semesterInYear}`
+            }));
             
-        const intakeName = allIntakes.find(i => i.id === selectedIntake)?.name;
-        if (!intakeName) return;
-
-        const semestersForYear = allSemesters.filter(s => {
-            return s.name.startsWith(intakeName) && 
-                   s.name.includes(`Year ${selectedYear}`) && 
-                   semesterNumbersInYear.includes(s.semesterInYear);
-        }).map(s => ({id: s.id, name: `Semester ${s.semesterInYear}`}));
-        
-        setAvailableSemesters(semestersForYear.sort((a,b) => a.name.localeCompare(b.name)));
+        setAvailableSemesters(semestersForYear.sort((a, b) => a.name.localeCompare(b.name)));
         setSelectedSemester('');
-    }, [selectedYear, selectedIntake, programme, allCoursePaths, allIntakes, allSemesters]);
+    }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
 
     const resetForm = () => {
@@ -450,5 +447,7 @@ export default function AddStudentPage() {
         </>
     );
 }
+
+    
 
     

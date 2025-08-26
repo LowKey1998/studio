@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 
 // Type definitions
@@ -106,7 +106,7 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
-            const allSemestersData = semestersSnap.val() ? Object.entries(semestersSnap.val() as Record<string, Semester>).map(([id, data]) => ({id, ...data})) : [];
+            const allSemestersData = semestersSnap.exists() ? Object.entries(semestersSnap.val() as Record<string, Semester>).map(([id, data]) => ({id, ...data})) : [];
 
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
@@ -158,7 +158,7 @@ export default function StudentRegistrationPage() {
                             intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
-                            pathId: userPath.id,
+                            pathId: userPathId,
                             pathSemesterNum: semNumStr,
                             courses: courseDetails,
                         });
@@ -268,3 +268,5 @@ export default function StudentRegistrationPage() {
         </div>
     );
 }
+
+    
