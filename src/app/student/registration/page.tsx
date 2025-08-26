@@ -138,14 +138,14 @@ export default function StudentRegistrationPage() {
                         code: allCoursesData[id]?.code || 'N/A'
                     }));
                     
-                    const isOpen = semesterOfferings[semesterDetails.name]?.courseIds?.length > 0 && semesterDetails.status === 'Open';
+                    const isOpenForRegistration = semesterOfferings[userPathId]?.[semId]?.active === true && semesterDetails.status === 'Open';
                     const isRegistered = userRegistrations.includes(semId);
 
                     semesterList.push({ 
                         ...semesterDetails,
                         id: semId,
                         isRegistered,
-                        isOpen: isOpen && !isRegistered,
+                        isOpen: isOpenForRegistration && !isRegistered,
                         courses: courseDetails,
                     });
                 }

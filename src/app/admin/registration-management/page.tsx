@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Wallet, HandCoins, BookCopy, DollarSign, Trash2 } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -14,10 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { format, parseISO, isBefore } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -28,16 +28,6 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
@@ -61,15 +51,13 @@ const getOrdinalSuffix = (i: number) => {
 };
 
 // --- DIALOG CONTENT COMPONENT ---
-type CreateOrEditDialogContentProps = {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: {
     editingSemester: Semester | null;
     onClose: () => void;
     onSaveSuccess: () => void;
     allPaymentPlans: PaymentPlan[];
     feeTemplates: FeeTemplate[];
-};
-
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: CreateOrEditDialogContentProps) {
+}) {
     const [saving, setSaving] = React.useState(false);
     const [semesterNameInput, setSemesterNameInput] = React.useState('');
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number>(0);
@@ -186,7 +174,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const renderFeeContent = (isMandatory: boolean) => {
         const fees = isMandatory ? mandatoryFees : optionalFees;
-        const dialogOpenState = isMandatory ? isMandatoryFeeDialogOpen : isOptionalFeeDialogOpen;
+        const dialogOpenState = isMandatory ? isMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen;
         const setDialogOpenState = isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen;
     
         return (
@@ -256,8 +244,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
-    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
-    const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
@@ -265,15 +251,11 @@ export default function RegistrationManagementPage() {
     const [selectedSemester, setSelectedSemester] = React.useState<string>('');
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
-
-    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
-    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
-    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
-
 
     const { toast } = useToast();
     
@@ -318,38 +300,6 @@ export default function RegistrationManagementPage() {
     React.useEffect(() => {
         refreshData();
     }, []);
-
-    const fetchDataForSemester = React.useCallback(async () => {
-        const semesterData = semesters.find(s => s.id === selectedSemester);
-        if (!semesterData) { setLoading(false); return; }
-        setLoading(true);
-        setSemesterDeadlines([]);
-        try {
-            const eventMap = new Map<string, {date: string, id: string}>();
-            allCalendarEvents.forEach(event => eventMap.set(event.title.trim(), { date: event.date, id: event.id }));
-            
-            const linkedPlanIds = Object.keys(semesterData.paymentPlanIds || {});
-            const linkedPlans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
-
-            const requiredDeadlines: string[] = [];
-            linkedPlans.forEach(plan => {
-                 for (let i = 0; i < plan.installments; i++) {
-                    requiredDeadlines.push(`${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterData.name}`);
-                }
-            })
-            setSemesterDeadlines(requiredDeadlines.map(title => {
-                const existing = eventMap.get(title.trim());
-                return { title: title.replace(` - ${semesterData.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
-            }));
-
-        } catch (error) { console.error('Error fetching data:', error); toast({ variant: 'destructive', title: 'Failed to load data' });
-        } finally { setLoading(false); }
-    }, [selectedSemester, semesters, toast, allCalendarEvents, allPaymentPlans]);
-
-     React.useEffect(() => {
-        if(selectedSemester){ fetchDataForSemester();
-        } else { setLoading(false); }
-    }, [selectedSemester, fetchDataForSemester]);
     
     const handleToggleSemesterStatus = async (semester: Semester) => {
         const canOpen = semesterDeadlines.every(d => d.date !== null);
@@ -379,7 +329,24 @@ export default function RegistrationManagementPage() {
     };
     
     const currentSemester = semesters.find(s => s.id === selectedSemester);
-    const semesterName = currentSemester?.name || '';
+    
+    const semesterDeadlines = React.useMemo(() => {
+        if (!currentSemester) return [];
+        const linkedPlanIds = Object.keys(currentSemester.paymentPlanIds || {});
+        const linkedPlans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
+        const eventMap = new Map(allCalendarEvents.map(e => [e.title.trim(), { date: e.date, id: e.id }]));
+        const requiredDeadlines: DeadlineInfo[] = [];
+
+        linkedPlans.forEach(plan => {
+            for (let i = 0; i < plan.installments; i++) {
+                const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${currentSemester.name}`;
+                const existing = eventMap.get(deadlineTitle.trim());
+                requiredDeadlines.push({ title: `${plan.name} (${getOrdinalSuffix(i + 1)} Installment)`, date: existing?.date || null, eventId: existing?.id || null });
+            }
+        });
+        return requiredDeadlines;
+    }, [currentSemester, allPaymentPlans, allCalendarEvents]);
+
     const canSave = semesterDeadlines.every(d => d.date !== null);
 
     return (
@@ -416,20 +383,20 @@ export default function RegistrationManagementPage() {
             {currentSemester && (
             <Card>
                 <CardHeader className="flex-row justify-between items-center">
-                    <CardTitle className="text-xl">Controls for {semesterName}</CardTitle>
+                    <CardTitle className="text-xl">Controls for {currentSemester.name}</CardTitle>
                     <div className='flex flex-wrap gap-2'>
                         <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
                         {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
                     </div>
                 </CardHeader>
-                {!loading && !canSave && currentSemester.status !== 'Open' && (<CardContent><Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert></CardContent>)}
+                {!loading && !canSave && currentSemester.status !== 'Open' && (<CardContent><Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{currentSemester.name}</strong> until all payment deadlines for its linked payment plans are set. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert></CardContent>)}
             </Card>
             )}
 
             {currentSemester && (
             <Card>
                 <CardHeader>
-                    <CardTitle>Financial Setup for {semesterName}</CardTitle>
+                    <CardTitle>Financial Setup for {currentSemester.name}</CardTitle>
                     <CardDescription>An overview of fees, payment plans, and their deadlines for this semester.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -455,11 +422,9 @@ export default function RegistrationManagementPage() {
                                 <div key={plan.id} className="border rounded-md p-3">
                                     <h5 className="font-bold">{plan.name}</h5>
                                     <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5">
-                                        {Array.from({length: plan.installments}).map((_, i) => {
-                                            const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline`;
-                                            const deadline = semesterDeadlines.find(d => d.title === title);
-                                            return <li key={i}>{title}: <span className={cn("font-semibold", !deadline?.date && "text-destructive")}>{deadline?.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
-                                        })}
+                                        {semesterDeadlines.filter(d => d.title.startsWith(plan.name)).map(deadline => (
+                                            <li key={deadline.title}>{deadline.title}: <span className={cn("font-semibold", !deadline.date && "text-destructive")}>{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
+                                        ))}
                                     </ul>
                                 </div>
                             ))}
@@ -472,7 +437,7 @@ export default function RegistrationManagementPage() {
             {currentSemester && (
             <Card className="shadow-lg">
                 <CardHeader>
-                    <CardTitle className="text-xl">Available Courses for {semesterName}</CardTitle>
+                    <CardTitle className="text-xl">Available Courses for {currentSemester.name}</CardTitle>
                     <CardDescription>This information is now managed on the <Link href="/admin/course-paths" className="underline text-primary">Intakes / Course Paths</Link> page.</CardDescription>
                 </CardHeader>
             </Card>
