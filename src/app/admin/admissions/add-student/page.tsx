@@ -136,7 +136,7 @@ export default function AddStudentPage() {
     const [selectedYear, setSelectedYear] = React.useState<number | ''>('');
     const [selectedSemester, setSelectedSemester] = React.useState('');
     const [availableYears, setAvailableYears] = React.useState<number[]>([]);
-    const [availableSemesters, setAvailableSemesters] = React.useState<{id: string, name: string}[]>([]);
+    const [availableSemesters, setAvailableSemesters] = React.useState<Semester[]>([]);
 
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
@@ -202,7 +202,6 @@ export default function AddStudentPage() {
         fetchInitialData();
     }, [fetchInitialData]);
 
-     // When Intake or Programme changes, update available Years
     React.useEffect(() => {
         setAvailableYears([]);
         setSelectedYear('');
@@ -224,7 +223,6 @@ export default function AddStudentPage() {
         setAvailableYears(Array.from(years).sort((a, b) => a - b));
     }, [selectedIntake, programme, allCoursePaths]);
     
-    // When Year changes, update available Semesters
     React.useEffect(() => {
         setAvailableSemesters([]);
         setSelectedSemester('');
@@ -236,7 +234,8 @@ export default function AddStudentPage() {
 
         const semesterNumbersForYear = Object.keys(relevantPath.semesters)
             .map(Number)
-            .filter(semNum => Math.ceil(semNum / 2) === selectedYear);
+            .filter(semNum => Math.ceil(semNum / 2) === selectedYear)
+            .map(semNum => (semNum - 1) % 2 + 1);
 
         if (semesterNumbersForYear.length > 0) {
             const semestersForDropdown = allSemesters
@@ -244,13 +243,8 @@ export default function AddStudentPage() {
                     s.intakeId === selectedIntake &&
                     s.year === selectedYear &&
                     semesterNumbersForYear.includes(s.semesterInYear)
-                )
-                .map(s => ({
-                    id: s.id,
-                    name: `Semester ${s.semesterInYear}`
-                }));
-
-            setAvailableSemesters(semestersForDropdown.sort((a, b) => a.name.localeCompare(b.name)));
+                );
+            setAvailableSemesters(semestersForDropdown.sort((a, b) => a.semesterInYear - b.semesterInYear));
         }
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 

@@ -47,8 +47,6 @@ type ActiveSemester = {
     intakeId: string;
     year: number;
     semesterInYear: number;
-    pathId: string;
-    pathSemesterNum: string;
     courses: Course[];
 };
 
@@ -135,7 +133,6 @@ export default function StudentRegistrationPage() {
                     const year = Math.ceil(semNum / 2);
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    // Direct lookup for semesterId
                     const semesterId = Object.keys(allSemestersData).find(key => {
                         const sem = allSemestersData[key];
                         return sem.intakeId === profile.intakeId && sem.year === year && sem.semesterInYear === semesterInYear;
@@ -159,8 +156,6 @@ export default function StudentRegistrationPage() {
                             intakeId: profile.intakeId,
                             year, 
                             semesterInYear,
-                            pathId: userPathId,
-                            pathSemesterNum: semNumStr,
                             courses: courseDetails,
                         });
                      }
@@ -229,7 +224,7 @@ export default function StudentRegistrationPage() {
                     {openSemesters.length > 0 ? (
                         <div className="space-y-4">
                             {openSemesters.map(semester => (
-                                <Card key={semester.pathSemesterNum}>
+                                <Card key={semester.semesterId}>
                                     <CardHeader className="flex-row items-center justify-between">
                                         <div className="space-y-1">
                                             <CardTitle>{semester.semesterName}</CardTitle>
