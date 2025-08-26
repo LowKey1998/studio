@@ -99,7 +99,7 @@ type CoursePath = {
     id: string;
     intakeId: string;
     programmeId: string;
-    semesters: Record<string, { courses: string[] }>;
+    semesters: Record<string, { courses: string[] }>; // Key is semesterId
 };
 
 
@@ -213,15 +213,18 @@ export default function AddStudentPage() {
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         
         if (!relevantPath || !relevantPath.semesters) return;
-
+        
         const years = new Set<number>();
-        Object.keys(relevantPath.semesters).forEach(semNum => {
-            const year = Math.ceil(Number(semNum) / 2);
-            years.add(year);
+        const semesterIdsInPath = Object.keys(relevantPath.semesters);
+        
+        allSemesters.forEach(semester => {
+            if (semesterIdsInPath.includes(semester.id)) {
+                years.add(semester.year);
+            }
         });
         
         setAvailableYears(Array.from(years).sort((a, b) => a - b));
-    }, [selectedIntake, programme, allCoursePaths]);
+    }, [selectedIntake, programme, allCoursePaths, allSemesters]);
     
     React.useEffect(() => {
         setAvailableSemesters([]);
@@ -231,21 +234,13 @@ export default function AddStudentPage() {
     
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         if (!relevantPath || !relevantPath.semesters) return;
+        
+        const semesterIdsInPath = Object.keys(relevantPath.semesters);
+        const semestersForDropdown = allSemesters.filter(s => 
+            semesterIdsInPath.includes(s.id) && s.year === selectedYear
+        );
 
-        const semesterNumbersForYear = Object.keys(relevantPath.semesters)
-            .map(Number)
-            .filter(semNum => Math.ceil(semNum / 2) === selectedYear)
-            .map(semNum => (semNum - 1) % 2 + 1);
-
-        if (semesterNumbersForYear.length > 0) {
-            const semestersForDropdown = allSemesters
-                .filter(s => 
-                    s.intakeId === selectedIntake &&
-                    s.year === selectedYear &&
-                    semesterNumbersForYear.includes(s.semesterInYear)
-                );
-            setAvailableSemesters(semestersForDropdown.sort((a, b) => a.semesterInYear - b.semesterInYear));
-        }
+        setAvailableSemesters(semestersForDropdown.sort((a, b) => a.semesterInYear - b.semesterInYear));
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
 

@@ -30,7 +30,7 @@ type CoursePath = {
     id: string;
     intakeId: string;
     programmeId: string;
-    semesters: Record<string, { courses: string[] }>;
+    semesters: Record<string, { courses: string[] }>; // key is semesterId
 };
 
 type Semester = {
@@ -120,6 +120,7 @@ export default function StudentRegistrationPage() {
                 setLoading(false);
                 return;
             }
+
             const [userPathId, userPath] = userPathEntry;
             
             const pathOfferings = (semesterOfferingsSnap.val() || {})[userPathId] || {};
@@ -127,38 +128,32 @@ export default function StudentRegistrationPage() {
             
             const activeSemestersList: ActiveSemester[] = [];
             
-            for (const semNumStr in pathOfferings) {
-                if (pathOfferings[semNumStr]?.active) {
-                    const semNum = Number(semNumStr);
-                    const year = Math.ceil(semNum / 2);
-                    const semesterInYear = ((semNum - 1) % 2) + 1;
-                    
-                    const semesterId = Object.keys(allSemestersData).find(key => {
-                        const sem = allSemestersData[key];
-                        return sem.intakeId === profile.intakeId && sem.year === year && sem.semesterInYear === semesterInYear;
-                    });
-                     
-                    if (!semesterId) continue;
-                    
-                    const isRegistered = userRegistrations.includes(semesterId);
-                    
-                     if (!isRegistered) {
-                         const semesterCourses = userPath.semesters[semNumStr]?.courses || [];
-                         const courseDetails: Course[] = semesterCourses.map((id: string) => ({
-                             id,
-                             name: allCoursesData[id]?.name || 'Unknown Course',
-                             code: allCoursesData[id]?.code || 'N/A'
-                         }));
+            const semesterIdsInPath = Object.keys(userPath.semesters);
+            
+            for (const semId of semesterIdsInPath) {
+                if (pathOfferings[semId]?.active) {
+                    const semesterDetails = allSemestersData[semId];
+                    if (!semesterDetails) continue;
 
-                         activeSemestersList.push({ 
-                            semesterId: semesterId,
-                            semesterName: allSemestersData[semesterId].name,
-                            intakeId: profile.intakeId,
-                            year, 
-                            semesterInYear,
-                            courses: courseDetails,
-                        });
-                     }
+                    const isRegistered = userRegistrations.includes(semId);
+                    
+                    if (!isRegistered) {
+                        const semesterCourses = userPath.semesters[semId]?.courses || [];
+                        const courseDetails: Course[] = semesterCourses.map((id: string) => ({
+                            id,
+                            name: allCoursesData[id]?.name || 'Unknown Course',
+                            code: allCoursesData[id]?.code || 'N/A'
+                        }));
+
+                        activeSemestersList.push({ 
+                           semesterId: semId,
+                           semesterName: semesterDetails.name,
+                           intakeId: profile.intakeId,
+                           year: semesterDetails.year, 
+                           semesterInYear: semesterDetails.semesterInYear,
+                           courses: courseDetails,
+                       });
+                    }
                 }
             }
             

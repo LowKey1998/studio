@@ -28,15 +28,18 @@ import { Textarea } from '@/components/ui/textarea';
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; };
+type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; };
+
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
 
 // --- MAIN PAGE COMPONENT ---
 export default function CoursePathsPage() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
+    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [coursePaths, setCoursePaths] = React.useState<CoursePath[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [activeTab, setActiveTab] = React.useState('intakes');
@@ -51,8 +54,7 @@ export default function CoursePathsPage() {
     // Course Path State
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [selectedProgramme, setSelectedProgramme] = React.useState('');
-    const [numYears, setNumYears] = React.useState(4);
-    const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({});
+    const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({}); // Key is semesterId
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
     const [targetSemester, setTargetSemester] = React.useState('');
@@ -60,13 +62,18 @@ export default function CoursePathsPage() {
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
-
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
     // --- Data Fetching ---
     React.useEffect(() => {
         setLoading(true);
-        const refs = [ ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths') ];
+        const refs = [
+            ref(db, 'intakes'),
+            ref(db, 'programmes'),
+            ref(db, 'courses'),
+            ref(db, 'coursePaths'),
+            ref(db, 'semesters')
+        ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
@@ -75,6 +82,7 @@ export default function CoursePathsPage() {
                 case 1: setProgrammes(list); break;
                 case 2: setCourses(list); break;
                 case 3: setCoursePaths(list); break;
+                case 4: setAllSemesters(list); break;
             }
         }));
         setLoading(false);
@@ -85,24 +93,27 @@ export default function CoursePathsPage() {
     const currentPath = React.useMemo(() => {
         return coursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === selectedProgramme);
     }, [coursePaths, selectedIntake, selectedProgramme]);
+    
+    const semestersForPath = React.useMemo(() => {
+        if (!selectedIntake) return [];
+        return allSemesters.filter(s => s.intakeId === selectedIntake).sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear);
+    }, [allSemesters, selectedIntake]);
+
 
     React.useEffect(() => {
         const newSemesterCourses: Record<string, Course[]> = {};
         const assignedCourseIds = new Set<string>();
 
         if (currentPath && currentPath.semesters) {
-            setNumYears(Math.ceil(Object.keys(currentPath.semesters).length / 2) || 4);
-            Object.entries(currentPath.semesters).forEach(([semesterNum, semesterData]) => {
+            Object.entries(currentPath.semesters).forEach(([semesterId, semesterData]) => {
                 const semesterCourseIds = semesterData.courses || [];
-                newSemesterCourses[semesterNum] = semesterCourseIds
+                newSemesterCourses[semesterId] = semesterCourseIds
                     .map(id => {
                         assignedCourseIds.add(id);
                         return courses.find(c => c.id === id);
                     })
                     .filter((c): c is Course => !!c);
             });
-        } else {
-            setNumYears(4);
         }
         
         setSemesterCourses(newSemesterCourses);
@@ -115,40 +126,37 @@ export default function CoursePathsPage() {
         setLoading(true);
 
         try {
-            const pathSemesters: Record<number, CoursePathSemester> = {};
+            const pathSemesters: Record<string, CoursePathSemester> = {}; // key is semesterId
             let isAnySemesterChanged = false;
 
             // First, check if any semester has changed to decide if a reason is needed
-            for (let i = 1; i <= numYears * 2; i++) {
-                const sem = String(i);
-                const newCourseIds = new Set((semesterCourses[sem] || []).map(c => c.id));
-                const oldCourseIds = new Set(currentPath?.semesters?.[Number(sem)]?.courses || []);
+             for (const semester of semestersForPath) {
+                const semId = semester.id;
+                const newCourseIds = new Set((semesterCourses[semId] || []).map(c => c.id));
+                const oldCourseIds = new Set(currentPath?.semesters?.[semId]?.courses || []);
                 
                 if (newCourseIds.size !== oldCourseIds.size || [...newCourseIds].some(id => !oldCourseIds.has(id))) {
                     isAnySemesterChanged = true;
                     break;
                 }
             }
-
-            // If there's a change, optionally prompt for a reason
+            
             let changeReason = '';
-            if (isAnySemesterChanged) {
+            if (isAnySemesterChanged && currentPath) { // Only prompt for reason on updates
                 const reason = prompt("Optional: Provide a reason for updating the course path(s) (e.g., 'Curriculum update 2024'). This will be applied to all changed semesters.");
-                // User can cancel or leave it empty, so we just use the result.
                 changeReason = reason || '';
             }
-
-            // Now, build the final data structure
-            for (let i = 1; i <= numYears * 2; i++) {
-                const sem = String(i);
-                const crs = semesterCourses[sem] || [];
+            
+            for (const semester of semestersForPath) {
+                const semId = semester.id;
+                const crs = semesterCourses[semId] || [];
                 const newCourses = crs.map(c => c.id);
-                const oldCourses = currentPath?.semesters?.[Number(sem)]?.courses || [];
-                let history = currentPath?.semesters?.[Number(sem)]?.history || {};
+                const oldCourses = currentPath?.semesters?.[semId]?.courses || [];
+                let history = currentPath?.semesters?.[semId]?.history || {};
 
                 const hasChanged = JSON.stringify([...oldCourses].sort()) !== JSON.stringify([...newCourses].sort());
 
-                if (hasChanged && isAnySemesterChanged) { // Only log history if there was a global change
+                if (hasChanged && isAnySemesterChanged && currentPath) { // Only log history if there was a global change
                     const historyEntry: CoursePathHistoryItem = {
                         reason: changeReason || "No reason provided",
                         oldCourses,
@@ -158,8 +166,9 @@ export default function CoursePathsPage() {
                     const historyKey = push(ref(db)).key!;
                     history[historyKey] = historyEntry;
                 }
-                pathSemesters[Number(sem)] = { courses: newCourses, history };
+                pathSemesters[semId] = { courses: newCourses, history };
             }
+
 
             const pathData = {
                 intakeId: selectedIntake,
@@ -327,11 +336,18 @@ export default function CoursePathsPage() {
         setIsHistoryDialogOpen(true);
     };
 
+    const groupedSemesters = semestersForPath.reduce((acc, sem) => {
+        const yearKey = `Year ${sem.year}`;
+        if(!acc[yearKey]) acc[yearKey] = [];
+        acc[yearKey].push(sem);
+        return acc;
+    }, {} as Record<string, Semester[]>);
+
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="font-headline text-2xl">Intakes / Course Paths</CardTitle>
+                <CardTitle className="font-headline text-2xl">Intakes & Course Paths</CardTitle>
                 <CardDescription>Define student intakes and map out the required courses for each programme, semester by semester.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -396,21 +412,22 @@ export default function CoursePathsPage() {
                                     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                                     <div className="grid md:grid-cols-3 gap-4">
                                         <div className="md:col-span-2 space-y-4">
-                                            {Array.from({ length: numYears }).map((_, yearIndex) => (
-                                                <div key={yearIndex} className="space-y-4 p-4 border rounded-lg">
-                                                    <div className="flex justify-between items-center">
-                                                        <h3 className="font-bold text-xl">Year {yearIndex + 1}</h3>
-                                                        {yearIndex === numYears - 1 && <Button variant="ghost" size="icon" onClick={() => setNumYears(prev => Math.max(1, prev-1))} disabled={numYears <= 1}><MinusCircle className="h-5 w-5 text-destructive"/></Button>}
-                                                    </div>
+                                            {Object.entries(groupedSemesters).map(([year, sems]) => (
+                                                <div key={year} className="space-y-4 p-4 border rounded-lg">
+                                                    <h3 className="font-bold text-xl">{year}</h3>
                                                     <div className="grid md:grid-cols-2 gap-4">
-                                                        <SemesterColumn semesterNum={1} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 1)] || []} currentPath={currentPath} onHistoryClick={openHistoryDialog} />
-                                                        <SemesterColumn semesterNum={2} year={yearIndex+1} courses={semesterCourses[String((yearIndex * 2) + 2)] || []} currentPath={currentPath} onHistoryClick={openHistoryDialog} />
+                                                        {sems.map(sem => (
+                                                            <SemesterColumn 
+                                                                key={sem.id}
+                                                                semester={sem}
+                                                                courses={semesterCourses[sem.id] || []} 
+                                                                currentPath={currentPath} 
+                                                                onHistoryClick={openHistoryDialog} 
+                                                            />
+                                                        ))}
                                                     </div>
                                                 </div>
                                             ))}
-                                            <div className="flex justify-center gap-2">
-                                                <Button onClick={() => setNumYears(prev => prev + 1)}><PlusCircle className="mr-2 h-4"/>Add Year</Button>
-                                            </div>
                                         </div>
                                         <div className="md:col-span-1">
                                             <AvailableCoursesColumn 
@@ -418,7 +435,7 @@ export default function CoursePathsPage() {
                                                 targetSemester={targetSemester}
                                                 setTargetSemester={setTargetSemester}
                                                 onAddCourse={handleAddCourseToSemester}
-                                                numYears={numYears}
+                                                semestersForPath={semestersForPath}
                                             />
                                         </div>
                                     </div>
@@ -490,23 +507,22 @@ function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Cours
 }
 
 // --- Semester Column Component ---
-function SemesterColumn({ semesterNum, courses, year, currentPath, onHistoryClick }: { semesterNum: number, courses: Course[], year: number, currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void }) {
-    const semesterId = String((year - 1) * 2 + semesterNum);
-    const { setNodeRef } = useSortable({ id: semesterId, data: { type: 'container', id: semesterId } });
-    const history = currentPath?.semesters?.[Number(semesterId)]?.history;
+function SemesterColumn({ semester, courses, currentPath, onHistoryClick }: { semester: Semester, courses: Course[], currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void }) {
+    const { setNodeRef } = useSortable({ id: semester.id, data: { type: 'container', id: semester.id } });
+    const history = currentPath?.semesters?.[semester.id]?.history;
     const historyItems = history ? Object.values(history) : [];
 
     return (
         <div ref={setNodeRef} className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
              <div className="flex justify-between items-center">
-                <h3 className="font-bold text-center">Semester {semesterNum}</h3>
+                <h3 className="font-bold text-center">{semester.name.split(' ').slice(-2).join(' ')}</h3>
                 {historyItems.length > 0 && (
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryClick(historyItems)}>
                         <History className="h-4 w-4 text-blue-600"/>
                     </Button>
                 )}
             </div>
-            <SortableContext id={semesterId} items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext id={semester.id} items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-2">
                     {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} />)}
                 </div>
@@ -516,12 +532,12 @@ function SemesterColumn({ semesterNum, courses, year, currentPath, onHistoryClic
 }
 
 // --- Available Courses Column Component ---
-function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, onAddCourse, numYears }: {
+function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, onAddCourse, semestersForPath }: {
     courses: Course[];
     targetSemester: string;
     setTargetSemester: (id: string) => void;
     onAddCourse: (courseId: string) => void;
-    numYears: number;
+    semestersForPath: Semester[];
 }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
     return (
@@ -535,11 +551,11 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
                             <SelectValue placeholder="Select semester to add to..." />
                         </SelectTrigger>
                         <SelectContent>
-                             {Array.from({ length: numYears * 2 }).map((_, i) => (
-                                 <SelectItem key={i + 1} value={String(i + 1)}>
-                                    Year {Math.floor(i / 2) + 1}, Semester { (i % 2) + 1 }
-                                 </SelectItem>
-                            ))}
+                            {semestersForPath.map(sem => (
+                                <SelectItem key={sem.id} value={sem.id}>
+                                   {sem.name}
+                                </SelectItem>
+                           ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -555,6 +571,4 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
-    
-
     
