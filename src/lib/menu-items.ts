@@ -44,11 +44,12 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
+        { href: '/admin/academics/semester-management', label: 'Semester Management', icon: Calendar },
+        { href: '/admin/registration-management', label: 'Registration Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },
-        { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
+        { href: '/admin/timetable', label: 'Timetable', icon: Clock },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
         { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building, isComingSoon: true },
         { href: '/admin/academics/lecturer-allocation', label: 'Lecturer Allocation', icon: UserPlus },
@@ -148,13 +149,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: [
-             { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
-             { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: HandCoins },
-             { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
-             { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: ShieldAlert },
-             { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'HR',
@@ -179,35 +174,13 @@ export const allMenuItems = [
         label: 'Research & Innovation',
         icon: Telescope,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/research/registration', label: 'Research Project Registration', icon: FileText },
-            { href: '/admin/research/supervisor-allocation', label: 'Supervisor Allocation', icon: Users2 },
-            { href: '/admin/research/proposal-submission', label: 'Proposal Submission Workflow', icon: GitBranch },
-            { href: '/admin/research/ethics-reviews', label: 'Ethics Committee Reviews', icon: Shield },
-            { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
-            { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
-            { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
-            { href: '/admin/research/grants', label: 'Grant Applications Management', icon: FileText },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Innovation',
         icon: Lightbulb,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/innovation/project-submissions', label: 'Innovation Project Submissions', icon: FileUp },
-            { href: '/admin/innovation/prototype-showcase', label: 'Prototype Showcase', icon: GalleryVertical },
-            { href: '/admin/innovation/incubator-access', label: 'Innovation Incubator Access', icon: KeyRound },
-            { href: '/admin/innovation/mentorship-matching', label: 'Mentorship Matching', icon: UserCheckIcon },
-            { href: '/admin/innovation/evaluation-committee', label: 'Innovation Evaluation Committee', icon: Users2 },
-            { href: '/admin/innovation/pitch-deck-repository', label: 'Pitch Deck Repository', icon: FileText },
-            { href: '/admin/innovation/ip-tracker', label: 'Intellectual Property Registration Tracker', icon: Shield },
-            { href: '/admin/innovation/events-calendar', label: 'Innovation Events Calendar', icon: Calendar },
-            { href: '/admin/innovation/investor-matching', label: 'Investor Matching Tools', icon: Handshake },
-            { href: '/admin/innovation/hackathon-logs', label: 'Hackathon Participation Logs', icon: Book },
-            { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
-            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration / Team Building Portal', icon: Users },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Community Engagement',
@@ -275,14 +248,7 @@ export const allMenuItems = [
         label: 'Add-ons',
         icon: Puzzle,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/addons/alumni', label: 'EduConnect360-Alumni', icon: Users2 },
-            { href: '/admin/addons/portal', label: 'Job & Internal Portal', icon: Briefcase },
-            { href: '/admin/addons/multi-campus', label: 'Multi-Campus Managment', icon: Building },
-            { href: '/admin/addons/quickbooks', label: 'QuickBooks Integration', icon: Link },
-            { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
-            { href: '/admin/addons/mobile-app', label: 'Edutrack360 Mobile App', icon: Smartphone },
-        ]
+        isComingSoon: true,
     },
      {
         label: 'Admin',
