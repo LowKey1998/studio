@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 // --- TYPE DEFINITIONS ---
 type Fee = { id: string; name: string; amount: number; };
@@ -145,7 +146,7 @@ export default function RegistrationManagementPage() {
     
     const openEditDialog = (semester: Semester) => {
         setEditingSemester(semester);
-        setIsEditDialogOpen(true); // Re-use the create dialog for editing
+        setIsEditDialogOpen(true);
     };
 
     const handleToggleSemesterStatus = async (semester: Semester) => {
@@ -175,8 +176,6 @@ export default function RegistrationManagementPage() {
         let totalCost = 0;
         const mandatoryFees = Object.values(semester.mandatoryFees || {});
         totalCost += mandatoryFees.reduce((sum, fee) => sum + fee.amount, 0);
-        // This is a simplified calculation. A more accurate one would need to check course paths.
-        // For now, we assume a generic tuition or sum of typical courses could be added here.
         return totalCost;
     };
 
@@ -234,7 +233,7 @@ export default function RegistrationManagementPage() {
         </Card>
         
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-             {editingSemester && <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { setIsEditDialogOpen(false); }} /></DialogContent>}
+             {editingSemester && <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} /></DialogContent>}
         </Dialog>
 
         <Dialog open={isPlansDialogOpen} onOpenChange={setIsPlansDialogOpen}>
@@ -429,8 +428,8 @@ function DeadlinesDialogContent({ semester, allPaymentPlans, semesters, onClose 
 
     return (
          <DialogContent>
-            <DialogHeader><DialogTitle>Set Deadlines for {semester.name}</DialogTitle></DialogHeader>
-            <div className="max-h-[70vh] overflow-y-auto pr-4 py-4 space-y-4">
+            <DialogHeader><DialogTitle>Set Payment Deadlines for {semester.name}</DialogTitle></DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto pr-4 py-4 space-y-4">
                 <div className="flex items-end gap-2 p-3 border rounded-md">
                      <div className="flex-grow space-y-1">
                         <Label>Import Deadlines</Label>
@@ -441,7 +440,8 @@ function DeadlinesDialogContent({ semester, allPaymentPlans, semesters, onClose 
                      </div>
                      <Button onClick={handleImportDeadlines} disabled={!sourceSemesterId || saving}>Import</Button>
                 </div>
-                {semesterDeadlines.map(({ title, date, eventId }) => {
+                {semesterDeadlines.length > 0 ? (
+                semesterDeadlines.map(({ title, date, eventId }) => {
                     const isEditingThis = editingDeadlineId === (eventId || title);
                     const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
                     return (
@@ -468,7 +468,8 @@ function DeadlinesDialogContent({ semester, allPaymentPlans, semesters, onClose 
                             </div>
                         </div>
                     );
-                })}
+                })
+                ) : <p className="text-sm text-muted-foreground">No applicable payment plans found.</p>}
             </div>
             <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
         </DialogContent>
