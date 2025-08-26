@@ -149,8 +149,7 @@ function FeesDialogContent({ semester, onSaveSuccess }: { semester: Semester, on
     };
 
     return (
-        <>
-            <DialogHeader><DialogTitle>Set Fees for {semester.name}</DialogTitle></DialogHeader>
+        <><DialogHeader><DialogTitle>Set Fees for {semester.name}</DialogTitle></DialogHeader>
             <div className="max-h-[70vh] overflow-y-auto pr-4 py-4 space-y-4">
                 <div className="space-y-2">
                     <div className="flex justify-between items-center"><h4 className="font-semibold">Mandatory Fees</h4><Popover><PopoverTrigger asChild><Button size="sm" variant="outline"><PlusCircle className="mr-2 h-4"/>Import</Button></PopoverTrigger><PopoverContent className="w-56 p-1">{feeTemplates.filter(t => t.type === 'Mandatory').map(t => <Button key={t.id} variant="ghost" className="w-full justify-start" onClick={()=>handleImportFee(t, true)}>{t.name}</Button>)}</PopoverContent></Popover></div>
@@ -322,6 +321,8 @@ export default function RegistrationManagementPage() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [selectedSemester, setSelectedSemester] = React.useState<Semester | null>(null);
+    const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
+
 
     const { toast } = useToast();
     
@@ -345,7 +346,13 @@ export default function RegistrationManagementPage() {
     }, [fetchData]);
 
     const handleToggleSemesterStatus = async (semester: Semester) => {
-        const newStatus = semester.status === 'Open' ? 'Closed' : 'Open';
+        let newStatus: Semester['status'];
+        if (semester.status === 'Open') {
+            newStatus = 'Closed';
+        } else { // Covers 'Closed' and 'Archived'
+            newStatus = 'Open';
+        }
+
         try {
             await update(ref(db, `semesters/${semester.id}`), { status: newStatus });
             if (newStatus === 'Open') {
@@ -378,7 +385,7 @@ export default function RegistrationManagementPage() {
                         <Button variant="outline" asChild><Link href="/admin/payment-plans">Manage Plan Templates</Link></Button>
                         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                             <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => { fetchData(); setIsCreateDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => { fetchData(); setIsCreateDialogOpen(false); }} /></DialogContent>
                         </Dialog>
                     </div>
                 </CardHeader>
@@ -429,7 +436,7 @@ export default function RegistrationManagementPage() {
             </Card>
             
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { fetchData(); setIsEditDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { fetchData(); setIsEditDialogOpen(false); }} /></DialogContent>
             </Dialog>
 
             <Dialog open={!!dialogContent} onOpenChange={() => setDialogContent(null)}>
@@ -443,3 +450,5 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+    
