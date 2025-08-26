@@ -166,7 +166,7 @@ export default function StudentsListPage() {
                         </Select>
                     </div>
                     <div className="self-end">
-                        <Button onClick={handlePrint} disabled={filteredStudents.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Report</Button>
+                        <Button onClick={handlePrint} disabled={filteredStudents.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Filtered List</Button>
                     </div>
                 </div>
 
@@ -185,7 +185,8 @@ export default function StudentsListPage() {
                              Array.from({ length: 10 }).map((_, i) => (
                                 <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                             ))
-                        ) : filteredStudents.map(student => (
+                        ) : filteredStudents.length > 0 ? (
+                            filteredStudents.map(student => (
                             <TableRow key={student.uid}>
                                 <TableCell>{student.id}</TableCell>
                                 <TableCell className="font-medium">{student.name}</TableCell>
@@ -193,7 +194,12 @@ export default function StudentsListPage() {
                                 <TableCell>{student.programmeName}</TableCell>
                                 <TableCell>{student.intakeName}</TableCell>
                             </TableRow>
-                        ))}
+                        ))
+                        ) : (
+                             <TableRow>
+                                <TableCell colSpan={5} className="h-24 text-center">No students found matching your criteria.</TableCell>
+                            </TableRow>
+                        )}
                     </TableBody>
                 </Table>
             </CardContent>
