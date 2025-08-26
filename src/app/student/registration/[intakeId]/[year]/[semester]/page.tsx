@@ -151,7 +151,6 @@ export default function RegisterForSemesterPage() {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
                 }
 
-                // Find the correct semester ID based on intake, year, and semesterInYear
                 const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => 
                     sem.intakeId === intakeId && 
                     sem.year === Number(yearParam) && 
@@ -164,17 +163,19 @@ export default function RegisterForSemesterPage() {
                 if (!userPath.semesters || !userPath.semesters[semesterId]) {
                     throw new Error("The selected semester is not part of your defined course path.");
                 }
+                
+                setSemesterDetails({id: semesterId, ...semesterData});
 
                 const semesterCourseIds = userPath.semesters[semesterId]?.courses || [];
                 const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
                 setCoursesForSemester(semesterCourses);
                 
-                setSemesterDetails({id: semesterId, ...semesterData});
-
                 if (semesterData.paymentPlanIds) {
-                    const available = Object.keys(semesterData.paymentPlanIds)
-                        .map(planId => allPaymentPlans[planId] ? { id: planId, ...allPaymentPlans[planId] } : null)
+                    const linkedPlanIds = Object.keys(semesterData.paymentPlanIds);
+                    const available = Object.keys(allPaymentPlans)
+                        .map(planId => linkedPlanIds.includes(planId) ? { id: planId, ...allPaymentPlans[planId] } : null)
                         .filter(p => p && !p.archived) as PaymentPlan[];
+
                     setAvailablePaymentPlans(available);
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
@@ -365,3 +366,4 @@ export default function RegisterForSemesterPage() {
         </div>
     );
 }
+
