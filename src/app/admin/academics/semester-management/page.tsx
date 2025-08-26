@@ -1,17 +1,16 @@
 
 'use client';
-import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
+// This page's functionality has been moved to /admin/registration-management
 export default function RedirectPage() {
     const router = useRouter();
-    React.useEffect(() => {
-        router.replace('/admin/course-paths');
+    useEffect(() => {
+        router.replace('/admin/registration-management');
     }, [router]);
 
     return (
-        <div>Redirecting to Course Paths...</div>
+        <div>Redirecting to Registration Management...</div>
     );
 }
-
-    

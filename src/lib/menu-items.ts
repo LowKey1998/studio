@@ -44,7 +44,7 @@ export const allMenuItems = [
       icon: GraduationCap,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/registration-management', label: 'Registration Management', icon: Settings },
+        { href: '/admin/registration-management', label: 'Semester Management', icon: Settings },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },
@@ -148,7 +148,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: ShieldAlert },
+            { href: '/admin/parents/fee-reminders', label: 'Send Fee Reminders', icon: Wallet },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+        ]
     },
     {
       label: 'HR',
@@ -362,5 +368,3 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
-
-    
