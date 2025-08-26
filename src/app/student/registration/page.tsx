@@ -128,25 +128,14 @@ export default function StudentRegistrationPage() {
             
             const activeSemestersList: ActiveSemester[] = [];
             
-            const semesterIdsInPath = Object.keys(userPath.semesters);
-            
-            for (const semId of semesterIdsInPath) {
-                const semesterOffering = Object.values(pathOfferings).find((offering: any) => offering.semesterId === semId);
+            for (const semId in userPath.semesters) {
+                const isActive = pathOfferings[semId]?.active;
+                const isAlreadyRegistered = userRegistrations.includes(semId);
 
-                // This logic needs to find the semester that is active for this path.
-                // The semesterOfferings structure is pathId -> semesterNumber -> {active: true}
-                // We need to find which `semesterNumber` in the path is active.
-                
-                // Let's re-evaluate how we check for active semesters
-            }
-
-            // Corrected Logic
-            const activeSemestersForPath = pathOfferings;
-            for (const semId in activeSemestersForPath) {
-                 if (activeSemestersForPath[semId]?.active && !userRegistrations.includes(semId)) {
+                if (isActive && !isAlreadyRegistered) {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails) continue;
-
+                    
                     const semesterCourses = userPath.semesters[semId]?.courses || [];
                     const courseDetails: Course[] = semesterCourses.map((id: string) => ({
                         id,
@@ -154,7 +143,7 @@ export default function StudentRegistrationPage() {
                         code: allCoursesData[id]?.code || 'N/A'
                     }));
 
-                    activeSemestersList.push({ 
+                     activeSemestersList.push({ 
                         semesterId: semId,
                         semesterName: semesterDetails.name,
                         intakeId: profile.intakeId,

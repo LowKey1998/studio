@@ -104,7 +104,7 @@ type CoursePath = {
 
 
 export default function AddStudentPage() {
-    const role = 'student'; // Hardcoded role
+    const role = 'Student'; // Hardcoded role for this page
     
     // Form State
     const [name, setName] = React.useState('');
@@ -206,21 +206,25 @@ export default function AddStudentPage() {
     React.useEffect(() => {
         setAvailableYears([]);
         setSelectedYear('');
-
+        setAvailableSemesters([]);
+        setSelectedSemester('');
+    
         if (!selectedIntake || !programme || allCoursePaths.length === 0 || allSemesters.length === 0) return;
-
+    
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         if (!relevantPath || !relevantPath.semesters) return;
-
+    
         const semesterIdsInPath = Object.keys(relevantPath.semesters);
         
-        const yearsInPath = allSemesters
-            .filter(semester => semesterIdsInPath.includes(semester.id))
-            .map(semester => semester.year);
+        const years = new Set<number>();
+        allSemesters.forEach(sem => {
+            if (semesterIdsInPath.includes(sem.id)) {
+                years.add(sem.year);
+            }
+        });
             
-        const uniqueYears = Array.from(new Set(yearsInPath)).sort((a, b) => a - b);
-        setAvailableYears(uniqueYears);
-
+        setAvailableYears(Array.from(years).sort((a, b) => a - b));
+    
     }, [selectedIntake, programme, allCoursePaths, allSemesters]);
 
     // EFFECT TO POPULATE SEMESTERS
@@ -288,7 +292,7 @@ export default function AddStudentPage() {
                     return;
                 }
             } else {
-                const counterRef = ref(db, `userCounters/student`);
+                const counterRef = ref(db, `userCounters/${role}`);
                 let isUniqueIdFound = false;
 
                 while (!isUniqueIdFound) {
@@ -327,7 +331,7 @@ export default function AddStudentPage() {
             if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses;
 
             await set(ref(db, `users/${user.uid}`), newUser);
-            await set(ref(db, `userRoles/${user.uid}`), { role: role });
+            await set(ref(db, `userRoles/${user.uid}`), { role: role.toLowerCase() });
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
