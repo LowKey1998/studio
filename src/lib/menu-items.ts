@@ -154,8 +154,8 @@ export const allMenuItems = [
       icon: UserCog,
       roles: ['Admin', 'HR'],
       items: [
-           { href: '/admin/hr/staff-list', label: 'Staff List', icon: Users },
            { href: '/admin/hr/add-staff', label: 'Add Staff', icon: UserPlus },
+           { href: '/admin/hr/staff-list', label: 'Staff List', icon: Users },
            { href: '/admin/hr/salaries', label: 'Salaries', icon: DollarSign },
            { href: '/admin/hr/payroll', label: 'Payroll Processing', icon: Wallet },
            { href: '/admin/leave-approvals', label: 'Leave Approvals', icon: UserCheckIcon },
@@ -246,7 +246,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/mentorship/assignments', label: 'Advisor Assignments', icon: Users2 },
             { href: '/admin/mentorship/logs', label: 'Mentorship Logs', icon: Book },
-            { href: '/admin/mentorship/reports', label: 'Advisory Reports', icon: FileText, isComingSoon: true },
+            { href: '/admin/mentorship/reports', label: 'Advisory Reports', icon: FileText },
         ]
     },
     {

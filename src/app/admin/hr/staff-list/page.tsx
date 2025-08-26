@@ -91,7 +91,7 @@ export default function StaffListPage() {
         doc.setFontSize(18);
         doc.text("Staff List Report", 14, 22);
         doc.setFontSize(11);
-        doc.text(`Filters: Department - ${departments.find(p=>p.id === departmentFilter)?.name || 'All'}`, 14, 30);
+        doc.text(`Filters: Department - ${departments.find(p=>p.name === departmentFilter)?.name || 'All'}`, 14, 30);
         
         const tableColumn = ["ID", "Name", "Email", "Phone", "Department", "Roles"];
         const tableRows = filteredStaff.map(s => [

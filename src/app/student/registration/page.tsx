@@ -129,7 +129,7 @@ export default function StudentRegistrationPage() {
             if (userPath.semesters) {
                 for (const semId in userPath.semesters) {
                     const semesterDetails = allSemestersData[semId];
-                    if (!semesterDetails || semesterDetails.status !== 'Open') continue;
+                    if (!semesterDetails) continue;
 
                     const semesterCourses = userPath.semesters[semId]?.courses || [];
                     const courseDetails: Course[] = semesterCourses.map((id: string) => ({

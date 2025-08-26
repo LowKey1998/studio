@@ -61,15 +61,13 @@ const getOrdinalSuffix = (i: number) => {
 };
 
 // --- DIALOG CONTENT COMPONENT ---
-type CreateOrEditDialogContentProps = {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: {
     editingSemester: Semester | null;
     onClose: () => void;
     onSaveSuccess: () => void;
     allPaymentPlans: PaymentPlan[];
     feeTemplates: FeeTemplate[];
-};
-
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: CreateOrEditDialogContentProps) {
+}) {
     const [saving, setSaving] = React.useState(false);
     const [semesterNameInput, setSemesterNameInput] = React.useState('');
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number>(0);
@@ -271,7 +269,6 @@ export default function RegistrationManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
     
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -284,22 +281,21 @@ export default function RegistrationManagementPage() {
         try {
             const [
                 intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semesterOfferingsSnap,
-                paymentPlansSnap, semestersSnap, feeTemplatesSnap, eventsSnapshot,
+                paymentPlansSnap, semestersSnap, feeTemplatesSnap
             ] = await Promise.all([
                 get(ref(db, 'intakes')), get(ref(db, 'programmes')), get(ref(db, 'courses')),
                 get(ref(db, 'coursePaths')), get(ref(db, 'semesterOfferings')), get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'semesters')), get(ref(db, 'settings/feeTemplates')), get(ref(db, 'calendarEvents'))
+                get(ref(db, 'semesters')), get(ref(db, 'settings/feeTemplates'))
             ]);
 
             setAllIntakes(intakesSnap.exists() ? Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })).sort((a, b) => b.name.localeCompare(a.name)) : []);
             setAllProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
             setAllCourses(coursesSnap.exists() ? coursesSnap.val() : {});
-            setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
+            setAllCoursePaths(coursePathsSnap.exists() ? Object.keys(coursePathsSnap.val()).map(id => ({ id, ...coursePathsSnap.val()[id] })) : []);
             setActivePathSemesters(semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {});
             setAllPaymentPlans(paymentPlansSnap.exists() ? Object.keys(paymentPlansSnap.val()).map(id => ({ id, ...paymentPlansSnap.val()[id] })) : []);
             setSemesters(semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })).sort((a,b) => b.name.localeCompare(a.name)) : []);
             setFeeTemplates(feeTemplatesSnap.exists() ? Object.keys(feeTemplatesSnap.val()).map(id => ({ id, ...feeTemplatesSnap.val()[id] })) : []);
-            setAllCalendarEvents(eventsSnapshot.exists() ? Object.values(eventsSnapshot.val()) : []);
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: 'Failed to refresh data' });
@@ -312,7 +308,6 @@ export default function RegistrationManagementPage() {
         refreshData();
     }, [refreshData]);
     
-
     const handleSaveChanges = async () => {
         setSaving(true);
         try { 
@@ -350,29 +345,6 @@ export default function RegistrationManagementPage() {
     const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
         setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
         setIsHistoryDialogOpen(true);
-    };
-
-    const handleToggleSemesterStatus = async (semester: Semester) => {
-        let newStatus: Semester['status'] = semester.status === 'Open' ? 'Closed' : 'Open';
-        
-        try {
-            await update(ref(db, `semesters/${semester.id}`), { status: newStatus });
-            if (newStatus === 'Open') {
-                const studentIds = await getAllStudentAndStaffIds();
-                const notificationPromises = studentIds.map(id => createNotification(id, `Registration for ${semester.name} is now open!`, '/student/registration'));
-                await Promise.all(notificationPromises);
-            }
-            toast({ variant: 'success', title: `Semester status updated to ${newStatus}` });
-            refreshData();
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
-    };
-    
-    const handleToggleLateRegistration = async (semester: Semester) => {
-        const newStatus = !(semester.lateRegistrationActive ?? false);
-        try { await update(ref(db, `semesters/${semester.id}`), { lateRegistrationActive: newStatus });
-             toast({ variant: 'success', title: `Late Registration ${newStatus ? 'Enabled' : 'Disabled'}` });
-             refreshData();
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
 
     return (
@@ -476,7 +448,6 @@ export default function RegistrationManagementPage() {
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                 <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { refreshData(); setIsEditDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
             </Dialog>
-
         </div>
     );
 }
