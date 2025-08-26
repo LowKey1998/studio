@@ -113,7 +113,6 @@ export default function RegisterForSemesterPage() {
                     semestersSnap, 
                     paymentPlansSnap, 
                     programmesSnap,
-                    intakesSnap
                 ] = await Promise.all([
                     get(ref(db, `users/${currentUser.uid}`)),
                     get(ref(db, 'coursePaths')),
@@ -121,7 +120,6 @@ export default function RegisterForSemesterPage() {
                     get(ref(db, 'semesters')),
                     get(ref(db, 'settings/paymentPlans')),
                     get(ref(db, 'programmes')),
-                    get(ref(db, 'intakes'))
                 ]);
 
                 if (!userSnap.exists()) throw new Error("Could not find your user profile.");
@@ -153,30 +151,21 @@ export default function RegisterForSemesterPage() {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
                 }
 
-                const intakeName = intakesSnap.exists() ? intakesSnap.val()[intakeId]?.name : '';
-                if (!intakeName) throw new Error("Could not identify the intake period.");
-
-                const targetSemesterName = `${intakeName} Year ${yearParam} Semester ${semesterInYearParam}`;
-                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => sem.name === targetSemesterName);
+                // Find the correct semester ID based on intake, year, and semesterInYear
+                const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => 
+                    sem.intakeId === intakeId && 
+                    sem.year === Number(yearParam) && 
+                    sem.semesterInYear === Number(semesterInYearParam)
+                );
                 
-                if(!foundSemesterEntry) throw new Error(`Semester details for ${targetSemesterName} could not be found. Please contact administration.`);
+                if(!foundSemesterEntry) throw new Error(`Semester details for this year and semester number could not be found. Please contact administration.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
 
-                let semNumForPath = -1;
-                for (const semNumKey in userPath.semesters) {
-                    const year = Math.floor((Number(semNumKey) - 1) / 2) + 1;
-                    const semesterInYear = ((Number(semNumKey) - 1) % 2) + 1;
-                    if(year === Number(yearParam) && semesterInYear === Number(semesterInYearParam)){
-                        semNumForPath = Number(semNumKey);
-                        break;
-                    }
-                }
-                
-                if (semNumForPath === -1) {
-                    throw new Error("Could not find the corresponding semester in your programme's course path.");
+                if (!userPath.semesters || !userPath.semesters[semesterId]) {
+                    throw new Error("The selected semester is not part of your defined course path.");
                 }
 
-                const semesterCourseIds = userPath.semesters[semNumForPath]?.courses || [];
+                const semesterCourseIds = userPath.semesters[semesterId]?.courses || [];
                 const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
                 setCoursesForSemester(semesterCourses);
                 
