@@ -32,7 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; year: number; };
+type Course = { id: string; name: string; code: string; year: number; cost: number; };
 type GroupedCourses = { [year: string]: Course[]; };
 type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; };
 type Intake = { id: string; name: string; };
@@ -244,10 +244,10 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     );
 }
 
+// --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
-    const [programmesWithCourses, setProgrammesWithCourses] = React.useState<Programme[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [loading, setLoading] = React.useState(true);
-    const [saving, setSaving] = React.useState(false);
     
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [selectedSemester, setSelectedSemester] = React.useState<string>('');
@@ -263,8 +263,6 @@ export default function RegistrationManagementPage() {
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
 
     const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
-    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
-    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
 
     const { toast } = useToast();
     
@@ -296,6 +294,7 @@ export default function RegistrationManagementPage() {
 
             setAllProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
             setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
+            setAllCourses(coursesSnap.val() || {});
             
             setAllPaymentPlans(paymentPlansSnap.exists() ? Object.keys(paymentPlansSnap.val()).map(id => ({ id, ...paymentPlansSnap.val()[id] })) : []);
             setFeeTemplates(feeTemplatesSnap.exists() ? Object.keys(feeTemplatesSnap.val()).map(id => ({ id, ...feeTemplatesSnap.val()[id] })) : []);
@@ -304,30 +303,6 @@ export default function RegistrationManagementPage() {
              if (!selectedSemester && semesterList.length > 0) {
                 setSelectedSemester(semesterList[0].id);
             }
-            
-            const allCoursesData = coursesSnap.exists() ? coursesSnap.val() : {};
-            const userMap = new Map<string, string>();
-            if (usersSnap.exists()) { Object.entries(usersSnap.val()).forEach(([uid, userData]: [string, any]) => userMap.set(uid, userData.name)); }
-
-            const programmeData: Programme[] = (programmesSnap.exists() ? Object.entries(programmesSnap.val()) : []).map(([id, prog]: [string, any]) => {
-                const progCourses: Course[] = (prog.courseIds ? Object.keys(prog.courseIds) : [])
-                    .map((courseId: string) => {
-                        const courseData = allCoursesData[courseId];
-                        return courseData && courseData.status === 'active' ? { id: courseId, ...courseData, lecturerName: userMap.get(courseData.lecturerId) || 'N/A' } : null;
-                    }).filter(Boolean) as Course[];
-
-                const coursesByYear = progCourses.reduce((acc, course) => {
-                    const yearKey = `Year ${course.year}`;
-                    if (!acc[yearKey]) acc[yearKey] = [];
-                    acc[yearKey].push(course);
-                    return acc;
-                }, {} as GroupedCourses);
-
-                return { id, name: prog.name, coursesByYear: Object.fromEntries(Object.entries(coursesByYear).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', '')))) };
-            });
-            setProgrammesWithCourses(programmeData);
-
-
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: 'Failed to refresh data' });
@@ -374,7 +349,7 @@ export default function RegistrationManagementPage() {
 
     React.useEffect(() => {
         if(selectedSemester){ fetchDataForSemester();
-        } else { setProgrammesWithCourses([]); setLoading(false); }
+        } else { setLoading(false); }
     }, [selectedSemester, fetchDataForSemester]);
 
     const handleToggleSemesterStatus = async (semester: Semester) => {
@@ -400,49 +375,18 @@ export default function RegistrationManagementPage() {
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
-    const handleSaveDeadline = async (title: string, eventId: string | null) => {
-        if (!currentSemester) return;
-        const date = deadlineDates[title];
-        if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
-        setSaving(true);
-        const fullTitle = `${title} - ${currentSemester.name}`;
-        try {
-            if(eventId) { // Editing existing event
-                const eventRef = ref(db, `calendarEvents/${eventId}`);
-                await update(eventRef, { date: format(date, 'yyyy-MM-dd') });
-                toast({ title: "Deadline Updated" });
-            } else { // Creating new event
-                const newEventRef = push(ref(db, 'calendarEvents'));
-                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester?.name });
-                toast({ title: `${title} Added` });
-            }
-            
-            setDeadlineDates(prev => {
-                const newDates = { ...prev };
-                delete newDates[title];
-                return newDates;
-            });
-            setEditingDeadlineId(null);
-            fetchDataForSemester(); // Refetch data to update deadline list
-        } catch (error: any) { 
-            toast({ variant: 'destructive', title: 'Failed to save deadline' }); 
-        } finally { 
-            setSaving(false); 
-        }
-    }
-    
     const currentSemester = semesters.find(s => s.id === selectedSemester);
     const semesterName = currentSemester?.name || '';
     const canSave = semesterDeadlines.every(d => d.date !== null);
 
     const programmesForSemester = React.useMemo(() => {
         if (!currentSemester) return [];
-        return programmesWithCourses.filter(prog => 
+        return allProgrammes.filter(prog => 
             allCoursePaths.some(path => 
                 path.programmeId === prog.id && path.intakeId === currentSemester.intakeId
             )
         );
-    }, [currentSemester, programmesWithCourses, allCoursePaths]);
+    }, [currentSemester, allProgrammes, allCoursePaths]);
 
     return (
         <div className="space-y-6">
@@ -487,8 +431,7 @@ export default function RegistrationManagementPage() {
                             <AlertCircle className="h-4 w-4" />
                             <AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle>
                             <AlertDescription>
-                                <p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p>
-                                <ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul>
+                                <p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set. Please go to the 'Financial Setup' tab below to set them.</p>
                             </AlertDescription>
                         </Alert>
                     )}
@@ -497,94 +440,98 @@ export default function RegistrationManagementPage() {
             )}
 
             {currentSemester && (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Financial Setup for {semesterName}</CardTitle>
-                </CardHeader>
-                <CardContent className="grid md:grid-cols-2 gap-8">
-                     <div>
-                        <h4 className="font-semibold mb-2">Fees</h4>
-                        <div className="border rounded-lg p-3 space-y-2 text-sm">
-                            <p className="font-bold">Mandatory:</p>
-                            {currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
-                            <Separator className="my-2"/>
-                             <p className="font-bold">Optional:</p>
-                            {currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
-                            <Separator className="my-2"/>
-                             <p className="font-bold">Late Fee:</p>
-                             <div className="flex justify-between"><span>Late Registration</span><span>ZMW {(currentSemester.lateRegistrationFee || 0).toFixed(2)}</span></div>
-                         </div>
-                    </div>
+                 <Tabs defaultValue="courses" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="courses">Courses</TabsTrigger>
+                        <TabsTrigger value="finance">Financial Setup</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="courses">
+                        <Card>
+                             <CardHeader>
+                                <CardTitle>Available Courses for {semesterName}</CardTitle>
+                                <CardDescription>Courses associated with this semester via a Course Path.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {loading ? <Skeleton className="h-48 w-full" /> : 
+                                programmesForSemester.length > 0 ? (
+                                <Accordion type="multiple" defaultValue={programmesForSemester.map(p => p.id)} className="w-full">
+                                    {programmesForSemester.map(prog => {
+                                        const path = allCoursePaths.find(p => p.intakeId === currentSemester.intakeId && p.programmeId === prog.id);
+                                        if (!path || !path.semesters) return null;
+                                        
+                                        const pathSemester = Object.entries(path.semesters).find(([semId, semData]) => semId === selectedSemester);
+                                        if (!pathSemester) return null;
+                                        
+                                        const semesterCourseIds = pathSemester[1].courses || [];
+                                        const courses = semesterCourseIds.map(id => ({...allCourses[id], id})).filter(c => c.name);
 
-                     <div className="space-y-2">
-                        <h4 className="font-semibold">Linked Payment Plans & Deadlines</h4>
-                        <div className="space-y-4">
-                            {(currentSemester.paymentPlanIds ? allPaymentPlans.filter(p => currentSemester.paymentPlanIds![p.id]) : []).map(plan => {
-                                const deadlines = semesterDeadlines.filter(d => d.title.startsWith(plan.name));
-                                return (
-                                    <div key={plan.id} className="border rounded-md p-3">
-                                        <h5 className="font-bold">{plan.name}</h5>
-                                        <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5">
-                                            {deadlines.length > 0 ? deadlines.map(deadline => (
-                                                <li key={deadline.title}>{deadline.title.replace(`${plan.name} (`, '').replace(')', '')}: <span className="font-semibold">{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
-                                            )) : <li>No deadlines set in Calendar.</li>}
-                                        </ul>
+                                        return (
+                                            <AccordionItem value={prog.id} key={prog.id}>
+                                                <AccordionTrigger className="font-bold text-lg">{prog.name}</AccordionTrigger>
+                                                <AccordionContent>
+                                                    <Table>
+                                                        <TableHeader><TableRow><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead></TableRow></TableHeader>
+                                                        <TableBody>{courses.map(c => (
+                                                            <TableRow key={c.id}>
+                                                                <TableCell>{c.code}</TableCell>
+                                                                <TableCell>{c.name}</TableCell>
+                                                            </TableRow>
+                                                        ))}</TableBody>
+                                                    </Table>
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        )
+                                    })}
+                                    </Accordion>
+                                ) : (
+                                    <div className="py-16 text-center text-muted-foreground">
+                                        <BookOpen className="mx-auto h-12 w-12" />
+                                        <h3 className="mt-4 text-lg font-semibold">No Programmes Found</h3>
+                                        <p className="mt-2 text-sm">No programmes have a course path defined that includes this semester.</p>
                                     </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-            )}
-
-            {currentSemester && (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Available Courses for {semesterName}</CardTitle>
-                    <CardDescription>Courses associated with this semester via a Course Path.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {loading ? <Skeleton className="h-48 w-full" /> : 
-                     programmesForSemester.length > 0 ? (
-                    <Accordion type="multiple" defaultValue={programmesForSemester.map(p => p.id)} className="w-full">
-                           {programmesForSemester.map(prog => {
-                                const path = allCoursePaths.find(p => p.intakeId === currentSemester.intakeId && p.programmeId === prog.id);
-                                if (!path || !path.semesters) return null;
-                                const pathSemester = Object.entries(path.semesters).find(([semId, semData]) => semId === selectedSemester);
-                                if (!pathSemester) return null;
-                                
-                                const semesterCourseIds = pathSemester[1].courses || [];
-                                const courses = semesterCourseIds.map(id => ({...allCourses[id], id})).filter(Boolean);
-
-                                return (
-                                    <AccordionItem value={prog.id} key={prog.id}>
-                                        <AccordionTrigger className="font-bold text-lg">{prog.name}</AccordionTrigger>
-                                        <AccordionContent>
-                                            <Table><TableHeader><TableRow><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead></TableRow></TableHeader>
-                                                <TableBody>{courses.map(c => (
-                                                    <TableRow key={c.id}>
-                                                        <TableCell>{c.code}</TableCell>
-                                                        <TableCell>{c.name}</TableCell>
-                                                    </TableRow>
-                                                ))}</TableBody>
-                                            </Table>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                )
-                           })}
-                        </Accordion>
-                    ) : (
-                        <div className="py-16 text-center text-muted-foreground">
-                            <BookOpen className="mx-auto h-12 w-12" />
-                            <h3 className="mt-4 text-lg font-semibold">No Programmes Found</h3>
-                            <p className="mt-2 text-sm">No programmes have a course path defined that includes this semester.</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                    <TabsContent value="finance">
+                        <Card>
+                           <CardContent className="pt-6 grid md:grid-cols-2 gap-8">
+                                 <div>
+                                    <h4 className="font-semibold mb-2">Fees for {semesterName}</h4>
+                                    <div className="border rounded-lg p-3 space-y-2 text-sm">
+                                        <p className="font-bold">Mandatory:</p>
+                                        {currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
+                                        <Separator className="my-2"/>
+                                        <p className="font-bold">Optional:</p>
+                                        {currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
+                                        <Separator className="my-2"/>
+                                        <p className="font-bold">Late Fee:</p>
+                                        <div className="flex justify-between"><span>Late Registration</span><span>ZMW {(currentSemester.lateRegistrationFee || 0).toFixed(2)}</span></div>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold">Linked Payment Plans & Deadlines</h4>
+                                    <div className="space-y-4">
+                                        {(currentSemester.paymentPlanIds ? allPaymentPlans.filter(p => currentSemester.paymentPlanIds![p.id]) : []).map(plan => {
+                                            const deadlines = semesterDeadlines.filter(d => d.title.startsWith(plan.name));
+                                            return (
+                                                <div key={plan.id} className="border rounded-md p-3">
+                                                    <h5 className="font-bold">{plan.name}</h5>
+                                                    <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5">
+                                                        {deadlines.length > 0 ? deadlines.map(deadline => (
+                                                            <li key={deadline.title}>{deadline.title.replace(`${plan.name} (`, '').replace(')', '')}: <span className="font-semibold">{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
+                                                        )) : <li>No deadlines set in Calendar.</li>}
+                                                    </ul>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
             )}
         </div>
     );
 }
-
