@@ -106,7 +106,7 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
-            const allSemestersData = semestersSnap.exists() ? Object.entries(semestersSnap.val() as Record<string, Semester>).map(([id, data]) => ({id, ...data})) : [];
+            const allSemestersData = semestersSnap.exists() ? Object.values(semestersSnap.val() as Record<string, Semester>) : [];
 
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
@@ -132,7 +132,7 @@ export default function StudentRegistrationPage() {
             for (const semNumStr in pathOfferings) {
                 if (pathOfferings[semNumStr]?.active) {
                     const semNum = Number(semNumStr);
-                    const year = Math.floor((semNum - 1) / 2) + 1;
+                    const year = Math.ceil(semNum / 2);
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
                     const foundSemester = allSemestersData.find(

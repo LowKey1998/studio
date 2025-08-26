@@ -215,11 +215,11 @@ export default function AddStudentPage() {
         
         setAvailableYears(Array.from(years).sort((a, b) => a - b));
     }, [selectedIntake, programme, allCoursePaths]);
-
+    
     React.useEffect(() => {
         setAvailableSemesters([]);
         setSelectedSemester('');
-
+    
         if (!selectedIntake || !selectedYear || !programme) return;
     
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
@@ -227,17 +227,21 @@ export default function AddStudentPage() {
     
         const semesterNumbersInYear = Object.keys(relevantPath.semesters)
             .map(Number)
-            .filter(semNum => Math.ceil(semNum / 2) === selectedYear);
+            .filter(semNum => Math.ceil(semNum / 2) === selectedYear)
+            .map(semNum => (semNum - 1) % 2 + 1);
 
         if (semesterNumbersInYear.length > 0) {
-            const semestersForYear = semesterNumbersInYear.map(semNum => {
-                const foundSemester = allSemesters.find(s => s.intakeId === selectedIntake && s.year === selectedYear && s.semesterInYear === ((semNum - 1) % 2 + 1));
-                return foundSemester ? { id: foundSemester.id, name: `Semester ${foundSemester.semesterInYear}` } : null;
-            }).filter((s): s is {id: string, name: string} => s !== null);
+            const semestersForYear = allSemesters.filter(s =>
+                s.intakeId === selectedIntake &&
+                s.year === selectedYear &&
+                semesterNumbersInYear.includes(s.semesterInYear)
+            ).map(s => ({
+                id: s.id,
+                name: `Semester ${s.semesterInYear}`
+            }));
             
             setAvailableSemesters(semestersForYear.sort((a, b) => a.name.localeCompare(b.name)));
         }
-
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
 
