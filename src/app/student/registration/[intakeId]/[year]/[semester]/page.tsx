@@ -143,7 +143,7 @@ export default function RegisterForSemesterPage() {
 
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
-                const allPaymentPlans = paymentPlansSnap.val() || {};
+                const allPaymentPlansData = paymentPlansSnap.val() || {};
                 const allProgrammes = programmesSnap.val() || {};
 
                 const programmeData = allProgrammes[userDataVal.programmeId];
@@ -152,7 +152,7 @@ export default function RegisterForSemesterPage() {
                 }
 
                 const foundSemesterEntry = Object.entries(allSemesters as Record<string, Semester>).find(([id, sem]) => 
-                    sem.intakeId === intakeId && 
+                    (sem as any).intakeId === intakeId && 
                     sem.year === Number(yearParam) && 
                     sem.semesterInYear === Number(semesterInYearParam)
                 );
@@ -172,9 +172,8 @@ export default function RegisterForSemesterPage() {
                 
                 if (semesterData.paymentPlanIds) {
                     const linkedPlanIds = Object.keys(semesterData.paymentPlanIds);
-                    const available = Object.keys(allPaymentPlans)
-                        .map(planId => linkedPlanIds.includes(planId) ? { id: planId, ...allPaymentPlans[planId] } : null)
-                        .filter(p => p && !p.archived) as PaymentPlan[];
+                    const allPlansList = Object.keys(allPaymentPlansData).map(id => ({ id, ...allPaymentPlansData[id]}));
+                    const available = allPlansList.filter(p => linkedPlanIds.includes(p.id) && !p.archived);
 
                     setAvailablePaymentPlans(available);
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
@@ -366,4 +365,3 @@ export default function RegisterForSemesterPage() {
         </div>
     );
 }
-
