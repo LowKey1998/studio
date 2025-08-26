@@ -13,6 +13,11 @@ const SendEmailInputSchema = z.object({
   to: z.array(z.string().email()).describe('A list of recipient email addresses.'),
   subject: z.string().describe('The subject of the email.'),
   body: z.string().describe('The HTML content of the email.'),
+  attachments: z.array(z.object({
+    filename: z.string(),
+    content: z.string().describe('Base64 encoded content of the file.'),
+    contentType: z.string().optional(),
+  })).optional().describe('An array of attachments.'),
   log: z.boolean().optional().default(false).describe("Whether to log this communication in the parent communication logs."),
   userIds: z.array(z.string()).optional().describe("The user IDs of the recipients, if logging is enabled.")
 });
@@ -29,7 +34,7 @@ export const sendEmailFlow = ai.defineFlow(
     inputSchema: SendEmailInputSchema,
     outputSchema: z.object({ result: z.string() }),
   },
-  async ({ to, subject, body, log, userIds }) => {
+  async ({ to, subject, body, attachments, log, userIds }) => {
     const settingsRef = ref(db, 'settings/integrations/smtp');
     const settingsSnap = await get(settingsRef);
 
@@ -70,11 +75,19 @@ export const sendEmailFlow = ai.defineFlow(
 
 
     try {
+      const emailAttachments = attachments?.map(att => ({
+        filename: att.filename,
+        content: att.content,
+        encoding: 'base64',
+        contentType: att.contentType || 'application/octet-stream'
+      }));
+
       const info = await transporter.sendMail({
         from: `"${smtpConfig.fromName || 'Edutrack360'}" <${smtpConfig.fromEmail || smtpConfig.user}>`,
         bcc: to.join(', '), // Use BCC to send to multiple recipients without exposing their addresses to each other
         subject: subject,
         html: body,
+        attachments: emailAttachments
       });
 
       if (log) {

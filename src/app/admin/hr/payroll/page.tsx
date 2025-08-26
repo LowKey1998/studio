@@ -106,6 +106,7 @@ export default function PayrollPage() {
             const currentMonth = format(new Date(), 'MMMM yyyy');
             const result = await sendPayslipEmail({
                 staffName: staff.name,
+                staffId: staff.id,
                 staffEmail: staff.email,
                 month: currentMonth,
                 grossSalary: payroll.grossSalary,
