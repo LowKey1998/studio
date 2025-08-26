@@ -73,7 +73,7 @@ type Programme = {
 type Semester = {
     id: string;
     name: string;
-    status: string;
+    intakeId: string;
     year: number;
     semesterInYear: number;
 };
@@ -197,56 +197,47 @@ export default function AddStudentPage() {
         fetchInitialData();
     }, [fetchInitialData]);
 
-    // Update available years when intake or programme changes
     React.useEffect(() => {
-        if (!selectedIntake || !programme) {
-            setAvailableYears([]);
-            setSelectedYear('');
-            return;
-        }
+        setAvailableYears([]);
+        setSelectedYear('');
+        setAvailableSemesters([]);
+        setSelectedSemester('');
+        
+        if (!selectedIntake || !programme) return;
 
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         
-        if (!relevantPath || !relevantPath.semesters) {
-            setAvailableYears([]);
-            return;
-        }
+        if (!relevantPath || !relevantPath.semesters) return;
 
         const years = new Set(
             Object.keys(relevantPath.semesters).map(semNum => Math.ceil(Number(semNum) / 2))
         );
         
         setAvailableYears(Array.from(years).sort((a, b) => a - b));
-        setSelectedYear('');
     }, [selectedIntake, programme, allCoursePaths]);
 
-    // Update available semesters when year changes
     React.useEffect(() => {
-        if (!selectedIntake || !selectedYear || !programme) {
-            setAvailableSemesters([]);
-            setSelectedSemester('');
-            return;
-        }
+        setAvailableSemesters([]);
+        setSelectedSemester('');
+
+        if (!selectedIntake || !selectedYear || !programme) return;
     
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
-        if (!relevantPath || !relevantPath.semesters) {
-            setAvailableSemesters([]);
-            return;
-        }
+        if (!relevantPath || !relevantPath.semesters) return;
     
         const semesterNumbersInYear = Object.keys(relevantPath.semesters)
             .map(Number)
             .filter(semNum => Math.ceil(semNum / 2) === selectedYear);
-    
-        const semestersForYear = allSemesters
-            .filter(s => s.intakeId === selectedIntake && Math.ceil(Number(s.semesterInYear) / 2) === selectedYear && semesterNumbersInYear.includes(s.semesterInYear))
-            .map(s => ({
-                id: s.id,
-                name: `Semester ${s.semesterInYear}`
-            }));
+
+        if (semesterNumbersInYear.length > 0) {
+            const semestersForYear = semesterNumbersInYear.map(semNum => {
+                const foundSemester = allSemesters.find(s => s.intakeId === selectedIntake && s.year === selectedYear && s.semesterInYear === ((semNum - 1) % 2 + 1));
+                return foundSemester ? { id: foundSemester.id, name: `Semester ${foundSemester.semesterInYear}` } : null;
+            }).filter((s): s is {id: string, name: string} => s !== null);
             
-        setAvailableSemesters(semestersForYear.sort((a, b) => a.name.localeCompare(b.name)));
-        setSelectedSemester('');
+            setAvailableSemesters(semestersForYear.sort((a, b) => a.name.localeCompare(b.name)));
+        }
+
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
 
