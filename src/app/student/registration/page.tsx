@@ -121,7 +121,7 @@ export default function StudentRegistrationPage() {
 
             const [userPathId, userPath] = userPathEntry;
             
-            const pathOfferings = (semesterOfferingsSnap.val() || {})[userPathId] || {};
+            const semesterOfferings = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
             const semesterList: SemesterWithStatus[] = [];
@@ -129,7 +129,7 @@ export default function StudentRegistrationPage() {
             if (userPath.semesters) {
                 for (const semId in userPath.semesters) {
                     const semesterDetails = allSemestersData[semId];
-                    if (!semesterDetails) continue;
+                    if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
                     const semesterCourses = userPath.semesters[semId]?.courses || [];
                     const courseDetails: Course[] = semesterCourses.map((id: string) => ({
@@ -138,14 +138,14 @@ export default function StudentRegistrationPage() {
                         code: allCoursesData[id]?.code || 'N/A'
                     }));
                     
-                    const isActive = pathOfferings[semId]?.active;
+                    const isOpen = semesterOfferings[semesterDetails.name]?.courseIds?.length > 0 && semesterDetails.status === 'Open';
                     const isRegistered = userRegistrations.includes(semId);
 
                     semesterList.push({ 
                         ...semesterDetails,
                         id: semId,
                         isRegistered,
-                        isOpen: isActive && !isRegistered,
+                        isOpen: isOpen && !isRegistered,
                         courses: courseDetails,
                     });
                 }
