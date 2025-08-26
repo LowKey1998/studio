@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -20,6 +21,7 @@ type Staff = {
     email: string;
     phoneNumber?: string;
     department?: string;
+    role?: string;
     subRoles?: string[];
 };
 
@@ -98,7 +100,7 @@ export default function StaffListPage() {
             s.email,
             s.phoneNumber || 'N/A',
             s.department || 'N/A',
-            s.subRoles?.join(', ') || s.role,
+            s.subRoles?.join(', ') || s.role || 'Staff',
         ]);
 
         (doc as any).autoTable({
@@ -107,8 +109,7 @@ export default function StaffListPage() {
             startY: 35
         });
         
-        doc.autoPrint();
-        window.open(doc.output('bloburl'));
+        doc.save(`staff_list_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (

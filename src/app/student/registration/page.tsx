@@ -137,7 +137,7 @@ export default function StudentRegistrationPage() {
                         name: allCoursesData[id]?.name || 'Unknown Course',
                         code: allCoursesData[id]?.code || 'N/A'
                     }));
-
+                    
                     const isActive = pathOfferings[semId]?.active;
                     const isRegistered = userRegistrations.includes(semId);
 
