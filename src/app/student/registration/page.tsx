@@ -39,6 +39,7 @@ type Semester = {
     intakeId: string;
     year: number;
     semesterInYear: number;
+    status: 'Open' | 'Closed' | 'Archived';
 };
 
 type SemesterWithStatus = Semester & {
@@ -125,27 +126,29 @@ export default function StudentRegistrationPage() {
             
             const semesterList: SemesterWithStatus[] = [];
             
-            for (const semId in userPath.semesters) {
-                const semesterDetails = allSemestersData[semId];
-                if (!semesterDetails) continue;
+            if (userPath.semesters) {
+                for (const semId in userPath.semesters) {
+                    const semesterDetails = allSemestersData[semId];
+                    if (!semesterDetails || semesterDetails.status !== 'Open') continue;
 
-                const semesterCourses = userPath.semesters[semId]?.courses || [];
-                const courseDetails: Course[] = semesterCourses.map((id: string) => ({
-                    id,
-                    name: allCoursesData[id]?.name || 'Unknown Course',
-                    code: allCoursesData[id]?.code || 'N/A'
-                }));
+                    const semesterCourses = userPath.semesters[semId]?.courses || [];
+                    const courseDetails: Course[] = semesterCourses.map((id: string) => ({
+                        id,
+                        name: allCoursesData[id]?.name || 'Unknown Course',
+                        code: allCoursesData[id]?.code || 'N/A'
+                    }));
 
-                const isActive = pathOfferings[semId]?.active;
-                const isRegistered = userRegistrations.includes(semId);
+                    const isActive = pathOfferings[semId]?.active;
+                    const isRegistered = userRegistrations.includes(semId);
 
-                semesterList.push({ 
-                    ...semesterDetails,
-                    id: semId,
-                    isRegistered,
-                    isOpen: isActive && !isRegistered,
-                    courses: courseDetails,
-                });
+                    semesterList.push({ 
+                        ...semesterDetails,
+                        id: semId,
+                        isRegistered,
+                        isOpen: isActive && !isRegistered,
+                        courses: courseDetails,
+                    });
+                }
             }
             
             setSemestersForPath(semesterList.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
@@ -249,9 +252,9 @@ export default function StudentRegistrationPage() {
                     ) : (
                         <Alert>
                             <Info className="h-4 w-4" />
-                            <AlertTitle>No Semesters Found</AlertTitle>
+                            <AlertTitle>No Semesters Available</AlertTitle>
                             <AlertDescription>
-                                A course path has not been configured for your programme and intake. Please contact administration.
+                                There are no semesters currently open for registration for your programme. Please check back later.
                             </AlertDescription>
                         </Alert>
                     )}
