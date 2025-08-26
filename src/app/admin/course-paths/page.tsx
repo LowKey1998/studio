@@ -66,7 +66,6 @@ export default function CoursePathsPage() {
     
     // --- Data Fetching ---
     React.useEffect(() => {
-        setLoading(true);
         const refs = [
             ref(db, 'intakes'),
             ref(db, 'programmes'),
@@ -74,10 +73,41 @@ export default function CoursePathsPage() {
             ref(db, 'coursePaths'),
             ref(db, 'semesters')
         ];
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const snapshots = await Promise.all(refs.map(r => get(r)));
+                const [intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semestersSnap] = snapshots;
+
+                const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
+                setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
+                
+                const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
+                setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
+                
+                const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
+                setCourses(Object.keys(coursesData).map(id => ({ id, ...coursesData[id] })));
+
+                const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
+                setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
+
+                const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
+                setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
+            } catch (error) {
+                console.error("Failed to fetch initial data:", error);
+                toast({ variant: "destructive", title: "Error", description: "Failed to load page data."});
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+        
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
-            const data = snapshot.val() || {};
+             const data = snapshot.val() || {};
             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
-            switch(i) {
+             switch(i) {
                 case 0: setIntakes(list.sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 1: setProgrammes(list); break;
                 case 2: setCourses(list); break;
@@ -85,9 +115,10 @@ export default function CoursePathsPage() {
                 case 4: setAllSemesters(list); break;
             }
         }));
-        setLoading(false);
+
         return () => unsubs.forEach(unsub => unsub());
-    }, []);
+
+    }, [toast]);
 
     // --- Course Path Logic ---
     const currentPath = React.useMemo(() => {
@@ -325,7 +356,8 @@ export default function CoursePathsPage() {
                                 <Table>
                                     <TableHeader><TableRow><TableHead>Intake Name</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                     <TableBody>
-                                        {intakes.length > 0 ? intakes.map(i => (
+                                        {loading ? <TableRow><TableCell colSpan={2}><Skeleton className="h-10 w-full"/></TableCell></TableRow> :
+                                        intakes.length > 0 ? intakes.map(i => (
                                             <TableRow key={i.id}><TableCell>{i.name}</TableCell><TableCell className="text-right">
                                                 <Button variant="outline" size="sm" className="mr-2" onClick={() => { setSelectedIntake(i.id); setActiveTab('paths'); }}>
                                                     <Route className="mr-2 h-4 w-4" />
@@ -536,6 +568,8 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
+    
+
     
 
     
