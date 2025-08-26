@@ -32,9 +32,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; };
+type Course = { id: string; name: string; code: string; year: number; };
+type GroupedCourses = { [year: string]: Course[]; };
+type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; };
 type Intake = { id: string; name: string; };
-type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
@@ -244,7 +245,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 }
 
 export default function RegistrationManagementPage() {
-    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
+    const [programmesWithCourses, setProgrammesWithCourses] = React.useState<Programme[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
@@ -271,26 +272,28 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         try {
             const [
-                coursesSnap,
                 paymentPlansSnap, 
                 semestersSnap, 
                 feeTemplatesSnap, 
                 eventsSnap,
                 programmesSnap,
                 coursePathsSnap,
+                coursesSnap,
+                usersSnap
             ] = await Promise.all([
-                get(ref(db, 'courses')),
                 get(ref(db, 'settings/paymentPlans')),
                 get(ref(db, 'semesters')), 
                 get(ref(db, 'settings/feeTemplates')),
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'coursePaths')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'users'))
             ]);
 
-            setAllCourses(coursesSnap.exists() ? coursesSnap.val() : {});
             const semesterList = semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })).sort((a,b) => b.name.localeCompare(a.name)) : [];
             setSemesters(semesterList);
+
             setAllProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
             setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
             
@@ -298,9 +301,32 @@ export default function RegistrationManagementPage() {
             setFeeTemplates(feeTemplatesSnap.exists() ? Object.keys(feeTemplatesSnap.val()).map(id => ({ id, ...feeTemplatesSnap.val()[id] })) : []);
             setAllCalendarEvents(eventsSnap.exists() ? Object.values(eventsSnap.val()) : []);
 
-            if (!selectedSemester && semesterList.length > 0) {
+             if (!selectedSemester && semesterList.length > 0) {
                 setSelectedSemester(semesterList[0].id);
             }
+            
+            const allCoursesData = coursesSnap.exists() ? coursesSnap.val() : {};
+            const userMap = new Map<string, string>();
+            if (usersSnap.exists()) { Object.entries(usersSnap.val()).forEach(([uid, userData]: [string, any]) => userMap.set(uid, userData.name)); }
+
+            const programmeData: Programme[] = (programmesSnap.exists() ? Object.entries(programmesSnap.val()) : []).map(([id, prog]: [string, any]) => {
+                const progCourses: Course[] = (prog.courseIds ? Object.keys(prog.courseIds) : [])
+                    .map((courseId: string) => {
+                        const courseData = allCoursesData[courseId];
+                        return courseData && courseData.status === 'active' ? { id: courseId, ...courseData, lecturerName: userMap.get(courseData.lecturerId) || 'N/A' } : null;
+                    }).filter(Boolean) as Course[];
+
+                const coursesByYear = progCourses.reduce((acc, course) => {
+                    const yearKey = `Year ${course.year}`;
+                    if (!acc[yearKey]) acc[yearKey] = [];
+                    acc[yearKey].push(course);
+                    return acc;
+                }, {} as GroupedCourses);
+
+                return { id, name: prog.name, coursesByYear: Object.fromEntries(Object.entries(coursesByYear).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', '')))) };
+            });
+            setProgrammesWithCourses(programmeData);
+
 
         } catch (error) {
             console.error(error);
@@ -313,7 +339,44 @@ export default function RegistrationManagementPage() {
     React.useEffect(() => {
         refreshData();
     }, []);
-    
+
+    const fetchDataForSemester = React.useCallback(async () => {
+        const semesterData = semesters.find(s => s.id === selectedSemester);
+        if (!semesterData) { return; }
+        setLoading(true);
+        setSemesterDeadlines([]);
+        try {
+            const eventsSnapshot = await get(ref(db, 'calendarEvents'));
+
+            const eventMap = new Map<string, {date: string, id: string}>();
+            if (eventsSnapshot.exists()) { 
+                Object.entries(eventsSnapshot.val()).forEach(([id, event]:[string, any]) => {
+                    eventMap.set(event.title.trim(), { date: event.date, id });
+                });
+            }
+            const linkedPlanIds = Object.keys(semesterData.paymentPlanIds || {});
+            const linkedPlans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
+
+            const requiredDeadlines: string[] = [];
+            linkedPlans.forEach(plan => {
+                 for (let i = 0; i < plan.installments; i++) {
+                    requiredDeadlines.push(`${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterData.name}`);
+                }
+            })
+            setSemesterDeadlines(requiredDeadlines.map(title => {
+                const existing = eventMap.get(title.trim());
+                return { title: title.replace(` - ${semesterData.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
+            }));
+
+        } catch (error) { console.error('Error fetching data:', error); toast({ variant: 'destructive', title: 'Failed to load data' });
+        } finally { setLoading(false); }
+    }, [selectedSemester, semesters, toast, allPaymentPlans]);
+
+    React.useEffect(() => {
+        if(selectedSemester){ fetchDataForSemester();
+        } else { setProgrammesWithCourses([]); setLoading(false); }
+    }, [selectedSemester, fetchDataForSemester]);
+
     const handleToggleSemesterStatus = async (semester: Semester) => {
         let newStatus: Semester['status'] = semester.status === 'Open' ? 'Closed' : 'Open';
         
@@ -325,6 +388,7 @@ export default function RegistrationManagementPage() {
                 await Promise.all(notificationPromises);
             }
             toast({ variant: 'success', title: `Semester status updated to ${newStatus}` });
+            refreshData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
@@ -332,20 +396,54 @@ export default function RegistrationManagementPage() {
         const newStatus = !(semester.lateRegistrationActive ?? false);
         try { await update(ref(db, `semesters/${semester.id}`), { lateRegistrationActive: newStatus });
              toast({ variant: 'success', title: `Late Registration ${newStatus ? 'Enabled' : 'Disabled'}` });
+             refreshData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
+    const handleSaveDeadline = async (title: string, eventId: string | null) => {
+        if (!currentSemester) return;
+        const date = deadlineDates[title];
+        if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
+        setSaving(true);
+        const fullTitle = `${title} - ${currentSemester.name}`;
+        try {
+            if(eventId) { // Editing existing event
+                const eventRef = ref(db, `calendarEvents/${eventId}`);
+                await update(eventRef, { date: format(date, 'yyyy-MM-dd') });
+                toast({ title: "Deadline Updated" });
+            } else { // Creating new event
+                const newEventRef = push(ref(db, 'calendarEvents'));
+                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester?.name });
+                toast({ title: `${title} Added` });
+            }
+            
+            setDeadlineDates(prev => {
+                const newDates = { ...prev };
+                delete newDates[title];
+                return newDates;
+            });
+            setEditingDeadlineId(null);
+            fetchDataForSemester(); // Refetch data to update deadline list
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Failed to save deadline' }); 
+        } finally { 
+            setSaving(false); 
+        }
+    }
+    
     const currentSemester = semesters.find(s => s.id === selectedSemester);
+    const semesterName = currentSemester?.name || '';
+    const canSave = semesterDeadlines.every(d => d.date !== null);
 
     const programmesForSemester = React.useMemo(() => {
         if (!currentSemester) return [];
-        return allProgrammes.filter(prog => 
+        return programmesWithCourses.filter(prog => 
             allCoursePaths.some(path => 
                 path.programmeId === prog.id && path.intakeId === currentSemester.intakeId
             )
         );
-    }, [currentSemester, allProgrammes, allCoursePaths]);
-    
+    }, [currentSemester, programmesWithCourses, allCoursePaths]);
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -366,12 +464,10 @@ export default function RegistrationManagementPage() {
                                 <SelectContent>{semesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name} ({s.status})</div></SelectItem>))}</SelectContent>
                             </Select>
                         </div>
-                        {currentSemester && (
-                            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                                <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { refreshData(); setIsEditDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
-                            </Dialog>
-                        )}
+                         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                            <DialogTrigger asChild><Button variant="outline" disabled={!currentSemester} onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { refreshData(); setIsEditDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                        </Dialog>
                     </div>
                 </CardContent>
             </Card>
@@ -381,51 +477,61 @@ export default function RegistrationManagementPage() {
                 <CardHeader className="flex-row justify-between items-center">
                     <CardTitle className="text-xl">Controls for {currentSemester.name}</CardTitle>
                     <div className='flex flex-wrap gap-2'>
-                        <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)}><Power className="mr-2 h-4 w-4" />{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
+                        <Button variant={currentSemester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(currentSemester)} disabled={!canSave && currentSemester.status !== 'Open'} title={!canSave && currentSemester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{currentSemester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{currentSemester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
                         {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
                     </div>
                 </CardHeader>
+                 <CardContent>
+                    {!loading && !canSave && currentSemester.status !== 'Open' && (
+                        <Alert variant="destructive" className="mt-4">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle>
+                            <AlertDescription>
+                                <p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p>
+                                <ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                </CardContent>
             </Card>
             )}
 
             {currentSemester && (
             <Card>
                 <CardHeader>
-                    <CardTitle>Financial Setup for {currentSemester.name}</CardTitle>
-                    <CardDescription>An overview of fees, payment plans, and their deadlines for this semester.</CardDescription>
+                    <CardTitle>Financial Setup for {semesterName}</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <div className="space-y-2">
-                            <h4 className="font-semibold">Mandatory Fees</h4>
-                            <div className="border rounded-md p-2 space-y-1 text-sm">{currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground">None</p>}</div>
-                        </div>
-                         <div className="space-y-2">
-                            <h4 className="font-semibold">Optional Fees</h4>
-                            <div className="border rounded-md p-2 space-y-1 text-sm">{currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground">None</p>}</div>
-                        </div>
-                         <div className="space-y-2">
-                            <h4 className="font-semibold">Late Registration Fee</h4>
-                            <p className="font-bold text-lg">ZMW {(currentSemester.lateRegistrationFee || 0).toFixed(2)}</p>
+                <CardContent className="grid md:grid-cols-2 gap-8">
+                     <div>
+                        <h4 className="font-semibold mb-2">Fees</h4>
+                        <div className="border rounded-lg p-3 space-y-2 text-sm">
+                            <p className="font-bold">Mandatory:</p>
+                            {currentSemester.mandatoryFees ? Object.values(currentSemester.mandatoryFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
+                            <Separator className="my-2"/>
+                             <p className="font-bold">Optional:</p>
+                            {currentSemester.optionalFees ? Object.values(currentSemester.optionalFees).map((fee, i) => <div key={i} className="flex justify-between"><span>{fee.name}</span><span>ZMW {(fee.amount || 0).toFixed(2)}</span></div>) : <p className="text-muted-foreground text-xs">None</p>}
+                            <Separator className="my-2"/>
+                             <p className="font-bold">Late Fee:</p>
+                             <div className="flex justify-between"><span>Late Registration</span><span>ZMW {(currentSemester.lateRegistrationFee || 0).toFixed(2)}</span></div>
                          </div>
                     </div>
-                    <Separator/>
-                     <div>
-                        <h4 className="font-semibold mb-2">Linked Payment Plans & Deadlines</h4>
-                        <div className="grid md:grid-cols-2 gap-4">
+
+                     <div className="space-y-2">
+                        <h4 className="font-semibold">Linked Payment Plans & Deadlines</h4>
+                        <div className="space-y-4">
                             {(currentSemester.paymentPlanIds ? allPaymentPlans.filter(p => currentSemester.paymentPlanIds![p.id]) : []).map(plan => {
-                                const deadlines = allCalendarEvents.filter(e => e.semester === currentSemester.name && e.title.startsWith(plan.name));
+                                const deadlines = semesterDeadlines.filter(d => d.title.startsWith(plan.name));
                                 return (
                                     <div key={plan.id} className="border rounded-md p-3">
                                         <h5 className="font-bold">{plan.name}</h5>
                                         <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5">
-                                            {deadlines.map(deadline => (
-                                                <li key={deadline.id}>{deadline.title.replace(` - ${currentSemester.name}`, '')}: <span className="font-semibold">{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
-                                            ))}
+                                            {deadlines.length > 0 ? deadlines.map(deadline => (
+                                                <li key={deadline.title}>{deadline.title.replace(`${plan.name} (`, '').replace(')', '')}: <span className="font-semibold">{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
+                                            )) : <li>No deadlines set in Calendar.</li>}
                                         </ul>
                                     </div>
                                 )
-                             })}
+                            })}
                         </div>
                     </div>
                 </CardContent>
@@ -433,35 +539,52 @@ export default function RegistrationManagementPage() {
             )}
 
             {currentSemester && (
-            <Card className="shadow-lg">
+            <Card>
                 <CardHeader>
-                    <CardTitle className="text-xl">Available Courses for {currentSemester.name}</CardTitle>
+                    <CardTitle>Available Courses for {semesterName}</CardTitle>
+                    <CardDescription>Courses associated with this semester via a Course Path.</CardDescription>
                 </CardHeader>
-                 <CardContent>
-                 {loading ? <Skeleton className="h-48 w-full" /> : 
-                     <Accordion type="multiple" defaultValue={programmesForSemester.map(p => p.id)}>
-                        {programmesForSemester.map(prog => {
-                            const path = allCoursePaths.find(p => p.intakeId === currentSemester.intakeId && p.programmeId === prog.id);
-                            if (!path || !path.semesters[currentSemester.id]) return null;
-                            
-                            const courses = path.semesters[currentSemester.id].courses.map(id => allCourses[id]).filter(Boolean);
-                            
-                            return (
-                                <AccordionItem value={prog.id} key={prog.id}>
-                                    <AccordionTrigger className="font-bold">{prog.name}</AccordionTrigger>
-                                    <AccordionContent>
-                                        <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
-                                            {courses.map(c => <li key={c.id}>{c.code} - {c.name}</li>)}
-                                        </ul>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            )
-                        })}
-                     </Accordion>
-                 }
+                <CardContent>
+                    {loading ? <Skeleton className="h-48 w-full" /> : 
+                     programmesForSemester.length > 0 ? (
+                    <Accordion type="multiple" defaultValue={programmesForSemester.map(p => p.id)} className="w-full">
+                           {programmesForSemester.map(prog => {
+                                const path = allCoursePaths.find(p => p.intakeId === currentSemester.intakeId && p.programmeId === prog.id);
+                                if (!path || !path.semesters) return null;
+                                const pathSemester = Object.entries(path.semesters).find(([semId, semData]) => semId === selectedSemester);
+                                if (!pathSemester) return null;
+                                
+                                const semesterCourseIds = pathSemester[1].courses || [];
+                                const courses = semesterCourseIds.map(id => ({...allCourses[id], id})).filter(Boolean);
+
+                                return (
+                                    <AccordionItem value={prog.id} key={prog.id}>
+                                        <AccordionTrigger className="font-bold text-lg">{prog.name}</AccordionTrigger>
+                                        <AccordionContent>
+                                            <Table><TableHeader><TableRow><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead></TableRow></TableHeader>
+                                                <TableBody>{courses.map(c => (
+                                                    <TableRow key={c.id}>
+                                                        <TableCell>{c.code}</TableCell>
+                                                        <TableCell>{c.name}</TableCell>
+                                                    </TableRow>
+                                                ))}</TableBody>
+                                            </Table>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                )
+                           })}
+                        </Accordion>
+                    ) : (
+                        <div className="py-16 text-center text-muted-foreground">
+                            <BookOpen className="mx-auto h-12 w-12" />
+                            <h3 className="mt-4 text-lg font-semibold">No Programmes Found</h3>
+                            <p className="mt-2 text-sm">No programmes have a course path defined that includes this semester.</p>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
             )}
         </div>
     );
 }
+
