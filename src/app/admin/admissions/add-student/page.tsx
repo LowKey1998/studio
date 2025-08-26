@@ -183,7 +183,12 @@ export default function AddStudentPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
-            if (coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val())); else setAllCoursePaths([]);
+            if (coursePathsSnap.exists()) {
+                const pathsData = coursePathsSnap.val();
+                setAllCoursePaths(Object.keys(pathsData).map(id => ({ id, ...pathsData[id] })));
+            } else {
+                setAllCoursePaths([]);
+            }
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -197,25 +202,29 @@ export default function AddStudentPage() {
         fetchInitialData();
     }, [fetchInitialData]);
 
+     // When Intake or Programme changes, update available Years
     React.useEffect(() => {
         setAvailableYears([]);
         setSelectedYear('');
         setAvailableSemesters([]);
         setSelectedSemester('');
-        
-        if (!selectedIntake || !programme) return;
+
+        if (!selectedIntake || !programme || allCoursePaths.length === 0) return;
 
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         
         if (!relevantPath || !relevantPath.semesters) return;
 
-        const years = new Set(
-            Object.keys(relevantPath.semesters).map(semNum => Math.ceil(Number(semNum) / 2))
-        );
+        const years = new Set<number>();
+        Object.keys(relevantPath.semesters).forEach(semNum => {
+            const year = Math.ceil(Number(semNum) / 2);
+            years.add(year);
+        });
         
         setAvailableYears(Array.from(years).sort((a, b) => a - b));
     }, [selectedIntake, programme, allCoursePaths]);
     
+    // When Year changes, update available Semesters
     React.useEffect(() => {
         setAvailableSemesters([]);
         setSelectedSemester('');
@@ -224,23 +233,24 @@ export default function AddStudentPage() {
     
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         if (!relevantPath || !relevantPath.semesters) return;
-    
-        const semesterNumbersInYear = Object.keys(relevantPath.semesters)
-            .map(Number)
-            .filter(semNum => Math.ceil(semNum / 2) === selectedYear)
-            .map(semNum => (semNum - 1) % 2 + 1);
 
-        if (semesterNumbersInYear.length > 0) {
-            const semestersForYear = allSemesters.filter(s =>
-                s.intakeId === selectedIntake &&
-                s.year === selectedYear &&
-                semesterNumbersInYear.includes(s.semesterInYear)
-            ).map(s => ({
-                id: s.id,
-                name: `Semester ${s.semesterInYear}`
-            }));
-            
-            setAvailableSemesters(semestersForYear.sort((a, b) => a.name.localeCompare(b.name)));
+        const semesterNumbersForYear = Object.keys(relevantPath.semesters)
+            .map(Number)
+            .filter(semNum => Math.ceil(semNum / 2) === selectedYear);
+
+        if (semesterNumbersForYear.length > 0) {
+            const semestersForDropdown = allSemesters
+                .filter(s => 
+                    s.intakeId === selectedIntake &&
+                    s.year === selectedYear &&
+                    semesterNumbersForYear.includes(s.semesterInYear)
+                )
+                .map(s => ({
+                    id: s.id,
+                    name: `Semester ${s.semesterInYear}`
+                }));
+
+            setAvailableSemesters(semestersForDropdown.sort((a, b) => a.name.localeCompare(b.name)));
         }
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
@@ -442,7 +452,3 @@ export default function AddStudentPage() {
         </>
     );
 }
-
-    
-
-    

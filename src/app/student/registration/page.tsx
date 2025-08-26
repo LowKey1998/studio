@@ -106,7 +106,8 @@ export default function StudentRegistrationPage() {
             const programmes = programmesSnap.val() || {};
             const intakes = intakesSnap.val() || {};
             const allCoursesData = coursesSnap.val() || {};
-            const allSemestersData = semestersSnap.exists() ? Object.values(semestersSnap.val() as Record<string, Semester>) : [];
+            const allSemesters = semestersSnap.exists() ? Object.values(semestersSnap.val() as Record<string, Semester>) : [];
+            const allSemestersWithId = semestersSnap.exists() ? semestersSnap.val() : {};
 
             profile.programmeName = programmes[profile.programmeId]?.name || 'Unknown Programme';
             profile.intakeName = intakes[profile.intakeId]?.name || 'Unknown Intake';
@@ -135,13 +136,14 @@ export default function StudentRegistrationPage() {
                     const year = Math.ceil(semNum / 2);
                     const semesterInYear = ((semNum - 1) % 2) + 1;
                     
-                    const foundSemester = allSemestersData.find(
+                    const foundSemester = allSemesters.find(
                         s => s.intakeId === profile.intakeId && s.year === year && s.semesterInYear === semesterInYear
                     );
 
                     if (!foundSemester) continue;
 
-                    const semesterId = foundSemester.id;
+                    const semesterId = Object.keys(allSemestersWithId).find(key => allSemestersWithId[key].name === foundSemester.name)!;
+
                     const isRegistered = userRegistrations.includes(semesterId);
                     
                      if (!isRegistered) {
