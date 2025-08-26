@@ -131,29 +131,37 @@ export default function StudentRegistrationPage() {
             const semesterIdsInPath = Object.keys(userPath.semesters);
             
             for (const semId of semesterIdsInPath) {
-                if (pathOfferings[semId]?.active) {
+                const semesterOffering = Object.values(pathOfferings).find((offering: any) => offering.semesterId === semId);
+
+                // This logic needs to find the semester that is active for this path.
+                // The semesterOfferings structure is pathId -> semesterNumber -> {active: true}
+                // We need to find which `semesterNumber` in the path is active.
+                
+                // Let's re-evaluate how we check for active semesters
+            }
+
+            // Corrected Logic
+            const activeSemestersForPath = pathOfferings;
+            for (const semId in activeSemestersForPath) {
+                 if (activeSemestersForPath[semId]?.active && !userRegistrations.includes(semId)) {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails) continue;
 
-                    const isRegistered = userRegistrations.includes(semId);
-                    
-                    if (!isRegistered) {
-                        const semesterCourses = userPath.semesters[semId]?.courses || [];
-                        const courseDetails: Course[] = semesterCourses.map((id: string) => ({
-                            id,
-                            name: allCoursesData[id]?.name || 'Unknown Course',
-                            code: allCoursesData[id]?.code || 'N/A'
-                        }));
+                    const semesterCourses = userPath.semesters[semId]?.courses || [];
+                    const courseDetails: Course[] = semesterCourses.map((id: string) => ({
+                        id,
+                        name: allCoursesData[id]?.name || 'Unknown Course',
+                        code: allCoursesData[id]?.code || 'N/A'
+                    }));
 
-                        activeSemestersList.push({ 
-                           semesterId: semId,
-                           semesterName: semesterDetails.name,
-                           intakeId: profile.intakeId,
-                           year: semesterDetails.year, 
-                           semesterInYear: semesterDetails.semesterInYear,
-                           courses: courseDetails,
-                       });
-                    }
+                    activeSemestersList.push({ 
+                        semesterId: semId,
+                        semesterName: semesterDetails.name,
+                        intakeId: profile.intakeId,
+                        year: semesterDetails.year, 
+                        semesterInYear: semesterDetails.semesterInYear,
+                        courses: courseDetails,
+                    });
                 }
             }
             

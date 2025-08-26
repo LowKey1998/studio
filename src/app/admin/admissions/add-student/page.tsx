@@ -201,46 +201,47 @@ export default function AddStudentPage() {
     React.useEffect(() => {
         fetchInitialData();
     }, [fetchInitialData]);
-
+    
+    // EFFECT TO POPULATE YEARS
     React.useEffect(() => {
         setAvailableYears([]);
         setSelectedYear('');
-        setAvailableSemesters([]);
-        setSelectedSemester('');
-    
-        if (!selectedIntake || !programme || allCoursePaths.length === 0) return;
-    
+
+        if (!selectedIntake || !programme || allCoursePaths.length === 0 || allSemesters.length === 0) return;
+
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
-        
         if (!relevantPath || !relevantPath.semesters) return;
-        
+
         const semesterIdsInPath = Object.keys(relevantPath.semesters);
         
-        const years = new Set<number>();
-        allSemesters.forEach(semester => {
-            if (semesterIdsInPath.includes(semester.id)) {
-                years.add(semester.year);
-            }
-        });
-        
-        setAvailableYears(Array.from(years).sort((a, b) => a - b));
+        const yearsInPath = allSemesters
+            .filter(semester => semesterIdsInPath.includes(semester.id))
+            .map(semester => semester.year);
+            
+        const uniqueYears = Array.from(new Set(yearsInPath)).sort((a, b) => a - b);
+        setAvailableYears(uniqueYears);
+
     }, [selectedIntake, programme, allCoursePaths, allSemesters]);
-    
+
+    // EFFECT TO POPULATE SEMESTERS
     React.useEffect(() => {
         setAvailableSemesters([]);
         setSelectedSemester('');
     
-        if (!selectedIntake || !selectedYear || !programme) return;
+        if (!selectedIntake || !selectedYear || !programme || !allCoursePaths.length || !allSemesters.length) return;
     
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         if (!relevantPath || !relevantPath.semesters) return;
-        
+
         const semesterIdsInPath = Object.keys(relevantPath.semesters);
-        const semestersForDropdown = allSemesters.filter(s => 
-            semesterIdsInPath.includes(s.id) && s.year === selectedYear
+
+        const semestersForYear = allSemesters.filter(s =>
+            s.intakeId === selectedIntake &&
+            s.year === selectedYear &&
+            semesterIdsInPath.includes(s.id)
         );
 
-        setAvailableSemesters(semestersForDropdown.sort((a, b) => a.semesterInYear - b.semesterInYear));
+        setAvailableSemesters(semestersForYear.sort((a, b) => a.semesterInYear - b.semesterInYear));
     }, [selectedYear, selectedIntake, programme, allCoursePaths, allSemesters]);
 
 
