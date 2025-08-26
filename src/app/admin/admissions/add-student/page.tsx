@@ -207,16 +207,16 @@ export default function AddStudentPage() {
         setSelectedYear('');
         setAvailableSemesters([]);
         setSelectedSemester('');
-
+    
         if (!selectedIntake || !programme || allCoursePaths.length === 0) return;
-
+    
         const relevantPath = allCoursePaths.find(p => p.intakeId === selectedIntake && p.programmeId === programme);
         
         if (!relevantPath || !relevantPath.semesters) return;
         
-        const years = new Set<number>();
         const semesterIdsInPath = Object.keys(relevantPath.semesters);
         
+        const years = new Set<number>();
         allSemesters.forEach(semester => {
             if (semesterIdsInPath.includes(semester.id)) {
                 years.add(semester.year);
