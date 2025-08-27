@@ -28,11 +28,12 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; };
+type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; lecturerName?: string; };
 type Intake = { id: string; name: string; };
-type Programme = { id: string; name: string; };
+type Programme = { id: string; name: string; courseIds?: Record<string, boolean>, coursesByYear?: GroupedCourses };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
@@ -41,6 +42,8 @@ type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory'
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
+type GroupedCourses = { [year: string]: Course[]; };
+
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -351,7 +354,7 @@ export default function RegistrationManagementPage() {
                         if (!acc[yearKey]) acc[yearKey] = [];
                         acc[yearKey].push(course);
                         return acc;
-                    }, {} as Record<string, Course[]>);
+                    }, {} as GroupedCourses);
 
                     return { id, name: prog.name, coursesByYear: Object.fromEntries(Object.entries(coursesByYear).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', '')))) };
                 });
@@ -408,11 +411,10 @@ export default function RegistrationManagementPage() {
     };
     
     const handleSaveDeadline = async (title: string, eventId: string | null) => {
-        if(!currentSemester) return;
         const date = deadlineDates[title];
         if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
         setSaving(true);
-        const fullTitle = `${title} - ${currentSemester.name}`;
+        const fullTitle = `${title} - ${currentSemester?.name}`;
         try {
             if(eventId) {
                 const eventRef = ref(db, `calendarEvents/${eventId}`);
@@ -420,7 +422,7 @@ export default function RegistrationManagementPage() {
                 toast({ title: "Deadline Updated" });
             } else {
                 const newEventRef = push(ref(db, 'calendarEvents'));
-                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester.name });
+                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester?.name });
                 toast({ title: `${title} Added` });
             }
             
@@ -584,19 +586,102 @@ export default function RegistrationManagementPage() {
                         <h4 className="font-bold">Payment Deadlines for {semesterName}</h4>
                         <p className="text-sm text-muted-foreground">An overview of payment due dates for this semester. These are set in the Academic Calendar.</p>
                     </div>
-                     {semesterDeadlines.length > 0 ? (<div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{semesterDeadlines.map(({title, date, eventId}) => (
+                     {semesterDeadlines.length > 0 ? (<div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{semesterDeadlines.map(({title, date, eventId}) => {
+                        const isEditingThis = editingDeadlineId === (eventId || title);
+                        const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
+                        return (
                         <div key={title} className="flex items-center justify-between rounded-md border p-3">
                             <span className="font-medium">{title}</span>
-                            {date ? <span className="text-sm font-semibold">{format(parseISO(date), 'PPP')}</span> : <Badge variant="destructive">Not Set</Badge>}
+                            <div className="flex items-center gap-2">
+                            {isEditingThis ? (
+                                <>
+                                 <Popover>
+                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
+                                </Popover>
+                                <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
+                                </>
+                            ) : date ? (
+                                <>
+                                <span className="text-sm font-semibold">{format(parseISO(date), 'PPP')}</span>
+                                <Button variant="ghost" size="icon" onClick={() => setEditingDeadlineId(eventId)}><Pencil className="h-4 w-4"/></Button>
+                                </>
+                            ) : (
+                                <Button onClick={() => setEditingDeadlineId(title)}>Set Date</Button>
+                            )}
+                            </div>
                         </div>
-                    ))}</div>) : (<Alert variant="default" className="mt-4"><Info className="h-4 w-4"/><AlertTitle>No Payment Plans Linked</AlertTitle><AlertDescription>There are no payment plans linked to this semester, so no deadlines are required.</AlertDescription></Alert>)}
+                    )
+                })}</div>
+                ) : (<Alert variant="default" className="mt-4"><Info className="h-4 w-4"/><AlertTitle>No Payment Plans Linked</AlertTitle><AlertDescription>There are no payment plans linked to this semester, so no deadlines are required.</AlertDescription></Alert>)}
                     </CardContent>
                      <CardFooter className="flex justify-end"><Button variant="outline" asChild><Link href="/staff/calendar"><CalendarIcon className="mr-2 h-4 w-4" /> Manage in Calendar</Link></Button></CardFooter>
                 </TabsContent>
             </Tabs>
         </Card>
+        <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Semester Change History</DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
+                    {viewingHistory.map((item, index) => (
+                        <div key={index} className="p-3 border rounded-lg">
+                            <p className="font-semibold">{item.reason}</p>
+                            <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
+                            <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
+                                <div><p className="font-bold">Removed:</p><ul>{(item.oldCourses || []).filter(c => !(item.newCourses || []).includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Added:</p><ul>{(item.newCourses || []).filter(c => !(item.oldCourses || []).includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+        <Dialog open={!!editingDeadlinesFor} onOpenChange={() => setEditingDeadlinesFor(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Set Payment Deadlines for {editingDeadlinesFor?.semesterName}</DialogTitle>
+                    <DialogDescription>Set the due dates for all payment plan installments available for this semester.</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4 py-4">
+                    {semesterDeadlines.length > 0 ? (
+                    semesterDeadlines.map(({ title, date, eventId }) => {
+                        const isEditingThis = editingDeadlineId === (eventId || title);
+                        const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
+                        return (
+                            <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
+                                <span className="font-medium">{title}</span>
+                                <div className="flex items-center gap-2">
+                                {isEditingThis ? (
+                                    <>
+                                        <Popover>
+                                        <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
+                                        </Popover>
+                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
+                                    </>
+                                ) : date ? (
+                                    <>
+                                    <span className="text-sm font-semibold">{format(parseISO(date), 'PPP')}</span>
+                                    <Button variant="ghost" size="icon" onClick={() => setEditingDeadlineId(eventId)}><Pencil className="h-4 w-4"/></Button>
+                                    </>
+                                ) : (
+                                    <Button onClick={() => setEditingDeadlineId(title)}>Set Date</Button>
+                                )}
+                                </div>
+                            </div>
+                        );
+                    })
+                    ) : <p className="text-sm text-muted-foreground">No applicable payment plans found.</p>}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditingDeadlinesFor(null)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         </div>
     );
 }
-
-    
