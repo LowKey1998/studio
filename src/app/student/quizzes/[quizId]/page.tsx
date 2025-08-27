@@ -184,7 +184,7 @@ export default function TakeQuizPage() {
 
     React.useEffect(() => {
         if (timeLeft === null || timeLeft <= 0 || submitting || showResults) {
-            if(timeLeft !== null && timeLeft <= 0) handleSubmit(true);
+            if(timeLeft !== null && timeLeft <= 0 && !submitting) handleSubmit(true);
             return;
         }
         const intervalId = setInterval(() => {
@@ -272,7 +272,7 @@ export default function TakeQuizPage() {
             <CardHeader className="flex flex-row justify-between items-center sticky top-0 bg-background/95 backdrop-blur-sm z-10 p-4 border-b">
                 <CardTitle className="text-xl md:text-2xl">{quiz?.title}</CardTitle>
                 {timeLeft !== null && (
-                    <div className={`flex items-center gap-2 font-bold p-2 rounded-md ${timeLeft <= 60 ? 'text-destructive animate-pulse' : ''}`}>
+                    <div className={cn("flex items-center gap-2 font-bold p-2 rounded-md", timeLeft <= 60 && 'text-destructive animate-pulse')}>
                         <Clock className="h-5 w-5" />
                         <span>{formatTimeLeft()}</span>
                     </div>
@@ -363,3 +363,5 @@ export default function TakeQuizPage() {
         </Card>
     );
 }
+
+    
