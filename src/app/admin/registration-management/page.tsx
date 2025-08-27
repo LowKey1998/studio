@@ -49,7 +49,12 @@ type Programme = { id: string; name: string; courseIds?: Record<string, boolean>
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
-type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
+type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
+    semesters: Record<string, { courses: string[] }>;
+};
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -311,7 +316,7 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         setSemesterDeadlines([]);
         try {
-            const [eventsSnapshot, coursesSnapshot, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
+            const [eventsSnapshot, coursesSnap, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
@@ -341,10 +346,10 @@ export default function RegistrationManagementPage() {
                 return { title: title.replace(` - ${semesterData.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
             }));
 
-            if (programmesSnap.exists() && coursesSnapshot.exists()) {
+            if (programmesSnap.exists() && coursesSnap.exists()) {
                 const userMap = new Map<string, string>();
                 if (usersSnapshot.exists()) { Object.entries(usersSnapshot.val()).forEach(([uid, userData]: [string, any]) => userMap.set(uid, userData.name)); }
-                const allCoursesData = coursesSnapshot.val();
+                const allCoursesData = coursesSnap.val();
 
                 const programmeData: Programme[] = Object.entries(programmesSnap.val()).map(([id, prog]: [string, any]) => {
                     const progCourses: Course[] = (prog.courseIds ? Object.keys(prog.courseIds) : [])
