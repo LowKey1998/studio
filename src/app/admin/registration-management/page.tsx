@@ -584,6 +584,68 @@ export default function RegistrationManagementPage() {
                 </Tabs>
             </Card>
         )}
+        <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Semester Change History</DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
+                    {viewingHistory.map((item, index) => (
+                        <div key={index} className="p-3 border rounded-lg">
+                            <p className="font-semibold">{item.reason}</p>
+                            <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
+                            <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
+                                <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+        <Dialog open={!!editingDeadlinesFor} onOpenChange={() => setEditingDeadlinesFor(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Set Payment Deadlines for {editingDeadlinesFor?.semesterName}</DialogTitle>
+                    <DialogDescription>Set the due dates for all payment plan installments available for this semester.</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4 py-4">
+                    {semesterDeadlines.length > 0 ? (
+                    semesterDeadlines.map(({ title, date, eventId }) => {
+                        const isEditingThis = editingDeadlineId === (eventId || title);
+                        const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
+                        return (
+                            <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
+                                <span className="font-medium">{title}</span>
+                                <div className="flex items-center gap-2">
+                                {isEditingThis ? (
+                                    <>
+                                        <Popover>
+                                        <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
+                                        </Popover>
+                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
+                                    </>
+                                ) : date ? (
+                                    <>
+                                    <span className="text-sm font-semibold">{format(parseISO(date), 'PPP')}</span>
+                                    <Button variant="ghost" size="icon" onClick={() => setEditingDeadlineId(eventId)}><Pencil className="h-4 w-4"/></Button>
+                                    </>
+                                ) : (
+                                    <Button onClick={() => setEditingDeadlineId(title)}>Set Date</Button>
+                                )}
+                                </div>
+                            </div>
+                        );
+                    })
+                    ) : <p className="text-sm text-muted-foreground">No applicable payment plans found.</p>}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditingDeadlinesFor(null)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         </div>
     );
 }
