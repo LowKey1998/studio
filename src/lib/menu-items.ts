@@ -51,7 +51,7 @@ export const allMenuItems = [
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
-        { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building, isComingSoon: true },
+        { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
         { href: '/admin/academics/lecturer-allocation', label: 'Lecturer Allocation', icon: UserPlus },
         { href: '/admin/academics/teaching-load', label: 'Teaching Load Balance', icon: Scale },
         { href: '/admin/academics/assessment-setup', label: 'Continous Assessment Setup', icon: ClipboardEdit },
@@ -232,7 +232,13 @@ export const allMenuItems = [
       label: 'Facilities & Estates',
       icon: Building,
       roles: ['Admin'],
-      isComingSoon: true,
+       items: [
+        { href: '/admin/facilities/room-management', label: 'Room Management', icon: Building },
+        { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
+        { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: ClipboardList },
+        { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: Sparkles },
+        { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
+      ]
     },
     {
         label: 'Transport',

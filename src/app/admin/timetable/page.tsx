@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Trash2, Clock } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 type Course = {
     id: string;
@@ -24,6 +25,12 @@ type Semester = {
     id: string;
     name: string;
     status: 'Open' | 'Closed' | 'Archived';
+}
+
+type Room = {
+    id: string;
+    name: string;
+    capacity: number;
 }
 
 type TimetableEntry = {
@@ -39,11 +46,13 @@ const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 export default function TimetableManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [generating, setGenerating] = React.useState(false);
     
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>('');
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = React.useState<string>('');
+    const [rooms, setRooms] = React.useState<Room[]>([]);
     
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -58,7 +67,7 @@ export default function TimetableManagementPage() {
 
     React.useEffect(() => {
         const semestersRef = ref(db, 'semesters');
-        const unsubscribe = onValue(semestersRef, (snapshot) => {
+        const unsubSemesters = onValue(semestersRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
@@ -67,39 +76,48 @@ export default function TimetableManagementPage() {
                     setSelectedSemesterId(list[0].id);
                 }
             }
-             setLoading(false);
         });
-        return () => unsubscribe();
+        
+        const roomsRef = ref(db, 'settings/rooms');
+        const unsubRooms = onValue(roomsRef, (snapshot) => {
+            setRooms(snapshot.exists() ? Object.values(snapshot.val()) : []);
+        });
+
+        const coursesRef = ref(db, 'courses');
+        const unsubCourses = onValue(coursesRef, (snapshot) => {
+            setCourses(snapshot.exists() ? Object.values(snapshot.val()) : []);
+            setLoading(false);
+        });
+
+        return () => {
+             unsubSemesters();
+             unsubRooms();
+             unsubCourses();
+        };
     }, [selectedSemesterId]);
 
     const fetchCoursesForSemester = React.useCallback(async () => {
         if (!selectedSemesterId) return;
-        const selectedSemester = semesters.find(s => s.id === selectedSemesterId);
-        if (!selectedSemester) return;
-
         setLoading(true);
         try {
-            const offeringsRef = ref(db, `semesterOfferings/${selectedSemester.name}/courseIds`);
-            const offeringsSnap = await get(offeringsRef);
-            if (!offeringsSnap.exists()) {
-                setCourses([]);
-                setSelectedCourse('');
-                setTimetable([]);
-                return;
+            const regsSnap = await get(ref(db, `registrations`));
+            if (!regsSnap.exists()) {
+                setCourses([]); return;
             }
-            const courseIds = offeringsSnap.val();
-            const coursePromises = courseIds.map((id: string) => get(ref(db, `courses/${id}`)));
-            const courseSnaps = await Promise.all(coursePromises);
-            const coursesList = courseSnaps
-                .map((snap, i) => ({ id: courseIds[i], ...snap.val() }))
-                .filter(course => course.name && course.code); // Filter out invalid courses
-            
-            setCourses(coursesList);
+            const allRegistrations = regsSnap.val();
+            const courseIdsInSemester = new Set<string>();
 
-            if (coursesList.length > 0) {
-                 setSelectedCourse(coursesList[0].id);
-            } else {
-                setSelectedCourse('');
+            for (const userId in allRegistrations) {
+                const userRegs = allRegistrations[userId];
+                if (userRegs[selectedSemesterId]) {
+                    userRegs[selectedSemesterId].courses.forEach((cid: string) => courseIdsInSemester.add(cid));
+                }
+            }
+
+            const coursesSnap = await get(ref(db, 'courses'));
+            if(coursesSnap.exists()) {
+                const allCourses = coursesSnap.val();
+                setCourses(Array.from(courseIdsInSemester).map(id => ({ id, ...allCourses[id] })));
             }
         } catch (error) {
             console.error(error);
@@ -107,8 +125,8 @@ export default function TimetableManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedSemesterId, semesters, toast]);
-    
+    }, [selectedSemesterId, toast]);
+
     React.useEffect(() => {
         fetchCoursesForSemester();
     }, [selectedSemesterId, fetchCoursesForSemester]);
@@ -166,41 +184,47 @@ export default function TimetableManagementPage() {
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to delete entry', description: error.message });
         }
+    };
+    
+    const handleAutoGenerate = async () => {
+        setGenerating(true);
+        try {
+            const result = await generateFullTimetable();
+            toast({ title: "Timetable Generation Complete", description: result.message });
+        } catch(e: any) {
+            toast({ variant: 'destructive', title: "Generation Failed", description: e.message });
+        } finally {
+            setGenerating(false);
+        }
     }
 
 
     return (
         <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="font-headline text-2xl">Course Timetable Management</CardTitle>
-                <CardDescription>Create and manage class schedules for each course per semester.</CardDescription>
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between">
+                <div>
+                    <CardTitle className="font-headline text-2xl">Course Timetable Management</CardTitle>
+                    <CardDescription>Create and manage class schedules for each course per semester.</CardDescription>
+                </div>
+                 <Button onClick={handleAutoGenerate} disabled={generating}>
+                    {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>}
+                    Auto-Generate Timetable
+                </Button>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-1">
                         <Label htmlFor="semester-select">Select Semester</Label>
                         <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
-                            <SelectTrigger id="semester-select">
-                                <SelectValue placeholder="Select a semester..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {semesters.map(s => (
-                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                ))}
-                            </SelectContent>
+                            <SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger>
+                            <SelectContent>{semesters.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
                      <div className="space-y-1">
                         <Label htmlFor="course-select">Select Course</Label>
                         <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={courses.length === 0}>
-                            <SelectTrigger id="course-select">
-                                <SelectValue placeholder="Select a course..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {courses.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
-                                ))}
-                            </SelectContent>
+                            <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
+                            <SelectContent>{courses.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
                 </div>
@@ -209,25 +233,18 @@ export default function TimetableManagementPage() {
                     <div className="flex justify-between items-center">
                         <h3 className="font-semibold">Schedule for {courses.find(c => c.id === selectedCourse)?.code}</h3>
                         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Schedule</Button>
-                            </DialogTrigger>
+                            <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Schedule</Button></DialogTrigger>
                             <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>New Schedule Entry</DialogTitle>
-                                </DialogHeader>
+                                <DialogHeader><DialogTitle>New Schedule Entry</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <Label>Day of Week</Label>
-                                            <Select value={day} onValueChange={setDay}>
-                                                <SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger>
-                                                <SelectContent>{daysOfWeek.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                                            </Select>
+                                            <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger><SelectContent>{daysOfWeek.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                         <div className="space-y-1">
                                             <Label>Venue</Label>
-                                            <Input value={venue} onChange={e => setVenue(e.target.value)} placeholder="e.g. Room 101" />
+                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Select Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -241,23 +258,13 @@ export default function TimetableManagementPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <DialogFooter>
-                                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                    <Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Add Entry</Button>
-                                </DialogFooter>
+                                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Add Entry</Button></DialogFooter>
                             </DialogContent>
                         </Dialog>
                     </div>
 
                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Day</TableHead>
-                                <TableHead>Time</TableHead>
-                                <TableHead>Venue</TableHead>
-                                <TableHead className="text-right">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
+                        <TableHeader><TableRow><TableHead>Day</TableHead><TableHead>Time</TableHead><TableHead>Venue</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {timetable.length > 0 ? (
                                 timetable.map(entry => (
