@@ -248,8 +248,8 @@ export default function CoursePathsPage() {
     };
 
      const handleAddSemester = async () => {
-        const intakeName = intakes.find(i => i.id === selectedIntake)?.name;
-        if (!intakeName) return;
+        const intake = intakes.find(i => i.id === selectedIntake);
+        if (!intake) return;
         
         const validSemesters = newSemesters.filter(s => s.year && s.semesterInYear);
         if(validSemesters.length === 0) {
@@ -261,9 +261,9 @@ export default function CoursePathsPage() {
         try {
             const updates: Record<string, any> = {};
             validSemesters.forEach(sem => {
-                const semesterName = `${intakeName} Year ${sem.year} Semester ${sem.semesterInYear}`;
+                const semesterName = `${intake.name} Year ${sem.year} Semester ${sem.semesterInYear}`;
                 const newRef = push(ref(db, 'semesters'));
-                updates[newRef.key!] = { name: semesterName, intakeId: selectedIntake, year: Number(sem.year), semesterInYear: Number(sem.semesterInYear), status: 'Closed' };
+                updates[newRef.key!] = { name: semesterName, intakeId: intake.id, year: Number(sem.year), semesterInYear: Number(sem.semesterInYear), status: 'Closed' };
             });
 
             await update(ref(db, 'semesters'), updates);
@@ -415,7 +415,7 @@ export default function CoursePathsPage() {
                                             </Button>
                                         </DialogTrigger>
                                          <DialogContent>
-                                            <DialogHeader><DialogTitle>Add New Semesters</DialogTitle></DialogHeader>
+                                            <DialogHeader><DialogTitle>Add New Semesters for {intakes.find(i => i.id === selectedIntake)?.name}</DialogTitle></DialogHeader>
                                             <div className="py-4 max-h-[60vh] overflow-y-auto pr-4 space-y-2">
                                                 {newSemesters.map((sem, index) => (
                                                     <div key={index} className="flex items-center gap-2">
@@ -426,7 +426,10 @@ export default function CoursePathsPage() {
                                                 ))}
                                                 <Button type="button" variant="outline" onClick={addNewSemesterField}><PlusCircle className="h-4 w-4 mr-2"/>Add Another</Button>
                                             </div>
-                                            <DialogFooter><Button onClick={handleAddSemester} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Create Semesters</Button></DialogFooter>
+                                            <DialogFooter>
+                                                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                                <Button onClick={handleAddSemester} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Create Semesters</Button>
+                                            </DialogFooter>
                                         </DialogContent>
                                     </Dialog>
                                 </div>
@@ -483,7 +486,7 @@ export default function CoursePathsPage() {
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create New'} Intake</DialogTitle></DialogHeader>
                         <div className="py-4"><Input placeholder="e.g., 2024JAN" value={intakeName} onChange={e => setIntakeName(e.target.value.toUpperCase())} /></div>
-                        <DialogFooter><Button variant="outline" onClick={()=>setIsIntakeDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button></DialogFooter>
+                        <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
                  <Dialog open={isHistoryDialogOpen} onOpenChange={() => { setIsHistoryDialogOpen(false); setViewingHistory([]); }}>
@@ -594,8 +597,4 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
-    
-
-    
-
     

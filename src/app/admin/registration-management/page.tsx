@@ -193,9 +193,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 <div className="flex justify-between items-center">
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
                     <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
-                        <DialogTrigger asChild>
-                            <Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import Fee</Button>
-                        </DialogTrigger>
+                        <DialogTrigger asChild><Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import Fee</Button></DialogTrigger>
                         <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
                             <DialogHeader>
                                 <DialogTitle>Import Fee Template</DialogTitle>
@@ -365,7 +363,7 @@ export default function RegistrationManagementPage() {
                         return acc;
                     }, {} as GroupedCourses);
 
-                    return { id, name: prog.name, coursesByYear: Object.fromEntries(Object.entries(coursesByYear).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', '')))) };
+                    return { id, name: prog.name, coursesByYear: Object.fromEntries(Object.entries(coursesByYear).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', '')))), tuitionFee: prog.tuitionFee };
                 });
                 setProgrammesWithCourses(programmeData);
             }
@@ -520,7 +518,7 @@ export default function RegistrationManagementPage() {
             </TabsContent>
             <TabsContent value="finance">
                  <Card>
-                    <CardHeader><CardTitle>Payment Deadlines for {semesterName}</CardTitle><CardDescription>Set the due dates for all payment plan installments available for this semester.</CardDescription></CardHeader>
+                    <CardHeader><CardTitle>Payment Deadlines for {semesterName}</CardTitle><CardDescription>An overview of payment due dates for this semester. Payment plans without all deadlines set will not be available to students.</CardDescription></CardHeader>
                     <CardContent>{semesterDeadlines.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{semesterDeadlines.map(({title, date, eventId}) => {
                         const isEditingThis = editingDeadlineId === (eventId || title);
                         const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);

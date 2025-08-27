@@ -119,8 +119,7 @@ export default function StudentRegistrationPage() {
                 return;
             }
 
-            const [userPathId] = userPathEntry;
-            const userPath = coursePathsData[userPathId];
+            const [userPathId, userPath] = userPathEntry;
             
             const semesterOfferings = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
@@ -136,6 +135,7 @@ export default function StudentRegistrationPage() {
                     const isOpenForRegistration = pathOfferings[semId]?.active === true;
                     
                     const isRegistered = userRegistrations.includes(semId);
+                    
                     if (!isOpenForRegistration && !isRegistered) {
                         continue;
                     }
