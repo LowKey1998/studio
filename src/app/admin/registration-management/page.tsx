@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Info, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, BookOpen, Info, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push } from 'firebase/database';
+import { ref, get, set, onValue, update, push, remove } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,8 +24,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 // --- TYPE DEFINITIONS ---
 type Course = {
@@ -310,7 +310,7 @@ export default function RegistrationManagementPage() {
         const semesterData = semesters.find(s => s.id === selectedSemester);
         if (!semesterData) { setLoading(false); return; }
         setLoading(true);
-
+        
         try {
             const [coursesSnap, usersSnapshot, programmesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
@@ -390,6 +390,7 @@ export default function RegistrationManagementPage() {
         } finally { setSaving(false); }
     };
     
+    
     const totalSelected = availableForSemester.length;
     const currentSemester = semesters.find(s => s.id === selectedSemester);
     const semesterName = currentSemester?.name || '';
@@ -431,7 +432,7 @@ export default function RegistrationManagementPage() {
                         </div>
                          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                             <DialogTrigger asChild><Button variant="outline"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={refreshData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                         </Dialog>
                     </div>
                      {currentSemester && (
@@ -447,7 +448,7 @@ export default function RegistrationManagementPage() {
                                 </Button>
                                 <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                                     <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={refreshData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                                 </Dialog>
                             </div>
                         </div>
@@ -555,7 +556,7 @@ export default function RegistrationManagementPage() {
                                 {semesterPaymentPlans.length > 0 ? (
                                     <div className="space-y-4">
                                         {semesterPaymentPlans.map(plan => {
-                                            const deadlines = [];
+                                            const deadlines: {name: string, date: string | null}[] = [];
                                             for(let i = 0; i < plan.installments; i++){
                                                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterName}`;
                                                 const event = allCalendarEvents.find(e => e.title.trim() === title.trim());
@@ -574,6 +575,9 @@ export default function RegistrationManagementPage() {
                                 ) : <p className="text-sm text-muted-foreground">No payment plans are assigned to this semester.</p>}
                            </div>
                         </CardContent>
+                         <CardFooter className="flex justify-end">
+                            <Button variant="outline" asChild><Link href="/staff/calendar"><CalendarIcon className="mr-2 h-4 w-4" /> Manage in Calendar</Link></Button>
+                        </CardFooter>
                     </Card>
                 </TabsContent>
             </Tabs>
