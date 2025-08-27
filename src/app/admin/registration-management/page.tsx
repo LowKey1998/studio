@@ -261,7 +261,7 @@ export default function RegistrationManagementPage() {
     const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
-
+    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
 
     const { toast } = useToast();
     
@@ -590,7 +590,7 @@ export default function RegistrationManagementPage() {
                         const isEditingThis = editingDeadlineId === (eventId || title);
                         const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
                         return (
-                        <div key={title} className="flex items-center justify-between rounded-md border p-3">
+                        <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
                             <span className="font-medium">{title}</span>
                             <div className="flex items-center gap-2">
                             {isEditingThis ? (
