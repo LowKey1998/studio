@@ -31,19 +31,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; year: number; status: 'active' | 'archived'; lecturerName?: string; };
-type Intake = { id: string; name: string; };
-type Programme = { id: string; name: string; courseIds?: Record<string, boolean>, tuitionFee?: number; };
-type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
-type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+    year: number;
+    cost: number;
+    status: 'active' | 'archived';
+    lecturerName?: string;
+};
+type CalendarEvent = { id: string; title: string; date: string; };
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
-type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; year: number; semesterInYear: number; intakeId: string; };
-type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type GroupedCourses = { [year: string]: Course[]; };
-
+type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; tuitionFee?: number; };
+type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
+type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
+type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -183,17 +188,17 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
                     <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
                         <DialogTrigger asChild>
-                            <Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee</Button>
+                            <Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import Fee</Button>
                         </DialogTrigger>
                         <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
                             <DialogHeader>
-                                <DialogTitle>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee Template</DialogTitle>
+                                <DialogTitle>Import Fee Template</DialogTitle>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <div className="space-y-1"><Label>Fee Name</Label>
                                     <Select value={selectedFeeTemplate} onValueChange={(val) => {setSelectedFeeTemplate(val); setFeeAmount(String(feeTemplates.find(t => t.id === val)?.amount || ''));}}>
-                                        <SelectTrigger><SelectValue placeholder={`Select a ${isMandatory ? 'mandatory' : 'optional'} fee...`}/></SelectTrigger>
-                                        <SelectContent>{feeTemplates.filter(t => t.type.toLowerCase() === (isMandatory ? 'mandatory' : 'optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                                        <SelectTrigger><SelectValue placeholder={`Select a fee...`}/></SelectTrigger>
+                                        <SelectContent>{feeTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 250" /></div>
@@ -261,6 +266,8 @@ export default function RegistrationManagementPage() {
     const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
 
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
+    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
     const { toast } = useToast();
     
@@ -336,10 +343,10 @@ export default function RegistrationManagementPage() {
                 return { title: title.replace(` - ${semesterData.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
             }));
 
-            if (programmesSnap.exists() && coursesSnapshot.exists()) {
+            if (programmesSnap.exists() && coursesSnap.exists()) {
                 const userMap = new Map<string, string>();
                 if (usersSnapshot.exists()) { Object.entries(usersSnapshot.val()).forEach(([uid, userData]: [string, any]) => userMap.set(uid, userData.name)); }
-                const allCoursesData = coursesSnapshot.val();
+                const allCoursesData = coursesSnap.val();
 
                 const programmeData: Programme[] = Object.entries(programmesSnap.val()).map(([id, prog]: [string, any]) => {
                     const progCourses: Course[] = (prog.courseIds ? Object.keys(prog.courseIds) : [])
@@ -493,7 +500,7 @@ export default function RegistrationManagementPage() {
                         <CardContent>
                             <Accordion type="multiple" defaultValue={programmesWithCourses.map(p => p.id)} className="w-full">
                                 {programmesWithCourses.map(prog => {
-                                    const isFlatFee = !!prog.tuitionFee;
+                                    const isFlatFee = !!prog.tuitionFee && prog.tuitionFee > 0;
                                     return (
                                         <AccordionItem value={prog.id} key={prog.id}>
                                             <AccordionTrigger className="font-bold text-lg">{prog.name} {isFlatFee && <Badge className="ml-2">Flat Fee</Badge>}</AccordionTrigger>
@@ -577,25 +584,6 @@ export default function RegistrationManagementPage() {
                 </Tabs>
             </Card>
         )}
-        <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle>Semester Change History</DialogTitle>
-                </DialogHeader>
-                <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-4">
-                    {viewingHistory.map((item, index) => (
-                        <div key={index} className="p-3 border rounded-lg">
-                            <p className="font-semibold">{item.reason}</p>
-                            <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
-                            <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
-                                <div><p className="font-bold">Removed:</p><ul>{(item.oldCourses || []).filter(c => !(item.newCourses || []).includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
-                                <div><p className="font-bold">Added:</p><ul>{(item.newCourses || []).filter(c => !(item.oldCourses || []).includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </DialogContent>
-        </Dialog>
         </div>
     );
 }
