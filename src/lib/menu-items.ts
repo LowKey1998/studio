@@ -147,7 +147,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: AlertTriangle },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: DollarSign },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+        ]
     },
     {
       label: 'HR',

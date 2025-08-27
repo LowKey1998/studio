@@ -253,8 +253,6 @@ export default function RegistrationManagementPage() {
     const [selectedSemester, setSelectedSemester] = React.useState<string>('');
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
-    const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
-    
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
 
@@ -273,20 +271,16 @@ export default function RegistrationManagementPage() {
                 paymentPlansSnap, 
                 semestersSnap, 
                 feeTemplatesSnap, 
-                eventsSnap,
                 programmesSnap,
                 coursePathsSnap,
                 coursesSnap,
-                usersSnap
             ] = await Promise.all([
                 get(ref(db, 'settings/paymentPlans')),
                 get(ref(db, 'semesters')), 
                 get(ref(db, 'settings/feeTemplates')),
-                get(ref(db, 'calendarEvents')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'users'))
             ]);
 
             const semesterList = semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })).sort((a,b) => b.name.localeCompare(a.name)) : [];
@@ -298,7 +292,6 @@ export default function RegistrationManagementPage() {
             
             setAllPaymentPlans(paymentPlansSnap.exists() ? Object.keys(paymentPlansSnap.val()).map(id => ({ id, ...paymentPlansSnap.val()[id] })) : []);
             setFeeTemplates(feeTemplatesSnap.exists() ? Object.keys(feeTemplatesSnap.val()).map(id => ({ id, ...feeTemplatesSnap.val()[id] })) : []);
-            setAllCalendarEvents(eventsSnap.exists() ? Object.values(eventsSnap.val()) : []);
 
              if (!selectedSemester && semesterList.length > 0) {
                 setSelectedSemester(semesterList[0].id);
@@ -383,7 +376,7 @@ export default function RegistrationManagementPage() {
         if (!currentSemester) return [];
         return allProgrammes.filter(prog => 
             allCoursePaths.some(path => 
-                path.programmeId === prog.id && path.intakeId === currentSemester.intakeId
+                path.intakeId === currentSemester.intakeId && path.programmeId === prog.id
             )
         );
     }, [currentSemester, allProgrammes, allCoursePaths]);
@@ -449,7 +442,7 @@ export default function RegistrationManagementPage() {
                         <Card>
                              <CardHeader>
                                 <CardTitle>Available Courses for {semesterName}</CardTitle>
-                                <CardDescription>Courses associated with this semester via a Course Path.</CardDescription>
+                                <CardDescription>A summary of all courses that are part of this semester through a course path.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {loading ? <Skeleton className="h-48 w-full" /> : 
@@ -494,7 +487,7 @@ export default function RegistrationManagementPage() {
                         </Card>
                     </TabsContent>
                     <TabsContent value="finance">
-                        <Card>
+                         <Card>
                            <CardContent className="pt-6 grid md:grid-cols-2 gap-8">
                                  <div>
                                     <h4 className="font-semibold mb-2">Fees for {semesterName}</h4>
