@@ -22,8 +22,8 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
-        { href: '/admin/admissions/inquiries', label: 'Admission Inquiries', icon: Search },
         { href: '/admin/admissions/students', label: 'Student List', icon: Users },
+        { href: '/admin/admissions/inquiries', label: 'Admission Inquiries', icon: Search },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
@@ -149,13 +149,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
-            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
-            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: AlertTriangle },
-            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: DollarSign },
-            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'HR',
@@ -181,35 +175,13 @@ export const allMenuItems = [
         label: 'Research & Innovation',
         icon: Telescope,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/research/registration', label: 'Research Project Registration', icon: FileText },
-            { href: '/admin/research/supervisor-allocation', label: 'Supervisor Allocation', icon: Users2 },
-            { href: '/admin/research/proposal-submission', label: 'Proposal Submission Workflow', icon: GitBranch },
-            { href: '/admin/research/ethics-reviews', label: 'Ethics Committee Reviews', icon: Shield },
-            { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
-            { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
-            { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
-            { href: '/admin/research/grants', label: 'Grant Applications Management', icon: FileText },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Innovation',
         icon: Lightbulb,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/innovation/project-submissions', label: 'Innovation Project Submissions', icon: FileUp },
-            { href: '/admin/innovation/prototype-showcase', label: 'Prototype Showcase', icon: GalleryVertical },
-            { href: '/admin/innovation/incubator-access', label: 'Innovation Incubator Access', icon: KeyRound },
-            { href: '/admin/innovation/mentorship-matching', label: 'Mentorship Matching', icon: UserCheckIcon },
-            { href: '/admin/innovation/evaluation-committee', label: 'Innovation Evaluation Committee', icon: Users2 },
-            { href: '/admin/innovation/pitch-deck-repository', label: 'Pitch Deck Repository', icon: FileText },
-            { href: '/admin/innovation/ip-tracker', label: 'Intellectual Property Registration Tracker', icon: Shield },
-            { href: '/admin/innovation/events-calendar', label: 'Innovation Events Calendar', icon: Calendar },
-            { href: '/admin/innovation/investor-matching', label: 'Investor Matching Tools', icon: Handshake },
-            { href: '/admin/innovation/hackathon-logs', label: 'Hackathon Participation Logs', icon: Book },
-            { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
-            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration / Team Building Portal', icon: Users },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Community Engagement',
@@ -393,4 +365,3 @@ export const staffBaseMenuItems = [
     }
   ];
 
-    

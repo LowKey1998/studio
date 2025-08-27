@@ -198,7 +198,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                 <div className="space-y-1"><Label>Fee Name</Label>
                                     <Select value={selectedFeeTemplate} onValueChange={(val) => {setSelectedFeeTemplate(val); setFeeAmount(String(feeTemplates.find(t => t.id === val)?.amount || ''));}}>
                                         <SelectTrigger><SelectValue placeholder={`Select a fee...`}/></SelectTrigger>
-                                        <SelectContent>{feeTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                                        <SelectContent>{feeTemplates.filter(t => t.type.toLowerCase() === (isMandatory ? 'mandatory' : 'optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 250" /></div>
@@ -313,7 +313,7 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         setSemesterDeadlines([]);
         try {
-            const [eventsSnapshot, coursesSnapshot, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
+            const [eventsSnapshot, coursesSnap, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
@@ -381,7 +381,7 @@ export default function RegistrationManagementPage() {
 
         } catch (error) { console.error('Error fetching data:', error); toast({ variant: 'destructive', title: 'Failed to load data' });
         } finally { setLoading(false); }
-    }, [selectedSemester, semesters, toast, allPaymentPlans]);
+    }, [selectedSemester, semesters, toast, allPaymentPlans, programmesWithCourses]);
 
     React.useEffect(() => {
         if(selectedSemester){ fetchDataForSemester();
@@ -428,18 +428,17 @@ export default function RegistrationManagementPage() {
         } finally { setSaving(false); }
     };
     
-    const handleSaveDeadline = async (title: string, eventId: string | null) => {
-        if(!editingDeadlinesFor) return;
+    const handleSaveDeadline = async (title: string, eventId: string | null, semesterName: string) => {
         const date = deadlineDates[title];
         if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
         setSaving(true);
-        const fullTitle = `${title} - ${editingDeadlinesFor.semesterName}`;
+        const fullTitle = `${title} - ${semesterName}`;
         try {
             if(eventId) {
                 await update(ref(db, `calendarEvents/${eventId}`), { date: format(date, 'yyyy-MM-dd') });
             } else {
                 const newEventRef = push(ref(db, 'calendarEvents'));
-                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: editingDeadlinesFor.semesterName });
+                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: semesterName });
             }
             toast({ title: "Deadline Updated" });
             setDeadlineDates(prev => ({...prev, [title]: undefined}));
@@ -469,7 +468,7 @@ export default function RegistrationManagementPage() {
                 </div>
                     <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                         <DialogTrigger asChild><Button variant="outline"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                     </Dialog>
                 </div>
                  {currentSemester && (
@@ -478,7 +477,7 @@ export default function RegistrationManagementPage() {
                         {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
                         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                             <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                         </Dialog>
                     </div>
                         {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
@@ -509,7 +508,7 @@ export default function RegistrationManagementPage() {
                                                             {Object.entries(prog.coursesByYear).map(([year, courses]) => (
                                                                 <AccordionItem value={year} key={year}><AccordionTrigger className="font-semibold text-base pl-4">{year} Courses</AccordionTrigger><AccordionContent className="pl-8">
                                                                         <Table><TableHeader><TableRow><TableHead className="w-[50px]">Enable</TableHead><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead><TableHead>Assigned Lecturer</TableHead></TableRow></TableHeader>
-                                                                            <TableBody>{courses.map((course) => (<TableRow key={course.id} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={!canSave && currentSemester?.status !== 'Open' || isFlatFee}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
+                                                                            <TableBody>{courses.map((course) => (<TableRow key={course.id} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={(!canSave && currentSemester?.status !== 'Open') || isFlatFee}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
                                                                             </TableBody></Table></AccordionContent></AccordionItem>))}
                                                        </Accordion>) : (<p className="text-muted-foreground p-4">No courses assigned to this programme.</p>)}
                                             </AccordionContent>
@@ -562,7 +561,7 @@ export default function RegistrationManagementPage() {
                                             <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
                                             <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
                                         </Popover>
-                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId, semesterName)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
                                         <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
                                     </>
                                 ) : date ? (
@@ -624,7 +623,7 @@ export default function RegistrationManagementPage() {
                                         <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
                                         <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
                                         </Popover>
-                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                        <Button size="sm" onClick={() => handleSaveDeadline(title, eventId, editingDeadlinesFor!.semesterName)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
                                         <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
                                     </>
                                 ) : date ? (
@@ -649,6 +648,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-
-    
