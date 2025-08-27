@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { format, parseISO } from 'date-fns';
 
 // --- TYPE DEFINITIONS ---
 type Course = {
@@ -69,6 +70,15 @@ type UserProfile = {
     exemptedCourses?: Record<string, boolean>;
 };
 
+type CalendarEvent = { id: string; title: string; date: string; };
+
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+};
+
 export default function RegisterForSemesterPage() {
     const params = useParams();
     const router = useRouter();
@@ -88,6 +98,11 @@ export default function RegisterForSemesterPage() {
     const [applyScholarship, setApplyScholarship] = React.useState(false);
 
     const [availablePaymentPlans, setAvailablePaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [paymentDeadlines, setPaymentDeadlines] = React.useState<string[]>([]);
+    const [lateFee, setLateFee] = React.useState(0);
+    const [isLateRegistration, setIsLateRegistration] = React.useState(false);
+
+
     const [error, setError] = React.useState<string | null>(null);
     const { toast } = useToast();
 
@@ -111,14 +126,14 @@ export default function RegisterForSemesterPage() {
                     coursePathsSnap, 
                     coursesSnap, 
                     semestersSnap, 
-                    paymentPlansSnap, 
+                    settingsSnap,
                     programmesSnap,
                 ] = await Promise.all([
                     get(ref(db, `users/${currentUser.uid}`)),
                     get(ref(db, 'coursePaths')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'semesters')),
-                    get(ref(db, 'settings/paymentPlans')),
+                    get(ref(db, 'settings')),
                     get(ref(db, 'programmes')),
                 ]);
 
@@ -137,14 +152,13 @@ export default function RegisterForSemesterPage() {
                     (p: CoursePath) => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId
                 );
                 
-                if (!userPath) {
-                    throw new Error("A course path has not been defined for your intake and programme.");
-                }
+                if (!userPath) throw new Error("A course path has not been defined for your intake and programme.");
 
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
-                const allPaymentPlansData = paymentPlansSnap.val() || {};
+                const allSettings = settingsSnap.val() || {};
                 const allProgrammes = programmesSnap.val() || {};
+                const allPaymentPlansData = allSettings.paymentPlans || {};
 
                 const programmeData = allProgrammes[userDataVal.programmeId];
                 if (programmeData) {
@@ -165,6 +179,10 @@ export default function RegisterForSemesterPage() {
                 }
                 
                 setSemesterDetails({id: semesterId, ...semesterData});
+                if(allSettings.registrationPolicy?.lateRegistrationFee > 0 && semesterData.lateRegistrationActive) {
+                    setIsLateRegistration(true);
+                    setLateFee(allSettings.registrationPolicy.lateRegistrationFee);
+                }
 
                 const semesterCourseIds = userPath.semesters[semesterId]?.courses || [];
                 const semesterCourses = semesterCourseIds.map((id: string) => ({ id, ...allCourses[id] }));
@@ -195,6 +213,30 @@ export default function RegisterForSemesterPage() {
 
         fetchData();
     }, [currentUser, yearParam, semesterInYearParam, intakeId, router, toast]);
+
+    React.useEffect(() => {
+        const getDeadlines = async () => {
+            const plan = availablePaymentPlans.find(p => p.name === selectedPaymentPlan);
+            if(!plan || !semesterDetails) { setPaymentDeadlines([]); return;}
+            
+            const eventsSnapshot = await get(ref(db, 'calendarEvents'));
+            const eventMap = new Map<string, string>();
+            if (eventsSnapshot.exists()) { 
+                Object.values(eventsSnapshot.val()).forEach((event: any) => {
+                    eventMap.set(event.title.trim(), event.date);
+                });
+            }
+
+            const deadlines: string[] = [];
+            for (let i = 0; i < plan.installments; i++) {
+                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterDetails.name}`;
+                const date = eventMap.get(title.trim());
+                deadlines.push(`${getOrdinalSuffix(i + 1)} Installment Due: ${date ? format(parseISO(date), 'PPP') : 'Not Set'}`);
+            }
+            setPaymentDeadlines(deadlines);
+        };
+        getDeadlines();
+    }, [selectedPaymentPlan, availablePaymentPlans, semesterDetails]);
 
     const toggleCourseSelection = (courseId: string) => {
         if (programme?.tuitionFee) return;
@@ -228,12 +270,14 @@ export default function RegisterForSemesterPage() {
             
             const mandatoryFeesCost = Object.values(semesterDetails.mandatoryFees || {}).reduce((sum, fee) => sum + fee.amount, 0);
             const optionalFeesCost = selectedOptionalFees.reduce((sum, id) => sum + (semesterDetails.optionalFees?.[id]?.amount || 0), 0);
+            const finalLateFee = isLateRegistration ? lateFee : 0;
 
             await set(newInvoiceRef, {
                 invoiceId,
                 totalTuition: tuitionCost,
                 totalMandatoryFees: mandatoryFeesCost,
                 totalOptionalFees: optionalFeesCost,
+                lateFee: finalLateFee,
                 paymentPlan: selectedPaymentPlan,
                 dateCreated: new Date().toISOString(),
                 semester: semesterDetails.name,
@@ -322,21 +366,35 @@ export default function RegisterForSemesterPage() {
                             ))}
                         </div>
                     </div>
-                    {Object.keys(semesterDetails?.optionalFees || {}).length > 0 && (
-                        <div className="space-y-2">
-                            <h3 className="font-semibold">Optional Fees</h3>
-                             <div className="grid md:grid-cols-2 gap-2">
-                                {Object.entries(semesterDetails!.optionalFees!).map(([id, fee]) => (
-                                    <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
-                                        <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} />
-                                        <Label htmlFor={id} className="flex-1 cursor-pointer">
-                                            <p>{fee.name}</p>
-                                            <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
-                                        </Label>
-                                    </div>
-                                ))}
-                            </div>
+                     <div className="space-y-2">
+                        <h3 className="font-semibold">Semester Fees</h3>
+                        <div className="grid md:grid-cols-2 gap-2">
+                             {Object.entries(semesterDetails?.mandatoryFees || {}).map(([id, fee]) => (
+                                <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
+                                    <Checkbox id={`mand-${id}`} checked disabled/>
+                                    <Label htmlFor={`mand-${id}`} className="flex-1 cursor-default">
+                                        <p>{fee.name} <Badge variant="destructive">Mandatory</Badge></p>
+                                        <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
+                                    </Label>
+                                </div>
+                             ))}
+                             {Object.entries(semesterDetails?.optionalFees || {}).map(([id, fee]) => (
+                                <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
+                                    <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} />
+                                    <Label htmlFor={id} className="flex-1 cursor-pointer">
+                                        <p>{fee.name}</p>
+                                        <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
+                                    </Label>
+                                </div>
+                            ))}
                         </div>
+                    </div>
+                    {isLateRegistration && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Late Registration</AlertTitle>
+                            <AlertDescription>A late registration fee of <strong>ZMW {lateFee.toFixed(2)}</strong> will be added to your invoice.</AlertDescription>
+                        </Alert>
                     )}
                     <Separator />
                      <div className="grid md:grid-cols-2 gap-4">
@@ -346,6 +404,9 @@ export default function RegisterForSemesterPage() {
                                 <SelectTrigger><SelectValue placeholder="Select a payment plan..." /></SelectTrigger>
                                 <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installment{p.installments > 1 ? 's' : ''})</SelectItem>)}</SelectContent>
                             </Select>
+                            <div className="text-xs text-muted-foreground space-y-1 pt-2">
+                                {paymentDeadlines.map(d => <p key={d}>{d}</p>)}
+                            </div>
                         </div>
                          <div className="flex items-end">
                             <div className="flex items-center space-x-2">
