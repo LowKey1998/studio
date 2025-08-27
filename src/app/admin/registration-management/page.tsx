@@ -36,7 +36,7 @@ type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory'
 type GroupedCourses = { [year: string]: Course[]; };
 type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; tuitionFee?: number; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; intakeId?: string; year?: number; semesterInYear?: number; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; intakeId?: string; year?: number; semesterInYear?: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type CalendarEvent = { id: string; title: string; date: string; semester?: string; };
 type Intake = { id: string; name: string };
@@ -64,8 +64,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [saving, setSaving] = React.useState(false);
     const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
     const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>({});
-    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
-    const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Fee>>({});
+    const [optionalFees, setOptionalFees] = React.useState<Record<string, Fee>>({});
+    const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number>(0);
     
     // New Semester fields
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
@@ -96,6 +97,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setSelectedPaymentPlans(editingSemester.paymentPlanIds || {});
             setMandatoryFees(editingSemester.mandatoryFees || {});
             setOptionalFees(editingSemester.optionalFees || {});
+            setLateRegistrationFee(editingSemester.lateRegistrationFee || 0);
         } else {
             setSemesterNameInput('');
             setSelectedIntakeId('');
@@ -105,6 +107,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setSelectedPaymentPlans({});
             setMandatoryFees({});
             setOptionalFees({});
+            setLateRegistrationFee(0);
         }
     }, [editingSemester]);
 
@@ -133,9 +136,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         const feeId = push(ref(db, 'semesters')).key!;
 
         if (isFeeMandatory) {
-            setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
+            setMandatoryFees(prev => ({ ...prev, [feeId]: newFee as Fee }));
         } else {
-            setOptionalFees(prev => ({ ...prev, [feeId]: newFee }));
+            setOptionalFees(prev => ({ ...prev, [feeId]: newFee as Fee }));
         }
         
         setFeeName('');
@@ -167,6 +170,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 name: nameToSave,
                 status: editingSemester?.status || 'Closed',
                 lateRegistrationActive: editingSemester?.lateRegistrationActive || false,
+                lateRegistrationFee,
                 startDate: format(semesterDates.from, 'yyyy-MM-dd'),
                 endDate: semesterDates.to ? format(semesterDates.to, 'yyyy-MM-dd') : format(semesterDates.from, 'yyyy-MM-dd'),
                 paymentPlanIds: selectedPaymentPlans,
@@ -205,9 +209,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             <div className="space-y-2">
                 <div className="flex justify-between items-center">
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
-                    <Dialog open={isMandatory ? isMandatoryFeeDialogOpen : isOptionalFeeDialogOpen} onOpenChange={isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen}>
+                     <Dialog open={isFeeDialogOpen && isFeeMandatory === isMandatory} onOpenChange={setIsFeeDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(isMandatory)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
+                             <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(isMandatory)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
                         </DialogTrigger>
                         <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
                             <DialogHeader><DialogTitle>Add {isMandatory ? 'Mandatory' : 'Optional'} Fee</DialogTitle></DialogHeader>
@@ -221,19 +225,24 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                     <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 300" /></div>
                                 </TabsContent>
                             </Tabs>
-                            <DialogFooter><Button variant="ghost" onClick={() => (isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen)(false)}>Cancel</Button><Button onClick={() => handleAddFee(isMandatory)}>Add Fee</Button></DialogFooter>
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setIsFeeDialogOpen(false)}>Cancel</Button>
+                                <Button onClick={handleAddFee}>Add Fee</Button>
+                            </DialogFooter>
                         </DialogContent>
                     </Dialog>
                 </div>
-                <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
-                    <TableBody>{Object.keys(fees).length > 0 ? Object.entries(fees).map(([id, fee]) =>
-                        <TableRow key={id}><TableCell>{fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteFee(id, isMandatory)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
-                    ) : <TableRow><TableCell colSpan={3} className="text-center h-24">No {isMandatory ? 'mandatory' : 'optional'} fees added.</TableCell></TableRow>}
-                    </TableBody>
-                </Table>
+                <div className="rounded-md border min-h-[120px] p-2">
+                    {Object.keys(fees).length > 0 ? (
+                        <Table><TableBody>{Object.entries(fees).map(([id, fee]) =>
+                        <TableRow key={id}><TableCell className="p-1">{fee.name}</TableCell><TableCell className="p-1 text-right">ZMW {fee.amount.toFixed(2)}</TableCell><TableCell className="p-1 text-right"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteFee(id, isMandatory)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
+                    )}</TableBody></Table>
+                    ) : <p className="text-sm text-center text-muted-foreground pt-8">No {isMandatory ? 'mandatory' : 'optional'} fees added.</p>}
+                </div>
             </div>
         );
     };
+
 
     return (
         <><DialogHeader><DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle></DialogHeader>
@@ -260,7 +269,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     </div>
                 </div>
             </TabsContent>
-            <TabsContent value="fees"><div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">{renderFeeContent(true)}<Separator className="my-4"/>{renderFeeContent(false)}</div></TabsContent>
+            <TabsContent value="fees"><div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">{renderFeeContent(true)}<Separator className="my-4"/><div className="space-y-1"><Label>Late Registration Fee (ZMW)</Label><Input type="number" min="0" value={lateRegistrationFee} onChange={(e) => setLateRegistrationFee(Number(e.target.value))}/></div><Separator className="my-4"/>{renderFeeContent(false)}</div></TabsContent>
         </Tabs>
         <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingSemester ? 'Save Changes' : 'Create Semester'}</Button></DialogFooter>
         </>
@@ -276,7 +285,9 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    const [semesterOfferings, setSemesterOfferings] = React.useState<Record<string, { isOpen: boolean }>>({});
+    const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, { active: boolean; showReason: boolean; }>>>({});
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
+    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
     
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
@@ -285,11 +296,16 @@ export default function RegistrationManagementPage() {
     // Filter states
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [activeTab, setActiveTab] = React.useState<'Open' | 'Closed' | 'Archived'>('Open');
+    
+    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
+    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
+    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
 
-
-    const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
+    // Create Semester Dialog
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
-    const [isEditDialogOpen] = React.useState(false);
+    const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+    const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
 
     const { toast } = useToast();
     
@@ -312,7 +328,7 @@ export default function RegistrationManagementPage() {
             const intakesData = intakesSnap.val() || {};
             setAllIntakes(intakesSnap.exists() ? Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)) : []);
             setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
-            setSemesterOfferings(offeringsSnap.exists() ? offeringsSnap.val() : {});
+            setActivePathSemesters(offeringsSnap.exists() ? offeringsSnap.val() : {});
         } catch (e) { console.error(e) } 
         finally { setLoading(false); }
     }, []);
@@ -331,7 +347,6 @@ export default function RegistrationManagementPage() {
                 await Promise.all(notificationPromises);
             }
             toast({ variant: 'success', title: `Semester status updated to ${newStatus}` });
-            fetchData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
@@ -340,7 +355,6 @@ export default function RegistrationManagementPage() {
         try {
             await update(ref(db, `semesters/${semesterId}`), { status: 'Archived' });
             toast({ variant: 'success', title: `Semester archived.` });
-            fetchData();
         } catch(e: any) {
             toast({ variant: 'destructive', title: 'Archive Failed', description: e.message });
         }
@@ -350,7 +364,6 @@ export default function RegistrationManagementPage() {
         const newStatus = !(semester.lateRegistrationActive ?? false);
         try { await update(ref(db, `semesters/${semester.id}`), { lateRegistrationActive: newStatus });
              toast({ variant: 'success', title: `Late Registration ${newStatus ? 'Enabled' : 'Disabled'}` });
-             fetchData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
@@ -358,7 +371,7 @@ export default function RegistrationManagementPage() {
         setEditingSemester(semester);
         setIsEditDialogOpen(true);
     };
-    
+
     const filteredSemesters = React.useMemo(() => {
         return semesters.filter(s => {
             const intakeMatch = intakeFilter === 'all' || s.intakeId === intakeFilter;
@@ -370,15 +383,9 @@ export default function RegistrationManagementPage() {
     return (
         <div className="space-y-6">
         <Card className="shadow-lg">
-            <CardHeader className="flex flex-col md:flex-row md:justify-between md:items-center">
-                <div>
-                    <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
-                    <CardDescription>Create, manage, and open semesters for student registration.</CardDescription>
-                </div>
-                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogTrigger asChild><Button variant="default"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
-                </Dialog>
+            <CardHeader>
+                <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
+                <CardDescription>Create, manage, and open semesters for student registration.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col md:flex-row gap-4 mb-4">
@@ -401,6 +408,12 @@ export default function RegistrationManagementPage() {
                                 <TabsTrigger value="Archived">Archived</TabsTrigger>
                             </TabsList>
                         </Tabs>
+                    </div>
+                    <div className="self-end">
+                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                            <DialogTrigger asChild><Button variant="default"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
+                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={fetchData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
+                        </Dialog>
                     </div>
                 </div>
                  <Accordion type="multiple" className="w-full">
@@ -429,7 +442,7 @@ export default function RegistrationManagementPage() {
             </CardContent>
         </Card>
          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes}/></DialogContent>
+            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={fetchData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
         </Dialog>
         </div>
     );
@@ -477,7 +490,7 @@ function FinancialSetupView({ semester, allPaymentPlans }: { semester: Semester,
                 </div>
                  <div className="md:col-span-2">
                      <h4 className="font-semibold mb-2">Late Registration Fee</h4>
-                    <p className="text-sm text-muted-foreground">ZMW {(semester as any).lateRegistrationFee?.toFixed(2) || '0.00'}</p>
+                    <p className="text-sm text-muted-foreground">ZMW {semester.lateRegistrationFee?.toFixed(2) || '0.00'}</p>
                 </div>
             </CardContent>
         </Card>
