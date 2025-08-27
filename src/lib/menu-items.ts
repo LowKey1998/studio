@@ -22,6 +22,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/inquiries', label: 'Admission Inquiries', icon: Search },
         { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
@@ -391,3 +392,5 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
+
+    

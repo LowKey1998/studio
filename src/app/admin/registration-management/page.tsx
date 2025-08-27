@@ -20,7 +20,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
@@ -481,7 +481,7 @@ export default function RegistrationManagementPage() {
                             <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                         </Dialog>
                     </div>
-                        {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/staff/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
+                        {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/admin/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
                     </div>
                  )}
             </CardContent>
@@ -595,8 +595,8 @@ export default function RegistrationManagementPage() {
                             <p className="font-semibold">{item.reason}</p>
                             <p className="text-sm text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
                             <div className="grid grid-cols-2 gap-4 mt-2 text-xs">
-                                <div><p className="font-bold">Removed:</p><ul>{item.oldCourses.filter(c => !item.newCourses.includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
-                                <div><p className="font-bold">Added:</p><ul>{item.newCourses.filter(c => !item.oldCourses.includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Removed:</p><ul>{(item.oldCourses || []).filter(c => !(item.newCourses || []).includes(c)).map(id => <li key={id}>- {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
+                                <div><p className="font-bold">Added:</p><ul>{(item.newCourses || []).filter(c => !(item.oldCourses || []).includes(c)).map(id => <li key={id}>+ {allCourses[id]?.name || 'Unknown Course'}</li>)}</ul></div>
                             </div>
                         </div>
                     ))}
@@ -649,3 +649,6 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+
+    

@@ -61,11 +61,60 @@ export default function DashboardLayout({
   };
   
   React.useEffect(() => {
-    const activeCategory = allMenuItems.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+    if (loading || !userProfile) return;
+    
+    let menu;
+    if (userProfile.role.toLowerCase() === 'admin') {
+      menu = allMenuItems;
+    } else if (userProfile.role.toLowerCase() === 'student') {
+      menu = studentMenuItems;
+    } else if (userProfile.role.toLowerCase() === 'staff') {
+        const staffPermissions = userProfile.permissions || {};
+        
+        const baseMenu = staffBaseMenuItems.map(category => {
+            if (!category.items) return category;
+            const filteredSubItems = category.items.filter(subItem => {
+                 if (!subItem.permission) return true;
+                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
+                     return !!staffPermissions[subItem.permission];
+                 }
+                 return userProfile.subRoles?.includes(subItem.permission);
+            });
+            
+            if (filteredSubItems.length > 0) {
+                return { ...category, items: filteredSubItems };
+            }
+            return null;
+        }).filter(Boolean) as any[];
+
+        const additionalMenu = allMenuItems.map(category => {
+             if (!category.items) return null;
+             const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
+             if (permittedSubItems.length > 0) {
+                 return { ...category, items: permittedSubItems };
+             }
+             return null;
+        }).filter(Boolean);
+
+        const combinedMenu = [...baseMenu];
+        const baseCategories = new Set(baseMenu.map(c => c.label));
+
+        additionalMenu.forEach(category => {
+            if (!baseCategories.has(category.label)) {
+                combinedMenu.push(category);
+            }
+        });
+
+        menu = combinedMenu;
+    } else {
+        menu = [];
+    }
+
+    const activeCategory = menu.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
     if(activeCategory) {
         setOpenAccordion([activeCategory]);
     }
-  }, [pathname]);
+  }, [pathname, loading, userProfile]);
 
   const renderMenu = () => {
     if (loading || !userProfile) {
@@ -228,3 +277,5 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
+
+    

@@ -132,7 +132,8 @@ export default function StudentRegistrationPage() {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
-                    const isOpenForRegistration = semesterOfferings[semId]?.isOpen === true;
+                    const openSemestersForPath = semesterOfferings[userPathId] || {};
+                    const isOpenForRegistration = openSemestersForPath[semId]?.active === true;
                     
                     const isRegistered = userRegistrations.includes(semId);
                     if (!isOpenForRegistration && !isRegistered) {
@@ -268,3 +269,5 @@ export default function StudentRegistrationPage() {
         </div>
     );
 }
+
+    
