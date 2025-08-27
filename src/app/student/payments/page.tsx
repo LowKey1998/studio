@@ -32,6 +32,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
 
 type Invoice = {
@@ -305,7 +306,7 @@ export default function PaymentsPage() {
 
     // Component state
     const [loading, setLoading] = React.useState(true);
-    const [actionLoading, setActionLoading] = React.useState(false);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
 
@@ -416,7 +417,7 @@ export default function PaymentsPage() {
 
     }, [rawRegistrations, currentUser, rawInvoices, allPaymentPlans, rawTransactions, calendarEvents]);
 
-    const fetchDataForSemester = React.useCallback(async (user: User, uData: UserData) => {
+    const fetchDataForUser = React.useCallback(async (user: User) => {
          const [regsSnap, invoicesSnap, allTxSnap] = await Promise.all([
             get(ref(db, `registrations/${user.uid}`)),
             get(ref(db, `invoices/${user.uid}`)),
@@ -435,27 +436,21 @@ export default function PaymentsPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [regsSnap, calendarSnap, coursesSnap, settingsSnap, invoicesSnap, semestersSnap, allTxSnap] = await Promise.all([
-                    get(ref(db, `registrations/${currentUser.uid}`)),
+                const [calendarSnap, coursesSnap, settingsSnap, semestersSnap] = await Promise.all([
                     get(ref(db, 'calendarEvents')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'settings')),
-                    get(ref(db, `invoices/${currentUser.uid}`)),
-                    get(ref(db, 'semesters')),
-                    get(ref(db, 'transactions'))
+                    get(ref(db, 'semesters'))
                 ]);
 
-                setRawRegistrations(regsSnap.val() || {});
                 setCalendarEvents(calendarSnap.exists() ? Object.values(calendarSnap.val()) : []);
                 setAllCourses(coursesSnap.val() || {});
                 const settingsData = settingsSnap.val() || {};
                 setAllPaymentPlans(settingsData.paymentPlans ? Object.values(settingsData.paymentPlans) : []);
                 if (settingsData.institution) setInstitutionSettings(settingsData.institution);
-                setRawInvoices(invoicesSnap.exists() ? Object.values(invoicesSnap.val()) : []);
                 setSemesters(semestersSnap.exists() ? Object.values(semestersSnap.val()) : []);
-
-                const userTransactions = Object.values(allTxSnap.exists() ? allTxSnap.val() : {}).filter((tx: any) => tx.userId === currentUser.uid);
-                setRawTransactions(userTransactions as Transaction[]);
+                
+                await fetchDataForUser(currentUser);
 
             } catch (e) {
                 console.error("Failed to fetch payment data:", e);
@@ -466,7 +461,7 @@ export default function PaymentsPage() {
         };
 
         fetchData();
-    }, [currentUser, toast]);
+    }, [currentUser, toast, fetchDataForUser]);
 
     React.useEffect(() => {
         if (!loading) {
@@ -490,7 +485,7 @@ export default function PaymentsPage() {
                 semesterId: payment.invoice.semesterId,
             });
 
-             await fetchDataForSemester(currentUser, userData!);
+             await fetchDataForUser(currentUser);
 
             toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
 
@@ -509,6 +504,7 @@ export default function PaymentsPage() {
             await remove(ref(db, `invoices/${currentUser.uid}/${payment.invoice.invoiceId}`));
             await remove(ref(db, `registrations/${currentUser.uid}/${payment.invoice.semesterId}`));
             toast({ title: 'Registration Canceled', description: `Your registration for ${payment.invoice.semester} has been canceled.` });
+            await fetchDataForUser(currentUser); // Refetch data
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Cancellation Failed'});
         } finally {
@@ -615,6 +611,30 @@ export default function PaymentsPage() {
                                             <TableRow className="font-bold"><TableCell className="pl-0">Final Amount Due</TableCell><TableCell className="text-right">ZMW {((invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0)).toFixed(2)}</TableCell></TableRow>
                                         </TableBody>
                                     </Table>
+                                     {payments[0].registration.status === 'Pending Approval' && (
+                                        <div className="mt-4">
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="sm" disabled={actionLoading}>
+                                                        {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>}
+                                                        Cancel Registration
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            This will cancel your registration for {invoice.semester}. You will need to register again if you change your mind.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Go Back</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleCancelRegistration(payments[0])}>Yes, Cancel</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         )}

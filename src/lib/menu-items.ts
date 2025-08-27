@@ -1,5 +1,4 @@
 
-
 import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock } from 'lucide-react';
 
 export const allMenuItems = [
@@ -150,7 +149,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts' },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings' },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders' },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs' },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts' },
+        ]
     },
     {
       label: 'HR',
@@ -167,21 +172,43 @@ export const allMenuItems = [
            { href: '/admin/hr/onboarding', label: 'Digital Onboarding', icon: UserPlus },
            { href: '/admin/hr/probation-tracking', label: 'Probation Tracking', icon: Clock },
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
+           { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
-           { href: '/admin/hr/contracts', label: 'Staff Contracts', icon: FileText, isComingSoon: true },
       ]
   },
     {
         label: 'Research & Innovation',
         icon: Telescope,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/research/registration', label: 'Research Project Registration', icon: FileText },
+            { href: '/admin/research/supervisor-allocation', label: 'Supervisor Allocation', icon: Users2 },
+            { href: '/admin/research/proposal-submission', label: 'Proposal Submission Workflow', icon: GitBranch },
+            { href: '/admin/research/ethics-reviews', label: 'Ethics Committee Reviews', icon: Shield },
+            { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
+            { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
+            { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
+            { href: '/admin/research/grants', label: 'Grant Applications Management', icon: FileText },
+        ]
     },
     {
         label: 'Innovation',
         icon: Lightbulb,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/innovation/project-submissions', label: 'Innovation Project Submissions', icon: FileUp },
+            { href: '/admin/innovation/prototype-showcase', label: 'Prototype Showcase', icon: GalleryVertical },
+            { href: '/admin/innovation/incubator-access', label: 'Innovation Incubator Access', icon: KeyRound },
+            { href: '/admin/innovation/mentorship-matching', label: 'Mentorship Matching', icon: UserCheckIcon },
+            { href: '/admin/innovation/evaluation-committee', label: 'Innovation Evaluation Committee', icon: Users2 },
+            { href: '/admin/innovation/pitch-deck-repository', label: 'Pitch Deck Repository', icon: FileText },
+            { href: '/admin/innovation/ip-tracker', label: 'Intellectual Property Registration Tracker', icon: Shield },
+            { href: '/admin/innovation/events-calendar', label: 'Innovation Events Calendar', icon: Calendar },
+            { href: '/admin/innovation/investor-matching', label: 'Investor Matching Tools', icon: Handshake },
+            { href: '/admin/innovation/hackathon-logs', label: 'Hackathon Participation Logs', icon: Book },
+            { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration / Team Building Portal', icon: Users },
+        ]
     },
     {
         label: 'Community Engagement',
