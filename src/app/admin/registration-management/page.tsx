@@ -12,7 +12,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import { jsPDF } from 'jspdf';
+import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
@@ -28,18 +28,10 @@ import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
+import { Trash2 } from 'lucide-react';
 
 // --- TYPE DEFINITIONS ---
-type Course = {
-    id: string;
-    name: string;
-    code: string;
-    year: number;
-    cost: number;
-    status: 'active' | 'archived';
-    lecturerName?: string;
-};
+type Course = { id: string; name: string; code: string; year: number; cost: number; status: 'active' | 'archived'; lecturerName?: string; };
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type GroupedCourses = { [year: string]: Course[]; };
@@ -397,7 +389,6 @@ export default function RegistrationManagementPage() {
         } finally { setSaving(false); }
     };
     
-    
     const totalSelected = availableForSemester.length;
     const currentSemester = semesters.find(s => s.id === selectedSemester);
     const semesterName = currentSemester?.name || '';
@@ -430,7 +421,7 @@ export default function RegistrationManagementPage() {
                                         <SelectItem key={s.id} value={s.id}>
                                             <div className="flex items-center gap-2">
                                                 <span className={cn("h-2 w-2 rounded-full", semesterOfferings[s.id]?.isOpen ? 'bg-green-500' : 'bg-red-500')}></span>
-                                                {s.name}
+                                                {s.name} ({s.status})
                                             </div>
                                         </SelectItem>
                                     ))}
@@ -449,10 +440,10 @@ export default function RegistrationManagementPage() {
                                     {isSemesterOpen ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}
                                     {isSemesterOpen ? 'Close Registration' : 'Open Registration'}
                                 </Button>
-                                <Button variant={isLateRegActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}>
+                                {isSemesterOpen && (<Button variant={isLateRegActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}>
                                     <ShieldAlert className="mr-2 h-4 w-4" />
                                     {isLateRegActive ? 'Disable Late Registration' : 'Enable Late Registration'}
-                                </Button>
+                                </Button>)}
                                 <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                                     <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
                                     <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
@@ -482,7 +473,7 @@ export default function RegistrationManagementPage() {
                                         const isFlatFee = !!prog.tuitionFee && prog.tuitionFee > 0;
                                         return (
                                             <AccordionItem value={prog.id} key={prog.id}>
-                                                <AccordionTrigger className="font-bold text-lg">{prog.name} {isFlatFee && <Badge className="ml-2">Flat Fee</Badge>}</AccordionTrigger>
+                                                <AccordionTrigger className="font-bold text-lg">{prog.name} {isFlatFee && <span className="ml-2 text-xs font-semibold text-primary-foreground bg-primary px-2 py-0.5 rounded-full">Flat Fee</span>}</AccordionTrigger>
                                                 <AccordionContent>
                                                     {prog.coursesByYear && Object.keys(prog.coursesByYear).length > 0 ? (
                                                         <Accordion type="multiple" defaultValue={Object.keys(prog.coursesByYear)} className="w-full">
@@ -591,5 +582,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-    
