@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound, Mail } from 'lucide-react';
+import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound, Mail, Percent, Banknote } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth, storage } from '@/lib/firebase';
 import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
@@ -29,7 +29,7 @@ type IDPrefixes = {
     includeYear: boolean;
     includeMonth: boolean;
 };
-type Institution = { name: string; logoUrl?: string; }
+type Institution = { name: string; logoUrl?: string; };
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
@@ -41,10 +41,18 @@ type Integrations = {
     smtp?: { service?: string; host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
 };
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
-type RegistrationPolicy = { lateRegistrationFee: number };
+type RegistrationPolicy = { lateRegistrationFee: number; };
 type Department = { id: string; name: string; };
 type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
-
+type FinancialSettings = {
+    paymentThreshold: number;
+    defaulterRestrictions: {
+        registration: boolean;
+        results: boolean;
+        library: boolean;
+        exams: boolean;
+    }
+};
 
 export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
@@ -59,6 +67,15 @@ export default function SettingsPage() {
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [bankDetails, setBankDetails] = React.useState<BankDetails>({ bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
+    const [financialSettings, setFinancialSettings] = React.useState<FinancialSettings>({
+        paymentThreshold: 75,
+        defaulterRestrictions: {
+            registration: true,
+            results: true,
+            library: false,
+            exams: false
+        }
+    });
     
     // Dialog State
     const [isRoleDialogOpen, setIsRoleDialogOpen] = React.useState(false);
@@ -84,6 +101,7 @@ export default function SettingsPage() {
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
                 setOverduePolicy(data.overduePolicy || 'doNothing');
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
+                setFinancialSettings(data.financialSettings || { paymentThreshold: 75, defaulterRestrictions: { registration: true, results: true, library: false, exams: false } });
                 setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false }, facebook: {}, twilio: {}, smtp: {} });
                 setSubRoles(data.subRoles ? Object.keys(data.subRoles).map(id => ({ id, ...data.subRoles[id] })) : []);
                 setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
@@ -173,6 +191,16 @@ export default function SettingsPage() {
         if (!window.confirm("Are you sure?")) return;
         await remove(ref(db, `settings/departments/${deptId}`));
     };
+    
+    const handleRestrictionChange = (key: keyof FinancialSettings['defaulterRestrictions']) => {
+        setFinancialSettings(prev => ({
+            ...prev,
+            defaulterRestrictions: {
+                ...prev.defaulterRestrictions,
+                [key]: !prev.defaulterRestrictions[key]
+            }
+        }));
+    };
 
     const handleSaveChanges = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -193,6 +221,7 @@ export default function SettingsPage() {
                 paymentMethods: paymentMethods,
                 overduePolicy: overduePolicy,
                 registrationPolicy: registrationPolicy,
+                financialSettings: financialSettings,
                 integrations: integrations,
                 bankDetails: bankDetails,
             });
@@ -225,6 +254,34 @@ export default function SettingsPage() {
                                 </CardHeader>
                             </Card>
                         ))}
+                    </div>
+                </CardContent>
+            </Card>
+            
+             <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Financial Controls</CardTitle>
+                    <CardDescription>Set rules for payment defaulters and system access.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                        <Label htmlFor="payment-threshold">Payment Threshold</Label>
+                        <div className="sm:col-span-2">
+                            <div className="relative max-w-xs">
+                                <Input id="payment-threshold" type="number" min="0" max="100" value={financialSettings.paymentThreshold} onChange={(e) => setFinancialSettings(p => ({...p, paymentThreshold: Number(e.target.value)}))}/>
+                                <Percent className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">If a student pays less than this percentage of an installment, they will be flagged as a defaulter.</p>
+                        </div>
+                    </div>
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start">
+                        <Label>Defaulter Restrictions</Label>
+                        <div className="sm:col-span-2 space-y-3">
+                            <div className="flex items-center space-x-2"><Switch id="restrict-registration" checked={financialSettings.defaulterRestrictions.registration} onCheckedChange={() => handleRestrictionChange('registration')} /><Label htmlFor="restrict-registration">Block New Registrations</Label></div>
+                            <div className="flex items-center space-x-2"><Switch id="restrict-results" checked={financialSettings.defaulterRestrictions.results} onCheckedChange={() => handleRestrictionChange('results')} /><Label htmlFor="restrict-results">Block Access to Results</Label></div>
+                            <div className="flex items-center space-x-2"><Switch id="restrict-library" checked={financialSettings.defaulterRestrictions.library} onCheckedChange={() => handleRestrictionChange('library')} /><Label htmlFor="restrict-library">Block Library Access</Label></div>
+                            <div className="flex items-center space-x-2"><Switch id="restrict-exams" checked={financialSettings.defaulterRestrictions.exams} onCheckedChange={() => handleRestrictionChange('exams')} /><Label htmlFor="restrict-exams">Block Exam Participation</Label></div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
