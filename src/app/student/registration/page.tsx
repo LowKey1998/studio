@@ -119,7 +119,8 @@ export default function StudentRegistrationPage() {
                 return;
             }
 
-            const [userPathId, userPath] = userPathEntry;
+            const [userPathId] = userPathEntry;
+            const userPath = coursePathsData[userPathId];
             
             const semesterOfferings = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
@@ -131,9 +132,8 @@ export default function StudentRegistrationPage() {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
-                    const isOpenForRegistration = semesterOfferings[userPathId]?.[semId]?.active === true;
+                    const isOpenForRegistration = semesterOfferings[semId]?.isOpen === true;
                     
-                    // Only process semesters that are open or that the student is already registered for
                     const isRegistered = userRegistrations.includes(semId);
                     if (!isOpenForRegistration && !isRegistered) {
                         continue;
