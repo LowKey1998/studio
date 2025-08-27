@@ -3,15 +3,17 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Info, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push, remove } from 'firebase/database';
+import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -25,6 +27,8 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 
 // --- TYPE DEFINITIONS ---
 type Course = {
@@ -256,15 +260,18 @@ export default function RegistrationManagementPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
 
-    const [registrationPolicy, setRegistrationPolicy] = React.useState({ lateRegistrationFee: 0 });
+    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
+    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
     const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
+    const [registrationPolicy, setRegistrationPolicy] = React.useState({ lateRegistrationFee: 0 });
 
     const [semesterOfferings, setSemesterOfferings] = React.useState<Record<string, any>>({});
 
 
     const { toast } = useToast();
     
-    React.useEffect(() => {
+     React.useEffect(() => {
         const refsToWatch = [
             ref(db, 'semesters'),
             ref(db, 'settings/paymentPlans'),
@@ -310,7 +317,7 @@ export default function RegistrationManagementPage() {
         const semesterData = semesters.find(s => s.id === selectedSemester);
         if (!semesterData) { setLoading(false); return; }
         setLoading(true);
-        
+        setSemesterDeadlines([]);
         try {
             const [coursesSnap, usersSnapshot, programmesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
@@ -576,7 +583,7 @@ export default function RegistrationManagementPage() {
                            </div>
                         </CardContent>
                          <CardFooter className="flex justify-end">
-                            <Button variant="outline" asChild><Link href="/staff/calendar"><CalendarIcon className="mr-2 h-4 w-4" /> Manage in Calendar</Link></Button>
+                            <Button variant="outline" asChild><Link href="/admin/calendar"><CalendarIcon className="mr-2 h-4 w-4" /> Manage in Calendar</Link></Button>
                         </CardFooter>
                     </Card>
                 </TabsContent>
@@ -584,3 +591,5 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+    
