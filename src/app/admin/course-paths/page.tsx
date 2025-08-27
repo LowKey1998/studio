@@ -29,6 +29,7 @@ type Semester = { id: string; name: string; year: number; semesterInYear: number
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
+type NewSemesterEntry = { year: number | ''; semesterInYear: number | '' };
 
 // --- MAIN PAGE COMPONENT ---
 export default function CoursePathsPage() {
@@ -48,8 +49,7 @@ export default function CoursePathsPage() {
     const [savingIntake, setSavingIntake] = React.useState(false);
     
     const [isSemesterDialogOpen, setIsSemesterDialogOpen] = React.useState(false);
-    const [newSemesterYear, setNewSemesterYear] = React.useState<number | ''>(1);
-    const [newSemesterInYear, setNewSemesterInYear] = React.useState<number | ''>(1);
+    const [newSemesters, setNewSemesters] = React.useState<NewSemesterEntry[]>([{ year: 1, semesterInYear: 1 }]);
 
     // Course Path State
     const [selectedIntake, setSelectedIntake] = React.useState('');
@@ -247,25 +247,45 @@ export default function CoursePathsPage() {
         }
     };
 
-    const handleAddSemester = async () => {
+     const handleAddSemester = async () => {
         const intakeName = intakes.find(i => i.id === selectedIntake)?.name;
-        if (!intakeName || !newSemesterYear || !newSemesterInYear) {
-            toast({ variant: 'destructive', title: 'Missing Details' }); return;
+        if (!intakeName) return;
+        
+        const validSemesters = newSemesters.filter(s => s.year && s.semesterInYear);
+        if(validSemesters.length === 0) {
+            toast({ variant: 'destructive', title: 'No valid semesters to add.' });
+            return;
         }
+
         setSavingIntake(true);
         try {
-            const semesterName = `${intakeName} Year ${newSemesterYear} Semester ${newSemesterInYear}`;
-            await push(ref(db, 'semesters'), { name: semesterName, intakeId: selectedIntake, year: Number(newSemesterYear), semesterInYear: Number(newSemesterInYear), status: 'Closed' });
-            toast({ title: 'Semester Created' });
+            const updates: Record<string, any> = {};
+            validSemesters.forEach(sem => {
+                const semesterName = `${intakeName} Year ${sem.year} Semester ${sem.semesterInYear}`;
+                const newRef = push(ref(db, 'semesters'));
+                updates[newRef.key!] = { name: semesterName, intakeId: selectedIntake, year: Number(sem.year), semesterInYear: Number(sem.semesterInYear), status: 'Closed' };
+            });
+
+            await update(ref(db, 'semesters'), updates);
+            toast({ title: `${validSemesters.length} Semester(s) Created` });
             setIsSemesterDialogOpen(false);
-            setNewSemesterYear(1);
-            setNewSemesterInYear(1);
+            setNewSemesters([{ year: 1, semesterInYear: 1 }]);
         } catch (e) {
             toast({ variant: 'destructive', title: 'Failed to create semester' });
         } finally {
             setSavingIntake(false);
         }
     };
+    
+    const handleNewSemesterChange = (index: number, field: 'year' | 'semesterInYear', value: string) => {
+        const updated = [...newSemesters];
+        updated[index] = { ...updated[index], [field]: value === '' ? '' : Number(value) };
+        setNewSemesters(updated);
+    };
+
+    const addNewSemesterField = () => setNewSemesters(prev => [...prev, { year: '', semesterInYear: '' }]);
+    const removeNewSemesterField = (index: number) => setNewSemesters(prev => prev.filter((_, i) => i !== index));
+
     
     // --- DnD and UI Logic ---
     const findContainer = (id: string) => {
@@ -394,13 +414,19 @@ export default function CoursePathsPage() {
                                                 <PlusCircle className="mr-2 h-4 w-4"/>Add Semester
                                             </Button>
                                         </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader><DialogTitle>Add New Semester</DialogTitle></DialogHeader>
-                                            <div className="py-4 grid grid-cols-2 gap-4">
-                                                <div className="space-y-1"><Label>Year</Label><Input type="number" min="1" value={newSemesterYear} onChange={e => setNewSemesterYear(Number(e.target.value))}/></div>
-                                                <div className="space-y-1"><Label>Semester in Year</Label><Input type="number" min="1" max="3" value={newSemesterInYear} onChange={e => setNewSemesterInYear(Number(e.target.value))}/></div>
+                                         <DialogContent>
+                                            <DialogHeader><DialogTitle>Add New Semesters</DialogTitle></DialogHeader>
+                                            <div className="py-4 max-h-[60vh] overflow-y-auto pr-4 space-y-2">
+                                                {newSemesters.map((sem, index) => (
+                                                    <div key={index} className="flex items-center gap-2">
+                                                        <div className="flex-1"><Label>Year</Label><Input type="number" min="1" value={sem.year} onChange={e => handleNewSemesterChange(index, 'year', e.target.value)}/></div>
+                                                        <div className="flex-1"><Label>Semester in Year</Label><Input type="number" min="1" max="3" value={sem.semesterInYear} onChange={e => handleNewSemesterChange(index, 'semesterInYear', e.target.value)}/></div>
+                                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeNewSemesterField(index)} disabled={newSemesters.length <= 1} className="self-end"><Trash2 className="h-4 w-4"/></Button>
+                                                    </div>
+                                                ))}
+                                                <Button type="button" variant="outline" onClick={addNewSemesterField}><PlusCircle className="h-4 w-4 mr-2"/>Add Another</Button>
                                             </div>
-                                            <DialogFooter><Button onClick={handleAddSemester} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Create Semester</Button></DialogFooter>
+                                            <DialogFooter><Button onClick={handleAddSemester} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Create Semesters</Button></DialogFooter>
                                         </DialogContent>
                                     </Dialog>
                                 </div>
