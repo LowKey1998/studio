@@ -131,15 +131,20 @@ export default function StudentRegistrationPage() {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
+                    const isOpenForRegistration = semesterOfferings[userPathId]?.[semId]?.active === true;
+                    
+                    // Only process semesters that are open or that the student is already registered for
+                    const isRegistered = userRegistrations.includes(semId);
+                    if (!isOpenForRegistration && !isRegistered) {
+                        continue;
+                    }
+
                     const semesterCourses = userPath.semesters[semId]?.courses || [];
                     const courseDetails: Course[] = semesterCourses.map((id: string) => ({
                         id,
                         name: allCoursesData[id]?.name || 'Unknown Course',
                         code: allCoursesData[id]?.code || 'N/A'
                     }));
-                    
-                    const isOpenForRegistration = semesterOfferings[userPathId]?.[semId]?.active === true && semesterDetails.status === 'Open';
-                    const isRegistered = userRegistrations.includes(semId);
 
                     semesterList.push({ 
                         ...semesterDetails,
