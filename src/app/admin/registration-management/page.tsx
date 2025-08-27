@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -47,7 +47,7 @@ type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory'
 type GroupedCourses = { [year: string]: Course[]; };
 type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; tuitionFee?: number; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; intakeId?: string; year?: number; semesterInYear?: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type CoursePath = {
     id: string;
@@ -70,9 +70,10 @@ type CreateOrEditDialogContentProps = {
     onSaveSuccess: () => void;
     allPaymentPlans: PaymentPlan[];
     feeTemplates: FeeTemplate[];
+    intakes: Intake[];
 };
 
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: CreateOrEditDialogContentProps) {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, intakes }: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
     const [semesterNameInput, setSemesterNameInput] = React.useState('');
     const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
@@ -85,6 +86,11 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const [selectedFeeTemplate, setSelectedFeeTemplate] = React.useState('');
     const [feeAmount, setFeeAmount] = React.useState('');
+    
+    // State for creating a new semester
+    const [selectedIntake, setSelectedIntake] = React.useState('');
+    const [year, setYear] = React.useState('');
+    const [semesterInYear, setSemesterInYear] = React.useState('');
 
     const { toast } = useToast();
     
@@ -104,8 +110,19 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
              setSelectedPaymentPlans({});
              setMandatoryFees({});
              setOptionalFees({});
+             setSelectedIntake('');
+             setYear('');
+             setSemesterInYear('');
         }
     }, [editingSemester]);
+
+    React.useEffect(() => {
+        if (!editingSemester && selectedIntake && year && semesterInYear) {
+            const intakeName = intakes.find(i => i.id === selectedIntake)?.name || '';
+            const newName = `${intakeName} Year ${year} Semester ${semesterInYear}`;
+            setSemesterNameInput(newName);
+        }
+    }, [selectedIntake, year, semesterInYear, editingSemester, intakes]);
 
 
     const handlePlanSelection = (planId: string) => {
@@ -154,6 +171,11 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const handleSaveSemester = async () => {
         if (!semesterNameInput.trim() || !semesterDates?.from) { toast({ variant: 'destructive', title: 'Missing Semester Details'}); return; }
+        if (!editingSemester && (!selectedIntake || !year || !semesterInYear)) {
+             toast({ variant: 'destructive', title: 'Intake, Year and Semester Number are required for new semesters.' });
+             return;
+        }
+
         setSaving(true);
         try {
             const semesterData: Omit<Semester, 'id'> & { id?: string } = {
@@ -166,6 +188,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 paymentPlanIds: selectedPaymentPlans,
                 mandatoryFees,
                 optionalFees,
+                intakeId: editingSemester?.intakeId || selectedIntake,
+                year: editingSemester?.year || Number(year),
+                semesterInYear: editingSemester?.semesterInYear || Number(semesterInYear),
             };
 
             if (editingSemester) {
@@ -230,8 +255,15 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         <Tabs defaultValue="details" className="w-full">
             <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details & Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
             <TabsContent value="details">
-                <div className="grid gap-4 py-4">
-                    <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} /></div>
+                <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                    {!editingSemester && (
+                        <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
+                             <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                             <div className="space-y-1"><Label>Year</Label><Input type="number" min="1" value={year} onChange={e => setYear(e.target.value)} /></div>
+                             <div className="space-y-1"><Label>Semester</Label><Input type="number" min="1" max="3" value={semesterInYear} onChange={e => setSemesterInYear(e.target.value)}/></div>
+                        </div>
+                    )}
+                    <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} disabled={!editingSemester} /></div>
                     <div className="space-y-1"><Label htmlFor="semester-dates">Semester Start & End Dates</Label>
                         <Popover><PopoverTrigger asChild><Button id="semester-dates" variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent></Popover>
                     </div>
@@ -242,7 +274,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     </div>
                 </div>
             </TabsContent>
-            <TabsContent value="fees"><div className="space-y-4 py-4">{renderFeeContent(true)}{renderFeeContent(false)}</div></TabsContent>
+            <TabsContent value="fees"><div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">{renderFeeContent(true)}{renderFeeContent(false)}</div></TabsContent>
         </Tabs>
         <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingSemester ? 'Save Changes' : 'Create Semester'}</Button></DialogFooter>
         </>
@@ -256,10 +288,12 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
+    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [selectedSemester, setSelectedSemester] = React.useState<string>('');
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
     
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -303,8 +337,12 @@ export default function RegistrationManagementPage() {
                 setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] })));
             }
         });
+        
+        const unsubIntakes = onValue(ref(db, 'intakes'), (snapshot) => {
+             if(snapshot.exists()) setIntakes(Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id]})));
+        });
 
-        return () => { unsubSemesters(); unsubPaymentPlans(); unsubFeeTemplates(); };
+        return () => { unsubSemesters(); unsubPaymentPlans(); unsubFeeTemplates(); unsubIntakes(); };
     }, [selectedSemester]);
 
 
@@ -314,12 +352,13 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         setSemesterDeadlines([]);
         try {
-            const [eventsSnapshot, coursesSnap, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
+            const [eventsSnapshot, coursesSnap, usersSnapshot, semesterOfferingsSnapshot, programmesSnap, coursePathsSnap] = await Promise.all([
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
-                get(ref(db, `semesterOfferings/${semesterData.name}/courseIds`)),
-                get(ref(db, 'programmes'))
+                get(ref(db, `semesterOfferings/${semesterData.id}/courseIds`)),
+                get(ref(db, 'programmes')),
+                get(ref(db, 'coursePaths'))
             ]);
 
             const allCalendarEvents: CalendarEvent[] = [];
@@ -348,9 +387,18 @@ export default function RegistrationManagementPage() {
                 const userMap = new Map<string, string>();
                 if (usersSnapshot.exists()) { Object.entries(usersSnapshot.val()).forEach(([uid, userData]: [string, any]) => userMap.set(uid, userData.name)); }
                 const allCoursesData = coursesSnap.val();
+                setAllCourses(Object.keys(allCoursesData).map(id => ({ id, ...allCoursesData[id] })));
 
-                const programmeData: Programme[] = Object.entries(programmesSnap.val()).map(([id, prog]: [string, any]) => {
-                    const progCourses: Course[] = (prog.courseIds ? Object.keys(prog.courseIds) : [])
+                const coursePaths = coursePathsSnap.exists() ? Object.values(coursePathsSnap.val() as Record<string, CoursePath>) : [];
+                const pathsForSemester = coursePaths.filter(p => !!p.semesters?.[semesterData.id]);
+                
+                const programmeData: Programme[] = Object.entries(programmesSnap.val())
+                    .filter(([id, prog]) => pathsForSemester.some(p => p.programmeId === id))
+                    .map(([id, prog]: [string, any]) => {
+                    const path = pathsForSemester.find(p => p.programmeId === id);
+                    const semesterCourseIds = path?.semesters?.[semesterData.id]?.courses || [];
+
+                    const progCourses = semesterCourseIds
                         .map((courseId: string) => {
                             const courseData = allCoursesData[courseId];
                             return courseData && courseData.status === 'active' ? { id: courseId, ...courseData, lecturerName: userMap.get(courseData.lecturerId) || 'N/A' } : null;
@@ -411,7 +459,7 @@ export default function RegistrationManagementPage() {
         const semester = semesters.find(s => s.id === selectedSemester);
         if (!semester) return;
         setSaving(true);
-        try { await set(ref(db, `semesterOfferings/${semester.name}`), { courseIds: availableForSemester, isOpen: true, });
+        try { await set(ref(db, `semesterOfferings/${semester.id}`), { courseIds: availableForSemester, isOpen: semester.status === 'Open' });
             toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings for ${semester.name} have been updated.` });
         } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setSaving(false); }
@@ -464,7 +512,7 @@ export default function RegistrationManagementPage() {
             </div>
                 <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                     <DialogTrigger asChild><Button variant="outline"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={intakes} /></DialogContent>
                 </Dialog>
             </div>
              {currentSemester && (
@@ -473,7 +521,7 @@ export default function RegistrationManagementPage() {
                     {currentSemester.status === 'Open' && (<Button variant={currentSemester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(currentSemester)}><ShieldAlert className="mr-2 h-4 w-4" />{currentSemester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
                     <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                         <DialogTrigger asChild><Button variant="outline" onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
-                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchDataForSemester(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={intakes} /></DialogContent>
                     </Dialog>
                 </div>
                     {!loading && !canSave && currentSemester.status !== 'Open' && (<Alert variant="destructive" className="mt-4"><AlertCircle className="h-4 w-4" /><AlertTitle>Action Required: Missing Payment Deadlines</AlertTitle><AlertDescription><p>You cannot open registration for <strong>{semesterName}</strong> until all payment deadlines for its linked payment plans are set in the Academic Calendar. The following are missing:</p><ul className="list-disc pl-5 mt-2 mb-3 text-xs">{semesterDeadlines.filter(d => d.date === null).map(d => <li key={d.title}>{d.title}</li>)}</ul><Button asChild variant="link" className="p-0 h-auto"><Link href="/staff/calendar">Go to Calendar to add deadlines</Link></Button></AlertDescription></Alert>)}
@@ -489,7 +537,7 @@ export default function RegistrationManagementPage() {
             </TabsList>
             <TabsContent value="courses">
                 <Card>
-                    <CardHeader><CardTitle>Available Courses for {semesterName}</CardTitle><CardDescription>Select which courses from the catalog should be available for registration in this semester.</CardDescription></CardHeader>
+                    <CardHeader><CardTitle>Available Courses for {semesterName}</CardTitle><CardDescription>Select which courses should be available for registration in this semester.</CardDescription></CardHeader>
                     <CardContent>
                         {loading ? (<div className="space-y-4 pt-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
                         ) : selectedSemester ? (programmesWithCourses.length > 0 ? (
@@ -501,7 +549,7 @@ export default function RegistrationManagementPage() {
                                                     {Object.entries(prog.coursesByYear).map(([year, courses]) => (
                                                         <AccordionItem value={year} key={year}><AccordionTrigger className="font-semibold text-base pl-4">{year} Courses</AccordionTrigger><AccordionContent className="pl-8">
                                                                 <Table><TableHeader><TableRow><TableHead className="w-[50px]">Enable</TableHead><TableHead>Course Code</TableHead><TableHead>Course Name</TableHead><TableHead>Assigned Lecturer</TableHead></TableRow></TableHeader>
-                                                                    <TableBody>{courses.map((course) => (<TableRow key={course.id} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={!canSave && currentSemester?.status !== 'Open'}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
+                                                                    <TableBody>{courses.map((course) => (<TableRow key={course.id} data-state={availableForSemester.includes(course.id) ? "selected" : undefined}><TableCell><Checkbox id={`course-${course.id}`} checked={availableForSemester.includes(course.id)} onCheckedChange={() => handleSelectCourse(course.id)} disabled={(!canSave && currentSemester?.status !== 'Open') || !!prog.tuitionFee}/></TableCell><TableCell className="font-medium">{course.code}</TableCell><TableCell>{course.name}</TableCell><TableCell>{course.lecturerName}</TableCell></TableRow>))}
                                                                     </TableBody></Table></AccordionContent></AccordionItem>))}
                                             </Accordion>) : (<p className="text-muted-foreground p-4">No courses assigned to this programme.</p>)}
                                         </AccordionContent></AccordionItem>
