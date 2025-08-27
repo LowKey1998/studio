@@ -204,12 +204,14 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const renderFeeContent = (isMandatory: boolean) => {
         const fees = isMandatory ? mandatoryFees : optionalFees;
+        const dialogOpenState = isMandatory ? isFeeMandatory : false;
+        const setDialogOpenState = isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen;
 
         return (
             <div className="space-y-2">
                 <div className="flex justify-between items-center">
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
-                     <Dialog open={isFeeDialogOpen && isFeeMandatory === isMandatory} onOpenChange={setIsFeeDialogOpen}>
+                     <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
                         <DialogTrigger asChild>
                              <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(isMandatory)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
                         </DialogTrigger>
@@ -226,7 +228,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                 </TabsContent>
                             </Tabs>
                             <DialogFooter>
-                                <Button variant="ghost" onClick={() => setIsFeeDialogOpen(false)}>Cancel</Button>
+                                <Button variant="ghost" onClick={() => setDialogOpenState(false)}>Cancel</Button>
                                 <Button onClick={handleAddFee}>Add Fee</Button>
                             </DialogFooter>
                         </DialogContent>
@@ -285,27 +287,15 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, { active: boolean; showReason: boolean; }>>>({});
-    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
-    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
-    
-    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-
-    // Filter states
-    const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [activeTab, setActiveTab] = React.useState<'Open' | 'Closed' | 'Archived'>('Open');
-    
-    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
-    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
-    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
-    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
-
-    // Create Semester Dialog
-    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+    const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+
+    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
 
     const { toast } = useToast();
     
@@ -313,11 +303,11 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         try {
             const [
-                semestersSnap, coursesSnap, programmesSnap, plansSnap, feesSnap, intakesSnap, coursePathsSnap, offeringsSnap
+                semestersSnap, coursesSnap, programmesSnap, plansSnap, feesSnap, intakesSnap, coursePathsSnap
             ] = await Promise.all([
                 get(ref(db, 'semesters')), get(ref(db, 'courses')), get(ref(db, 'programmes')),
                 get(ref(db, 'settings/paymentPlans')), get(ref(db, 'settings/feeTemplates')),
-                get(ref(db, 'intakes')), get(ref(db, 'coursePaths')), get(ref(db, 'semesterOfferings'))
+                get(ref(db, 'intakes')), get(ref(db, 'coursePaths'))
             ]);
     
             setSemesters(semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })) : []);
@@ -328,7 +318,6 @@ export default function RegistrationManagementPage() {
             const intakesData = intakesSnap.val() || {};
             setAllIntakes(intakesSnap.exists() ? Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)) : []);
             setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
-            setActivePathSemesters(offeringsSnap.exists() ? offeringsSnap.val() : {});
         } catch (e) { console.error(e) } 
         finally { setLoading(false); }
     }, []);
@@ -347,6 +336,7 @@ export default function RegistrationManagementPage() {
                 await Promise.all(notificationPromises);
             }
             toast({ variant: 'success', title: `Semester status updated to ${newStatus}` });
+            fetchData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
@@ -355,6 +345,7 @@ export default function RegistrationManagementPage() {
         try {
             await update(ref(db, `semesters/${semesterId}`), { status: 'Archived' });
             toast({ variant: 'success', title: `Semester archived.` });
+            fetchData();
         } catch(e: any) {
             toast({ variant: 'destructive', title: 'Archive Failed', description: e.message });
         }
@@ -364,6 +355,7 @@ export default function RegistrationManagementPage() {
         const newStatus = !(semester.lateRegistrationActive ?? false);
         try { await update(ref(db, `semesters/${semester.id}`), { lateRegistrationActive: newStatus });
              toast({ variant: 'success', title: `Late Registration ${newStatus ? 'Enabled' : 'Disabled'}` });
+             fetchData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
@@ -382,117 +374,67 @@ export default function RegistrationManagementPage() {
 
     return (
         <div className="space-y-6">
-        <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
-                <CardDescription>Create, manage, and open semesters for student registration.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="flex flex-col md:flex-row gap-4 mb-4">
-                    <div className="flex-1">
-                        <Label htmlFor="intake-filter">Filter by Intake</Label>
-                        <Select value={intakeFilter} onValueChange={setIntakeFilter}>
-                            <SelectTrigger id="intake-filter"><SelectValue/></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Intakes</SelectItem>
-                                {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
+                    <CardDescription>Create, manage, and open semesters for student registration.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                        <div className="flex-1">
+                            <Label htmlFor="intake-filter">Filter by Intake</Label>
+                            <Select value={intakeFilter} onValueChange={setIntakeFilter}>
+                                <SelectTrigger id="intake-filter"><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Intakes</SelectItem>
+                                    {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex-1 w-full">
+                            <Label>Filter by Status</Label>
+                            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+                                <TabsList className="grid w-full grid-cols-3">
+                                    <TabsTrigger value="Open">Open</TabsTrigger>
+                                    <TabsTrigger value="Closed">Closed</TabsTrigger>
+                                    <TabsTrigger value="Archived">Archived</TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                        </div>
+                        <div className="self-end">
+                            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                                <DialogTrigger asChild><Button variant="default"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
+                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
+                            </Dialog>
+                        </div>
                     </div>
-                    <div className="flex-1 w-full">
-                         <Label>Filter by Status</Label>
-                        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-                            <TabsList className="grid w-full grid-cols-3">
-                                <TabsTrigger value="Open">Open</TabsTrigger>
-                                <TabsTrigger value="Closed">Closed</TabsTrigger>
-                                <TabsTrigger value="Archived">Archived</TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                    </div>
-                    <div className="self-end">
-                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                            <DialogTrigger asChild><Button variant="default"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={fetchData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
-                        </Dialog>
-                    </div>
-                </div>
-                 <Accordion type="multiple" className="w-full">
-                    {loading ? <Skeleton className="h-40 w-full"/> : 
-                     filteredSemesters.map(semester => (
-                        <AccordionItem value={semester.id} key={semester.id}>
-                            <AccordionTrigger className="font-semibold text-lg hover:no-underline">
-                                <div className="flex items-center gap-2">
-                                     <span className={cn("h-3 w-3 rounded-full", semester.status === 'Open' ? 'bg-green-500' : semester.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>
-                                    {semester.name}
+                     <Accordion type="multiple" className="w-full">
+                        {loading ? <Skeleton className="h-40 w-full"/> : 
+                        filteredSemesters.map(semester => (
+                            <AccordionItem value={semester.id} key={semester.id}>
+                                <AccordionTrigger className="font-semibold text-lg hover:no-underline">
+                                    <div className="flex items-center gap-2">
+                                        <span className={cn("h-3 w-3 rounded-full", semester.status === 'Open' ? 'bg-green-500' : semester.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>
+                                        {semester.name}
+                                    </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex flex-wrap gap-2">
+                                        <Button variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}>{semester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{semester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
+                                        {semester.status === 'Open' && (<Button variant={semester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(semester)}><ShieldAlert className="mr-2 h-4 w-4" />{semester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
+                                        <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
+                                        <Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>
                                 </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="space-y-4 pt-4">
-                               <div className="flex flex-wrap gap-2">
-                                    <Button variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}>{semester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{semester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
-                                    {semester.status === 'Open' && (<Button variant={semester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(semester)}><ShieldAlert className="mr-2 h-4 w-4" />{semester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
-                                    <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit Details</Button>
-                                    <Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>
-                               </div>
-                                <FinancialSetupView semester={semester} allPaymentPlans={allPaymentPlans} />
-                            </AccordionContent>
-                        </AccordionItem>
-                    ))}
-                </Accordion>
-                {!loading && filteredSemesters.length === 0 && <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>No Semesters Found</AlertTitle><AlertDescription>There are no semesters matching the current filter.</AlertDescription></Alert>}
-            </CardContent>
-        </Card>
-         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={fetchData} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
-        </Dialog>
+                                </AccordionContent>
+                            </AccordionItem>
+                        ))}
+                    </Accordion>
+                    {!loading && filteredSemesters.length === 0 && <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>No Semesters Found</AlertTitle><AlertDescription>There are no semesters matching the current filter.</AlertDescription></Alert>}
+                </CardContent>
+            </Card>
+             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
+            </Dialog>
         </div>
     );
-}
-
-function FinancialSetupView({ semester, allPaymentPlans }: { semester: Semester, allPaymentPlans: PaymentPlan[] }) {
-    const availablePlans = semester.paymentPlanIds ? Object.keys(semester.paymentPlanIds).map(id => allPaymentPlans.find(p => p.id === id)).filter(Boolean) as PaymentPlan[] : [];
-
-    return (
-        <Card className="mt-4">
-             <CardHeader><CardTitle>Financial Setup</CardTitle><CardDescription>Overview of fees and payment plans for this semester.</CardDescription></CardHeader>
-            <CardContent className="grid md:grid-cols-2 gap-6">
-                <div>
-                    <h4 className="font-semibold mb-2">Mandatory Fees</h4>
-                    <Table>
-                        <TableBody>
-                            {semester.mandatoryFees && Object.values(semester.mandatoryFees).length > 0 ? Object.values(semester.mandatoryFees).map((fee, i) => (
-                                <TableRow key={`mand-${i}`}><TableCell>{fee.name}</TableCell><TableCell className="text-right">ZMW {fee.amount.toFixed(2)}</TableCell></TableRow>
-                            )) : <TableRow><TableCell colSpan={2} className="text-center h-24">No mandatory fees.</TableCell></TableRow>}
-                        </TableBody>
-                    </Table>
-                </div>
-                 <div>
-                    <h4 className="font-semibold mb-2">Optional Fees</h4>
-                    <Table>
-                        <TableBody>
-                            {semester.optionalFees && Object.values(semester.optionalFees).length > 0 ? Object.values(semester.optionalFees).map((fee, i) => (
-                                <TableRow key={`opt-${i}`}><TableCell>{fee.name}</TableCell><TableCell className="text-right">ZMW {fee.amount.toFixed(2)}</TableCell></TableRow>
-                            )) : <TableRow><TableCell colSpan={2} className="text-center h-24">No optional fees.</TableCell></TableRow>}
-                        </TableBody>
-                    </Table>
-                </div>
-                <div className="md:col-span-2">
-                    <h4 className="font-semibold mb-2">Available Payment Plans</h4>
-                     {availablePlans.length > 0 ? (
-                        <div className="space-y-2">
-                            {availablePlans.map(plan => (
-                                <div key={plan.id} className="p-3 border rounded-md">
-                                    <p className="font-medium">{plan.name}</p>
-                                    <p className="text-sm text-muted-foreground">{plan.installments} Installment(s): {plan.installmentPercentages.join('% / ')}%</p>
-                                </div>
-                            ))}
-                        </div>
-                    ) : <p className="text-sm text-muted-foreground">No payment plans assigned.</p>}
-                </div>
-                 <div className="md:col-span-2">
-                     <h4 className="font-semibold mb-2">Late Registration Fee</h4>
-                    <p className="text-sm text-muted-foreground">ZMW {semester.lateRegistrationFee?.toFixed(2) || '0.00'}</p>
-                </div>
-            </CardContent>
-        </Card>
-    )
 }
