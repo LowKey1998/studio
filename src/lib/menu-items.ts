@@ -337,7 +337,7 @@ export const staffBaseMenuItems = [
         { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
         { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
         { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
-      ],
+      ]
     },
     {
       label: 'Leave & Timetable',
@@ -364,4 +364,3 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
-

@@ -313,12 +313,12 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         setSemesterDeadlines([]);
         try {
-            const [eventsSnapshot, coursesSnap, usersSnapshot, semesterOfferingsSnapshot, programmesSnap] = await Promise.all([
+            const [eventsSnapshot, usersSnapshot, semesterOfferingsSnapshot, programmesSnap, coursesSnap] = await Promise.all([
                 get(ref(db, 'calendarEvents')),
-                get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, `semesterOfferings/${semesterData.name}/courseIds`)),
-                get(ref(db, 'programmes'))
+                get(ref(db, 'programmes')),
+                get(ref(db, 'courses')),
             ]);
 
             const allCalendarEvents: CalendarEvent[] = [];
@@ -381,7 +381,8 @@ export default function RegistrationManagementPage() {
 
         } catch (error) { console.error('Error fetching data:', error); toast({ variant: 'destructive', title: 'Failed to load data' });
         } finally { setLoading(false); }
-    }, [selectedSemester, semesters, toast, allPaymentPlans, programmesWithCourses]);
+    }, [selectedSemester, semesters, toast, allPaymentPlans]);
+
 
     React.useEffect(() => {
         if(selectedSemester){ fetchDataForSemester();
