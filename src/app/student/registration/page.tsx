@@ -109,8 +109,8 @@ export default function StudentRegistrationPage() {
             setUserProfile(profile);
             
             const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
-            const userPathEntry = Object.entries(coursePathsData as Record<string, CoursePath>).find(
-                ([id, p]) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
+            const userPathEntry = Object.values(coursePathsData as Record<string, CoursePath>).find(
+                (p: CoursePath) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
             );
             
             if (!userPathEntry) {
@@ -118,29 +118,25 @@ export default function StudentRegistrationPage() {
                 setLoading(false);
                 return;
             }
-
-            const [userPathId, userPath] = userPathEntry;
             
             const semesterOfferings = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {};
             const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
             
             const semesterList: SemesterWithStatus[] = [];
             
-            if (userPath.semesters) {
-                for (const semId in userPath.semesters) {
+            if (userPathEntry.semesters) {
+                for (const semId in userPathEntry.semesters) {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
-                    const pathOfferings = semesterOfferings[userPathId] || {};
-                    const isOpenForRegistration = pathOfferings[semId]?.active === true;
-                    
+                    const isOpenForRegistration = !!semesterOfferings[semId]?.isOpen;
                     const isRegistered = userRegistrations.includes(semId);
                     
                     if (!isOpenForRegistration && !isRegistered) {
                         continue;
                     }
 
-                    const semesterCourses = userPath.semesters[semId]?.courses || [];
+                    const semesterCourses = userPathEntry.semesters[semId]?.courses || [];
                     const courseDetails: Course[] = semesterCourses.map((id: string) => ({
                         id,
                         name: allCoursesData[id]?.name || 'Unknown Course',

@@ -106,9 +106,9 @@ export default function CoursePathsPage() {
         
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
              const data = snapshot.val() || {};
-            const list = Object.keys(data).map(id => ({ id, ...data[id] }));
+             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
              switch(i) {
-                case 0: setIntakes(list.sort((a,b) => b.name.localeCompare(a.name))); break;
+                case 0: setIntakes(list.sort((a,b) => (b as any).name.localeCompare((a as any).name))); break;
                 case 1: setProgrammes(list); break;
                 case 2: setCourses(list); break;
                 case 3: setCoursePaths(list); break;
@@ -154,7 +154,7 @@ export default function CoursePathsPage() {
     
     const handleSaveCoursePath = async () => {
         if (!selectedIntake || !selectedProgramme) return;
-        setLoading(true);
+        setSaving(true);
 
         try {
             const pathSemesters: Record<string, CoursePathSemester> = {}; // key is semesterId
@@ -205,7 +205,7 @@ export default function CoursePathsPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     };
     
@@ -411,8 +411,7 @@ export default function CoursePathsPage() {
                                     <Dialog open={isSemesterDialogOpen} onOpenChange={setIsSemesterDialogOpen}>
                                         <DialogTrigger asChild>
                                             <Button variant="secondary" disabled={!selectedIntake}>
-                                                <PlusCircle className="mr-2 h-4 w-4"/>Add Semester
-                                            </Button>
+                                                <PlusCircle className="mr-2 h-4 w-4"/>Add Semester</Button>
                                         </DialogTrigger>
                                          <DialogContent>
                                             <DialogHeader><DialogTitle>Add New Semesters for {intakes.find(i => i.id === selectedIntake)?.name}</DialogTitle></DialogHeader>
@@ -477,7 +476,7 @@ export default function CoursePathsPage() {
                                 ) : <Alert><Info className="h-4 w-4"/><AlertTitle>Select Intake &amp; Programme</AlertTitle><AlertDescription>Please select an intake and a programme to begin building a course path.</AlertDescription></Alert>}
                             </CardContent>
                             <CardFooter className="justify-end">
-                                <Button onClick={handleSaveCoursePath} disabled={loading || !selectedIntake || !selectedProgramme}>Save Course Path</Button>
+                                <Button onClick={handleSaveCoursePath} disabled={loading || saving || !selectedIntake || !selectedProgramme}>{saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Save Course Path</Button>
                             </CardFooter>
                         </Card>
                     </TabsContent>
