@@ -37,7 +37,7 @@ type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory'
 type GroupedCourses = { [year: string]: Course[]; };
 type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; coursesByYear?: GroupedCourses; tuitionFee?: number; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; intakeId?: string; year?: number; semesterInYear?: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type CalendarEvent = { id: string; title: string; date: string; semester?: string; };
 type Intake = { id: string; name: string };
@@ -117,18 +117,18 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     };
     
     const handleAddFee = () => {
-        let name = feeName;
-        let amount = feeAmount;
+        let currentFeeName = feeName;
+        let currentFeeAmount = feeAmount;
 
         if (isImportingFee) {
             const template = feeTemplates.find(t => t.id === selectedFeeTemplate);
             if (!template) { toast({ variant: 'destructive', title: 'Please select a template.' }); return; }
-            name = template.name;
+            currentFeeName = template.name;
         }
 
-        if (!name || !amount) { toast({ variant: 'destructive', title: 'Fee name and amount are required.' }); return; }
+        if (!currentFeeName || !currentFeeAmount) { toast({ variant: 'destructive', title: 'Fee name and amount are required.' }); return; }
 
-        const newFee = { name, amount: parseFloat(amount) };
+        const newFee = { name: currentFeeName, amount: parseFloat(currentFeeAmount) };
         const feeId = push(ref(db, 'semesters')).key!;
 
         if (isFeeMandatory) {
@@ -211,6 +211,45 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         setIsFeeDialogOpen(true);
     };
 
+    const renderFeeContent = (isMandatory: boolean) => {
+        const fees = isMandatory ? mandatoryFees : optionalFees;
+        const dialogOpenState = isMandatory ? isMandatoryFeeDialogOpen : isOptionalFeeDialogOpen;
+        const setDialogOpenState = isMandatory ? setIsMandatoryFeeDialogOpen : setIsOptionalFeeDialogOpen;
+
+        return (
+            <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                    <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
+                    <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
+                        <DialogTrigger asChild>
+                            <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(isMandatory)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
+                        </DialogTrigger>
+                        <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
+                            <DialogHeader><DialogTitle>Add {isMandatory ? 'Mandatory' : 'Optional'} Fee</DialogTitle></DialogHeader>
+                            <Tabs defaultValue="import" onValueChange={(val) => setIsImportingFee(val === 'import')}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="import">Import from Template</TabsTrigger><TabsTrigger value="custom">Create New</TabsTrigger></TabsList>
+                                <TabsContent value="import" className="pt-4 space-y-4">
+                                    <div className="space-y-1"><Label>Fee Name</Label><Select value={selectedFeeTemplate} onValueChange={(val) => {setSelectedFeeTemplate(val); setFeeAmount(String(feeTemplates.find(t => t.id === val)?.amount || ''));}}><SelectTrigger><SelectValue placeholder={`Select a ${isMandatory ? 'mandatory' : 'optional'} fee...`}/></SelectTrigger><SelectContent>{feeTemplates.filter(t => t.type === (isMandatory ? 'Mandatory' : 'Optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select></div>
+                                    <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 250" /></div>
+                                </TabsContent>
+                                <TabsContent value="custom" className="pt-4 space-y-4">
+                                    <div className="space-y-1"><Label>Fee Name</Label><Input value={feeName} onChange={(e) => setFeeName(e.target.value)} placeholder="e.g., Lab Gown Fee"/></div>
+                                    <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 300" /></div>
+                                </TabsContent>
+                            </Tabs>
+                            <DialogFooter><Button variant="ghost" onClick={() => setDialogOpenState(false)}>Cancel</Button><Button onClick={() => handleAddFee(isMandatory)}>Add Fee to Semester</Button></DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+                <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
+                    <TableBody>{Object.keys(fees).length > 0 ? Object.entries(fees).map(([id, fee]) =>
+                        <TableRow key={id}><TableCell>{fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteFee(id, isMandatory)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
+                    ) : <TableRow><TableCell colSpan={3} className="text-center h-24">No {isMandatory ? 'mandatory' : 'optional'} fees added.</TableCell></TableRow>}
+                    </TableBody>
+                </Table>
+            </div>
+        );
+    };
+
     return (
         <><DialogHeader><DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle></DialogHeader>
         <Tabs defaultValue="details" className="w-full">
@@ -238,49 +277,12 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             </TabsContent>
             <TabsContent value="fees">
                 <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                     <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <Label>Mandatory Fees</Label>
-                            <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(true)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
-                        </div>
-                        <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
-                            <TableBody>{Object.keys(mandatoryFees).length > 0 ? Object.entries(mandatoryFees).map(([id, fee]) =>
-                                <TableRow key={id}><TableCell>{fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteFee(id, true)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
-                            ) : <TableRow><TableCell colSpan={3} className="text-center h-24">No mandatory fees added.</TableCell></TableRow>}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <Label>Optional Fees</Label>
-                            <Button size="sm" type="button" variant="outline" onClick={() => openFeeDialog(false)}><PlusCircle className="h-4 w-4 mr-1"/>Add Fee</Button>
-                        </div>
-                        <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="w-[50px]"></TableHead></TableRow></TableHeader>
-                            <TableBody>{Object.keys(optionalFees).length > 0 ? Object.entries(optionalFees).map(([id, fee]) =>
-                                <TableRow key={id}><TableCell>{fee.name}</TableCell><TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => handleDeleteFee(id, false)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell></TableRow>
-                            ) : <TableRow><TableCell colSpan={3} className="text-center h-24">No optional fees added.</TableCell></TableRow>}
-                            </TableBody>
-                        </Table>
-                    </div>
+                    {renderFeeContent(true)}
+                    <Separator/>
+                    {renderFeeContent(false)}
                 </div>
             </TabsContent>
         </Tabs>
-        <Dialog open={isFeeDialogOpen} onOpenChange={setIsFeeDialogOpen}>
-            <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
-                <DialogHeader><DialogTitle>Add {isFeeMandatory ? 'Mandatory' : 'Optional'} Fee</DialogTitle></DialogHeader>
-                <Tabs defaultValue="import" onValueChange={(val) => setIsImportingFee(val === 'import')}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="import">Import from Template</TabsTrigger><TabsTrigger value="custom">Create New</TabsTrigger></TabsList>
-                    <TabsContent value="import" className="pt-4 space-y-4">
-                        <div className="space-y-1"><Label>Fee Name</Label><Select value={selectedFeeTemplate} onValueChange={(val) => {setSelectedFeeTemplate(val); setFeeAmount(String(feeTemplates.find(t => t.id === val)?.amount || ''));}}><SelectTrigger><SelectValue placeholder="Select a fee template..."/></SelectTrigger><SelectContent>{feeTemplates.filter(t => t.type === (isFeeMandatory ? 'Mandatory' : 'Optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 250" /></div>
-                    </TabsContent>
-                    <TabsContent value="custom" className="pt-4 space-y-4">
-                        <div className="space-y-1"><Label>Fee Name</Label><Input value={feeName} onChange={(e) => setFeeName(e.target.value)} placeholder="e.g., Lab Gown Fee"/></div>
-                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} placeholder="e.g., 300" /></div>
-                    </TabsContent>
-                </Tabs>
-                <DialogFooter><Button variant="ghost" onClick={() => setIsFeeDialogOpen(false)}>Cancel</Button><Button onClick={handleAddFee}>Add Fee to Semester</Button></DialogFooter>
-            </DialogContent>
-        </Dialog>
         <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingSemester ? 'Save Changes' : 'Create Semester'}</Button></DialogFooter>
         </>
     );
@@ -302,10 +304,8 @@ export default function RegistrationManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [allCalendarEvents, setAllCalendarEvents] = React.useState<CalendarEvent[]>([]);
-
     
-    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
+    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
     const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
     const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
@@ -315,22 +315,22 @@ export default function RegistrationManagementPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
     
-    const [filterIntake, setFilterIntake] = React.useState('');
+    const [filterIntake, setFilterIntake] = React.useState('all');
     const [filterStatus, setFilterStatus] = React.useState('Open');
 
 
     const { toast } = useToast();
     
-    const refreshData = React.useCallback(async () => {
+    const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
             const [
                 intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, 
-                offeringsSnap, plansSnap, semestersSnap, feesSnap, calendarSnap
+                offeringsSnap, plansSnap, semestersSnap, feesSnap
             ] = await Promise.all([
                 get(ref(db, 'intakes')), get(ref(db, 'programmes')), get(ref(db, 'courses')),
                 get(ref(db, 'coursePaths')), get(ref(db, 'semesterOfferings')), get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'semesters')), get(ref(db, 'settings/feeTemplates')), get(ref(db, 'calendarEvents'))
+                get(ref(db, 'semesters')), get(ref(db, 'settings/feeTemplates'))
             ]);
     
             setAllIntakes(Object.values(intakesSnap.val() || {}));
@@ -341,15 +341,14 @@ export default function RegistrationManagementPage() {
             setAllPaymentPlans(Object.values(plansSnap.val() || {}));
             setSemesters(Object.values(semestersSnap.val() || {}));
             setFeeTemplates(Object.values(feesSnap.val() || {}));
-            setAllCalendarEvents(Object.values(calendarSnap.val() || {}));
 
         } catch (e) { console.error(e) } 
         finally { setLoading(false); }
     }, []);
 
     React.useEffect(() => {
-        refreshData();
-    }, [refreshData]);
+        fetchData();
+    }, [fetchData]);
     
     const openEditDialog = (semester: Semester) => {
         setEditingSemester(semester);
@@ -357,7 +356,13 @@ export default function RegistrationManagementPage() {
     };
 
     const handleToggleSemesterStatus = async (semester: Semester) => {
-        const newStatus = semester.status === 'Open' ? 'Closed' : 'Open';
+        let newStatus: Semester['status'];
+        if (semester.status === 'Open') {
+            newStatus = 'Closed';
+        } else { // Covers 'Closed' and 'Archived'
+            newStatus = 'Open';
+        }
+
         try {
             await update(ref(db, `semesters/${semester.id}`), { status: newStatus });
             if (newStatus === 'Open') {
@@ -382,7 +387,7 @@ export default function RegistrationManagementPage() {
     const filteredSemesters = React.useMemo(() => {
         return semesters.filter(s => {
             const statusMatch = filterStatus === 'all' || s.status === filterStatus;
-            const intakeMatch = !filterIntake || s.intakeId === filterIntake;
+            const intakeMatch = filterIntake === 'all' || s.intakeId === filterIntake;
             return statusMatch && intakeMatch;
         }).sort((a,b) => b.name.localeCompare(a.name));
     }, [semesters, filterIntake, filterStatus]);
@@ -394,12 +399,12 @@ export default function RegistrationManagementPage() {
                     <CardTitle className="font-headline text-2xl">Semester Management</CardTitle>
                      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                         <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4"/> New Semester</Button></DialogTrigger>
-                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
+                        <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
                     </Dialog>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4">
-                        <div className="flex-1"><Label>Filter by Intake</Label><Select value={filterIntake} onValueChange={setFilterIntake}><SelectTrigger><SelectValue placeholder="All Intakes..." /></SelectTrigger><SelectContent><SelectItem value="">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1"><Label>Filter by Intake</Label><Select value={filterIntake} onValueChange={setFilterIntake}><SelectTrigger><SelectValue placeholder="All Intakes..." /></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex-1"><Label>Filter by Status</Label><Tabs value={filterStatus} onValueChange={setFilterStatus}><TabsList className="grid w-full grid-cols-3"><TabsTrigger value="Open">Open</TabsTrigger><TabsTrigger value="Closed">Closed</TabsTrigger><TabsTrigger value="Archived">Archived</TabsTrigger></TabsList></Tabs></div>
                     </div>
                 </CardContent>
@@ -422,73 +427,12 @@ export default function RegistrationManagementPage() {
                  </Table>
             </Card>
 
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="text-xl">Course Registration Openings</CardTitle>
-                    <CardDescription>Activate which semesters are open for registration for each intake and programme path.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                     {loading ? (<div className="space-y-4 pt-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
-                    ) : allIntakes.length > 0 ? (
-                        <Accordion type="multiple" defaultValue={allIntakes.map(p => p.id)} className="w-full">
-                            {allIntakes.map(intake => (
-                                    <AccordionItem value={intake.id} key={intake.id}>
-                                        <AccordionTrigger className="font-bold text-xl">{intake.name}</AccordionTrigger>
-                                        <AccordionContent className="space-y-4">
-                                            {allProgrammes.map(programme => {
-                                                const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
-                                                if (!path || !path.semesters) return null;
-                                                
-                                                return (
-                                                    <Card key={programme.id} className="my-2 bg-muted/50">
-                                                        <CardHeader>
-                                                            <CardTitle className="text-base">{programme.name}</CardTitle>
-                                                        </CardHeader>
-                                                        <CardContent className="space-y-4">
-                                                            {Object.entries(path.semesters).map(([semNum, semData]) => {
-                                                                const semester = semesters.find(s => s.intakeId === intake.id && s.year === Math.floor((Number(semNum) - 1) / 2) + 1 && s.semesterInYear === (Number(semNum) - 1) % 2 + 1);
-                                                                if(!semester) return null;
-
-                                                                const label = `Year ${semester.year}, Semester ${semester.semesterInYear}`;
-                                                                
-                                                                return (
-                                                                <div key={semNum} className="p-4 border rounded-lg bg-card">
-                                                                    <div className="flex justify-between items-center mb-2">
-                                                                        <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Switch 
-                                                                                id={`${path.id}-${semNum}`} 
-                                                                                checked={!!activePathSemesters[semester.id]?.isOpen}
-                                                                                onCheckedChange={() => handleToggleSemesterStatus(semester)}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                )
-                                                            })}
-                                                        </CardContent>
-                                                    </Card>
-                                                )
-                                            })}
-                                            {allProgrammes.every(p => !allCoursePaths.some(path => path.intakeId === intake.id && path.programmeId === p.id)) && (
-                                                 <p className="text-sm text-muted-foreground p-4 text-center">No course paths defined for this intake.</p>
-                                            )}
-                                        </AccordionContent>
-                                    </AccordionItem>
-                            ))}
-                            </Accordion>
-                        ) : (<div className="py-16 text-center text-muted-foreground"><BookOpen className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">No Intakes Found</h3><p className="mt-2 text-sm">Create intakes from the "Intakes / Course Paths" page first.</p></div>
-                        )
-                    }
-                </CardContent>
-            </Card>
-
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                 <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent
                         editingSemester={editingSemester}
                         onClose={() => setIsEditDialogOpen(false)}
-                        onSaveSuccess={() => { refreshData(); setIsEditDialogOpen(false); }}
+                        onSaveSuccess={() => { fetchData(); setIsEditDialogOpen(false); }}
                         allPaymentPlans={allPaymentPlans}
                         feeTemplates={feeTemplates}
                         intakes={allIntakes}
