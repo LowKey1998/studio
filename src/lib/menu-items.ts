@@ -22,6 +22,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
