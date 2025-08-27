@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Users, Search, PlusCircle, MessageSquare } from "lucide-react";
 import { Input } from '@/components/ui/input';
 import { db, auth } from '@/lib/firebase';
-import { ref, onValue, set, push, remove } from 'firebase/database';
+import { ref, onValue, set, push, remove, serverTimestamp } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +16,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/hooks/use-auth';
+import { Loader2 } from 'lucide-react';
+
 
 type Profile = {
     id: string;

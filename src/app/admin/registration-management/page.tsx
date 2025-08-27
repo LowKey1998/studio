@@ -17,7 +17,7 @@ import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -261,6 +261,8 @@ export default function RegistrationManagementPage() {
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
 
     const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
+    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
 
     const { toast } = useToast();
     
@@ -368,6 +370,36 @@ export default function RegistrationManagementPage() {
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
+    const handleSaveDeadline = async (title: string, eventId: string | null) => {
+        const date = deadlineDates[title];
+        if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
+        setSaving(true);
+        const fullTitle = `${title} - ${currentSemester?.name}`;
+        try {
+            if(eventId) { // Editing existing event
+                const eventRef = ref(db, `calendarEvents/${eventId}`);
+                await update(eventRef, { date: format(date, 'yyyy-MM-dd') });
+                toast({ title: "Deadline Updated" });
+            } else { // Creating new event
+                const newEventRef = push(ref(db, 'calendarEvents'));
+                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: currentSemester?.name });
+                toast({ title: `${title} Added` });
+            }
+            
+            setDeadlineDates(prev => {
+                const newDates = { ...prev };
+                delete newDates[title];
+                return newDates;
+            });
+            setEditingDeadlineId(null);
+            fetchDataForSemester(); // Refetch data to update deadline list
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Failed to save deadline' }); 
+        } finally { 
+            setSaving(false); 
+        }
+    }
+    
     const currentSemester = semesters.find(s => s.id === selectedSemester);
     const semesterName = currentSemester?.name || '';
     const canSave = semesterDeadlines.every(d => d.date !== null);
@@ -401,7 +433,7 @@ export default function RegistrationManagementPage() {
                                 <SelectContent>{semesters.map(s => (<SelectItem key={s.id} value={s.id}><div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", s.status === 'Open' ? 'bg-green-500' : s.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>{s.name} ({s.status})</div></SelectItem>))}</SelectContent>
                             </Select>
                         </div>
-                         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                             <DialogTrigger asChild><Button variant="outline" disabled={!currentSemester} onClick={() => setEditingSemester(currentSemester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button></DialogTrigger>
                             <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => { refreshData(); setIsEditDialogOpen(false); }} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
                         </Dialog>
@@ -511,9 +543,33 @@ export default function RegistrationManagementPage() {
                                                 <div key={plan.id} className="border rounded-md p-3">
                                                     <h5 className="font-bold">{plan.name}</h5>
                                                     <ul className="text-sm text-muted-foreground mt-2 list-disc pl-5">
-                                                        {deadlines.length > 0 ? deadlines.map(deadline => (
-                                                            <li key={deadline.title}>{deadline.title.replace(`${plan.name} (`, '').replace(')', '')}: <span className="font-semibold">{deadline.date ? format(parseISO(deadline.date), 'PPP') : 'Not Set'}</span></li>
-                                                        )) : <li>No deadlines set in Calendar.</li>}
+                                                        {deadlines.length > 0 ? deadlines.map(deadline => {
+                                                            const isEditingThis = editingDeadlineId === (deadline.eventId || deadline.title);
+                                                            const displayDate = deadlineDates[deadline.title] || (deadline.date ? parseISO(deadline.date) : undefined);
+                                                            return(
+                                                            <li key={deadline.title} className="flex items-center justify-between">
+                                                                <span>{deadline.title.replace(`${plan.name} (`, '').replace(')', '')}:</span>
+                                                                <div className="flex items-center gap-2">
+                                                                {isEditingThis ? (
+                                                                    <>
+                                                                        <Popover>
+                                                                            <PopoverTrigger asChild><Button variant="outline" className="h-8 text-xs w-[150px] justify-start text-left font-normal"><CalendarIcon className="mr-2 h-3 w-3" />{displayDate ? format(displayDate, 'PP') : <span>Pick a date</span>}</Button></PopoverTrigger>
+                                                                            <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({...p, [deadline.title]: d}))} initialFocus /></PopoverContent>
+                                                                        </Popover>
+                                                                        <Button size="sm" className="h-8" onClick={() => handleSaveDeadline(deadline.title, deadline.eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
+                                                                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
+                                                                    </>
+                                                                ) : deadline.date ? (
+                                                                    <>
+                                                                        <span className="font-semibold">{format(parseISO(deadline.date), 'PPP')}</span>
+                                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingDeadlineId(deadline.eventId)}><Pencil className="h-4 w-4"/></Button>
+                                                                    </>
+                                                                ) : (
+                                                                    <Button size="sm" className="h-8" onClick={() => setEditingDeadlineId(deadline.title)}>Set Date</Button>
+                                                                )}
+                                                                </div>
+                                                            </li>
+                                                        )}) : <li>No deadlines set in Calendar.</li>}
                                                     </ul>
                                                 </div>
                                             )
