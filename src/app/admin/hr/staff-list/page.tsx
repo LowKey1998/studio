@@ -52,15 +52,19 @@ export default function StaffListPage() {
                 setDepartments(Object.keys(departmentsData).map(id => ({ id, ...departmentsData[id] })));
                 
                 const usersData = usersSnap.exists() ? usersSnap.val() : {};
-                const staffList: Staff[] = [];
+                const staffMap = new Map<string, Staff>();
+
                 for (const uid in usersData) {
                     if (usersData[uid].role === 'Staff' || usersData[uid].role === 'Admin') {
-                        staffList.push({
-                            uid,
-                            ...usersData[uid],
-                        });
+                        if (!staffMap.has(uid)) {
+                            staffMap.set(uid, {
+                                uid,
+                                ...usersData[uid],
+                            });
+                        }
                     }
                 }
+                const staffList = Array.from(staffMap.values());
                 setStaff(staffList.sort((a,b) => a.name.localeCompare(b.name)));
 
             } catch (error) {
