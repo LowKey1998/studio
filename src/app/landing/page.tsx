@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { useTheme } from '@/components/theme-provider';
 
 type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 type Programme = { id: string; name: string; };
@@ -28,6 +29,7 @@ export default function LandingPage() {
   const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
   const [countdown, setCountdown] = React.useState('');
   const [programmes, setProgrammes] = React.useState<Programme[]>([]);
+  const { institutionName } = useTheme();
   
   // Inquiry Form State
   const [inquiryName, setInquiryName] = React.useState('');
@@ -183,7 +185,7 @@ export default function LandingPage() {
                 A modern platform to manage your entire institution
               </h1>
               <p className="mt-6 max-w-[750px] mx-auto text-lg text-muted-foreground sm:text-xl">
-                Edutrack360 provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
+                {institutionName} provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
               </p>
             </div>
             <div className="flex w-full items-center justify-center gap-4">
@@ -312,7 +314,7 @@ export default function LandingPage() {
               <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
                   <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Transform Your Institution Today</h2>
                   <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
-                      Ready to streamline your operations and enhance the educational experience? Get started with Edutrack360.
+                      Ready to streamline your operations and enhance the educational experience? Get started with {institutionName}.
                   </p>
                   <Button asChild size="lg">
                       <Link href="/login">Get Started <ArrowRight className="ml-2 h-4 w-4"/></Link>

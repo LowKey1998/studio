@@ -4,6 +4,7 @@ import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { FacebookPixel } from '@/components/facebook-pixel';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,9 +34,11 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
       <body className={`${inter.variable} ${spaceGrotesk.variable} font-body antialiased`}>
-        {children}
-        <Toaster />
-        <FacebookPixel />
+        <ThemeProvider>
+            {children}
+            <Toaster />
+            <FacebookPixel />
+        </ThemeProvider>
       </body>
     </html>
   );

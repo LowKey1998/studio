@@ -114,6 +114,7 @@ export const allMenuItems = [
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
         { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote, isComingSoon: true },
+        { href: '/admin/finance/financial-controls', label: 'Financial Controls', icon: SlidersHorizontal },
       ]
     },
     {
@@ -173,6 +174,7 @@ export const allMenuItems = [
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
            { href: '/admin/hr/contracts', label: 'Contracts', icon: FileText },
+           { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
       ]
   },
     {
@@ -297,7 +299,6 @@ export const allMenuItems = [
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
-            { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
         ]
     },
 ];
