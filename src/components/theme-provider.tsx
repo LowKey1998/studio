@@ -4,6 +4,11 @@ import * as React from 'react';
 import { db } from '@/lib/firebase';
 import { ref, onValue } from 'firebase/database';
 
+type NamePart = {
+  text: string;
+  color: string;
+};
+
 type ThemeProviderProps = {
     children: React.ReactNode;
 };
@@ -12,6 +17,7 @@ type ThemeContextType = {
     institutionName: string;
     institutionLogo: string | null;
     institutionColor: string | null;
+    institutionNameParts: NamePart[];
     loadingTheme: boolean;
 };
 
@@ -19,6 +25,7 @@ const ThemeContext = React.createContext<ThemeContextType>({
     institutionName: 'Edutrack360',
     institutionLogo: null,
     institutionColor: null,
+    institutionNameParts: [],
     loadingTheme: true,
 });
 
@@ -55,6 +62,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const [institutionName, setInstitutionName] = React.useState('Edutrack360');
     const [institutionLogo, setInstitutionLogo] = React.useState<string | null>(null);
     const [institutionColor, setInstitutionColor] = React.useState<string | null>(null);
+    const [institutionNameParts, setInstitutionNameParts] = React.useState<NamePart[]>([]);
     const [loadingTheme, setLoadingTheme] = React.useState(true);
 
     React.useEffect(() => {
@@ -65,6 +73,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                 setInstitutionName(data.name || 'Edutrack360');
                 setInstitutionLogo(data.logoUrl || null);
                 setInstitutionColor(data.color || null);
+                setInstitutionNameParts(data.nameParts || []);
+
 
                 if (data.color) {
                     const { h, s, l } = hexToHSL(data.color);
@@ -83,7 +93,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }, []);
 
     return (
-        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, loadingTheme }}>
+        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme }}>
             {children}
         </ThemeContext.Provider>
     );

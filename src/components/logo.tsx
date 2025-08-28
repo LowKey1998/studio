@@ -4,25 +4,32 @@ import { useTheme } from './theme-provider';
 import { Skeleton } from './ui/skeleton';
 
 export default function Logo() {
-  const { institutionName, institutionLogo, loadingTheme } = useTheme();
+  const { institutionName, institutionLogo, institutionNameParts, loadingTheme } = useTheme();
 
   if (loadingTheme) {
-      return <Skeleton className="h-8 w-32" />;
+    return <Skeleton className="h-8 w-32" />;
   }
   
-  if (institutionLogo) {
-      return (
-        <Link href="/" className="flex items-center gap-2">
-            <img src={institutionLogo} alt={`${institutionName} Logo`} className="h-8 w-auto" />
-        </Link>
-      )
-  }
+  const hasCustomLogo = !!institutionLogo;
+  const hasCustomName = institutionNameParts && institutionNameParts.length > 0;
 
   return (
     <Link href="/" className="flex items-center gap-2">
-      <GraduationCap className="h-6 w-6 text-primary" />
+        {hasCustomLogo ? (
+             <img src={institutionLogo!} alt={`${institutionName} Logo`} className="h-8 w-auto" />
+        ) : (
+            <GraduationCap className="h-6 w-6 text-primary" />
+        )}
       <span className="font-headline text-lg font-bold">
-        {institutionName || 'Edutrack'}
+        {hasCustomName ? (
+            institutionNameParts.map((part, index) => (
+                <span key={index} style={{ color: part.color }}>
+                    {part.text}{' '}
+                </span>
+            ))
+        ) : (
+            institutionName || 'Edutrack'
+        )}
       </span>
     </Link>
   );

@@ -1,7 +1,5 @@
-
-"use client";
-
-import * as React from "react";
+'use client';
+import * as React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileDialog } from "../profile-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function UserNav() {
   const { user, userProfile, loading } = useAuth();
@@ -45,7 +44,7 @@ export function UserNav() {
   };
   
   if (loading) {
-    return null; // or a loading skeleton
+    return <Skeleton className="h-10 w-24 rounded-full" />;
   }
 
   if (!user) {
@@ -63,16 +62,19 @@ export function UserNav() {
 
   return (
     <>
-    <Button
-        variant="ghost"
-        className="relative h-10 w-10 rounded-full"
-        onClick={() => setIsProfileOpen(true)}
-    >
-        <Avatar className="h-10 w-10 border-2 border-transparent hover:border-primary transition-colors">
-        <AvatarImage src={userProfile?.profilePictureUrl || undefined} alt={userProfile?.name || 'User'} data-ai-hint="profile picture" />
-        <AvatarFallback>{userProfile?.name ? getInitials(userProfile.name) : user.email ? getInitials(user.email) : 'U'}</AvatarFallback>
-        </Avatar>
-    </Button>
+    <div className="flex items-center gap-2">
+        <span className="text-sm font-medium hidden md:inline-block">{userProfile?.name}</span>
+        <Button
+            variant="ghost"
+            className="relative h-10 w-10 rounded-full"
+            onClick={() => setIsProfileOpen(true)}
+        >
+            <Avatar className="h-10 w-10 border-2 border-transparent hover:border-primary transition-colors">
+            <AvatarImage src={userProfile?.profilePictureUrl || undefined} alt={userProfile?.name || 'User'} data-ai-hint="profile picture" />
+            <AvatarFallback>{userProfile?.name ? getInitials(userProfile.name) : user.email ? getInitials(user.email) : 'U'}</AvatarFallback>
+            </Avatar>
+        </Button>
+    </div>
 
     {user && (
       <ProfileDialog

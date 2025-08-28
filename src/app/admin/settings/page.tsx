@@ -29,7 +29,7 @@ type IDPrefixes = {
     includeYear: boolean;
     includeMonth: boolean;
 };
-type Institution = { name: string; logoUrl?: string; color?: string; };
+
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
@@ -43,22 +43,9 @@ type Integrations = {
 type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number; };
 type Department = { id: string; name: string; };
-type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
-type FinancialSettings = {
-    paymentThreshold: number;
-    defaulterRestrictions: {
-        registration: boolean;
-        results: boolean;
-        library: boolean;
-        exams: boolean;
-    }
-};
 
 export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
-    const [institution, setInstitution] = React.useState<Institution>({ name: 'Edutrack360' });
-    const [logoFile, setLogoFile] = React.useState<File | null>(null);
-    const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
     const [leavePolicy, setLeavePolicy] = React.useState<LeavePolicy>({ maxDays: 14 });
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
@@ -66,16 +53,6 @@ export default function SettingsPage() {
     const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: '' }, twilio: {}, smtp: {} });
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
-    const [bankDetails, setBankDetails] = React.useState<BankDetails>({ bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
-    const [financialSettings, setFinancialSettings] = React.useState<FinancialSettings>({
-        paymentThreshold: 75,
-        defaulterRestrictions: {
-            registration: true,
-            results: true,
-            library: false,
-            exams: false
-        }
-    });
     
     const [isDeptDialogOpen, setIsDeptDialogOpen] = React.useState(false);
     const [newDeptName, setNewDeptName] = React.useState('');
@@ -91,15 +68,12 @@ export default function SettingsPage() {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 setPrefixes(data.idPrefixes || { student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
-                setInstitution(data.institution || { name: 'Edutrack360' });
                 setLeavePolicy(data.leavePolicy || { maxDays: 14 });
                 setPaymentMethods(data.paymentMethods || { flutterwave: { enabled: true } });
                 setOverduePolicy(data.overduePolicy || 'doNothing');
                 setRegistrationPolicy(data.registrationPolicy || { lateRegistrationFee: 0 });
-                setFinancialSettings(data.financialSettings || { paymentThreshold: 75, defaulterRestrictions: { registration: true, results: true, library: false, exams: false } });
                 setIntegrations(data.integrations || { quickbooks: { enabled: false }, sage: { enabled: false }, facebook: {}, twilio: {}, smtp: {} });
                 setDepartments(data.departments ? Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })) : []);
-                setBankDetails(data.bankDetails || { bankName: '', accountName: '', accountNumber: '', branchCode: '', swiftCode: '' });
             }
              setLoading(false);
         });
@@ -132,21 +106,13 @@ export default function SettingsPage() {
         try {
             const settingsRef = ref(db, 'settings');
             
-            let logoUrl: string | null = institution.logoUrl || null;
-            if (logoFile) {
-                const logoStorageRef = storageRef(storage, `institution/logo_${Date.now()}`);
-                const snapshot = await uploadBytes(logoStorageRef, logoFile);
-                logoUrl = await getDownloadURL(snapshot.ref);
-            }
             await update(settingsRef, { 
                 idPrefixes: prefixes,
-                institution: { ...institution, logoUrl: logoUrl },
                 leavePolicy: leavePolicy,
                 paymentMethods: paymentMethods,
                 overduePolicy: overduePolicy,
                 registrationPolicy: registrationPolicy,
                 integrations: integrations,
-                bankDetails: bankDetails,
             });
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -158,18 +124,6 @@ export default function SettingsPage() {
 
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Institution Details</CardTitle>
-                    <CardDescription>Set your institution's name, logo, and primary color for branding on documents and the portal.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="institution-name">Institution Name</Label><div className="sm:col-span-2"><Input id="institution-name" name="name" value={institution.name} onChange={(e) => setInstitution(p => ({...p, name: e.target.value}))} className="max-w-sm" disabled={saving} /></div></div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4"><div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">{logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}</div><Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/></div></div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="institution-color">Primary Color</Label><div className="sm:col-span-2"><Input id="institution-color" type="color" value={institution.color || '#4c1d95'} onChange={(e) => setInstitution(p => ({...p, color: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/></div></div>
-                </CardContent>
-            </Card>
-
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Department Management</CardTitle>

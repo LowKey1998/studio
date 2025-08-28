@@ -1,5 +1,5 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Building2 } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -148,13 +148,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users2 },
-            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
-            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: ShieldAlert },
-            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: HandCoins },
-            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'HR',
@@ -298,7 +292,9 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
+            { href: '/admin/institution-settings', label: 'Institution Settings', icon: Building2 },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
+            { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
         ]
     },
 ];
