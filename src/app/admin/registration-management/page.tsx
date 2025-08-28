@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, BookCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -39,7 +39,7 @@ type CoursePath = { id: string; intakeId: string; programmeId: string; semesters
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; intakeId: string; };
 type CalendarEvent = { id: string; title: string; date: string; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
@@ -63,13 +63,18 @@ type CreateOrEditDialogContentProps = {
 
 function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes }: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
-    const [semesterNameInput, setSemesterNameInput] = React.useState('');
-    const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
-    const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>({});
-    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
-    const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
-    const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number | string>('');
-    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
+    const [semesterNameInput, setSemesterNameInput] = React.useState(editingSemester?.name || '');
+    const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>(
+        editingSemester ? {
+            from: editingSemester.startDate ? parseISO(editingSemester.startDate) : undefined,
+            to: editingSemester.endDate ? parseISO(editingSemester.endDate) : undefined
+        } : undefined
+    );
+    const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>(editingSemester?.paymentPlanIds || {});
+    const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>(editingSemester?.mandatoryFees || {});
+    const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>(editingSemester?.optionalFees || {});
+    const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number | string>(editingSemester?.lateRegistrationFee || '');
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState(editingSemester?.intakeId || '');
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
     const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
@@ -79,30 +84,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const { toast } = useToast();
     
-    React.useEffect(() => {
-        if (editingSemester) {
-            setSemesterNameInput(editingSemester.name || '');
-            setSemesterDates({
-                from: editingSemester.startDate ? parseISO(editingSemester.startDate) : undefined,
-                to: editingSemester.endDate ? parseISO(editingSemester.endDate) : undefined
-            });
-            setSelectedPaymentPlans(editingSemester.paymentPlanIds || {});
-            setMandatoryFees(editingSemester.mandatoryFees || {});
-            setOptionalFees(editingSemester.optionalFees || {});
-            setLateRegistrationFee(editingSemester.lateRegistrationFee || '');
-            setSelectedIntakeId(editingSemester.intakeId || '');
-        } else {
-             setSemesterNameInput('');
-             setSemesterDates(undefined);
-             setSelectedPaymentPlans({});
-             setMandatoryFees({});
-             setOptionalFees({});
-             setLateRegistrationFee('');
-             setSelectedIntakeId('');
-        }
-    }, [editingSemester]);
-
-
     const handlePlanSelection = (planId: string) => {
         setSelectedPaymentPlans(prev => {
             const newSelection = { ...prev };
@@ -263,7 +244,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [calendarEvents, setCalendarEvents] = React.useState<CalendarEvent[]>([]);
@@ -273,6 +254,7 @@ export default function RegistrationManagementPage() {
     
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [semesters, setSemesters] = React.useState<Semester[]>([]);
     
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -372,16 +354,16 @@ export default function RegistrationManagementPage() {
         if (!semester.paymentPlanIds) return [];
         const linkedPlanIds = Object.keys(semester.paymentPlanIds);
         const linkedPlans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
-        const eventMap = new Map<string, string>();
-        calendarEvents.forEach(e => eventMap.set(e.title.trim(), e.date));
+        const eventMap = new Map<string, {date: string, id: string}>();
+        calendarEvents.forEach(e => eventMap.set(e.title.trim(), {date: e.date, id: e.id}));
 
         const deadlines: {name: string, date: string}[] = [];
         linkedPlans.forEach(plan => {
             for (let i = 0; i < plan.installments; i++) {
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
-                const date = eventMap.get(deadlineTitle);
-                if (date) {
-                    deadlines.push({ name: `${plan.name} (${getOrdinalSuffix(i+1)})`, date });
+                const eventInfo = eventMap.get(deadlineTitle);
+                if (eventInfo) {
+                    deadlines.push({ name: `${plan.name} (${getOrdinalSuffix(i+1)})`, date: eventInfo.date });
                 }
             }
         });
@@ -483,4 +465,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
