@@ -102,7 +102,7 @@ export default function StaffOnboardingPage() {
 
     return (
         <Card className="relative overflow-hidden">
-            {isComplete && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false}/>}
+            {isComplete && <Confetti recycle={false}/>}
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">Onboarding Checklist: {template.name}</CardTitle>
                 <CardDescription>Welcome! Please complete the following tasks to finish your onboarding process.</CardDescription>
@@ -144,4 +144,3 @@ export default function StaffOnboardingPage() {
         </Card>
     );
 }
-
