@@ -68,6 +68,7 @@ type Course = {
     id: string;
     name: string;
     code: string;
+    credits?: number;
     cost: number;
     year: number;
     lecturerId: string;
@@ -113,6 +114,7 @@ export default function CoursesPage() {
     // Form state
     const [courseName, setCourseName] = React.useState('');
     const [courseCode, setCourseCode] = React.useState('');
+    const [courseCredits, setCourseCredits] = React.useState('');
     const [courseCost, setCourseCost] = React.useState('');
     const [courseYear, setCourseYear] = React.useState('');
     const [selectedLecturerId, setSelectedLecturerId] = React.useState('');
@@ -223,6 +225,7 @@ export default function CoursesPage() {
         setCourseCode('');
         setCourseCost('');
         setCourseYear('');
+        setCourseCredits('');
         setSelectedLecturerId('');
         setSelectedProgrammes({});
         setEditingCourse(null);
@@ -234,6 +237,7 @@ export default function CoursesPage() {
         setCourseCode(course.code);
         setCourseCost(String(course.cost));
         setCourseYear(String(course.year));
+        setCourseCredits(String(course.credits || ''));
         setSelectedLecturerId(course.lecturerId);
         
         const initialSelectedProgrammes: Record<string, boolean> = {};
@@ -261,6 +265,7 @@ export default function CoursesPage() {
         const courseData = {
             name: courseName,
             code: courseCode,
+            credits: courseCredits ? Number(courseCredits) : null,
             cost: Number(courseCost),
             year: Number(courseYear),
             lecturerId: selectedLecturerId,
@@ -442,6 +447,10 @@ export default function CoursesPage() {
                                         <Label htmlFor="courseYear">Year</Label>
                                         <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
                                     </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="courseCredits">Credits (Optional)</Label>
+                                    <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
                                 </div>
                                 <div className="space-y-1">
                                     <Label htmlFor="lecturer">Lecturer</Label>

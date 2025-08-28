@@ -59,6 +59,8 @@ export default function CoursePathsPage() {
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
     const [targetSemester, setTargetSemester] = React.useState('');
+    const [coursesToLoad, setCoursesToLoad] = React.useState<string>('');
+
 
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
@@ -347,6 +349,32 @@ export default function CoursePathsPage() {
         setIsHistoryDialogOpen(true);
     };
 
+    const handleLoadCourses = () => {
+        if (!coursesToLoad || !targetSemester) {
+            toast({ variant: 'destructive', title: 'Please select a programme and target semester.' });
+            return;
+        }
+
+        const programmeToLoad = programmes.find(p => p.id === coursesToLoad);
+        if (!programmeToLoad || !programmeToLoad.courseIds) {
+            toast({ variant: 'destructive', title: 'Selected programme has no courses.' });
+            return;
+        }
+
+        const courseIdsToLoad = Object.keys(programmeToLoad.courseIds);
+        const coursesToAdd = availableCourses.filter(c => courseIdsToLoad.includes(c.id));
+        
+        setAvailableCourses(prev => prev.filter(c => !courseIdsToLoad.includes(c.id)));
+        setSemesterCourses(prev => {
+            const newSemesters = { ...prev };
+            const targetList = newSemesters[targetSemester] ? [...newSemesters[targetSemester]] : [];
+            newSemesters[targetSemester] = [...targetList, ...coursesToAdd];
+            return newSemesters;
+        });
+
+        toast({ title: 'Courses Loaded', description: `${coursesToAdd.length} courses added to semester.`});
+    };
+
     const groupedSemesters = semestersForPath.reduce((acc, sem) => {
         const yearKey = `Year ${sem.year}`;
         if(!acc[yearKey]) acc[yearKey] = [];
@@ -463,9 +491,13 @@ export default function CoursePathsPage() {
                                         <div className="md:col-span-1">
                                             <AvailableCoursesColumn 
                                                 courses={availableCourses}
+                                                allProgrammes={programmes}
+                                                coursesToLoad={coursesToLoad}
+                                                setCoursesToLoad={setCoursesToLoad}
                                                 targetSemester={targetSemester}
                                                 setTargetSemester={setTargetSemester}
                                                 onAddCourse={handleAddCourseToSemester}
+                                                onLoadCourses={handleLoadCourses}
                                                 semestersForPath={semestersForPath}
                                             />
                                         </div>
@@ -558,11 +590,15 @@ function SemesterColumn({ semester, courses, currentPath, onHistoryClick }: { se
 }
 
 // --- Available Courses Column Component ---
-function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, onAddCourse, semestersForPath }: {
+function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCoursesToLoad, targetSemester, setTargetSemester, onAddCourse, onLoadCourses, semestersForPath }: {
     courses: Course[];
+    allProgrammes: Programme[];
+    coursesToLoad: string;
+    setCoursesToLoad: (id: string) => void;
     targetSemester: string;
     setTargetSemester: (id: string) => void;
     onAddCourse: (courseId: string) => void;
+    onLoadCourses: () => void;
     semestersForPath: Semester[];
 }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
@@ -570,20 +606,22 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         <Card ref={setNodeRef}>
             <CardHeader>
                 <CardTitle>Available Courses</CardTitle>
-                <div className="pt-2 space-y-1">
-                    <Label htmlFor="target-semester">Target Semester</Label>
-                    <Select value={targetSemester} onValueChange={setTargetSemester}>
-                        <SelectTrigger id="target-semester">
-                            <SelectValue placeholder="Select semester to add to..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {semestersForPath.map(sem => (
-                                <SelectItem key={sem.id} value={sem.id}>
-                                   {sem.name}
-                                </SelectItem>
-                           ))}
-                        </SelectContent>
-                    </Select>
+                 <div className="pt-2 space-y-2">
+                    <div className="space-y-1">
+                        <Label htmlFor="load-from-programme">Load Courses From</Label>
+                        <Select value={coursesToLoad} onValueChange={setCoursesToLoad}>
+                            <SelectTrigger id="load-from-programme"><SelectValue placeholder="Select programme..." /></SelectTrigger>
+                            <SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="target-semester">Target Semester</Label>
+                        <Select value={targetSemester} onValueChange={setTargetSemester}>
+                            <SelectTrigger id="target-semester"><SelectValue placeholder="Select semester to add to..." /></SelectTrigger>
+                            <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name}</SelectItem>))}</SelectContent>
+                        </Select>
+                    </div>
+                     <Button onClick={onLoadCourses} size="sm" className="w-full">Load Courses</Button>
                 </div>
             </CardHeader>
             <CardContent className="max-h-[600px] overflow-y-auto space-y-2">
@@ -597,6 +635,3 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
         </Card>
     )
 }
-    
-
-    
