@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from '@/components/ui/table';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; };
@@ -454,7 +455,9 @@ export default function RegistrationManagementPage() {
                                  <TableCell><Badge variant={semester.lateRegistrationActive ? 'default' : 'secondary'}>{semester.lateRegistrationActive ? 'Active' : 'Inactive'}</Badge></TableCell>
                                  <TableCell className="text-right space-x-2">
                                      <Button size="sm" variant="outline" onClick={() => {setEditingSemester(semester); setIsEditDialogOpen(true);}}>Edit</Button>
-                                     <Button size="sm" variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}>{semester.status === 'Open' ? 'Close' : 'Open'}</Button>
+                                     <Button size="sm" variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}>
+                                        {semester.status === 'Open' ? 'Close' : 'Open'} Reg
+                                     </Button>
                                      {semester.status === 'Open' && <Button size="sm" variant="secondary" onClick={() => handleToggleLateRegistration(semester)}>{semester.lateRegistrationActive ? 'Disable' : 'Enable'} Late Reg</Button>}
                                  </TableCell>
                              </TableRow>

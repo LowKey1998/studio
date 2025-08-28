@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInput,
+  SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut } from 'lucide-react';
@@ -79,7 +80,6 @@ export default function DashboardLayout({
     const connectedRef = ref(db, '.info/connected');
     const unsub = onValue(connectedRef, (snapshot) => {
         if (snapshot.val() === true) {
-            // Use update() here to prevent overwriting the user node on disconnect.
             onDisconnect(userStatusRef).update(isOfflineForDatabase).then(() => {
                 update(userStatusRef, isOnlineForDatabase);
             });
@@ -287,7 +287,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+      <div className="flex h-screen w-full">
         <Sidebar>
           <SidebarHeader>
             <Logo />
@@ -311,10 +311,10 @@ export default function DashboardLayout({
               </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
-        <div className="flex-1 flex flex-col md:ml-[var(--sidebar-width)] group-data-[state=expanded]:md:ml-[var(--sidebar-width)] transition-[margin-left] duration-200 ease-in-out">
+        <SidebarInset>
           <Header />
-          <main className="p-4 sm:p-6 flex-1">{children}</main>
-        </div>
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );
