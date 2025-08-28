@@ -40,9 +40,6 @@ type PaymentPlan = { id: string; name: string; installments: number; installment
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; intakeId?: string; year?: number; semesterInYear?: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 type Intake = { id: string; name: string; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }> };
-type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
-
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -195,7 +192,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
                     <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
                         <DialogTrigger asChild>
-                            <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1"/>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee</Button>
+                            <Button size="sm" variant="outline"><PlusCircle className="h-4 w-4 mr-1"/>Import {isMandatory ? 'Mandatory' : 'Optional'} Fee</Button>
                         </DialogTrigger>
                         <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
                             <DialogHeader>
@@ -298,7 +295,7 @@ function AvailableCoursesView({ semester, programme, allCoursesData, offeringsFo
     const handleSaveChanges = async () => {
         setSaving(true);
         try {
-            await set(ref(db, `semesterOfferings/${semester.id}/${programme.id}/courseIds`), availableForSemester);
+            await set(ref(db, `semesterOfferings/${semester.name}/courseIds`), availableForSemester);
             toast({ variant: 'success', title: 'Courses Updated', description: 'Available courses for registration have been saved.' });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
@@ -352,12 +349,10 @@ export default function RegistrationManagementPage() {
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [semesterOfferings, setSemesterOfferings] = React.useState<Record<string, any>>({});
     
-    // Create/Edit Dialog
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
 
-    // Filters
     const [activeTab, setActiveTab] = React.useState<'Open' | 'Closed' | 'Archived'>('Open');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
 
@@ -474,7 +469,6 @@ export default function RegistrationManagementPage() {
                                 <AccordionContent className="space-y-4 pt-4">
                                 <div className="flex flex-wrap gap-2">
                                     <Button variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}><Power className="mr-2 h-4 w-4" />{semester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
-                                    {semester.status === 'Open' && (<Button variant={semester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => {}}><ShieldAlert className="mr-2 h-4 w-4" />{semester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
                                     <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
                                     {activeTab !== 'Archived' && (<Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>)}
                                 </div>
@@ -493,7 +487,7 @@ export default function RegistrationManagementPage() {
                                                             semester={semester} 
                                                             programme={prog}
                                                             allCoursesData={allCourses}
-                                                            offeringsForSemester={semesterOfferings[`${semester.id}/${prog.id}`]?.courseIds || []}
+                                                            offeringsForSemester={semesterOfferings[semester.name]?.courseIds || []}
                                                         />
                                                     </AccordionContent>
                                                 </AccordionItem>
@@ -501,7 +495,15 @@ export default function RegistrationManagementPage() {
                                         </Accordion>
                                     </TabsContent>
                                     <TabsContent value="financials" className="pt-4">
-                                        <p>Financial Setup will be here.</p>
+                                         <div className="p-4 border rounded-md">
+                                            <h4 className="font-semibold mb-2">Semester Financials</h4>
+                                            <p className="text-sm">These settings were configured in the semester editor.</p>
+                                            <ul className="text-sm mt-2 space-y-1 list-disc pl-5">
+                                                <li><strong>Payment Plans:</strong> {Object.keys(semester.paymentPlanIds || {}).length} selected</li>
+                                                <li><strong>Mandatory Fees:</strong> {Object.keys(semester.mandatoryFees || {}).length} added</li>
+                                                <li><strong>Optional Fees:</strong> {Object.keys(semester.optionalFees || {}).length} added</li>
+                                            </ul>
+                                         </div>
                                     </TabsContent>
                                 </Tabs>
                                 </AccordionContent>
@@ -517,5 +519,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-
