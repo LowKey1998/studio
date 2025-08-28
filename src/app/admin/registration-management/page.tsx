@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -336,6 +337,10 @@ export default function RegistrationManagementPage() {
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [saving, setSaving] = React.useState(false);
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState(0);
+    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
+    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
+    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
 
     const { toast } = useToast();
     
@@ -462,7 +467,7 @@ export default function RegistrationManagementPage() {
                         <div className="self-end">
                             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                                 <DialogTrigger asChild><Button variant="default"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
-                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes} /></DialogContent>
+                                <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {fetchData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} intakes={allIntakes}/></DialogContent>
                             </Dialog>
                         </div>
                     </div>
@@ -517,7 +522,7 @@ export default function RegistrationManagementPage() {
                                             <div className="flex justify-between items-center">
                                                 <h4 className="font-semibold">Late Registration Fee</h4>
                                                 <div className="text-right">
-                                                    <p className="font-bold text-lg">ZMW {lateRegistrationFee.toFixed(2)}</p>
+                                                    <p className="font-bold text-lg">ZMW {lateFee.toFixed(2)}</p>
                                                     <p className={`text-sm ${semester.lateRegistrationActive ? 'text-green-600' : 'text-red-600'}`}>{semester.lateRegistrationActive ? 'Enabled' : 'Disabled'} for this semester</p>
                                                 </div>
                                             </div>
