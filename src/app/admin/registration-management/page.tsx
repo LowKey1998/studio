@@ -78,6 +78,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const [selectedFeeTemplate, setSelectedFeeTemplate] = React.useState('');
     const [feeAmount, setFeeAmount] = React.useState('');
+    const [newFeeName, setNewFeeName] = React.useState('');
 
     const { toast } = useToast();
     
@@ -126,14 +127,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     };
     
     const handleAddFee = (isMandatory: boolean) => {
-        const newFeeName = prompt(`Enter the name for the new ${isMandatory ? 'mandatory' : 'optional'} fee:`);
-        if (!newFeeName) return;
-        const newFeeAmountStr = prompt(`Enter the amount for "${newFeeName}":`);
-        const newFeeAmount = parseFloat(newFeeAmountStr || '0');
-        if (isNaN(newFeeAmount) || newFeeAmount <= 0) {
-             toast({ variant: 'destructive', title: 'Invalid Amount'});
-             return;
-        }
+        if (!newFeeName || !feeAmount) { toast({ variant: 'destructive', title: 'Missing Fee Details' }); return; }
+        const newFeeAmount = parseFloat(feeAmount || '0');
+        if (isNaN(newFeeAmount) || newFeeAmount <= 0) { toast({ variant: 'destructive', title: 'Invalid Amount'}); return; }
 
         const newFee = { name: newFeeName, amount: newFeeAmount };
         const feeId = push(ref(db, 'semesters')).key!;
@@ -143,6 +139,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         } else {
             setOptionalFees(prev => ({ ...prev, [feeId]: newFee }));
         }
+        setNewFeeName('');
+        setFeeAmount('');
     };
 
 
@@ -227,7 +225,20 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 <div className="flex justify-between items-center">
                     <Label>{isMandatory ? 'Mandatory Fees' : 'Optional Fees'}</Label>
                      <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" type="button" onClick={() => handleAddFee(isMandatory)}><PlusCircle className="h-4 w-4 mr-1"/>Create New</Button>
+                        <Dialog>
+                            <DialogTrigger asChild><Button size="sm" variant="secondary" type="button"><PlusCircle className="h-4 w-4 mr-1"/>Create New</Button></DialogTrigger>
+                            <DialogContent onInteractOutside={(e) => e.stopPropagation()}>
+                                <DialogHeader><DialogTitle>Create New {isMandatory ? 'Mandatory' : 'Optional'} Fee</DialogTitle></DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <div className="space-y-1"><Label>Fee Name</Label><Input value={newFeeName} onChange={(e) => setNewFeeName(e.target.value)} /></div>
+                                    <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} /></div>
+                                </div>
+                                <DialogFooter>
+                                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                    <Button onClick={() => handleAddFee(isMandatory)}>Add Fee</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                         <Dialog open={dialogOpenState} onOpenChange={setDialogOpenState}>
                             <DialogTrigger asChild>
                                 <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1"/>Import from Template</Button>
@@ -295,61 +306,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     );
 }
 
-function AvailableCoursesView({ semester, programme, path, allCourses, availableForSemester, onCourseSelect, canEdit }: {
-    semester: Semester,
-    programme: Programme,
-    path: CoursePath | undefined,
-    allCourses: Record<string, Course>,
-    availableForSemester: string[],
-    onCourseSelect: (courseId: string) => void;
-    canEdit: boolean;
-}) {
-    if (!path || !path.semesters || !path.semesters[semester.id]) {
-        return <p className="text-muted-foreground p-4">No course path defined for this programme in this semester.</p>;
-    }
-    
-    const semesterCourseIds = path.semesters[semester.id].courses || [];
-    const isFlatFee = !!programme.tuitionFee;
-
-    const coursesByYear = semesterCourseIds
-        .map(id => allCourses[id] ? { ...allCourses[id], id } : null)
-        .filter(c => c && c.status === 'active')
-        .reduce((acc, course) => {
-            if(!course) return acc;
-            const yearKey = `Year ${course.year}`;
-            if (!acc[yearKey]) acc[yearKey] = [];
-            acc[yearKey].push(course);
-            return acc;
-        }, {} as GroupedCourses);
-        
-    return (
-        <div className="space-y-4">
-             {isFlatFee && <Alert><Info className="h-4 w-4"/><AlertDescription>This programme has a flat semester fee. All courses below are required and pre-selected for students.</AlertDescription></Alert>}
-            {Object.entries(coursesByYear).map(([year, courses]) => (
-                <div key={year}>
-                    <h4 className="font-semibold mb-2">{year}</h4>
-                     <div className="border rounded-md">
-                        {courses.map((course, index) => (
-                            <div key={course.id} className={`flex items-center gap-3 p-3 ${index < courses.length - 1 ? 'border-b' : ''}`}>
-                                <Checkbox
-                                    id={`course-${course.id}`}
-                                    checked={isFlatFee || availableForSemester.includes(course.id)}
-                                    disabled={!canEdit || isFlatFee}
-                                    onCheckedChange={() => onCourseSelect(course.id)}
-                                />
-                                <Label htmlFor={`course-${course.id}`} className="flex-1 cursor-pointer">
-                                    <p>{course.name}</p>
-                                    <p className="text-xs text-muted-foreground">{course.code} - {course.lecturerName}</p>
-                                </Label>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
 // --- MAIN PAGE COMPONENT ---
 export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
@@ -359,22 +315,12 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, { active: boolean; showReason: boolean; }>>>({});
-    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
-    const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
-    
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [activeTab, setActiveTab] = React.useState<'Open' | 'Closed' | 'Archived'>('Open');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     
-    const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<{ semesterName: string; } | null>(null);
-    const [semesterDeadlines, setSemesterDeadlines] = React.useState<DeadlineInfo[]>([]);
-    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
-    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
-
-    // Create Semester Dialog
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
@@ -385,11 +331,11 @@ export default function RegistrationManagementPage() {
         setLoading(true);
         try {
             const [
-                semestersSnap, coursesSnap, programmesSnap, plansSnap, feesSnap, intakesSnap, coursePathsSnap, offeringsSnap
+                semestersSnap, coursesSnap, programmesSnap, plansSnap, feesSnap, intakesSnap, coursePathsSnap
             ] = await Promise.all([
                 get(ref(db, 'semesters')), get(ref(db, 'courses')), get(ref(db, 'programmes')),
                 get(ref(db, 'settings/paymentPlans')), get(ref(db, 'settings/feeTemplates')),
-                get(ref(db, 'intakes')), get(ref(db, 'coursePaths')), get(ref(db, 'semesterOfferings'))
+                get(ref(db, 'intakes')), get(ref(db, 'coursePaths'))
             ]);
     
             setSemesters(semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })) : []);
@@ -397,9 +343,8 @@ export default function RegistrationManagementPage() {
             setAllProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
             setAllPaymentPlans(plansSnap.exists() ? Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] })) : []);
             setFeeTemplates(feesSnap.exists() ? Object.keys(feesSnap.val()).map(id => ({ id, ...feesSnap.val()[id] })) : []);
-            setAllIntakes(intakesSnap.exists() ? Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })).sort((a,b) => b.name.localeCompare(a.name)) : []);
+            setAllIntakes(intakesSnap.exists() ? Object.keys(intakesSnap.val()).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name)) : []);
             setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
-            setActivePathSemesters(offeringsSnap.val() || {});
             
         } catch (e) { console.error(e) } 
         finally { setLoading(false); }
@@ -501,18 +446,6 @@ export default function RegistrationManagementPage() {
                                     <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
                                     {activeTab !== 'Archived' && (<Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>)}
                                 </div>
-                                <Tabs defaultValue="courses">
-                                    <TabsList>
-                                        <TabsTrigger value="courses">Available Courses</TabsTrigger>
-                                        <TabsTrigger value="financials">Financial Setup</TabsTrigger>
-                                    </TabsList>
-                                    <TabsContent value="courses">
-                                       <p className="text-muted-foreground p-4">Not yet implemented.</p>
-                                    </TabsContent>
-                                    <TabsContent value="financials">
-                                       <p className="text-muted-foreground p-4">Not yet implemented.</p>
-                                    </TabsContent>
-                                </Tabs>
                                 </AccordionContent>
                             </AccordionItem>
                         ))}
@@ -526,3 +459,4 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
