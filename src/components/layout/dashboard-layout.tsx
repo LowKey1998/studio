@@ -108,7 +108,7 @@ export default function DashboardLayout({
   }, []);
   
   React.useEffect(() => {
-    if (loading || !userProfile) return;
+    if (loading || !userProfile || !userProfile.role) return;
     
     let menu;
     if (userProfile.role.toLowerCase() === 'admin') {
