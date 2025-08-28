@@ -81,6 +81,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                     document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
                     const foreground = l > 50 ? '0 0% 10%' : '0 0% 100%';
                     document.documentElement.style.setProperty('--primary-foreground', foreground);
+                } else {
+                     // Reset to default if no color is set
+                    document.documentElement.style.removeProperty('--primary');
+                    document.documentElement.style.removeProperty('--primary-foreground');
                 }
             }
              setLoadingTheme(false);
@@ -89,6 +93,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         });
         return () => unsubscribe();
     }, []);
+
+    if (loadingTheme) {
+        return null;
+    }
 
     return (
         <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme }}>

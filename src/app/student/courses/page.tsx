@@ -75,7 +75,7 @@ export default function StudentCoursesPage() {
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
+                if (registration.status === 'Completed') {
                     if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
                     for (const courseId of registration.courses) {
                         const courseInfo = coursesData[courseId];
