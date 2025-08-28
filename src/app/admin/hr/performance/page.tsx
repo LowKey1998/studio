@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Star, Loader2, CalendarIcon } from "lucide-react";
+import { PlusCircle, Star, Loader2, CalendarIcon, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from 'date-fns';
 import { db } from '@/lib/firebase';
@@ -38,6 +39,8 @@ export default function PerformancePage() {
     
     // Dialog state
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [isViewDialogOpen, setIsViewDialogOpen] = React.useState(false);
+    const [viewingReview, setViewingReview] = React.useState<Review | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
     const [selectedStaffUid, setSelectedStaffUid] = React.useState('');
     const [reviewDate, setReviewDate] = React.useState<Date | undefined>();
@@ -110,6 +113,7 @@ export default function PerformancePage() {
 
 
     return (
+        <>
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -170,12 +174,33 @@ export default function PerformancePage() {
                                 <TableCell>{review.staffName}</TableCell>
                                 <TableCell>{format(new Date(review.reviewDate), 'PPP')}</TableCell>
                                 <TableCell>{review.status}</TableCell>
-                                <TableCell className="text-right"><Button variant="outline" size="sm">View</Button></TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="outline" size="sm" onClick={() => { setViewingReview(review); setIsViewDialogOpen(true); }}>
+                                        <Eye className="mr-2 h-4 w-4"/> View
+                                    </Button>
+                                </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
             </CardContent>
         </Card>
+        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Review for {viewingReview?.staffName}</DialogTitle>
+                    <DialogDescription>
+                        Date: {viewingReview && format(new Date(viewingReview.reviewDate), 'PPP')}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 whitespace-pre-wrap">
+                    {viewingReview?.notes || "No notes were recorded for this review."}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button>Close</Button></DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }

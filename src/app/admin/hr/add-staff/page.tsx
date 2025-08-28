@@ -31,6 +31,11 @@ type SubRole = {
     permissions: Record<string, boolean>;
 }
 
+type Department = {
+    id: string;
+    name: string;
+}
+
 type CurrentAdmin = {
     name: string;
     id: string;
@@ -43,7 +48,9 @@ export default function AddStaffPage() {
     const [phoneNumber, setPhoneNumber] = React.useState('');
     const [role, setRole] = React.useState('Staff'); // Default to staff
     const [subRoles, setSubRoles] = React.useState<string[]>([]);
+    const [department, setDepartment] = React.useState('');
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
+    const [availableDepartments, setAvailableDepartments] = React.useState<Department[]>([]);
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
 
     const [loading, setLoading] = React.useState(false);
@@ -62,9 +69,16 @@ export default function AddStaffPage() {
         });
         
         const subRolesRef = ref(db, 'settings/subRoles');
-        const unsubSubRoles = get(subRolesRef).then((snapshot) => {
+        get(subRolesRef).then((snapshot) => {
             if (snapshot.exists()) {
                 setAvailableSubRoles(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
+            }
+        });
+        
+        const deptsRef = ref(db, 'settings/departments');
+        get(deptsRef).then((snapshot) => {
+            if (snapshot.exists()) {
+                setAvailableDepartments(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
             }
         });
 
@@ -80,6 +94,7 @@ export default function AddStaffPage() {
         setPhoneNumber('');
         setRole('Staff');
         setSubRoles([]);
+        setDepartment('');
     };
     
     const handleSubRoleChange = (subRoleName: string) => {
@@ -124,10 +139,12 @@ export default function AddStaffPage() {
                 phoneNumber, 
                 role: 'Staff', 
                 status: 'active',
-                subRoles: subRoles
+                subRoles: subRoles,
+                department: department
             };
 
             await set(ref(db, `users/${user.uid}`), newStaffUser);
+            
             await set(ref(db, `userRoles/${user.uid}`), { role: 'staff' });
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { 
@@ -162,6 +179,15 @@ export default function AddStaffPage() {
                         <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
                         <div className="space-y-1"><Label>Initial Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
                     </div>
+                     <div className="space-y-1">
+                        <Label>Department</Label>
+                        <Select onValueChange={setDepartment} value={department}>
+                            <SelectTrigger><SelectValue placeholder="Select a department"/></SelectTrigger>
+                            <SelectContent>
+                                {availableDepartments.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                     </div>
                      <div className="space-y-2 rounded-md border p-4">
                         <Label className="font-semibold">Sub-Roles</Label>
                         <p className="text-sm text-muted-foreground">Select all applicable roles. Permissions are managed in Access Rules.</p>

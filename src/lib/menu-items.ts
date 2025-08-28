@@ -22,6 +22,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
@@ -31,11 +32,11 @@ export const allMenuItems = [
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
-        { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star, isComingSoon: true },
-        { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target, isComingSoon: true },
-        { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase, isComingSoon: true },
-        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload, isComingSoon: true },
-        { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send, isComingSoon: true },
+        { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
+        { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
+        { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase },
+        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload },
+        { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send },
       ]
     },
     {
@@ -67,8 +68,8 @@ export const allMenuItems = [
         { href: '/admin/exams/final-exam-entry', label: 'Final Exam Entry', icon: PenSquare },
         { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
         { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
-        { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText, isComingSoon: true },
-        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper, isComingSoon: true },
+        { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
+        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper },
         { href: '/admin/exams/result-publishing', label: 'Result Publishing', icon: Upload },
         { href: '/admin/exams/student-appeals', label: 'Student Appeals Tracking', icon: Search },
       ]
@@ -77,7 +78,15 @@ export const allMenuItems = [
         label: 'Clinicals',
         icon: Stethoscope,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning', icon: Calendar },
+            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks', icon: Book },
+            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management', icon: UserCog },
+            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms', icon: ClipboardEdit },
+            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
+            { href: '/admin/clinicals/community-placement', label: 'Community Placement', icon: Building2 },
+            { href: '/admin/clinicals/clinical-assessment', label: 'Final Clinical Assessment Reports', icon: FileSignature },
+        ]
     },
      {
       label: 'E-Learning',
@@ -102,10 +111,10 @@ export const allMenuItems = [
         { href: '/admin/payments', label: 'Student Invoicing', icon: FileText },
         { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
-        { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link, isComingSoon: true },
-        { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw, isComingSoon: true },
+        { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
+        { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
-        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText, isComingSoon: true },
+        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
         { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
@@ -113,7 +122,7 @@ export const allMenuItems = [
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
-        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote, isComingSoon: true },
+        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
         { href: '/admin/finance/financial-controls', label: 'Financial Controls', icon: SlidersHorizontal },
       ]
     },
@@ -215,19 +224,16 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
     },
     {
       label: 'Quality Assurance',
       icon: Check,
       roles: ['Admin'],
-      isComingSoon: true,
     },
     {
       label: 'Legal & Compliance',
       icon: GitBranch,
       roles: ['Admin'],
-      isComingSoon: true,
     },
     {
       label: 'Facilities & Estates',
@@ -245,13 +251,11 @@ export const allMenuItems = [
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        isComingSoon: true,
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
     },
      {
         label: 'Mentorship & Advising',
@@ -267,7 +271,6 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',

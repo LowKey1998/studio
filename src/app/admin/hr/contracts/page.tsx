@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -21,6 +22,7 @@ type Contract = {
     staffId: string;
     staffName: string;
     dateSigned: string;
+    contractType: 'Probation' | 'Permanent' | 'Contract';
     terms: string;
     fileUrl: string;
 };
@@ -40,6 +42,7 @@ export default function StaffContractsPage() {
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [selectedStaff, setSelectedStaff] = React.useState('');
     const [dateSigned, setDateSigned] = React.useState('');
+    const [contractType, setContractType] = React.useState<'Probation' | 'Permanent' | 'Contract'>('Probation');
     const [terms, setTerms] = React.useState('');
     const [file, setFile] = React.useState<File | null>(null);
 
@@ -67,12 +70,12 @@ export default function StaffContractsPage() {
     }, []);
 
     const resetForm = () => {
-        setSelectedStaff(''); setDateSigned(''); setTerms(''); setFile(null);
+        setSelectedStaff(''); setDateSigned(''); setTerms(''); setFile(null); setContractType('Probation');
     };
 
     const handleSaveContract = async () => {
-        if (!selectedStaff || !dateSigned || !file) {
-            toast({ variant: 'destructive', title: 'Staff, date, and file are required.' });
+        if (!selectedStaff || !dateSigned || !file || !contractType) {
+            toast({ variant: 'destructive', title: 'Staff, date, type and file are required.' });
             return;
         }
         setSaving(true);
@@ -87,6 +90,7 @@ export default function StaffContractsPage() {
                 staffId: selectedStaff,
                 staffName: staffMember?.name || 'Unknown',
                 dateSigned,
+                contractType,
                 terms,
                 fileUrl
             });
@@ -127,6 +131,17 @@ export default function StaffContractsPage() {
                                     <SelectContent>{staff.map(s => <SelectItem key={s.uid} value={s.uid}>{s.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
+                            <div className="space-y-1">
+                                <Label>Contract Type</Label>
+                                <Select value={contractType} onValueChange={(v) => setContractType(v as any)}>
+                                    <SelectTrigger><SelectValue/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Probation">Probation</SelectItem>
+                                        <SelectItem value="Permanent">Permanent</SelectItem>
+                                        <SelectItem value="Contract">Contract</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-1"><Label>Date Signed</Label><Input type="date" value={dateSigned} onChange={e => setDateSigned(e.target.value)}/></div>
                             <div className="space-y-1"><Label>Terms of Service / Notes</Label><Textarea value={terms} onChange={e => setTerms(e.target.value)}/></div>
                             <div className="space-y-1"><Label>Contract File (PDF)</Label><Input type="file" accept=".pdf" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
@@ -140,12 +155,13 @@ export default function StaffContractsPage() {
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Staff Member</TableHead><TableHead>Date Signed</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Staff Member</TableHead><TableHead>Contract Type</TableHead><TableHead>Date Signed</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={3}><Skeleton className="h-24"/></TableCell></TableRow> :
+                        {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-24"/></TableCell></TableRow> :
                          contracts.map(c => (
                             <TableRow key={c.id}>
                                 <TableCell>{c.staffName}</TableCell>
+                                <TableCell>{c.contractType}</TableCell>
                                 <TableCell>{format(new Date(c.dateSigned), 'PPP')}</TableCell>
                                 <TableCell className="text-right">
                                     <Button asChild variant="outline" size="sm" className="mr-2"><a href={c.fileUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4"/>Download</a></Button>

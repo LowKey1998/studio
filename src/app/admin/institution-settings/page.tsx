@@ -81,11 +81,30 @@ export default function InstitutionSettingsPage() {
 
         setSaving(true);
         toast({ title: 'AI Magic in Progress...', description: 'Removing the logo background. This may take a moment.' });
+        
+        const imageUrl = logoPreview || institution.logoUrl!;
+        
         try {
-            const imageUrl = logoPreview || institution.logoUrl!;
-            const result = await removeBackground({ imageUrl });
+            // Convert to data URI if it's not already one
+            let dataUri = imageUrl;
+            if (!imageUrl.startsWith('data:image')) {
+                 const response = await fetch(imageUrl);
+                 const blob = await response.blob();
+                 const reader = new FileReader();
+                 dataUri = await new Promise((resolve) => {
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                 });
+            }
+
+            const result = await removeBackground({ imageUrl: dataUri });
             setLogoPreview(result.imageWithTransparentBackground);
-            setLogoFile(null); // The result is a data URI, not a file object anymore. This needs handling on save.
+            
+            // To make this savable, we need to convert the data URI back to a blob/file
+            const blob = await (await fetch(result.imageWithTransparentBackground)).blob();
+            const newFile = new File([blob], "logo_transparent.png", { type: "image/png" });
+            setLogoFile(newFile);
+            
             setInstitution(prev => ({ ...prev, logoUrl: result.imageWithTransparentBackground }));
             toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Dont forget to save.' });
         } catch (error: any) {
@@ -102,16 +121,17 @@ export default function InstitutionSettingsPage() {
         try {
             const settingsRef = ref(db, 'settings/institution');
             
-            let logoUrl: string | undefined = institution.logoUrl;
+            let finalLogoUrl = institution.logoUrl;
+
             if (logoFile) {
                 const logoStorageRef = storageRef(storage, `institution/logo_${Date.now()}`);
                 const snapshot = await uploadBytes(logoStorageRef, logoFile);
-                logoUrl = await getDownloadURL(snapshot.ref);
+                finalLogoUrl = await getDownloadURL(snapshot.ref);
             }
             
             await update(settingsRef, { 
                 name: institution.name,
-                logoUrl: logoUrl,
+                logoUrl: finalLogoUrl,
                 color: institution.color,
                 nameParts: institution.nameParts,
             });
