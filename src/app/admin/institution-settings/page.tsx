@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, Wand2 } from 'lucide-react';
+import { Loader2, Save, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue } from 'firebase/database';
@@ -85,30 +85,29 @@ export default function InstitutionSettingsPage() {
         const imageUrl = logoPreview || institution.logoUrl!;
         
         try {
-            // Convert to data URI if it's not already one
-            let dataUri = imageUrl;
-            if (!imageUrl.startsWith('data:image')) {
-                 const response = await fetch(imageUrl);
-                 const blob = await response.blob();
-                 const reader = new FileReader();
-                 dataUri = await new Promise((resolve) => {
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                 });
-            }
+            // Always convert to a data URI before sending to the flow
+            let dataUri: string;
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            dataUri = await new Promise((resolve) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
 
             const result = await removeBackground({ imageUrl: dataUri });
             setLogoPreview(result.imageWithTransparentBackground);
             
             // To make this savable, we need to convert the data URI back to a blob/file
-            const blob = await (await fetch(result.imageWithTransparentBackground)).blob();
-            const newFile = new File([blob], "logo_transparent.png", { type: "image/png" });
+            const newBlob = await (await fetch(result.imageWithTransparentBackground)).blob();
+            const newFile = new File([newBlob], "logo_transparent.png", { type: "image/png" });
             setLogoFile(newFile);
             
             setInstitution(prev => ({ ...prev, logoUrl: result.imageWithTransparentBackground }));
-            toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Dont forget to save.' });
+            toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Don\'t forget to save.' });
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'AI Failed', description: error.message || 'Could not remove background.' });
+            console.error("Background removal error:", error);
+            toast({ variant: 'destructive', title: 'AI Failed', description: error.message || 'Could not remove background. The image might be too complex or in an unsupported format.' });
         } finally {
             setSaving(false);
         }

@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
-import { ref, get, update, push, set } from 'firebase/database';
+import { ref, get, update, push, set, remove } from 'firebase/database';
 import { format, parseISO, isBefore } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,7 @@ import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 
 type StudentPaymentInfo = {
     userId: string;
-    studentId: string; // STU-XXX
+    studentId: string;
     studentName: string;
     totalDue: number;
     totalPaid: number;
@@ -97,7 +97,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, optionalFeesSnap, settingsSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, feeTemplatesSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -113,14 +113,14 @@ export default function PaymentsManagementPage() {
              if (semestersSnap.exists()) {
                 setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
             }
-            if (optionalFeesSnap.exists()) {
-                 const allFees = optionalFeesSnap.val();
+            if (feeTemplatesSnap.exists()) {
+                 const allFees = feeTemplatesSnap.val();
                 setOptionalFees(Object.keys(allFees).filter(id => allFees[id].type === 'Optional').map(id => ({ id, ...allFees[id]})));
             }
             if (settingsSnap.exists()) {
                 const integrations = settingsSnap.val();
-                setIsQuickBooksEnabled(integrations.quickbooks?.enabled);
-                setIsSageEnabled(integrations.sage?.enabled);
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncInvoices);
+                setIsSageEnabled(integrations.sage?.enabled && integrations.sage?.syncInvoices);
             }
 
 
@@ -177,7 +177,7 @@ export default function PaymentsManagementPage() {
                 
                 const invoice = allInvoices[tx.userId]?.[tx.invoiceId];
                 if (invoice) {
-                    const key = `${tx.userId}-${invoice.semester}`;
+                    const key = `${tx.userId}-${invoice.semesterId}`;
                      if (studentPaymentMap[key]) {
                         studentPaymentMap[key].totalPaid += tx.amount;
                     }

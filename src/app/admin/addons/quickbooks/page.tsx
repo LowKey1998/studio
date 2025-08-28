@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Link as LinkIcon, ExternalLink } from 'lucide-react';
+import { Link as LinkIcon, ExternalLink, Save } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
@@ -13,11 +13,21 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { ref, onValue, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+
+type QBIntegrationSettings = {
+    enabled: boolean;
+    syncInvoices: boolean;
+    syncExpenses: boolean;
+    syncPayroll: boolean;
+};
 
 export default function QuickBooksPage() {
     const { user, userProfile } = useAuth();
-    const [isEnabled, setIsEnabled] = React.useState(false);
+    const [settings, setSettings] = React.useState<QBIntegrationSettings>({ enabled: false, syncInvoices: false, syncExpenses: false, syncPayroll: false });
     const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -25,25 +35,35 @@ export default function QuickBooksPage() {
         const integrationRef = ref(db, 'settings/integrations/quickbooks');
         const unsub = onValue(integrationRef, (snapshot) => {
             if (snapshot.exists()) {
-                setIsEnabled(snapshot.val().enabled);
+                setSettings(snapshot.val());
             }
             setLoading(false);
         });
         return () => unsub();
     }, [user]);
 
-    const handleToggle = async (checked: boolean) => {
+    const handleToggle = async (field: keyof QBIntegrationSettings, checked: boolean) => {
+        setSettings(prev => ({...prev, [field]: checked}));
+    };
+
+    const handleSave = async () => {
         if (!user) return;
+        setSaving(true);
         try {
-            await update(ref(db, 'settings/integrations/quickbooks'), { enabled: checked });
-            setIsEnabled(checked);
-            toast({ title: `QuickBooks Integration ${checked ? 'Enabled' : 'Disabled'}` });
+            await update(ref(db, 'settings/integrations/quickbooks'), settings);
+            toast({ title: `QuickBooks Integration Settings Saved` });
         } catch (error) {
             toast({ variant: 'destructive', title: 'Update failed' });
+        } finally {
+            setSaving(false);
         }
     };
     
     const canManage = userProfile?.role === 'Admin';
+
+    if (loading) {
+        return <Skeleton className="h-96 w-full"/>
+    }
 
     return (
         <Card>
@@ -63,18 +83,40 @@ export default function QuickBooksPage() {
                     <h3 className="text-xl font-semibold mb-2">Streamline Your Financial Workflow</h3>
                     <p className="text-muted-foreground max-w-2xl mx-auto">Enable the QuickBooks integration to automatically sync student invoices, payments, and expense records from Edutrack360 to your QuickBooks Online account. Reduce manual data entry, minimize errors, and get a real-time view of your institution's financial health.</p>
                 </div>
+                {canManage ? (
+                     <div className="space-y-4 pt-4 border-t">
+                         <div className="flex items-center space-x-2">
+                            <Switch id="quickbooks-enabled" checked={settings.enabled} onCheckedChange={(val) => handleToggle('enabled', val)} />
+                            <Label htmlFor="quickbooks-enabled" className="text-lg">{settings.enabled ? 'Integration is Active' : 'Integration is Inactive'}</Label>
+                        </div>
+                        <div className={`space-y-4 pl-8 transition-opacity ${settings.enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                            <h4 className="font-semibold">Sync Options</h4>
+                            <div className="flex items-center space-x-2">
+                                <Checkbox id="sync-invoices" checked={settings.syncInvoices} onCheckedChange={(val) => handleToggle('syncInvoices', !!val)} />
+                                <Label htmlFor="sync-invoices">Sync Student Invoices & Payments</Label>
+                            </div>
+                             <div className="flex items-center space-x-2">
+                                <Checkbox id="sync-expenses" checked={settings.syncExpenses} onCheckedChange={(val) => handleToggle('syncExpenses', !!val)} />
+                                <Label htmlFor="sync-expenses">Sync Institutional Expenses</Label>
+                            </div>
+                             <div className="flex items-center space-x-2">
+                                <Checkbox id="sync-payroll" checked={settings.syncPayroll} onCheckedChange={(val) => handleToggle('syncPayroll', !!val)} />
+                                <Label htmlFor="sync-payroll">Sync Staff Payroll</Label>
+                            </div>
+                        </div>
+                     </div>
+                 ) : <p className="text-sm text-muted-foreground">Contact an administrator to manage this integration.</p>}
             </CardContent>
             <CardFooter className="flex-col items-start gap-4">
-                 {loading ? <Skeleton className="h-8 w-48" /> : canManage ? (
-                     <div className="flex items-center space-x-2">
-                        <Switch id="quickbooks-enabled" checked={isEnabled} onCheckedChange={handleToggle} />
-                        <Label htmlFor="quickbooks-enabled">{isEnabled ? 'Integration is Active' : 'Integration is Inactive'}</Label>
-                    </div>
-                 ) : <p className="text-sm text-muted-foreground">Contact an administrator to manage this integration.</p>}
-
-                <Button asChild disabled={!isEnabled}>
+                {canManage && (
+                     <Button onClick={handleSave} disabled={saving}>
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4"/>}
+                        Save Configuration
+                    </Button>
+                )}
+                <Button asChild disabled={!settings.enabled}>
                     <Link href="/admin/settings#integrations">
-                       Configure Integration
+                       Configure API Credentials
                     </Link>
                 </Button>
             </CardFooter>
