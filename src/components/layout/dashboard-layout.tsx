@@ -79,7 +79,8 @@ export default function DashboardLayout({
     const connectedRef = ref(db, '.info/connected');
     const unsub = onValue(connectedRef, (snapshot) => {
         if (snapshot.val() === true) {
-            onDisconnect(userStatusRef).set(isOfflineForDatabase).then(() => {
+            // Use update() here to prevent overwriting the user node on disconnect.
+            onDisconnect(userStatusRef).update(isOfflineForDatabase).then(() => {
                 update(userStatusRef, isOnlineForDatabase);
             });
         }
@@ -243,10 +244,7 @@ export default function DashboardLayout({
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
                 if (!item) return null;
-                if (item.isComingSoon) {
-                    return null; // Removed coming soon
-                }
-                if(item.items && item.items.length > 0) {
+                if (item.items && item.items.length > 0) {
                     return (
                         <AccordionItem value={item.label} key={item.label} className="border-none">
                             <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
