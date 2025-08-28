@@ -164,7 +164,7 @@ export default function DashboardLayout({
   }, [pathname, loading, userProfile]);
 
   const renderMenu = () => {
-    if (loading || !userProfile) {
+    if (loading || !userProfile || !userProfile.role) {
         return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
     }
     
