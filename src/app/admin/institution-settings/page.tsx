@@ -5,13 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle } from 'lucide-react';
+import { Loader2, Save, Trash2, PlusCircle, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import { removeBackground } from '@/ai/flows/remove-background-flow';
 
 type NamePart = {
   text: string;
@@ -72,6 +73,29 @@ export default function InstitutionSettingsPage() {
         setInstitution(prev => ({ ...prev, nameParts: newParts }));
     };
 
+    const handleRemoveBackground = async () => {
+        if (!logoFile && !institution.logoUrl) {
+            toast({ variant: 'destructive', title: 'No logo selected', description: 'Please upload a logo first.' });
+            return;
+        }
+
+        setSaving(true);
+        toast({ title: 'AI Magic in Progress...', description: 'Removing the logo background. This may take a moment.' });
+        try {
+            const imageUrl = logoPreview || institution.logoUrl!;
+            const result = await removeBackground({ imageUrl });
+            setLogoPreview(result.imageWithTransparentBackground);
+            setLogoFile(null); // The result is a data URI, not a file object anymore. This needs handling on save.
+            setInstitution(prev => ({ ...prev, logoUrl: result.imageWithTransparentBackground }));
+            toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Dont forget to save.' });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'AI Failed', description: error.message || 'Could not remove background.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+
     const handleSaveChanges = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
@@ -121,7 +145,19 @@ export default function InstitutionSettingsPage() {
                             </div>
                         </div>
                      </div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4"><div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">{logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}</div><Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/></div></div>
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4">
+                        <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
+                            {logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
+                        </div>
+                        <div className="space-y-2">
+                            <Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/>
+                            <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || (!logoFile && !institution.logoUrl)}>
+                                <Wand2 className="mr-2 h-4 w-4"/>
+                                Remove Background (AI)
+                            </Button>
+                        </div>
+                        </div>
+                     </div>
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="institution-color">Primary Theme Color</Label><div className="sm:col-span-2"><Input id="institution-color" type="color" value={institution.color || '#4c1d95'} onChange={(e) => setInstitution(p => ({...p, color: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/></div></div>
                 </CardContent>
                 <CardFooter className="border-t pt-6">

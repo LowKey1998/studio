@@ -26,8 +26,8 @@ export const allMenuItems = [
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
         { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2 },
-        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature, isComingSoon: true },
-        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2, isComingSoon: true },
+        { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
+        { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
@@ -148,7 +148,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: DollarSign },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: AlertTriangle },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+        ]
     },
     {
       label: 'HR',

@@ -59,7 +59,7 @@ const hexToHSL = (hex: string) => {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-    const [institutionName, setInstitutionName] = React.useState('Edutrack360');
+    const [institutionName, setInstitutionName] = React.useState('');
     const [institutionLogo, setInstitutionLogo] = React.useState<string | null>(null);
     const [institutionColor, setInstitutionColor] = React.useState<string | null>(null);
     const [institutionNameParts, setInstitutionNameParts] = React.useState<NamePart[]>([]);
@@ -79,14 +79,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                 if (data.color) {
                     const { h, s, l } = hexToHSL(data.color);
                     document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
-                    // Set a reasonable foreground color based on lightness
                     const foreground = l > 50 ? '0 0% 10%' : '0 0% 100%';
                     document.documentElement.style.setProperty('--primary-foreground', foreground);
                 }
             }
              setLoadingTheme(false);
         }, () => {
-            // Set loading to false even on error to prevent indefinite loading state
             setLoadingTheme(false);
         });
         return () => unsubscribe();
