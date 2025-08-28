@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db } from '@/lib/firebase';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Eye, Calendar as CalendarIcon } from 'lucide-react';
+import { Eye, Calendar as CalendarIcon, Send } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,7 +22,7 @@ type ApplicantLead = {
     name: string;
     email?: string;
     phone?: string;
-    status: 'New' | 'Contacted' | 'Interviewing' | 'Enrolled' | 'Disqualified';
+    status: 'New' | 'Contacted' | 'Interviewing' | 'Offered' | 'Enrolled' | 'Disqualified';
     interviewDate?: string;
     interviewTime?: string;
 };
@@ -65,8 +66,9 @@ export default function InterviewSchedulingPage() {
         
         try {
             const leadRef = ref(db, `admissions/leads/${dialogOpen}`);
-            await set(leadRef, {
-                ...leads.find(l => l.id === dialogOpen),
+            const leadData = leads.find(l => l.id === dialogOpen);
+            
+            await update(leadRef, {
                 status: 'Interviewing',
                 interviewDate: interviewDate ? format(interviewDate, 'yyyy-MM-dd') : null,
                 interviewTime: interviewTime,
@@ -77,6 +79,11 @@ export default function InterviewSchedulingPage() {
             toast({ variant: 'destructive', title: 'Failed to save details.' });
         }
     };
+
+    const handleMakeOffer = async (leadId: string) => {
+        await update(ref(db, `admissions/leads/${leadId}`), { status: 'Offered' });
+        toast({title: "Offer Status Set", description: "Applicant is now eligible for an offer letter."});
+    }
     
     const leadsToSchedule = leads.filter(l => l.status === 'New' || l.status === 'Contacted' || l.status === 'Interviewing');
 
@@ -105,8 +112,9 @@ export default function InterviewSchedulingPage() {
                                 <TableCell>{lead.email || lead.phone}</TableCell>
                                 <TableCell>{lead.status}</TableCell>
                                 <TableCell>{lead.interviewDate ? `${format(parseISO(lead.interviewDate), 'PPP')} at ${lead.interviewTime}` : 'Not Scheduled'}</TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right flex items-center justify-end gap-2">
                                     <Button variant="outline" onClick={() => handleOpenDialog(lead)}>Schedule Interview</Button>
+                                    <Button variant="default" onClick={() => handleMakeOffer(lead.id)}><Send className="h-4 w-4 mr-2"/>Make Offer</Button>
                                 </TableCell>
                             </TableRow>
                         ))}
