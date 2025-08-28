@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Pencil, Info } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Pencil, Info, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth } from '@/lib/firebase';
 import { ref, onValue, set, push, update, remove } from 'firebase/database';
@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 
 type FeeTemplate = {
@@ -68,9 +69,9 @@ export default function FeeManagementPage() {
 
     const canManage = React.useMemo(() => {
         if (!userData) return false;
-        const isRegistrar = userData.subRoles?.map(r => r.toLowerCase()).includes('registrar');
+        const isAccountant = userData.subRoles?.map(r => r.toLowerCase()).includes('accountant');
         const isAdmin = userData.role?.toLowerCase() === 'admin';
-        return isAdmin || isRegistrar;
+        return isAdmin || isAccountant;
     }, [userData]);
 
 
@@ -169,6 +170,44 @@ export default function FeeManagementPage() {
         );
     }
 
+    const mandatoryFees = feeTemplates.filter(f => f.type === 'Mandatory');
+    const optionalFees = feeTemplates.filter(f => f.type === 'Optional');
+
+    const renderFeeTable = (title: string, fees: FeeTemplate[]) => (
+        <div className="space-y-4">
+            <h3 className="font-headline text-xl">{title}</h3>
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Fee Name</TableHead>
+                        <TableHead className="text-right">Default Amount (ZMW)</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {fees.length > 0 ? (
+                       fees.map(template => (
+                            <TableRow key={template.id}>
+                                <TableCell className="font-medium">{template.name}</TableCell>
+                                <TableCell className="text-right">{template.amount.toFixed(2)}</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(template)} disabled={saving}>
+                                        <Pencil className="h-4 w-4"/>
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(template.id)} disabled={saving}>
+                                        <Trash2 className="h-4 w-4 text-destructive"/>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))
+                    ) : (
+                         <TableRow><TableCell colSpan={3} className="text-center h-24">No {title.toLowerCase()} created yet.</TableCell></TableRow>
+                    )}
+                </TableBody>
+            </Table>
+        </div>
+    );
+
     return (
         <>
         <Card className="shadow-lg">
@@ -207,40 +246,10 @@ export default function FeeManagementPage() {
                     </Dialog>
                 </div>
             </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Fee Name</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead className="text-right">Default Amount (ZMW)</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow><TableCell colSpan={4} className="text-center h-24">Loading...</TableCell></TableRow>
-                        ) : feeTemplates.length > 0 ? (
-                           feeTemplates.map(template => (
-                                <TableRow key={template.id}>
-                                    <TableCell className="font-medium">{template.name}</TableCell>
-                                    <TableCell><Badge variant={template.type === 'Mandatory' ? 'destructive' : 'secondary'}>{template.type}</Badge></TableCell>
-                                    <TableCell className="text-right">{template.amount.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(template)} disabled={saving}>
-                                            <Pencil className="h-4 w-4"/>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(template.id)} disabled={saving}>
-                                            <Trash2 className="h-4 w-4 text-destructive"/>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        ) : (
-                             <TableRow><TableCell colSpan={4} className="text-center h-24">No fee templates created yet.</TableCell></TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+            <CardContent className="space-y-8">
+                {renderFeeTable('Mandatory Fees', mandatoryFees)}
+                <Separator/>
+                {renderFeeTable('Optional Fees', optionalFees)}
             </CardContent>
         </Card>
         </>
