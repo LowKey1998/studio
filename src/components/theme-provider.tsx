@@ -12,12 +12,14 @@ type ThemeContextType = {
     institutionName: string;
     institutionLogo: string | null;
     institutionColor: string | null;
+    loadingTheme: boolean;
 };
 
 const ThemeContext = React.createContext<ThemeContextType>({
     institutionName: 'Edutrack360',
     institutionLogo: null,
-    institutionColor: null
+    institutionColor: null,
+    loadingTheme: true,
 });
 
 // Helper function to convert hex to HSL
@@ -53,6 +55,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const [institutionName, setInstitutionName] = React.useState('Edutrack360');
     const [institutionLogo, setInstitutionLogo] = React.useState<string | null>(null);
     const [institutionColor, setInstitutionColor] = React.useState<string | null>(null);
+    const [loadingTheme, setLoadingTheme] = React.useState(true);
 
     React.useEffect(() => {
         const settingsRef = ref(db, 'settings/institution');
@@ -71,12 +74,16 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                     document.documentElement.style.setProperty('--primary-foreground', foreground);
                 }
             }
+             setLoadingTheme(false);
+        }, () => {
+            // Set loading to false even on error to prevent indefinite loading state
+            setLoadingTheme(false);
         });
         return () => unsubscribe();
     }, []);
 
     return (
-        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor }}>
+        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, loadingTheme }}>
             {children}
         </ThemeContext.Provider>
     );
