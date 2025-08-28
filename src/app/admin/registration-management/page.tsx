@@ -40,7 +40,7 @@ type CoursePath = { id: string; intakeId: string; programmeId: string; semesters
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; intakeId: string; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
 
@@ -58,9 +58,10 @@ type CreateOrEditDialogContentProps = {
     onSaveSuccess: () => void;
     allPaymentPlans: PaymentPlan[];
     feeTemplates: FeeTemplate[];
+    allIntakes: Intake[];
 };
 
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates }: CreateOrEditDialogContentProps) {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes }: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
     const [semesterNameInput, setSemesterNameInput] = React.useState('');
     const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
@@ -68,6 +69,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
     const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState<number | string>('');
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
     const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
@@ -88,6 +90,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setMandatoryFees(editingSemester.mandatoryFees || {});
             setOptionalFees(editingSemester.optionalFees || {});
             setLateRegistrationFee(editingSemester.lateRegistrationFee || '');
+            setSelectedIntakeId(editingSemester.intakeId || '');
         } else {
              setSemesterNameInput('');
              setSemesterDates(undefined);
@@ -95,6 +98,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
              setMandatoryFees({});
              setOptionalFees({});
              setLateRegistrationFee('');
+             setSelectedIntakeId('');
         }
     }, [editingSemester]);
 
@@ -144,12 +148,13 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     };
 
     const handleSaveSemester = async () => {
-        if (!semesterNameInput.trim() || !semesterDates?.from) { toast({ variant: 'destructive', title: 'Missing Semester Details'}); return; }
+        if (!semesterNameInput.trim() || !semesterDates?.from || !selectedIntakeId) { toast({ variant: 'destructive', title: 'Missing Semester Details'}); return; }
         setSaving(true);
         try {
             const semesterData: Omit<Semester, 'id'> & { id?: string } = {
                 ...(editingSemester || {}),
                 name: semesterNameInput.trim(),
+                intakeId: selectedIntakeId,
                 status: editingSemester?.status || 'Closed',
                 lateRegistrationActive: editingSemester?.lateRegistrationActive || false,
                 startDate: format(semesterDates.from, 'yyyy-MM-dd'),
@@ -225,6 +230,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details & Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
             <TabsContent value="details">
                 <div className="grid gap-4 py-4">
+                    <div className="space-y-1"><Label htmlFor="semester-intake">Intake</Label>
+                        <Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
+                    </div>
                     <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} /></div>
                     <div className="space-y-1"><Label htmlFor="semester-dates">Semester Start & End Dates</Label>
                         <Popover><PopoverTrigger asChild><Button id="semester-dates" variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent></Popover>
@@ -257,10 +265,11 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
+    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState<string>('');
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [selectedIntake, setSelectedIntake] = React.useState<string>('all');
     
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -274,75 +283,40 @@ export default function RegistrationManagementPage() {
     const { toast } = useToast();
     
     const refreshData = React.useCallback(async () => {
-        const semestersRef = ref(db, 'semesters');
-        const paymentPlansRef = ref(db, 'settings/paymentPlans');
-        const feeTemplatesRef = ref(db, 'settings/feeTemplates');
-
+        const refs = [
+            ref(db, 'semesters'),
+            ref(db, 'settings/paymentPlans'),
+            ref(db, 'settings/feeTemplates'),
+            ref(db, 'intakes')
+        ];
+        
         setLoading(true);
         try {
-            const [semestersSnap, paymentPlansSnap, feeTemplatesSnap] = await Promise.all([
-                get(semestersRef),
-                get(paymentPlansRef),
-                get(feeTemplatesRef)
-            ]);
+            const [semestersSnap, paymentPlansSnap, feeTemplatesSnap, intakesSnap] = await Promise.all(refs.map(r => get(r)));
 
             const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
             const paymentPlansData = paymentPlansSnap.exists() ? paymentPlansSnap.val() : {};
             const feeTemplatesData = feeTemplatesSnap.exists() ? feeTemplatesSnap.val() : {};
+            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
             
             const list: Semester[] = Object.keys(semestersData).map(key => ({ id: key, ...semestersData[key] }));
             setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
-            if (!selectedSemester && list.length > 0) {
-                setSelectedSemester(list[0].id);
-            }
 
             setAllPaymentPlans(Object.keys(paymentPlansData).map(id => ({ id, ...paymentPlansData[id] })));
             setFeeTemplates(Object.keys(feeTemplatesData).map(id => ({ id, ...feeTemplatesData[id] })));
+            setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
         } catch (error) {
             console.error("Failed to refresh data:", error);
             toast({ variant: "destructive", title: "Error", description: "Failed to load latest data." });
         } finally {
             setLoading(false);
         }
-    }, [selectedSemester, toast]);
+    }, [toast]);
 
     React.useEffect(() => {
         refreshData();
     }, []);
 
-    React.useEffect(() => {
-        const semesterData = semesters.find(s => s.id === selectedSemester);
-        if (!semesterData) {
-            setSemesterDeadlines([]);
-            return;
-        }
-
-        const fetchDeadlines = async () => {
-            const eventsSnapshot = await get(ref(db, 'calendarEvents'));
-            const eventMap = new Map<string, {date: string, id: string}>();
-            if (eventsSnapshot.exists()) { 
-                Object.entries(eventsSnapshot.val()).forEach(([id, event]:[string, any]) => {
-                    eventMap.set(event.title.trim(), { date: event.date, id });
-                });
-            }
-            const linkedPlanIds = Object.keys(semesterData.paymentPlanIds || {});
-            const linkedPlans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
-
-            const requiredDeadlines: string[] = [];
-            linkedPlans.forEach(plan => {
-                 for (let i = 0; i < plan.installments; i++) {
-                    requiredDeadlines.push(`${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterData.name}`);
-                }
-            })
-            setSemesterDeadlines(requiredDeadlines.map(title => {
-                const existing = eventMap.get(title.trim());
-                return { title: title.replace(` - ${semesterData.name}`, ''), date: existing?.date || null, eventId: existing?.id || null };
-            }));
-        };
-
-        fetchDeadlines();
-    }, [selectedSemester, semesters, allPaymentPlans]);
-    
     const handleToggleSemesterStatus = async (semester: Semester) => {
         let newStatus: Semester['status'];
         if (semester.status === 'Open') newStatus = 'Closed';
@@ -368,33 +342,10 @@ export default function RegistrationManagementPage() {
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed', description: e.message }); }
     };
     
-    const handleSaveDeadline = async (title: string, eventId: string | null) => {
-        const semester = semesters.find(s => s.id === selectedSemester);
-        if(!semester) return;
-        const date = deadlineDates[title];
-        if (!date) { toast({ variant: 'destructive', title: 'Date required' }); return; }
-        setSaving(true);
-        const fullTitle = `${title} - ${semester.name}`;
-        try {
-            if(eventId) {
-                await update(ref(db, `calendarEvents/${eventId}`), { date: format(date, 'yyyy-MM-dd') });
-            } else {
-                const newEventRef = push(ref(db, 'calendarEvents'));
-                await set(newEventRef, { title: fullTitle, date: format(date, 'yyyy-MM-dd'), semester: semester.name });
-            }
-            toast({ title: "Deadline Updated" });
-            setDeadlineDates(prev => ({...prev, [title]: undefined}));
-            setEditingDeadlineId(null);
-            refreshData();
-        } catch (error: any) { 
-            toast({ variant: 'destructive', title: 'Failed to save deadline' }); 
-        } finally { 
-            setSaving(false); 
-        }
-    }
-    
-    const currentSemester = semesters.find(s => s.id === selectedSemester);
-    const canSave = semesterDeadlines.every(d => d.date !== null);
+    const filteredSemesters = React.useMemo(() => {
+        if(selectedIntake === 'all') return semesters;
+        return semesters.filter(s => s.intakeId === selectedIntake);
+    }, [semesters, selectedIntake]);
 
     return (
         <div className="space-y-6">
@@ -413,22 +364,29 @@ export default function RegistrationManagementPage() {
                 </div>
                  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                     <DialogTrigger asChild><Button type="button" onClick={() => setEditingSemester(null)}><PlusCircle className="mr-2 h-4"/>New Semester</Button></DialogTrigger>
-                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} /></DialogContent>
                 </Dialog>
             </CardHeader>
              <CardContent>
+                <div className="mb-4">
+                    <Label htmlFor="intake-filter">Filter by Intake</Label>
+                    <Select value={selectedIntake} onValueChange={setSelectedIntake}>
+                        <SelectTrigger id="intake-filter" className="max-w-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
                 <Table>
                     <TableHeader><TableRow><TableHead>Semester Name</TableHead><TableHead>Status</TableHead><TableHead>Late Registration</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-20 w-full"/></TableCell></TableRow> :
-                         semesters.map(semester => (
+                         filteredSemesters.map(semester => (
                              <TableRow key={semester.id}>
                                  <TableCell>{semester.name}</TableCell>
                                  <TableCell><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${semester.status === 'Open' ? 'border-transparent bg-green-500 text-white' : 'border-transparent bg-gray-400 text-white'}`}>{semester.status}</span></TableCell>
                                  <TableCell><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${semester.lateRegistrationActive ? 'border-transparent bg-green-500 text-white' : 'border-transparent bg-gray-400 text-white'}`}>{semester.lateRegistrationActive ? 'Active' : 'Inactive'}</span></TableCell>
                                  <TableCell className="text-right space-x-2">
                                      <Button size="sm" variant="outline" onClick={() => {setEditingSemester(semester); setIsEditDialogOpen(true);}}>Edit</Button>
-                                     <Button size="sm" variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)} disabled={!canSave && semester.status !== 'Open'} title={!canSave && semester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{semester.status === 'Open' ? 'Close' : 'Open'} Reg</Button>
+                                     <Button size="sm" variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}>{semester.status === 'Open' ? 'Close' : 'Open'} Reg</Button>
                                      {semester.status === 'Open' && (<Button size="sm" variant="secondary" onClick={() => handleToggleLateRegistration(semester)}>{semester.lateRegistrationActive ? 'Disable Late' : 'Enable Late'} Reg</Button>)}
                                  </TableCell>
                              </TableRow>
@@ -438,43 +396,9 @@ export default function RegistrationManagementPage() {
                 </Table>
              </CardContent>
         </Card>
-
-        {currentSemester && (<Card><CardHeader><CardTitle>Payment Deadlines for {currentSemester.name}</CardTitle><CardDescription>An overview of payment due dates for this semester. Payment plans without all deadlines set will not be available to students.</CardDescription></CardHeader><CardContent>
-                {semesterDeadlines.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{semesterDeadlines.map(({title, date, eventId}) => {
-                    const isEditingThis = editingDeadlineId === (eventId || title);
-                    const displayDate = deadlineDates[title] || (date ? parseISO(date) : undefined);
-                    return (
-                        <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border p-3">
-                            <span className="font-medium">{title}</span>
-                            <div className="flex items-center gap-2">
-                            {isEditingThis ? (
-                                <>
-                                    <Popover>
-                                    <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal sm:w-[200px]"><CalendarIcon className="mr-2 h-4 w-4" />{displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={displayDate} onSelect={(d) => setDeadlineDates(p => ({ ...p, [title]: d }))} initialFocus /></PopoverContent>
-                                    </Popover>
-                                    <Button size="sm" onClick={() => handleSaveDeadline(title, eventId)} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : "Save"}</Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
-                                </>
-                            ) : date ? (
-                                <>
-                                <span className="text-sm font-semibold">{format(parseISO(date), 'PPP')}</span>
-                                <Button variant="ghost" size="icon" onClick={() => setEditingDeadlineId(eventId)}><Pencil className="h-4 w-4"/></Button>
-                                </>
-                            ) : (
-                                <Button onClick={() => setEditingDeadlineId(title)}>Set Date</Button>
-                            )}
-                            </div>
-                        </div>
-                    );
-                })}</div>
-                ) : (<Alert variant="default"><Info className="h-4 w-4"/><AlertTitle>No Payment Plans Linked</AlertTitle><AlertDescription>There are no payment plans linked to this semester, so no deadlines are required.</AlertDescription></Alert>)}
-            </CardContent><CardFooter className="flex justify-end"><Button variant="outline" asChild><Link href="/admin/calendar"><CalendarIcon className="mr-2 h-4 w-4" /> Manage in Calendar</Link></Button></CardFooter>
-        </Card>
-        )}
         
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+            <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => {refreshData(); setIsEditDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} /></DialogContent>
         </Dialog>
         </div>
     );
