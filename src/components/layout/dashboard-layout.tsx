@@ -107,115 +107,72 @@ export default function DashboardLayout({
     });
     return () => unsub();
   }, []);
+
+  const menuItems = React.useMemo(() => {
+    if (!userProfile || !userProfile.role) {
+      return [];
+    }
+    if (userProfile.role.toLowerCase() === 'admin') {
+      return allMenuItems;
+    }
+    if (userProfile.role.toLowerCase() === 'student') {
+      return studentMenuItems;
+    }
+    if (userProfile.role.toLowerCase() === 'staff') {
+      const staffPermissions = userProfile.permissions || {};
+      const baseMenu = staffBaseMenuItems.map(category => {
+        if (!category.items) return category;
+        const filteredSubItems = category.items.filter(subItem => {
+          if (!subItem.permission) return true;
+          if (typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
+            return !!staffPermissions[subItem.permission];
+          }
+          return userProfile.subRoles?.includes(subItem.permission);
+        });
+        if (filteredSubItems.length > 0) {
+          return { ...category, items: filteredSubItems };
+        }
+        return null;
+      }).filter(Boolean) as any[];
+
+      const additionalMenu = allMenuItems.map(category => {
+        if (!category.items) return null;
+        const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
+        if (permittedSubItems.length > 0) {
+          return { ...category, items: permittedSubItems };
+        }
+        return null;
+      }).filter(Boolean);
+
+      const combinedMenu = [...baseMenu];
+      const baseCategories = new Set(baseMenu.map(c => c.label));
+      additionalMenu.forEach(category => {
+        if (category && !baseCategories.has(category.label)) {
+          combinedMenu.push(category);
+        }
+      });
+      return combinedMenu;
+    }
+    return [];
+  }, [userProfile]);
   
   React.useEffect(() => {
-    if (loading || !userProfile || !userProfile.role) return;
-    
-    let menu;
-    if (userProfile.role.toLowerCase() === 'admin') {
-      menu = allMenuItems;
-    } else if (userProfile.role.toLowerCase() === 'student') {
-      menu = studentMenuItems;
-    } else if (userProfile.role.toLowerCase() === 'staff') {
-        const staffPermissions = userProfile.permissions || {};
-        
-        const baseMenu = staffBaseMenuItems.map(category => {
-            if (!category.items) return category;
-            const filteredSubItems = category.items.filter(subItem => {
-                 if (!subItem.permission) return true;
-                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
-                     return !!staffPermissions[subItem.permission];
-                 }
-                 return userProfile.subRoles?.includes(subItem.permission);
-            });
-            
-            if (filteredSubItems.length > 0) {
-                return { ...category, items: filteredSubItems };
-            }
-            return null;
-        }).filter(Boolean) as any[];
+    if (loading || !menuItems.length) return;
 
-        const additionalMenu = allMenuItems.map(category => {
-             if (!category.items) return null;
-             const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
-             if (permittedSubItems.length > 0) {
-                 return { ...category, items: permittedSubItems };
-             }
-             return null;
-        }).filter(Boolean);
-
-        const combinedMenu = [...baseMenu];
-        const baseCategories = new Set(baseMenu.map(c => c.label));
-
-        additionalMenu.forEach(category => {
-            if (!baseCategories.has(category.label)) {
-                combinedMenu.push(category);
-            }
-        });
-
-        menu = combinedMenu;
-    } else {
-        menu = [];
-    }
-
-    const activeCategory = menu.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
-    if(activeCategory) {
+    const activeCategory = menuItems.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+    if(activeCategory && !openAccordion.includes(activeCategory)) {
         setOpenAccordion(prev => [...new Set([...prev, activeCategory!])]);
     }
-  }, [pathname, loading, userProfile]);
+  // This dependency array is intentionally limited to avoid re-running on every accordion change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, menuItems, loading]);
 
   const renderMenu = () => {
-    if (loading || !userProfile || !userProfile.role) {
+    if (loading) {
         return <div className="space-y-2">{Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)}</div>
     }
-    
-    let itemsToRender: any[] = [];
-    
-    if (userProfile.role.toLowerCase() === 'admin') {
-      itemsToRender = allMenuItems;
-    } else if (userProfile.role.toLowerCase() === 'student') {
-      itemsToRender = studentMenuItems;
-    } else if (userProfile.role.toLowerCase() === 'staff') {
-        const staffPermissions = userProfile.permissions || {};
-        
-        const baseMenu = staffBaseMenuItems.map(category => {
-            if (!category.items) return category;
-            const filteredSubItems = category.items.filter(subItem => {
-                 if (!subItem.permission) return true;
-                 if(typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
-                     return !!staffPermissions[subItem.permission];
-                 }
-                 return userProfile.subRoles?.includes(subItem.permission);
-            });
-            
-            if (filteredSubItems.length > 0) {
-                return { ...category, items: filteredSubItems };
-            }
-            return null;
-        }).filter(Boolean) as any[];
 
-        const additionalMenu = allMenuItems.map(category => {
-             if (!category.items) return null;
-             const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
-             if (permittedSubItems.length > 0) {
-                 return { ...category, items: permittedSubItems };
-             }
-             return null;
-        }).filter(Boolean);
-
-        const combinedMenu = [...baseMenu];
-        const baseCategories = new Set(baseMenu.map(c => c.label));
-
-        additionalMenu.forEach(category => {
-            if (!baseCategories.has(category.label)) {
-                combinedMenu.push(category);
-            }
-        });
-
-        itemsToRender = combinedMenu;
-    }
-
-    const filteredItems = itemsToRender
+    const filteredItems = menuItems
       .map(category => {
         if (!search.trim()) {
           return category;
@@ -257,10 +214,9 @@ export default function DashboardLayout({
                                  <SidebarMenu>
                                     {item.items.map((subItem: any) => (
                                         <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.isPremium ? '#' : subItem.href} onClick={() => setOpenAccordion([])}>
+                                            <Link href={subItem.href} onClick={() => setOpenAccordion([])}>
                                                 <SidebarMenuButton 
                                                     isActive={pathname.startsWith(subItem.href)}
-                                                    disabled={subItem.isPremium}
                                                 >
                                                     {subItem.icon && <subItem.icon />}
                                                     <span>{subItem.label}</span>
@@ -269,7 +225,6 @@ export default function DashboardLayout({
                                                             {notificationCounts[subItem.notificationKey]}
                                                         </span>
                                                     )}
-                                                    {subItem.isPremium && <span className="ml-auto text-xs font-bold text-yellow-500 bg-yellow-500/20 px-1.5 py-0.5 rounded-full">Premium</span>}
                                                 </SidebarMenuButton>
                                             </Link>
                                         </SidebarMenuItem>
@@ -311,10 +266,10 @@ export default function DashboardLayout({
               </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
-        <SidebarInset>
+        <div className='flex flex-1 flex-col'>
           <Header />
           <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
-        </SidebarInset>
+        </div>
       </div>
     </SidebarProvider>
   );
