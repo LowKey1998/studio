@@ -1,8 +1,7 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db } from '@/lib/firebase';
@@ -17,59 +16,42 @@ import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type Applicant = {
+type ApplicantLead = {
     id: string;
     name: string;
-    email: string;
-    phone: string;
-    resumeUrl: string;
-    dateApplied: string;
-    status: 'Received' | 'Reviewed' | 'Interviewing' | 'Hired' | 'Rejected';
+    email?: string;
+    phone?: string;
+    status: 'New' | 'Contacted' | 'Interviewing' | 'Enrolled' | 'Disqualified';
     interviewDate?: string;
     interviewTime?: string;
 };
 
-type Vacancy = {
-    id: string;
-    title: string;
-    status: 'Open' | 'Closed';
-    applicants?: Record<string, Applicant>;
-};
 
 export default function InterviewSchedulingPage() {
-    const [vacancies, setVacancies] = React.useState<Vacancy[]>([]);
-    const [selectedVacancy, setSelectedVacancy] = React.useState<Vacancy | null>(null);
+    const [leads, setLeads] = React.useState<ApplicantLead[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [dialogOpen, setDialogOpen] = React.useState<string | null>(null); // Stores applicant ID
+    const [dialogOpen, setDialogOpen] = React.useState<string | null>(null); // Stores lead ID
     const [interviewDate, setInterviewDate] = React.useState<Date | undefined>();
     const [interviewTime, setInterviewTime] = React.useState('');
 
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const vacanciesRef = ref(db, 'vacancies');
-        const unsubscribe = onValue(vacanciesRef, (snapshot) => {
+        const leadsRef = ref(db, 'admissions/leads');
+        const unsubscribe = onValue(leadsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                const openVacancies = Object.keys(data)
-                    .map(key => ({ ...data[key], id: key }))
-                    .filter(v => v.status === 'Open');
-                setVacancies(openVacancies);
+                setLeads(Object.keys(data).map(key => ({ ...data[key], id: key })));
             }
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
-
-    const handleSelectVacancy = (vacancyId: string) => {
-        const vacancy = vacancies.find(v => v.id === vacancyId);
-        setSelectedVacancy(vacancy || null);
-    };
     
-    const handleOpenDialog = (applicant: Applicant) => {
-        setInterviewDate(applicant.interviewDate ? parseISO(applicant.interviewDate) : undefined);
-        setInterviewTime(applicant.interviewTime || '');
-        setDialogOpen(applicant.id);
+    const handleOpenDialog = (lead: ApplicantLead) => {
+        setInterviewDate(lead.interviewDate ? parseISO(lead.interviewDate) : undefined);
+        setInterviewTime(lead.interviewTime || '');
+        setDialogOpen(lead.id);
     };
 
     const handleCloseDialog = () => {
@@ -79,12 +61,12 @@ export default function InterviewSchedulingPage() {
     };
 
     const handleScheduleInterview = async () => {
-        if (!selectedVacancy || !dialogOpen) return;
+        if (!dialogOpen) return;
         
         try {
-            const applicantRef = ref(db, `vacancies/${selectedVacancy.id}/applicants/${dialogOpen}`);
-            await set(applicantRef, {
-                ...selectedVacancy.applicants?.[dialogOpen],
+            const leadRef = ref(db, `admissions/leads/${dialogOpen}`);
+            await set(leadRef, {
+                ...leads.find(l => l.id === dialogOpen),
                 status: 'Interviewing',
                 interviewDate: interviewDate ? format(interviewDate, 'yyyy-MM-dd') : null,
                 interviewTime: interviewTime,
@@ -96,56 +78,45 @@ export default function InterviewSchedulingPage() {
         }
     };
     
-    const applicants = selectedVacancy?.applicants ? Object.values(selectedVacancy.applicants) : [];
+    const leadsToSchedule = leads.filter(l => l.status === 'New' || l.status === 'Contacted' || l.status === 'Interviewing');
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Interview Scheduling</CardTitle>
-                <CardDescription>Schedule and manage interviews with prospective students and staff.</CardDescription>
-                 <div className="pt-2">
-                    <Select onValueChange={handleSelectVacancy} disabled={loading || vacancies.length === 0}>
-                        <SelectTrigger className="max-w-sm">
-                            <SelectValue placeholder="Select a vacancy to view applicants..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {vacancies.map(v => <SelectItem key={v.id} value={v.id}>{v.title}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
+                <CardTitle>Student Interview Scheduling</CardTitle>
+                <CardDescription>Schedule and manage interviews with prospective students.</CardDescription>
             </CardHeader>
             <CardContent>
-                {selectedVacancy ? (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Applicant</TableHead>
-                                <TableHead>Applied On</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Interview</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Applicant</TableHead>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Interview</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-24"/></TableCell></TableRow> :
+                        leadsToSchedule.map(lead => (
+                            <TableRow key={lead.id}>
+                                <TableCell>{lead.name}</TableCell>
+                                <TableCell>{lead.email || lead.phone}</TableCell>
+                                <TableCell>{lead.status}</TableCell>
+                                <TableCell>{lead.interviewDate ? `${format(parseISO(lead.interviewDate), 'PPP')} at ${lead.interviewTime}` : 'Not Scheduled'}</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="outline" onClick={() => handleOpenDialog(lead)}>Schedule Interview</Button>
+                                </TableCell>
                             </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {applicants.map(app => (
-                                <TableRow key={app.id}>
-                                    <TableCell>{app.name}</TableCell>
-                                    <TableCell>{format(parseISO(app.dateApplied), 'PPP')}</TableCell>
-                                    <TableCell>{app.status}</TableCell>
-                                    <TableCell>{app.interviewDate ? `${format(parseISO(app.interviewDate), 'PPP')} at ${app.interviewTime}` : 'Not Scheduled'}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="outline" onClick={() => handleOpenDialog(app)}>Schedule Interview</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                ) : <p className="text-muted-foreground">Select a vacancy to view applicants.</p>}
+                        ))}
+                    </TableBody>
+                </Table>
 
                 <Dialog open={!!dialogOpen} onOpenChange={(open) => !open && handleCloseDialog()}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Schedule Interview for {selectedVacancy?.applicants?.[dialogOpen!]?.name}</DialogTitle>
+                            <DialogTitle>Schedule Interview for {leads.find(l => l.id === dialogOpen)?.name}</DialogTitle>
                         </DialogHeader>
                         <div className="py-4 space-y-4">
                             <div className="space-y-1">
