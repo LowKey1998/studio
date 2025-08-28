@@ -21,7 +21,7 @@ import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { get, ref, onValue } from 'firebase/database';
+import { get, ref, onValue, update, serverTimestamp, onDisconnect } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
@@ -43,6 +43,9 @@ export default function DashboardLayout({
   
   const handleLogout = async () => {
     try {
+      if (user) {
+        await update(ref(db, `users/${user.uid}`), { isOnline: false, lastSeen: serverTimestamp() });
+      }
       await signOut(auth);
       toast({
         title: "Logged Out",
@@ -58,6 +61,32 @@ export default function DashboardLayout({
       });
     }
   };
+
+  // Set up Firebase presence
+  React.useEffect(() => {
+    if (!user) return;
+
+    const userStatusRef = ref(db, `users/${user.uid}`);
+    const isOfflineForDatabase = {
+      isOnline: false,
+      lastSeen: serverTimestamp(),
+    };
+    const isOnlineForDatabase = {
+      isOnline: true,
+      lastSeen: serverTimestamp(),
+    };
+
+    const connectedRef = ref(db, '.info/connected');
+    const unsub = onValue(connectedRef, (snapshot) => {
+        if (snapshot.val() === true) {
+            onDisconnect(userStatusRef).set(isOfflineForDatabase).then(() => {
+                update(userStatusRef, isOnlineForDatabase);
+            });
+        }
+    });
+
+    return () => unsub();
+  }, [user]);
 
   React.useEffect(() => {
     const registrationsRef = ref(db, 'registrations');

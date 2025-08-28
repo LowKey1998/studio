@@ -59,7 +59,7 @@ const hexToHSL = (hex: string) => {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-    const [institutionName, setInstitutionName] = React.useState('');
+    const [institutionName, setInstitutionName] = React.useState('Edutrack360');
     const [institutionLogo, setInstitutionLogo] = React.useState<string | null>(null);
     const [institutionColor, setInstitutionColor] = React.useState<string | null>(null);
     const [institutionNameParts, setInstitutionNameParts] = React.useState<NamePart[]>([]);
@@ -70,11 +70,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         const unsubscribe = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                setInstitutionName(data.name || 'Edutrack360');
+                const name = data.name || 'Edutrack360';
+                setInstitutionName(name);
                 setInstitutionLogo(data.logoUrl || null);
                 setInstitutionColor(data.color || null);
                 setInstitutionNameParts(data.nameParts || []);
 
+                if (typeof window !== 'undefined') {
+                    document.title = name;
+                }
 
                 if (data.color) {
                     const { h, s, l } = hexToHSL(data.color);
@@ -82,9 +86,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                     const foreground = l > 50 ? '0 0% 10%' : '0 0% 100%';
                     document.documentElement.style.setProperty('--primary-foreground', foreground);
                 } else {
-                     // Reset to default if no color is set
                     document.documentElement.style.removeProperty('--primary');
                     document.documentElement.style.removeProperty('--primary-foreground');
+                }
+            } else {
+                 if (typeof window !== 'undefined') {
+                    document.title = 'Edutrack360';
                 }
             }
              setLoadingTheme(false);
@@ -94,12 +101,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         return () => unsubscribe();
     }, []);
 
-    if (loadingTheme) {
-        return null;
-    }
+    const value = { institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme };
 
     return (
-        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme }}>
+        <ThemeContext.Provider value={value}>
             {children}
         </ThemeContext.Provider>
     );

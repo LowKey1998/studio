@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { ref, get, child } from "firebase/database";
+import { ref, get, child, update, serverTimestamp } from "firebase/database";
 
 import {
   Card,
@@ -81,7 +81,12 @@ export default function LoginPage() {
       // 4. Authenticate with Firebase Auth using the retrieved email
       await signInWithEmailAndPassword(auth, userEmail, password);
       
-      // 5. Redirect based on role
+      // 5. Update last login timestamp
+      await update(ref(db, `users/${firebaseUid}`), {
+          lastLogin: serverTimestamp()
+      });
+
+      // 6. Redirect based on role
       toast({ variant: 'success', title: 'Login Successful', description: 'Welcome back!' });
       if (userRole === 'admin') {
         router.push('/admin/dashboard');

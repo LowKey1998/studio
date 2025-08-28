@@ -2,10 +2,10 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Book, UserCheck, Activity } from "lucide-react";
+import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, child, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { formatDistanceToNow } from 'date-fns';
 
 type ActivityLog = {
@@ -19,6 +19,8 @@ export default function AdminDashboardPage() {
     const [studentCount, setStudentCount] = React.useState(0);
     const [staffCount, setStaffCount] = React.useState(0);
     const [activeCourseCount, setActiveCourseCount] = React.useState(0);
+    const [pendingRegistrations, setPendingRegistrations] = React.useState(0);
+    const [outstandingBalance, setOutstandingBalance] = React.useState(0);
     const [recentActivities, setRecentActivities] = React.useState<ActivityLog[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [activitiesLoading, setActivitiesLoading] = React.useState(true);
@@ -28,37 +30,63 @@ export default function AdminDashboardPage() {
             setLoading(true);
             setActivitiesLoading(true);
             try {
-                // Fetch user counts
-                const usersRef = child(ref(db), 'users');
-                const usersSnapshot = await get(usersRef);
-                if (usersSnapshot.exists()) {
-                    const usersData = usersSnapshot.val();
+                // Fetch counts and balances
+                const [usersSnap, coursesSnap, regsSnap, invoicesSnap, transactionsSnap] = await Promise.all([
+                    get(ref(db, 'users')),
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'registrations')),
+                    get(ref(db, 'invoices')),
+                    get(ref(db, 'transactions'))
+                ]);
+
+                // User Counts
+                if (usersSnap.exists()) {
+                    const usersData = usersSnap.val();
                     const usersList = Object.values(usersData) as { role: string }[];
-                    const students = usersList.filter(user => user.role === 'Student').length;
-                    const staff = usersList.filter(user => user.role === 'Staff').length;
-                    setStudentCount(students);
-                    setStaffCount(staff);
+                    setStudentCount(usersList.filter(user => user.role === 'Student').length);
+                    setStaffCount(usersList.filter(user => user.role === 'Staff').length);
                 }
 
-                // Fetch active course count
-                const coursesRef = child(ref(db), 'courses');
-                const coursesSnapshot = await get(coursesRef);
-                if (coursesSnapshot.exists()) {
-                    const coursesData = coursesSnapshot.val();
-                    const activeCourses = Object.values(coursesData).filter((course: any) => course.status === 'active');
+                // Course Count
+                if (coursesSnap.exists()) {
+                    const activeCourses = Object.values(coursesSnap.val()).filter((course: any) => course.status === 'active');
                     setActiveCourseCount(activeCourses.length);
-                } else {
-                    setActiveCourseCount(0);
                 }
 
-                // Fetch recent activities
+                // Financials and Registrations
+                const registrations = regsSnap.exists() ? regsSnap.val() : {};
+                const invoices = invoicesSnap.exists() ? invoicesSnap.val() : {};
+                const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
+
+                let pendingCount = 0;
+                let totalOutstanding = 0;
+
+                for (const userId in registrations) {
+                    for (const semesterId in registrations[userId]) {
+                        const reg = registrations[userId][semesterId];
+                        if (reg.status === 'Pending Approval') {
+                            pendingCount++;
+                        }
+                        
+                        const invoice = invoices[userId]?.[reg.invoiceId];
+                        if (invoice) {
+                             const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) - (invoice.applyScholarship ? invoice.totalTuition : 0);
+                             const totalPaid = Object.values(transactions).filter((tx: any) => tx.userId === userId && tx.invoiceId === reg.invoiceId).reduce((acc: number, tx: any) => acc + tx.amount, 0);
+                             totalOutstanding += (totalDue - totalPaid);
+                        }
+                    }
+                }
+                setPendingRegistrations(pendingCount);
+                setOutstandingBalance(totalOutstanding);
+
+                // Recent Activities
                 const activitiesRef = ref(db, 'recentActivities');
                 const activitySnapshot = await get(activitiesRef);
                 if (activitySnapshot.exists()) {
                     const activitiesData: { [key: string]: ActivityLog } = activitySnapshot.val();
                     const activitiesList = Object.values(activitiesData)
                         .sort((a, b) => b.timestamp - a.timestamp)
-                        .slice(0, 5); // Sort and get the last 5
+                        .slice(0, 5);
                     setRecentActivities(activitiesList);
                 }
 
@@ -75,7 +103,7 @@ export default function AdminDashboardPage() {
     
     // Function to find and wrap user IDs in a styled span
     const highlightUserIds = (actionText: string) => {
-        const idRegex = /\(\*\*([A-Z]{3}-\d{3,})\*\*\)/g;
+        const idRegex = /\(\*\*([A-Z0-9-]+)\*\*\)/g;
         return actionText.split(idRegex).map((part, index) => {
             if (index % 2 === 1) { // This part is the captured user ID
                 return <span key={index} className="font-semibold text-primary">({part})</span>;
@@ -85,16 +113,17 @@ export default function AdminDashboardPage() {
     };
 
     const stats = [
-        { title: "Total Students", value: loading ? <Skeleton className="h-8 w-24" /> : studentCount, icon: <Users className="h-6 w-6 text-muted-foreground" />, change: "" },
-        { title: "Total Staff", value: loading ? <Skeleton className="h-8 w-16" /> : staffCount, icon: <UserCheck className="h-6 w-6 text-muted-foreground" />, change: "" },
-        { title: "Active Courses", value: loading ? <Skeleton className="h-8 w-12" /> : activeCourseCount, icon: <Book className="h-6 w-6 text-muted-foreground" />, change: "" },
-        { title: "Recent Logins (24h)", value: loading ? <Skeleton className="h-8 w-16" /> : "312", icon: <Activity className="h-6 w-6 text-muted-foreground" />, change: "" },
+        { title: "Total Students", value: loading ? <Skeleton className="h-8 w-24" /> : studentCount, icon: <Users className="h-6 w-6 text-muted-foreground" />},
+        { title: "Total Staff", value: loading ? <Skeleton className="h-8 w-16" /> : staffCount, icon: <UserCheck className="h-6 w-6 text-muted-foreground" />},
+        { title: "Active Courses", value: loading ? <Skeleton className="h-8 w-12" /> : activeCourseCount, icon: <BookOpen className="h-6 w-6 text-muted-foreground" />},
+        { title: "Pending Registrations", value: loading ? <Skeleton className="h-8 w-16" /> : pendingRegistrations, icon: <BookOpenCheck className="h-6 w-6 text-muted-foreground" />},
+        { title: "Outstanding Balance", value: loading ? <Skeleton className="h-8 w-32" /> : `ZMW ${outstandingBalance.toFixed(2)}`, icon: <DollarSign className="h-6 w-6 text-muted-foreground" />},
     ];
 
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {stats.map((stat, index) => (
           <Card key={index} className="shadow-md">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -103,7 +132,6 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              {stat.change && <p className="text-xs text-muted-foreground">{stat.change} from last month</p>}
             </CardContent>
           </Card>
         ))}

@@ -117,12 +117,7 @@ export const allMenuItems = [
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/fees', label: 'Fee Management', icon: HandCoins, subItems: [
-            { href: '/admin/finance/fees/tuition', label: 'Tuition Fees' },
-            { href: '/admin/finance/fees/hostels', label: 'Hostel Fees' },
-            { href: '/admin/finance/fees/meals', label: 'Meal Fees' },
-            { href: '/admin/finance/fees/other', label: 'Other Fees' },
-        ] },
+        { href: '/admin/fees', label: 'Fee Management', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
@@ -189,7 +184,6 @@ export const allMenuItems = [
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
            { href: '/admin/hr/contracts', label: 'Contracts', icon: FileText },
-           { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
       ]
   },
     {
