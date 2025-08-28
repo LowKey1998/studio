@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,7 +63,7 @@ export default function CurriculumMappingPage() {
                             Object.entries(coursesByYear).sort(([yearA], [yearB]) => parseInt(yearA.replace('Year ', '')) - parseInt(yearB.replace('Year ', '')))
                         );
                         
-                        return { id, ...prog, coursesByYear: sortedCoursesByYear };
+                        return { id, name: prog.name, courseIds: prog.courseIds, coursesByYear: sortedCoursesByYear };
                     });
                     setProgrammes(programmesList);
                 }

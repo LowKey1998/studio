@@ -48,6 +48,13 @@ export default function LecturerAllocationPage() {
                 const lecturerRoleIds = new Set(
                     Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
                 );
+                
+                const roleIdToNameMap = new Map<string, string>();
+                for (const roleId in subRolesData) {
+                    roleIdToNameMap.set(roleId, subRolesData[roleId].name);
+                }
+                const lecturerRoleNames = new Set(Array.from(lecturerRoleIds).map(id => roleIdToNameMap.get(id)).filter(Boolean));
+
 
                 const lecturersList: Lecturer[] = [];
                 const lecturerMap = new Map<string, string>();
@@ -56,15 +63,11 @@ export default function LecturerAllocationPage() {
                     const user = usersData[uid];
                     if (user.role === 'Staff') {
                         // Check if the user has any of the designated lecturer sub-roles
-                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => {
-                            // Find the sub-role ID by name
-                            const roleEntry = Object.entries(subRolesData).find(([, roleDetails]: [string, any]) => roleDetails.name === userSubRole);
-                            return roleEntry && lecturerRoleIds.has(roleEntry[0]);
-                        });
-
+                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => lecturerRoleNames.has(userSubRole));
+                        
                         if (userHasLecturerRole) {
-                           lecturersList.push({ uid, name: usersData[uid].name });
-                           lecturerMap.set(uid, usersData[uid].name);
+                           lecturersList.push({ uid, name: user.name });
+                           lecturerMap.set(uid, user.name);
                         }
                     }
                 }
@@ -94,16 +97,16 @@ export default function LecturerAllocationPage() {
 
         // Set up listeners for real-time updates after initial fetch
         const coursesRef = ref(db, 'courses');
-        const unsubCourses = onValue(coursesRef, (snapshot) => {
+        const unsubCourses = onValue(coursesRef, () => {
              // Re-fetch data if changes occur to ensure consistency
              fetchData();
         });
         const usersRef = ref(db, 'users');
-        const unsubUsers = onValue(usersRef, (snapshot) => {
+        const unsubUsers = onValue(usersRef, () => {
              fetchData();
         });
         const subRolesRef = ref(db, 'settings/subRoles');
-        const unsubSubRoles = onValue(subRolesRef, (snapshot) => {
+        const unsubSubRoles = onValue(subRolesRef, () => {
             fetchData();
         });
 

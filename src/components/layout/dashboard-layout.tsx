@@ -11,22 +11,20 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarInset,
   SidebarInput,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
-import { LogOut, User, UserX } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { get, ref } from 'firebase/database';
+import { get, ref, onValue } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
-import type { UserProfile } from '@/hooks/use-auth';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 
 
@@ -41,6 +39,7 @@ export default function DashboardLayout({
   const { user, userProfile, loading } = useAuth();
   const [search, setSearch] = React.useState('');
   const [openAccordion, setOpenAccordion] = React.useState<string[]>([]);
+  const [notificationCounts, setNotificationCounts] = React.useState<Record<string, number>>({});
   
   const handleLogout = async () => {
     try {
@@ -59,6 +58,25 @@ export default function DashboardLayout({
       });
     }
   };
+
+  React.useEffect(() => {
+    const registrationsRef = ref(db, 'registrations');
+    const unsub = onValue(registrationsRef, (snapshot) => {
+        let pendingCount = 0;
+        if (snapshot.exists()) {
+            const allRegistrations = snapshot.val();
+            for (const userId in allRegistrations) {
+                for (const semesterId in allRegistrations[userId]) {
+                    if (allRegistrations[userId][semesterId].status === 'Pending Approval') {
+                        pendingCount++;
+                    }
+                }
+            }
+        }
+        setNotificationCounts(prev => ({...prev, pendingRegistrations: pendingCount }));
+    });
+    return () => unsub();
+  }, []);
   
   React.useEffect(() => {
     if (loading || !userProfile) return;
@@ -227,6 +245,11 @@ export default function DashboardLayout({
                                                 >
                                                     {subItem.icon && <subItem.icon />}
                                                     <span>{subItem.label}</span>
+                                                     {subItem.notificationKey && notificationCounts[subItem.notificationKey] > 0 && (
+                                                        <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
+                                                            {notificationCounts[subItem.notificationKey]}
+                                                        </span>
+                                                    )}
                                                     {subItem.isPremium && <span className="ml-auto text-xs font-bold text-yellow-500 bg-yellow-500/20 px-1.5 py-0.5 rounded-full">Premium</span>}
                                                 </SidebarMenuButton>
                                             </Link>
@@ -277,5 +300,3 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
-
-    

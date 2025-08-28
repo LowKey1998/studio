@@ -24,7 +24,7 @@ export const allMenuItems = [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
         { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/admissions/inquiries', label: 'Admission Inquiries', icon: Search },
-        { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck },
+        { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
         { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2, isComingSoon: true },
@@ -149,13 +149,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/parents/accounts', label: 'Parent Accounts' },
-            { href: '/admin/parents/portal-settings', label: 'Portal Settings' },
-            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders' },
-            { href: '/admin/parents/communication-logs', label: 'Communication Logs' },
-            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts' },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'HR',
@@ -174,6 +168,7 @@ export const allMenuItems = [
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
+           { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
       ]
   },
     {
