@@ -159,7 +159,7 @@ export default function DashboardLayout({
 
     const activeCategory = menu.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
     if(activeCategory) {
-        setOpenAccordion([activeCategory]);
+        setOpenAccordion(prev => [...prev, activeCategory!]);
     }
   }, [pathname, loading, userProfile]);
 
