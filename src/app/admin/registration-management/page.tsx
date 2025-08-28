@@ -228,7 +228,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     return (
         <><DialogHeader><DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle></DialogHeader>
         <Tabs defaultValue="details" className="w-full">
-            <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details & Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
+            <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details &amp; Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
             <TabsContent value="details">
                 <div className="grid gap-4 py-4">
                     <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} /></div>
@@ -237,7 +237,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                         <div className="space-y-1"><Label>Year</Label><Input type="number" min={1} value={year} onChange={e=>setYear(Number(e.target.value))}/></div>
                         <div className="space-y-1"><Label>Semester in Year</Label><Input type="number" min={1} max={3} value={semesterInYear} onChange={e=>setSemesterInYear(Number(e.target.value))}/></div>
                     </div>
-                    <div className="space-y-1"><Label htmlFor="semester-dates">Semester Start & End Dates</Label>
+                    <div className="space-y-1"><Label htmlFor="semester-dates">Semester Start &amp; End Dates</Label>
                         <Popover><PopoverTrigger asChild><Button id="semester-dates" variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent></Popover>
                     </div>
                     <div className="space-y-2"><Label>Available Payment Plans</Label>
@@ -323,6 +323,7 @@ export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
+    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
@@ -473,68 +474,71 @@ export default function RegistrationManagementPage() {
                     </div>
                      <Accordion type="single" collapsible className="w-full">
                         {loading ? <Skeleton className="h-40 w-full"/> : 
-                        filteredSemesters.map(semester => (
-                            <AccordionItem value={semester.id} key={semester.id}>
-                                <AccordionTrigger className="font-semibold text-lg hover:no-underline">
-                                    <div className="flex items-center gap-2">
-                                        <span className={cn("h-3 w-3 rounded-full", semester.status === 'Open' ? 'bg-green-500' : semester.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>
-                                        {semester.name}
+                        filteredSemesters.map(semester => {
+                             const canSave = semesterDeadlines.every(d => d.date !== null);
+                             return (
+                                <AccordionItem value={semester.id} key={semester.id}>
+                                    <AccordionTrigger className="font-semibold text-lg hover:no-underline">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn("h-3 w-3 rounded-full", semester.status === 'Open' ? 'bg-green-500' : semester.status === 'Closed' ? 'bg-red-500' : 'bg-gray-400')}></span>
+                                            {semester.name}
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="space-y-4 pt-4">
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)} disabled={!canSave && semester.status !== 'Open'} title={!canSave && semester.status !== 'Open' ? 'Set payment deadlines first' : ''}>{semester.status === 'Open' ? <PowerOff className="mr-2 h-4 w-4" /> : <Power className="mr-2 h-4 w-4" />}{semester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
+                                        {semester.status === 'Open' && (<Button variant={semester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(semester)}><ShieldAlert className="mr-2 h-4 w-4" />{semester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
+                                        <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
+                                        {activeTab !== 'Archived' && (<Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>)}
                                     </div>
-                                </AccordionTrigger>
-                                <AccordionContent className="space-y-4 pt-4">
-                                <div className="flex flex-wrap gap-2">
-                                    <Button variant={semester.status === 'Open' ? 'destructive' : 'default'} onClick={() => handleToggleSemesterStatus(semester)}><Power className="mr-2 h-4 w-4" />{semester.status === 'Open' ? 'Close Registration' : 'Open Registration'}</Button>
-                                    {semester.status === 'Open' && (<Button variant={semester.lateRegistrationActive ? 'destructive' : 'secondary'} onClick={() => handleToggleLateRegistration(semester)}><ShieldAlert className="mr-2 h-4 w-4" />{semester.lateRegistrationActive ? 'Disable Late Registration' : 'Enable Late Registration'}</Button>)}
-                                    <Button variant="outline" onClick={() => handleOpenEditDialog(semester)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
-                                    {activeTab !== 'Archived' && (<Button variant="outline" onClick={() => handleArchiveSemester(semester.id)}><Trash2 className="mr-2 h-4 w-4"/> Archive</Button>)}
-                                </div>
-                                <Tabs defaultValue="courses">
-                                    <TabsList>
-                                        <TabsTrigger value="courses">Available Courses</TabsTrigger>
-                                        <TabsTrigger value="financials">Financial Setup</TabsTrigger>
-                                    </TabsList>
-                                    <TabsContent value="courses" className="pt-4">
-                                        <Accordion type="multiple" className="w-full">
-                                            {allProgrammes.map(prog => (
-                                                <AccordionItem value={prog.id} key={prog.id}>
-                                                    <AccordionTrigger>{prog.name}</AccordionTrigger>
-                                                    <AccordionContent className="pt-2">
-                                                        <AvailableCoursesView 
-                                                            semester={semester} 
-                                                            programme={prog}
-                                                            allCoursesData={allCourses}
-                                                            offeringsForSemester={semesterOfferings[semester.name]?.courseIds || []}
-                                                            onSelectCourse={(courseId) => {
-                                                                const currentOfferings = semesterOfferings[semester.name]?.courseIds || [];
-                                                                const newOfferings = currentOfferings.includes(courseId)
-                                                                    ? currentOfferings.filter(id => id !== courseId)
-                                                                    : [...currentOfferings, courseId];
-                                                                handleSaveOfferings(semester.name, newOfferings);
-                                                            }}
-                                                        />
-                                                    </AccordionContent>
-                                                </AccordionItem>
-                                            ))}
-                                        </Accordion>
-                                    </TabsContent>
-                                     <TabsContent value="financials" className="pt-4">
-                                         <div className="p-4 border rounded-md space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <h4 className="font-semibold">Late Registration Fee</h4>
-                                                <div className="text-right">
-                                                    <p className="font-bold text-lg">ZMW {lateFee.toFixed(2)}</p>
-                                                    <p className={`text-sm ${semester.lateRegistrationActive ? 'text-green-600' : 'text-red-600'}`}>{semester.lateRegistrationActive ? 'Enabled' : 'Disabled'} for this semester</p>
+                                    <Tabs defaultValue="courses">
+                                        <TabsList>
+                                            <TabsTrigger value="courses">Available Courses</TabsTrigger>
+                                            <TabsTrigger value="financials">Financial Setup</TabsTrigger>
+                                        </TabsList>
+                                        <TabsContent value="courses" className="pt-4">
+                                            <Accordion type="multiple" className="w-full">
+                                                {allProgrammes.map(prog => (
+                                                    <AccordionItem value={prog.id} key={prog.id}>
+                                                        <AccordionTrigger>{prog.name}</AccordionTrigger>
+                                                        <AccordionContent className="pt-2">
+                                                            <AvailableCoursesView 
+                                                                semester={semester} 
+                                                                programme={prog}
+                                                                allCoursesData={allCourses}
+                                                                offeringsForSemester={semesterOfferings[semester.name]?.courseIds || []}
+                                                                onSelectCourse={(courseId) => {
+                                                                    const currentOfferings = semesterOfferings[semester.name]?.courseIds || [];
+                                                                    const newOfferings = currentOfferings.includes(courseId)
+                                                                        ? currentOfferings.filter(id => id !== courseId)
+                                                                        : [...currentOfferings, courseId];
+                                                                    handleSaveOfferings(semester.name, newOfferings);
+                                                                }}
+                                                            />
+                                                        </AccordionContent>
+                                                    </AccordionItem>
+                                                ))}
+                                            </Accordion>
+                                        </TabsContent>
+                                         <TabsContent value="financials" className="pt-4">
+                                             <div className="p-4 border rounded-md space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <h4 className="font-semibold">Late Registration Fee</h4>
+                                                    <div className="text-right">
+                                                        <p className="font-bold text-lg">ZMW {lateRegistrationFee.toFixed(2)}</p>
+                                                        <p className={`text-sm ${semester.lateRegistrationActive ? 'text-green-600' : 'text-red-600'}`}>{semester.lateRegistrationActive ? 'Enabled' : 'Disabled'} for this semester</p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <Separator />
-                                            <h4 className="font-semibold">Payment Plans & Deadlines</h4>
-                                            <p className="text-sm text-muted-foreground">Deadlines are set in the main <Link href="/admin/calendar" className="underline">Academic Calendar</Link>.</p>
-                                         </div>
-                                    </TabsContent>
-                                </Tabs>
-                                </AccordionContent>
-                            </AccordionItem>
-                        ))}
+                                                <Separator />
+                                                <h4 className="font-semibold">Payment Plans &amp; Deadlines</h4>
+                                                <p className="text-sm text-muted-foreground">Deadlines are set in the main <Link href="/admin/calendar" className="underline">Academic Calendar</Link>.</p>
+                                             </div>
+                                        </TabsContent>
+                                    </Tabs>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            )
+                        })}
                     </Accordion>
                     {!loading && filteredSemesters.length === 0 && <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>No Semesters Found</AlertTitle><AlertDescription>There are no semesters matching the current filter.</AlertDescription></Alert>}
                 </CardContent>
