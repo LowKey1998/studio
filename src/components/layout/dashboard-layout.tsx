@@ -159,13 +159,13 @@ export default function DashboardLayout({
 
     const activeCategory = menu.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
     if(activeCategory) {
-        setOpenAccordion(prev => [...prev, activeCategory!]);
+        setOpenAccordion(prev => [...new Set([...prev, activeCategory!])]);
     }
   }, [pathname, loading, userProfile]);
 
   const renderMenu = () => {
     if (loading || !userProfile || !userProfile.role) {
-        return Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)
+        return <div className="space-y-2">{Array.from({length: 8}).map((_, i) => <SidebarMenuItem key={i}><Skeleton className="h-8 w-full" /></SidebarMenuItem>)}</div>
     }
     
     let itemsToRender: any[] = [];
@@ -244,15 +244,7 @@ export default function DashboardLayout({
             {filteredItems.map((item) => {
                 if (!item) return null;
                 if (item.isComingSoon) {
-                    return (
-                        <div key={item.label} className="px-2 py-1.5">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.label}</span>
-                                <span className="ml-auto text-xs font-medium text-muted-foreground/70">Soon</span>
-                            </div>
-                        </div>
-                    )
+                    return null; // Removed coming soon
                 }
                 if(item.items && item.items.length > 0) {
                     return (
