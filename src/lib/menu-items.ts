@@ -31,7 +31,7 @@ export const allMenuItems = [
         { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
-        { href: '/admin/admissions/payments', label: 'Payments', icon: DollarSign },
+        { href: '/admin/payments', label: 'Payments', icon: DollarSign },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
@@ -277,9 +277,9 @@ export const allMenuItems = [
         icon: Heart,
         roles: ['Admin'],
         items: [
-            { href: '/admin/chaplaincy/prayer-requests', label: 'PrayerRequests', icon: Heart },
+            { href: '/admin/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
             { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
-            { href: '/admin/chaplaincy/chaplain-logs', label: 'ChaplainLogs', icon: Book },
+            { href: '/admin/chaplaincy/chaplain-logs', label: 'Chaplain Logs', icon: Book },
         ]
     },
     {

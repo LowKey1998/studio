@@ -126,8 +126,7 @@ export default function StudentsListPage() {
             startY: 35
         });
         
-        doc.autoPrint();
-        window.open(doc.output('bloburl'));
+        doc.save(`student_list_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (

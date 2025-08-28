@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { ref, get } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { Search, Printer, User, Mail, Phone } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { useToast } from '@/hooks/use-toast';
 
 type Staff = {
     uid: string;
@@ -34,47 +35,49 @@ export default function StaffListPage() {
     const [staff, setStaff] = React.useState<Staff[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const { toast } = useToast();
 
     // Filter states
     const [searchTerm, setSearchTerm] = React.useState('');
     const [departmentFilter, setDepartmentFilter] = React.useState('all');
 
-    React.useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const [usersSnap, departmentsSnap] = await Promise.all([
-                    get(ref(db, 'users')),
-                    get(ref(db, 'settings/departments'))
-                ]);
+    const fetchData = React.useCallback(async () => {
+        setLoading(true);
+        try {
+            const [usersSnap, departmentsSnap] = await Promise.all([
+                get(ref(db, 'users')),
+                get(ref(db, 'settings/departments'))
+            ]);
 
-                const departmentsData = departmentsSnap.exists() ? departmentsSnap.val() : {};
-                setDepartments(Object.keys(departmentsData).map(id => ({ id, ...departmentsData[id] })));
-                
-                const usersData = usersSnap.exists() ? usersSnap.val() : {};
-                const staffMap = new Map<string, Staff>();
+            const departmentsData = departmentsSnap.exists() ? departmentsSnap.val() : {};
+            setDepartments(Object.keys(departmentsData).map(id => ({ id, ...departmentsData[id] })));
+            
+            const usersData = usersSnap.exists() ? usersSnap.val() : {};
+            const staffMap = new Map<string, Staff>();
 
-                for (const uid in usersData) {
-                    if (usersData[uid].role === 'Staff' || usersData[uid].role === 'Admin') {
-                        if (!staffMap.has(uid)) {
-                            staffMap.set(uid, {
-                                uid,
-                                ...usersData[uid],
-                            });
-                        }
+            for (const uid in usersData) {
+                if (usersData[uid].role === 'Staff' || usersData[uid].role === 'Admin') {
+                    if (!staffMap.has(uid)) {
+                        staffMap.set(uid, {
+                            uid,
+                            ...usersData[uid],
+                        });
                     }
                 }
-                const staffList = Array.from(staffMap.values());
-                setStaff(staffList.sort((a,b) => a.name.localeCompare(b.name)));
-
-            } catch (error) {
-                console.error("Failed to fetch data:", error);
-            } finally {
-                setLoading(false);
             }
-        };
-        fetchData();
+            const staffList = Array.from(staffMap.values());
+            setStaff(staffList.sort((a,b) => a.name.localeCompare(b.name)));
+
+        } catch (error) {
+            console.error("Failed to fetch data:", error);
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
     
     const filteredStaff = React.useMemo(() => {
         const lowerCaseSearch = searchTerm.toLowerCase();
@@ -114,6 +117,17 @@ export default function StaffListPage() {
         });
         
         doc.save(`staff_list_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    const handleAssignDepartment = async (staffUid: string, departmentName: string) => {
+        try {
+            await update(ref(db, `users/${staffUid}`), { department: departmentName });
+            toast({ title: "Department Assigned", description: "The staff member's department has been updated." });
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            toast({ variant: 'destructive', title: "Assignment Failed" });
+        }
     };
 
     return (
@@ -176,7 +190,18 @@ export default function StaffListPage() {
                                     <div className="flex items-center gap-2 text-sm"><Mail className="h-3 w-3 text-muted-foreground"/>{member.email}</div>
                                     {member.phoneNumber && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="h-3 w-3"/>{member.phoneNumber}</div>}
                                 </TableCell>
-                                <TableCell>{member.department || 'N/A'}</TableCell>
+                                <TableCell>
+                                    <Select value={member.department || ''} onValueChange={(value) => handleAssignDepartment(member.uid, value)}>
+                                        <SelectTrigger className="w-[180px]">
+                                            <SelectValue placeholder="Assign..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {departments.map(dept => (
+                                                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">{member.subRoles?.join(', ') || member.role}</TableCell>
                             </TableRow>
                         ))

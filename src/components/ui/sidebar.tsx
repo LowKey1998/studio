@@ -220,7 +220,7 @@ const Sidebar = React.forwardRef<
       <aside
         ref={ref}
         className={cn(
-            "group peer hidden md:block text-sidebar-foreground flex-col",
+            "group peer hidden md:flex text-sidebar-foreground flex-col",
             "duration-200 relative h-svh w-[--sidebar-width] transition-[width] ease-linear",
             "group-data-[collapsible=icon]:w-[--sidebar-width-icon]",
             variant === "floating" || variant === "inset"

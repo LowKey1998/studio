@@ -1,9 +1,8 @@
-
+// This page has been removed as its functionality is now part of the main /admin/payments page.
 'use client';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-// This page's functionality is in /admin/payments
 export default function RedirectPage() {
     const router = useRouter();
     useEffect(() => {

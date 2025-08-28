@@ -321,7 +321,7 @@ export default function DashboardLayout({
               </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
-        <div className="flex-1 flex flex-col md:ml-[var(--sidebar-width-icon)] group-data-[state=expanded]:md:ml-[var(--sidebar-width)] transition-[margin-left] duration-200 ease-in-out">
+        <div className="flex-1 flex flex-col md:ml-[var(--sidebar-width)] group-data-[state=expanded]:md:ml-[var(--sidebar-width)] transition-[margin-left] duration-200 ease-in-out">
           <Header />
           <main className="p-4 sm:p-6 flex-1">{children}</main>
         </div>
