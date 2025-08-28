@@ -1,3 +1,4 @@
+
 import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock } from 'lucide-react';
 
 export const allMenuItems = [
@@ -136,7 +137,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Librarian'],
       items: [
          { href: '/admin/library', label: 'Book Listing', icon: Library },
-         { href: '/admin/book-requests', label: 'BookRequests', icon: BookUp },
+         { href: '/admin/book-requests', label: 'Book Requests', icon: BookUp },
          { href: '/admin/library/late-alerts', label: 'Late Alerts', icon: AlertTriangle },
          { href: '/admin/library/barcode-scanner', label: 'Barcode Scanner', icon: Barcode },
          { href: '/admin/library/statistics', label: 'Statistics', icon: BarChart2 },
@@ -172,7 +173,6 @@ export const allMenuItems = [
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
            { href: '/admin/hr/contracts', label: 'Contracts', icon: FileText },
-           { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
       ]
   },
     {
@@ -183,7 +183,7 @@ export const allMenuItems = [
             { href: '/admin/research/registration', label: 'Research Project Registration', icon: FileText },
             { href: '/admin/research/supervisor-allocation', label: 'Supervisor Allocation', icon: Users2 },
             { href: '/admin/research/proposal-submission', label: 'Proposal Submission Workflow', icon: GitBranch },
-            { href: '/admin/research/ethics-reviews', label: 'Ethics CommitteeReviews', icon: Shield },
+            { href: '/admin/research/ethics-reviews', label: 'Ethics Committee Reviews', icon: Shield },
             { href: '/admin/research/budget-tracking', label: 'Research Budget Tracking', icon: DollarSign },
             { href: '/admin/research/calendar', label: 'Research Calendar', icon: Calendar },
             { href: '/admin/research/publications', label: 'Publication Repository', icon: Library },
@@ -199,7 +199,7 @@ export const allMenuItems = [
             { href: '/admin/innovation/prototype-showcase', label: 'Prototype Showcase', icon: GalleryVertical },
             { href: '/admin/innovation/incubator-access', label: 'Innovation Incubator Access', icon: KeyRound },
             { href: '/admin/innovation/mentorship-matching', label: 'Mentorship Matching', icon: UserCheckIcon },
-            { href: '/admin/innovation/evaluation-committee', label: 'Innovation EvaluationCommittee', icon: Users2 },
+            { href: '/admin/innovation/evaluation-committee', label: 'Innovation Evaluation Committee', icon: Users2 },
             { href: '/admin/innovation/pitch-deck-repository', label: 'Pitch Deck Repository', icon: FileText },
             { href: '/admin/innovation/ip-tracker', label: 'Intellectual Property Registration Tracker', icon: Shield },
             { href: '/admin/innovation/events-calendar', label: 'Innovation Events Calendar', icon: Calendar },
@@ -297,7 +297,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
-            { href: '/admin/access-rules', label: 'AccessRules', icon: KeyRound },
+            { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
         ]
     },
 ];
@@ -355,7 +355,7 @@ export const studentMenuItems = [
         label: 'Spiritual Life',
         icon: Heart,
         items: [
-            { href: '/student/chaplaincy/prayer-requests', label: 'PrayerRequests', icon: Heart },
+            { href: '/student/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
             { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
         ]
     }
