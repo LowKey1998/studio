@@ -274,8 +274,9 @@ export default function CourseMessagesPage() {
             <div className="space-y-4">
                 <Card><CardContent className="p-4"><Skeleton className="h-24 w-full"/></CardContent></Card>
                 <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
+                <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
             </div>
-        );
+        )
     }
 
     return (
@@ -434,5 +435,3 @@ export default function CourseMessagesPage() {
         </div>
     );
 }
-
-    
