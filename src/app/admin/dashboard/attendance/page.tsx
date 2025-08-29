@@ -8,8 +8,11 @@ import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, TrendingDown } from 'lucide-react';
+import { AlertCircle, TrendingDown, ChevronRight } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { format, parseISO } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 type CourseAttendance = {
     courseId: string;
@@ -23,15 +26,23 @@ type StudentAttendance = {
     userId: string;
     studentId: string;
     studentName: string;
-    courseId: string;
-    courseName: string;
     attendanceRate: number;
+};
+
+type DetailedStudentRecord = {
+    date: string;
+    status: string;
 };
 
 export default function AttendanceDashboardPage() {
     const [courseRates, setCourseRates] = React.useState<CourseAttendance[]>([]);
     const [atRiskStudents, setAtRiskStudents] = React.useState<StudentAttendance[]>([]);
     const [loading, setLoading] = React.useState(true);
+    
+    // For Dialog
+    const [isDetailOpen, setIsDetailOpen] = React.useState(false);
+    const [selectedCourse, setSelectedCourse] = React.useState<CourseAttendance | null>(null);
+    const [detailedStudentData, setDetailedStudentData] = React.useState<({studentName: string, studentId: string, records: DetailedStudentRecord[]})[]>([]);
 
     React.useEffect(() => {
         const fetchAttendanceData = async () => {
@@ -63,7 +74,7 @@ export default function AttendanceDashboardPage() {
                     lectures.forEach((lecture: any) => {
                         const studentUids = Object.keys(lecture);
                         totalPossible += studentUids.length;
-                        totalPresent += studentUids.filter(uid => lecture[uid] === 'Present' || lecture[uid] === 'Late').length;
+                        totalPresent += studentUids.filter(uid => lecture[uid] === 'Present' || lecture[uid] === 'Late' || lecture[uid] === 'Excused Absence').length;
                     });
                     
                     courseAttendanceList.push({
@@ -87,7 +98,7 @@ export default function AttendanceDashboardPage() {
                 // Populate student courses from registrations
                 for (const userId in registrations) {
                     for (const semester in registrations[userId]) {
-                        if (registrations[userId][semester].status === 'Completed') {
+                        if (registrations[userId][semester].status === 'Completed' || registrations[userId][semester].status === 'Pending Payment') {
                             registrations[userId][semester].courses.forEach((cid: string) => studentRates[userId]?.courses.add(cid));
                         }
                     }
@@ -98,7 +109,7 @@ export default function AttendanceDashboardPage() {
                         Object.keys(lecture).forEach(userId => {
                             if (studentRates[userId]?.courses.has(courseId)) {
                                 studentRates[userId].total++;
-                                if(lecture[userId] === 'Present' || lecture[userId] === 'Late') {
+                                if(lecture[userId] === 'Present' || lecture[userId] === 'Late' || lecture[userId] === 'Excused Absence') {
                                     studentRates[userId].present++;
                                 }
                             }
@@ -112,8 +123,6 @@ export default function AttendanceDashboardPage() {
                         userId,
                         studentId: users[userId].id,
                         studentName: users[userId].name,
-                        courseId: '', // Aggregated across all courses
-                        courseName: 'Overall',
                         attendanceRate: rate,
                     }
                 }).filter(s => s.attendanceRate < 75 && studentRates[s.userId].total > 5) // At risk if < 75% and > 5 classes marked
@@ -129,6 +138,48 @@ export default function AttendanceDashboardPage() {
         };
         fetchAttendanceData();
     }, []);
+    
+    const handleCourseClick = async (course: CourseAttendance) => {
+        setSelectedCourse(course);
+        const [regsSnap, usersSnap, attendanceSnap] = await Promise.all([
+            get(ref(db, 'registrations')),
+            get(ref(db, 'users')),
+            get(ref(db, `attendance/${course.courseId}`))
+        ]);
+
+        if (!regsSnap.exists() || !usersSnap.exists() || !attendanceSnap.exists()) return;
+        
+        const allRegs = regsSnap.val();
+        const allUsers = usersSnap.val();
+        const courseAttendance = attendanceSnap.val();
+        
+        const enrolledUids: string[] = [];
+        for (const userId in allRegs) {
+            for (const sem in allRegs[userId]) {
+                if (allRegs[userId][sem].courses.includes(course.courseId) && (allRegs[userId][sem].status === 'Completed' || allRegs[userId][sem].status === 'Pending Payment')) {
+                    enrolledUids.push(userId);
+                    break;
+                }
+            }
+        }
+
+        const studentData = enrolledUids.map(uid => {
+            const records: DetailedStudentRecord[] = [];
+            for (const date in courseAttendance) {
+                if (courseAttendance[date][uid]) {
+                    records.push({ date, status: courseAttendance[date][uid] });
+                }
+            }
+            return {
+                studentId: allUsers[uid].id,
+                studentName: allUsers[uid].name,
+                records: records.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            };
+        }).sort((a,b) => a.studentName.localeCompare(b.studentName));
+        
+        setDetailedStudentData(studentData);
+        setIsDetailOpen(true);
+    }
 
     return (
         <div className="space-y-6">
@@ -149,7 +200,7 @@ export default function AttendanceDashboardPage() {
                         <CardContent>
                              {loading ? <Skeleton className="h-64 w-full" /> : courseRates.length > 0 ? (
                                 <Table>
-                                    <TableHeader><TableRow><TableHead>Course</TableHead><TableHead>Lectures Marked</TableHead><TableHead className="w-[300px]">Attendance Rate</TableHead></TableRow></TableHeader>
+                                    <TableHeader><TableRow><TableHead>Course</TableHead><TableHead>Lectures Marked</TableHead><TableHead className="w-[300px]">Attendance Rate</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {courseRates.map(course => (
                                             <TableRow key={course.courseId}>
@@ -160,6 +211,9 @@ export default function AttendanceDashboardPage() {
                                                         <Progress value={course.overallRate} className="w-[80%]" />
                                                         <span className="text-sm font-medium">{course.overallRate.toFixed(1)}%</span>
                                                     </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="outline" size="sm" onClick={() => handleCourseClick(course)}>View Details</Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -199,6 +253,40 @@ export default function AttendanceDashboardPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
+             <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+                <DialogContent className="max-w-4xl">
+                    <DialogHeader>
+                        <DialogTitle>Attendance for {selectedCourse?.courseName}</DialogTitle>
+                    </DialogHeader>
+                    <div className="max-h-[70vh] overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Student</TableHead>
+                                    <TableHead>Attendance Log</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {detailedStudentData.map(student => (
+                                    <TableRow key={student.studentId}>
+                                        <TableCell className="font-medium align-top">{student.studentName} ({student.studentId})</TableCell>
+                                        <TableCell>
+                                            <div className="space-y-1">
+                                            {student.records.map(rec => (
+                                                <div key={rec.date} className="flex justify-between items-center text-xs">
+                                                    <span>{format(parseISO(rec.date), 'MMM dd, yyyy')}</span>
+                                                    <Badge variant={rec.status === 'Present' || rec.status === 'Excused Absence' ? 'default' : (rec.status === 'Late' ? 'secondary' : 'destructive')}>{rec.status}</Badge>
+                                                </div>
+                                            ))}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

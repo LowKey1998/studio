@@ -2,7 +2,7 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck } from "lucide-react";
+import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck, GanttChart, PiggyBank } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
@@ -19,6 +19,7 @@ export default function AdminDashboardPage() {
     const [studentCount, setStudentCount] = React.useState(0);
     const [staffCount, setStaffCount] = React.useState(0);
     const [activeCourseCount, setActiveCourseCount] = React.useState(0);
+    const [programmeCount, setProgrammeCount] = React.useState(0);
     const [pendingRegistrations, setPendingRegistrations] = React.useState(0);
     const [outstandingBalance, setOutstandingBalance] = React.useState(0);
     const [recentActivities, setRecentActivities] = React.useState<ActivityLog[]>([]);
@@ -31,9 +32,10 @@ export default function AdminDashboardPage() {
             setActivitiesLoading(true);
             try {
                 // Fetch counts and balances
-                const [usersSnap, coursesSnap, regsSnap, invoicesSnap, transactionsSnap] = await Promise.all([
+                const [usersSnap, coursesSnap, programmesSnap, regsSnap, invoicesSnap, transactionsSnap] = await Promise.all([
                     get(ref(db, 'users')),
                     get(ref(db, 'courses')),
+                    get(ref(db, 'programmes')),
                     get(ref(db, 'registrations')),
                     get(ref(db, 'invoices')),
                     get(ref(db, 'transactions'))
@@ -45,6 +47,11 @@ export default function AdminDashboardPage() {
                     const usersList = Object.values(usersData) as { role: string }[];
                     setStudentCount(usersList.filter(user => user.role === 'Student').length);
                     setStaffCount(usersList.filter(user => user.role === 'Staff').length);
+                }
+                
+                // Programme Count
+                 if (programmesSnap.exists()) {
+                    setProgrammeCount(Object.keys(programmesSnap.val()).length);
                 }
 
                 // Course Count
@@ -115,15 +122,16 @@ export default function AdminDashboardPage() {
     const stats = [
         { title: "Total Students", value: loading ? <Skeleton className="h-8 w-24" /> : studentCount, icon: <Users className="h-6 w-6 text-muted-foreground" />},
         { title: "Total Staff", value: loading ? <Skeleton className="h-8 w-16" /> : staffCount, icon: <UserCheck className="h-6 w-6 text-muted-foreground" />},
+        { title: "Total Programmes", value: loading ? <Skeleton className="h-8 w-16" /> : programmeCount, icon: <GanttChart className="h-6 w-6 text-muted-foreground" />},
         { title: "Active Courses", value: loading ? <Skeleton className="h-8 w-12" /> : activeCourseCount, icon: <BookOpen className="h-6 w-6 text-muted-foreground" />},
         { title: "Pending Registrations", value: loading ? <Skeleton className="h-8 w-16" /> : pendingRegistrations, icon: <BookOpenCheck className="h-6 w-6 text-muted-foreground" />},
-        { title: "Outstanding Balance", value: loading ? <Skeleton className="h-8 w-32" /> : `ZMW ${outstandingBalance.toFixed(2)}`, icon: <DollarSign className="h-6 w-6 text-muted-foreground" />},
+        { title: "Outstanding Balance", value: loading ? <Skeleton className="h-8 w-32" /> : `ZMW ${outstandingBalance.toFixed(2)}`, icon: <PiggyBank className="h-6 w-6 text-muted-foreground" />},
     ];
 
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat, index) => (
           <Card key={index} className="shadow-md">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { ref, get } from 'firebase/database';
-import { Search, Printer, User } from 'lucide-react';
+import { ref, get, onValue } from 'firebase/database';
+import { Search, Printer, User, Mail, Phone, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatDistanceToNow, parseISO } from 'date-fns';
 
 type Student = {
     uid: string;
@@ -25,6 +26,8 @@ type Student = {
     intakeName?: string;
     nationalId?: string;
     passport?: string;
+    isOnline?: boolean;
+    lastSeen?: number;
 };
 
 type Programme = {
@@ -49,13 +52,16 @@ export default function StudentsListPage() {
     const [intakeFilter, setIntakeFilter] = React.useState('all');
 
     React.useEffect(() => {
-        const fetchData = async () => {
+        const usersRef = ref(db, 'users');
+        const programmesRef = ref(db, 'programmes');
+        const intakesRef = ref(db, 'intakes');
+        
+        const fetchInitialData = async () => {
             setLoading(true);
             try {
-                const [usersSnap, programmesSnap, intakesSnap] = await Promise.all([
-                    get(ref(db, 'users')),
-                    get(ref(db, 'programmes')),
-                    get(ref(db, 'intakes'))
+                const [programmesSnap, intakesSnap] = await Promise.all([
+                    get(programmesRef),
+                    get(intakesRef)
                 ]);
 
                 const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
@@ -63,33 +69,39 @@ export default function StudentsListPage() {
 
                 setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
                 setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })));
-                
-                const usersData = usersSnap.exists() ? usersSnap.val() : {};
-                const studentList: Student[] = [];
-                for (const uid in usersData) {
-                    if (usersData[uid].role === 'Student') {
-                        studentList.push({
-                            uid,
-                            ...usersData[uid],
-                            programmeName: programmesData[usersData[uid].programmeId]?.name || 'N/A',
-                            intakeName: intakesData[usersData[uid].intakeId]?.name || 'N/A',
-                        });
-                    }
-                }
-                setStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
-
             } catch (error) {
-                console.error("Failed to fetch data:", error);
-            } finally {
-                setLoading(false);
+                console.error("Failed to fetch static data:", error);
             }
         };
-        fetchData();
+
+        fetchInitialData();
+        
+        const unsub = onValue(usersRef, (snapshot) => {
+            const usersData = snapshot.exists() ? snapshot.val() : {};
+            const studentList: Student[] = [];
+             for (const uid in usersData) {
+                if (usersData[uid].role === 'Student') {
+                    studentList.push({
+                        uid,
+                        ...usersData[uid],
+                    });
+                }
+            }
+            setStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
+            setLoading(false);
+        });
+
+        return () => unsub();
     }, []);
     
     const filteredStudents = React.useMemo(() => {
         const lowerCaseSearch = searchTerm.toLowerCase();
-        return students.filter(student => {
+        return students.map(student => {
+            // Enrich with names on the fly
+            const programmeName = programmes.find(p => p.id === student.programmeId)?.name || 'N/A';
+            const intakeName = intakes.find(i => i.id === student.intakeId)?.name || 'N/A';
+            return { ...student, programmeName, intakeName };
+        }).filter(student => {
             const searchMatch = !searchTerm ||
                 student.name.toLowerCase().includes(lowerCaseSearch) ||
                 student.id.toLowerCase().includes(lowerCaseSearch) ||
@@ -102,7 +114,7 @@ export default function StudentsListPage() {
             
             return searchMatch && programmeMatch && intakeMatch;
         });
-    }, [students, searchTerm, programmeFilter, intakeFilter]);
+    }, [students, searchTerm, programmeFilter, intakeFilter, programmes, intakes]);
     
     const handlePrint = () => {
         const doc = new jsPDF();
@@ -174,29 +186,38 @@ export default function StudentsListPage() {
                         <TableRow>
                             <TableHead>Student ID</TableHead>
                             <TableHead>Name</TableHead>
-                            <TableHead>Email</TableHead>
+                            <TableHead>Contact</TableHead>
                             <TableHead>Programme</TableHead>
                             <TableHead>Intake</TableHead>
+                             <TableHead>Status</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                              Array.from({ length: 10 }).map((_, i) => (
-                                <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                             ))
                         ) : filteredStudents.length > 0 ? (
                             filteredStudents.map(student => (
                             <TableRow key={student.uid}>
                                 <TableCell>{student.id}</TableCell>
                                 <TableCell className="font-medium">{student.name}</TableCell>
-                                <TableCell>{student.email}</TableCell>
+                                <TableCell>
+                                    <div className="text-sm">{student.email}</div>
+                                    <div className="text-xs text-muted-foreground">{student.phoneNumber}</div>
+                                </TableCell>
                                 <TableCell>{student.programmeName}</TableCell>
                                 <TableCell>{student.intakeName}</TableCell>
+                                <TableCell>
+                                    {student.isOnline ? 
+                                        <span className="flex items-center gap-2 text-xs text-green-600 font-semibold"><div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>Online</span> : 
+                                        <span className="text-xs text-muted-foreground">{student.lastSeen ? formatDistanceToNow(new Date(student.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
+                                </TableCell>
                             </TableRow>
                         ))
                         ) : (
                              <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">No students found matching your criteria.</TableCell>
+                                <TableCell colSpan={6} className="h-24 text-center">No students found matching your criteria.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>

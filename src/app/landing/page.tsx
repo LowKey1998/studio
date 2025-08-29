@@ -47,8 +47,10 @@ export default function LandingPage() {
   const { toast } = useToast();
 
   React.useEffect(() => {
-    if (!authLoading && user) {
-      router.push('/dashboard');
+    if (!authLoading) {
+      if (user) {
+        router.push('/dashboard');
+      }
     }
   }, [user, authLoading, router]);
 
@@ -186,15 +188,19 @@ export default function LandingPage() {
           </nav>
         </div>
       </header>
-      <main className="flex-1">
+      <main className="flex-1 w-full overflow-x-hidden">
         
         <section className="relative w-full h-[60vh] md:h-[80vh] flex items-center justify-center text-white">
             <div className="absolute inset-0 bg-black/60 z-10" />
-             {landingSettings.heroImageUrl ? (
-                <Image src={landingSettings.heroImageUrl} alt="Campus hero image" layout="fill" objectFit="cover" className="z-0" data-ai-hint="university campus" />
-            ) : (
-                <Image src="https://picsum.photos/1920/1080" alt="Campus hero image" layout="fill" objectFit="cover" className="z-0" data-ai-hint="university campus" />
-            )}
+             <Image 
+                src={landingSettings.heroImageUrl || "https://picsum.photos/1920/1080"} 
+                alt="Campus hero image" 
+                layout="fill" 
+                objectFit="cover" 
+                className="z-0" 
+                data-ai-hint="university campus" 
+                priority
+             />
             <div className="container relative z-20 flex flex-col items-center justify-center gap-6 text-center">
                 <div className="mx-auto max-w-4xl">
                 <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1] text-balance">

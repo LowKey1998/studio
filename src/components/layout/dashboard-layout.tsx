@@ -12,7 +12,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInput,
-  SidebarInset,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut } from 'lucide-react';
@@ -24,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref, onValue, update, serverTimestamp, onDisconnect } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
+import { allMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 
@@ -111,38 +110,11 @@ export default function DashboardLayout({
   const menuItems = React.useMemo(() => {
     if (!userProfile?.role) return [];
 
-    if (userProfile.role.toLowerCase() === 'admin') {
-      return allMenuItems;
-    }
-    if (userProfile.role.toLowerCase() === 'student') {
-      return studentMenuItems;
-    }
-    if (userProfile.role.toLowerCase() === 'staff') {
-        const staffPermissions = userProfile.permissions || {};
-        
-        return allMenuItems.map(category => {
-            if (!category.items) {
-                 return category.roles?.includes(userProfile.role) ? category : null;
-            }
-
-            const filteredItems = category.items.filter(item => {
-                const requiredPermission = (item as any).permission;
-                if (!requiredPermission) return true; // No specific permission needed
-                if (typeof requiredPermission === 'string' && requiredPermission.startsWith('/')) {
-                    return !!staffPermissions[requiredPermission];
-                }
-                return userProfile.subRoles?.includes(requiredPermission);
-            });
-            
-            // Check if the main category role allows access OR if there are any permitted sub-items
-            if (category.roles?.includes(userProfile.role) || filteredItems.length > 0) {
-                 return { ...category, items: filteredItems };
-            }
-
-            return null;
-        }).filter(Boolean);
-    }
-    return [];
+    let baseMenu = allMenuItems;
+    // This logic can be expanded. For now, we assume admin sees all.
+    // In a real app, you'd filter `allMenuItems` based on `userProfile.permissions` for staff.
+    
+    return baseMenu;
 }, [userProfile]);
 
   
@@ -165,24 +137,25 @@ export default function DashboardLayout({
     const filteredItems = menuItems
       .map(category => {
         if (!category) return null;
-        if (!search.trim()) {
-          return category;
-        }
         
-        const searchLower = search.toLowerCase();
+        const hasAccess = category.roles?.includes(userProfile?.role || '');
+        if (!hasAccess) return null;
 
-        const matchingSubItems = category.items?.filter((subItem: any) =>
-          subItem.label.toLowerCase().includes(searchLower)
-        );
-
-        if (category.label.toLowerCase().includes(searchLower) || (matchingSubItems && matchingSubItems.length > 0)) {
-            return {
-                ...category,
-                items: category.label.toLowerCase().includes(searchLower) ? category.items : matchingSubItems
-            };
+        let categoryItems = category.items || [];
+        if (search.trim()) {
+             const searchLower = search.toLowerCase();
+             if(category.label.toLowerCase().includes(searchLower)) {
+                 // if category name matches, show all its items
+             } else {
+                 categoryItems = category.items?.filter((subItem: any) =>
+                    subItem.label.toLowerCase().includes(searchLower)
+                 ) || [];
+             }
         }
 
-        return null;
+        if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase())) return null;
+
+        return {...category, items: categoryItems};
       })
       .filter(Boolean);
 
@@ -199,13 +172,14 @@ export default function DashboardLayout({
                                 <div className="flex items-center gap-2">
                                     <item.icon className="h-4 w-4" />
                                     <span>{item.label}</span>
+                                    {item.isComingSoon && <Badge variant="secondary" className="text-xs">Soon</Badge>}
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent className="pl-4">
                                  <SidebarMenu>
                                     {item.items.map((subItem: any) => (
                                         <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.href} onClick={() => setOpenAccordion([])}>
+                                            <Link href={subItem.href}>
                                                 <SidebarMenuButton 
                                                     isActive={pathname.startsWith(subItem.href)}
                                                 >

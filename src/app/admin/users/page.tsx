@@ -48,7 +48,7 @@ import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { cn } from '@/lib/utils';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import { Textarea } from '@/components/ui/textarea';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
 import { DialogTrigger } from '@radix-ui/react-dialog';
 import jsPDF from 'jspdf';
@@ -80,6 +80,8 @@ type User = {
     educationBackground?: { school: string; qualifications: string; };
     medicalHistory?: string;
     baseSalary?: number;
+    isOnline?: boolean;
+    lastSeen?: number;
 };
 
 type Programme = {
@@ -218,11 +220,10 @@ export default function UserManagementPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, usersSnap, subRolesSnap, settingsSnap, semestersSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, subRolesSnap, settingsSnap, semestersSnap] = await Promise.all([
                 get(child(ref(db), 'programmes')),
                 get(child(ref(db), 'courses')),
                 get(child(ref(db), 'intakes')),
-                get(child(ref(db), 'users')),
                 get(child(ref(db), 'settings/subRoles')),
                 get(child(ref(db), 'settings/idPrefixes')),
                 get(child(ref(db), 'semesters')),
@@ -238,22 +239,25 @@ export default function UserManagementPage() {
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
             
-            if (usersSnap.exists()) {
-                const usersData = usersSnap.val();
-                const usersList: User[] = Object.keys(usersData).map(uid => ({
-                    uid,
-                    ...usersData[uid],
-                    status: usersData[uid].status || 'active',
-                    programmeName: usersData[uid].programmeId ? programmesData[usersData[uid].programmeId]?.name : undefined,
-                }));
-                setUsers(usersList);
-            } else { setUsers([]); }
+            const usersRef = ref(db, 'users');
+            onValue(usersRef, (usersSnap) => {
+                 if (usersSnap.exists()) {
+                    const usersData = usersSnap.val();
+                    const usersList: User[] = Object.keys(usersData).map(uid => ({
+                        uid,
+                        ...usersData[uid],
+                        status: usersData[uid].status || 'active',
+                        programmeName: usersData[uid].programmeId ? programmesData[usersData[uid].programmeId]?.name : undefined,
+                    }));
+                    setUsers(usersList);
+                } else { setUsers([]); }
+                setTableLoading(false);
+            });
 
         } catch (error) {
             console.error("Error fetching data:", error);
              toast({ variant: 'destructive', title: 'Failed to fetch data', description: 'Could not load data from the database.' });
-        } finally {
-            setTableLoading(false);
+              setTableLoading(false);
         }
     }, [toast]);
 
@@ -627,13 +631,18 @@ export default function UserManagementPage() {
             <Tabs value={roleFilter} onValueChange={setRoleFilter}><TabsList><TabsTrigger value="All">All</TabsTrigger><TabsTrigger value="Admin">Admin</TabsTrigger><TabsTrigger value="Staff">Staff</TabsTrigger><TabsTrigger value="Student">Student</TabsTrigger></TabsList></Tabs>
         </div>
       </CardHeader>
-      <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+      <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
+            {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
             ) : filteredUsers.map((user) => (
               <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}><TableCell className="font-medium">{user.id}</TableCell><TableCell>{user.name}</TableCell><TableCell>{user.email}</TableCell>
                 <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoles && user.subRoles.length > 0 && `(${user.subRoles.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
                 <TableCell>{user.programmeName || 'N/A'}</TableCell>
+                <TableCell>
+                    {user.isOnline ? 
+                        <span className="flex items-center gap-2 text-xs text-green-600 font-semibold"><div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>Online</span> : 
+                        <span className="text-xs text-muted-foreground">{user.lastSeen ? formatDistanceToNow(new Date(user.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
+                </TableCell>
                 <TableCell className="text-right">
                     <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -661,7 +670,7 @@ export default function UserManagementPage() {
                 </TableCell>
               </TableRow>
             ))}
-             {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={6} className="h-24 text-center">No users found.</TableCell></TableRow>)}
+             {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>)}
           </TableBody>
         </Table></CardContent>
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}><DialogContent className="sm:max-w-[425px]">

@@ -9,22 +9,32 @@ import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
-import { TrendingUp } from 'lucide-react';
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type EnrollmentData = {
     name: string;
     count: number;
     fill: string;
+    students: { uid: string; id: string; name: string; }[];
 };
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"];
+type ProgrammeEnrollmentData = {
+    name: string;
+    count: number;
+    fill: string;
+}
+
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658"];
 
 export default function EnrollmentDashboardPage() {
     const [enrollmentByIntake, setEnrollmentByIntake] = React.useState<EnrollmentData[]>([]);
-    const [enrollmentByProgramme, setEnrollmentByProgramme] = React.useState<EnrollmentData[]>([]);
+    const [enrollmentByProgramme, setEnrollmentByProgramme] = React.useState<ProgrammeEnrollmentData[]>([]);
     const [totalStudents, setTotalStudents] = React.useState(0);
     const [loading, setLoading] = React.useState(true);
+
+    const [isIntakeDetailOpen, setIsIntakeDetailOpen] = React.useState(false);
+    const [selectedIntake, setSelectedIntake] = React.useState<EnrollmentData | null>(null);
 
     const intakeChartConfig = React.useMemo(() => {
         const config: ChartConfig = {};
@@ -62,7 +72,7 @@ export default function EnrollmentDashboardPage() {
                 const programmes = programmesSnap.exists() ? programmesSnap.val() : {};
                 const intakes = intakesSnap.exists() ? intakesSnap.val() : {};
 
-                const intakeCounts: Record<string, number> = {};
+                const intakeCounts: Record<string, { count: number, students: { uid: string, id: string, name: string }[] }> = {};
                 const programmeCounts: Record<string, number> = {};
                 let studentCount = 0;
 
@@ -71,7 +81,9 @@ export default function EnrollmentDashboardPage() {
                     if (user.role === 'Student') {
                         studentCount++;
                         if (user.intakeId) {
-                            intakeCounts[user.intakeId] = (intakeCounts[user.intakeId] || 0) + 1;
+                            if(!intakeCounts[user.intakeId]) intakeCounts[user.intakeId] = { count: 0, students: [] };
+                            intakeCounts[user.intakeId].count++;
+                            intakeCounts[user.intakeId].students.push({ uid, id: user.id, name: user.name });
                         }
                         if (user.programmeId) {
                             programmeCounts[user.programmeId] = (programmeCounts[user.programmeId] || 0) + 1;
@@ -81,9 +93,10 @@ export default function EnrollmentDashboardPage() {
                 setTotalStudents(studentCount);
                 
                 setEnrollmentByIntake(
-                    Object.entries(intakeCounts).map(([intakeId, count], index) => ({
+                    Object.entries(intakeCounts).map(([intakeId, data], index) => ({
                         name: intakes[intakeId]?.name || `Unknown Intake (${intakeId})`,
-                        count,
+                        count: data.count,
+                        students: data.students.sort((a,b) => a.name.localeCompare(b.name)),
                         fill: COLORS[index % COLORS.length]
                     })).sort((a,b) => b.count - a.count)
                 );
@@ -146,6 +159,7 @@ export default function EnrollmentDashboardPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Enrollment by Intake</CardTitle>
+                        <CardDescription>Click on a bar to see the list of students.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {loading ? <Skeleton className="h-[300px] w-full" /> : enrollmentByIntake.length > 0 ? (
@@ -155,9 +169,9 @@ export default function EnrollmentDashboardPage() {
                                     <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} angle={-45} textAnchor="end" height={60} />
                                     <YAxis />
                                     <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                                    <Bar dataKey="count" fill="var(--color-count)" radius={4}>
+                                    <Bar dataKey="count" radius={4} onClick={(data) => { setSelectedIntake(data); setIsIntakeDetailOpen(true);}}>
                                          {enrollmentByIntake.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                                            <Cell key={`cell-${index}`} fill={entry.fill} className="cursor-pointer" />
                                         ))}
                                     </Bar>
                                 </BarChart>
@@ -209,6 +223,26 @@ export default function EnrollmentDashboardPage() {
                     </CardContent>
                 </Card>
             </div>
+             <Dialog open={isIntakeDetailOpen} onOpenChange={setIsIntakeDetailOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Students in {selectedIntake?.name}</DialogTitle>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto">
+                        <Table>
+                            <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {selectedIntake?.students.map(student => (
+                                    <TableRow key={student.uid}>
+                                        <TableCell>{student.id}</TableCell>
+                                        <TableCell>{student.name}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
