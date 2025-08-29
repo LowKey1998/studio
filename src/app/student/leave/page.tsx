@@ -2,15 +2,6 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
 import { Loader2, PlusCircle, Calendar as CalendarIcon, Briefcase } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -28,14 +19,13 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { format, differenceInCalendarDays, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, isSameDay, getDay, isAfter, isBefore, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
@@ -63,17 +53,26 @@ type Course = {
     id: string;
     name: string;
     lecturerId: string;
-}
+};
+
+type TimetableEntry = {
+    day: string; // "Monday", "Tuesday", etc.
+    startTime: string;
+    endTime: string;
+};
+
+type ClassOverride = {
+    originalDate: string;
+    newDate?: string;
+    status: 'rescheduled' | 'cancelled';
+};
+
 
 const statusVariant: { [key in LeaveRequest['status']]: 'destructive' | 'secondary' | 'default' } = {
   Pending: 'secondary',
   Approved: 'default',
   Declined: 'destructive',
 };
-
-const leaveTypes = ["Annual", "Sick", "Maternity", "Paternity", "Unpaid", "Bereavement"];
-const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
 
 export default function StudentLeavePage() {
     const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
@@ -83,15 +82,13 @@ export default function StudentLeavePage() {
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
-    const [maxLeaveDays, setMaxLeaveDays] = React.useState<number | null>(null);
-    const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
-    const [conflictingClasses, setConflictingClasses] = React.useState<TimetableEntry[]>([]);
-
 
     // Form state
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
     const [leaveDate, setLeaveDate] = React.useState<Date | undefined>();
     const [reason, setReason] = React.useState('');
+    const [validDates, setValidDates] = React.useState<Date[]>([]);
+
 
     const { toast } = useToast();
     
@@ -155,11 +152,72 @@ export default function StudentLeavePage() {
         fetchInitialData();
     }, [currentUser]);
 
+    // Calculate valid dates for absence request when a course is selected
+    React.useEffect(() => {
+        if (!selectedCourseId) {
+            setValidDates([]);
+            return;
+        }
+
+        const calculateValidDates = async () => {
+            const today = new Date();
+            const startOfCurrentMonth = startOfMonth(today);
+            const endOfNextMonth = endOfMonth(new Date(today.getFullYear(), today.getMonth() + 2, 1)); // Look ahead ~2 months
+
+            const courseTimetableRef = ref(db, `timetables`);
+            const overridesRef = ref(db, `classOverrides/${selectedCourseId}`);
+
+            const [timetableSnap, overridesSnap, regsSnap] = await Promise.all([
+                get(courseTimetableRef),
+                get(overridesRef),
+                get(ref(db, 'registrations'))
+            ]);
+
+            const semesterId = Object.keys(regsSnap.val()[currentUser!.uid]).find(semId => regsSnap.val()[currentUser!.uid][semId].courses.includes(selectedCourseId));
+            if (!semesterId) { setValidDates([]); return; }
+            
+            const timetableData = timetableSnap.val()?.[semesterId]?.[selectedCourseId];
+            const overridesData: Record<string, ClassOverride> = overridesSnap.val() || {};
+
+            const recurringDays: number[] = Object.values(timetableData || {}).map((entry: any) => daysOfWeek.indexOf(entry.day)).filter(d => d !== -1);
+            
+            const possibleDates = eachDayOfInterval({ start: startOfCurrentMonth, end: endOfNextMonth });
+            const validClassDates: Date[] = [];
+            
+            possibleDates.forEach(date => {
+                const dateStr = format(date, 'yyyy-MM-dd');
+                const override = overridesData[dateStr];
+                
+                // If cancelled, it's not a valid date
+                if (override?.status === 'cancelled') return;
+
+                // If rescheduled from this date, it's not valid
+                if (Object.values(overridesData).some(ov => ov.status === 'rescheduled' && ov.originalDate === dateStr)) {
+                    return;
+                }
+                
+                // If it's a recurring class day and not cancelled
+                if (recurringDays.includes(getDay(date)) && !override) {
+                    validClassDates.push(date);
+                }
+                
+                // If it's a rescheduled class TO this date
+                if (Object.values(overridesData).some(ov => ov.status === 'rescheduled' && ov.newDate === dateStr)) {
+                    validClassDates.push(date);
+                }
+            });
+            
+            setValidDates(validClassDates);
+        };
+
+        calculateValidDates();
+    }, [selectedCourseId, currentUser]);
+
+
     const resetForm = () => {
         setSelectedCourseId('');
         setLeaveDate(undefined);
         setReason('');
-        setConflictingClasses([]);
     };
     
     const handleApplyForLeave = async (e: React.FormEvent) => {
@@ -194,7 +252,7 @@ export default function StudentLeavePage() {
             await createNotification(
                 selectedCourse.lecturerId,
                 `${userData.name} requested absence for ${selectedCourse.name} on ${format(leaveDate, 'PPP')}.`,
-                '/staff/leave-approvals'
+                '/staff/student-absences'
             );
 
             toast({ variant: 'success', title: 'Request Submitted', description: 'Your request for absence has been sent to your lecturer.' });
@@ -246,14 +304,20 @@ export default function StudentLeavePage() {
                                                 id="leaveDate"
                                                 variant={'outline'}
                                                 className={cn( 'w-full justify-start text-left font-normal', !leaveDate && 'text-muted-foreground' )}
-                                                disabled={formLoading}
+                                                disabled={formLoading || !selectedCourseId}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {leaveDate ? format(leaveDate, 'PPP') : <span>Pick a date</span>}
+                                                {leaveDate ? format(leaveDate, 'PPP') : <span>Pick a class date</span>}
                                             </Button>
                                             </PopoverTrigger>
                                             <PopoverContent className="w-auto p-0" align="start">
-                                                <Calendar mode="single" selected={leaveDate} onSelect={setLeaveDate} initialFocus disabled={(date) => date < new Date()} />
+                                                <Calendar 
+                                                    mode="single" 
+                                                    selected={leaveDate} 
+                                                    onSelect={setLeaveDate} 
+                                                    initialFocus 
+                                                    disabled={(date) => isBefore(date, new Date()) || !validDates.some(validDate => isSameDay(validDate, date))}
+                                                />
                                             </PopoverContent>
                                         </Popover>
                                     </div>
