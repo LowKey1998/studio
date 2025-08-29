@@ -269,9 +269,7 @@ export default function CourseMessagesPage() {
         const caretPos = textareaRef.current?.selectionStart || currentText.length;
         const textBeforeCaret = currentText.substring(0, caretPos);
         const textAfterCaret = currentText.substring(caretPos);
-
-        // This is a simplified replacement for a proper rich text editor.
-        // It replaces the `@name` with a markdown-like format `@ [name](uid)`.
+        
         const textForDb = textBeforeCaret.replace(/@\w*$/, `@[${name}](${uid}) `) + textAfterCaret;
 
         setComments(prev => ({ ...prev, [messageId]: textForDb }));
@@ -366,7 +364,11 @@ export default function CourseMessagesPage() {
                         </CardHeader>
                         <CardContent>
                             <h3 className="font-bold text-lg mb-2">{message.title}</h3>
-                            <p className="whitespace-pre-wrap">{renderContent(message.content)}</p>
+                            {message.type === 'discussion' ? (
+                                <p className="whitespace-pre-wrap">{renderContent(message.content)}</p>
+                            ) : (
+                                <p>Poll functionality is not available in staff view.</p>
+                            )}
                         </CardContent>
                         <CardFooter className="flex-col items-start gap-4">
                             {Object.values(message.comments).sort((a,b) => a.timestamp - b.timestamp).map(comment => (

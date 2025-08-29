@@ -15,6 +15,8 @@ import { Loader2, MessageSquare } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Info } from 'lucide-react';
 
 type PollOption = {
     text: string;
@@ -221,8 +223,6 @@ export default function CourseMessagesPage() {
         if (!currentUser) return;
         const voteRef = ref(db, `courseMessages/${courseId}/${messageId}/options/${optionIndex}/votes/${currentUser.uid}`);
         runTransaction(voteRef, (currentData) => {
-            // If already voted, this will be a no-op which is fine.
-            // A more complex implementation could allow changing votes.
             return true;
         });
     };
@@ -250,7 +250,7 @@ export default function CourseMessagesPage() {
                                 <AvatarFallback>{message.senderName?.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1">
-                                 <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                     <p className="font-semibold">{message.senderName}</p>
                                     {message.senderRole && <Badge variant={message.senderRole === 'Lecturer' ? 'default' : 'secondary'}>{message.senderRole}</Badge>}
                                 </div>
@@ -288,6 +288,9 @@ export default function CourseMessagesPage() {
                                             </div>
                                         )
                                     })}
+                                    {hasVoted && (
+                                        <p className="text-xs text-muted-foreground text-center pt-2">You have voted. Your choice is final.</p>
+                                    )}
                                 </div>
                             )}
                         </CardContent>
