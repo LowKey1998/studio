@@ -385,7 +385,7 @@ export const studentMenuItems = [
         icon: Heart,
         items: [
             { href: '/student/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
-            { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
+            { href: '/student/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
         ]
     },
     {
@@ -439,3 +439,4 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
+

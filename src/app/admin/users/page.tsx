@@ -512,10 +512,15 @@ export default function UserManagementPage() {
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
             const query = searchQuery.toLowerCase();
-            const roleMatch = roleFilter.toLowerCase() === 'all' || (user.role || '').toLowerCase() === roleFilter.toLowerCase();
-            const searchMatch = (user.name || '').toLowerCase().includes(query) || 
-                                (user.id || '').toLowerCase().includes(query) || 
-                                (user.email || '').toLowerCase().includes(query);
+            const role = user.role || '';
+            const name = user.name || '';
+            const id = user.id || '';
+            const email = user.email || '';
+
+            const roleMatch = roleFilter.toLowerCase() === 'all' || role.toLowerCase() === roleFilter.toLowerCase();
+            const searchMatch = name.toLowerCase().includes(query) || 
+                                id.toLowerCase().includes(query) || 
+                                email.toLowerCase().includes(query);
             return roleMatch && searchMatch;
         });
     }, [users, roleFilter, searchQuery]);
@@ -718,3 +723,4 @@ export default function UserManagementPage() {
     </>
   );
 }
+
