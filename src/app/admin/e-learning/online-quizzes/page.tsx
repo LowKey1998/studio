@@ -33,6 +33,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type Quiz = {
     id: string;
@@ -40,6 +42,9 @@ type Quiz = {
     description: string;
     courseId: string;
     semesterId: string;
+    // For multiple associations
+    courseIds?: string[];
+    semesterIds?: string[];
 };
 
 type Course = {
@@ -72,9 +77,9 @@ export default function OnlineQuizzesPage() {
     
     // Create Dialog State
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
-    const [createSelectedSemester, setCreateSelectedSemester] = React.useState('');
-    const [createSelectedProgramme, setCreateSelectedProgramme] = React.useState('');
-    const [createSelectedCourse, setCreateSelectedCourse] = React.useState('');
+    const [createSelectedSemesters, setCreateSelectedSemesters] = React.useState<string[]>([]);
+    const [createSelectedProgrammes, setCreateSelectedProgrammes] = React.useState<string[]>([]);
+    const [createSelectedCourses, setCreateSelectedCourses] = React.useState<string[]>([]);
 
     // Filter State
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -115,12 +120,14 @@ export default function OnlineQuizzesPage() {
     }, []);
     
     const handleProceedToBuilder = () => {
-        if (!createSelectedCourse) {
-            toast({ variant: 'destructive', title: 'Please select a course.' });
+        if (createSelectedCourses.length === 0 || createSelectedSemesters.length === 0) {
+            toast({ variant: 'destructive', title: 'Please select at least one course and semester.' });
             return;
         }
         setIsCreateDialogOpen(false);
-        router.push(`/admin/quizzes/builder?courseId=${createSelectedCourse}&semesterId=${createSelectedSemester}`);
+        // For simplicity, we'll pass the first selection. The builder will need logic to handle multiple.
+        // A more robust solution might pass all IDs in the query params.
+        router.push(`/admin/quizzes/builder?courseId=${createSelectedCourses[0]}&semesterId=${createSelectedSemesters[0]}`);
     };
 
     const handleDelete = async (quizId: string) => {
@@ -134,30 +141,44 @@ export default function OnlineQuizzesPage() {
     };
     
     const createDialogFilteredCourses = React.useMemo(() => {
-        if (!createSelectedProgramme) return [];
-        const programme = programmes.find(p => p.id === createSelectedProgramme);
-        if (!programme || !programme.courseIds) return [];
-        const courseIds = Object.keys(programme.courseIds);
-        return courses.filter(c => courseIds.includes(c.id));
-    }, [createSelectedProgramme, programmes, courses]);
+        if (createSelectedProgrammes.length === 0) return courses;
+        const selectedCourseIds = new Set<string>();
+        createSelectedProgrammes.forEach(progId => {
+            const prog = programmes.find(p => p.id === progId);
+            if(prog?.courseIds){
+                Object.keys(prog.courseIds).forEach(id => selectedCourseIds.add(id));
+            }
+        });
+        return courses.filter(c => selectedCourseIds.has(c.id));
+    }, [createSelectedProgrammes, programmes, courses]);
 
     const filteredQuizzes = React.useMemo(() => {
-        const programmeCourseIds = new Set<string>();
-        if (programmeFilter !== 'all') {
-            const programme = programmes.find(p => p.id === programmeFilter);
-            if (programme?.courseIds) {
-                Object.keys(programme.courseIds).forEach(id => programmeCourseIds.add(id));
-            }
-        }
-
         return quizzes.filter(quiz => {
             const searchMatch = !searchTerm || quiz.title.toLowerCase().includes(searchTerm.toLowerCase());
-            const semesterMatch = semesterFilter === 'all' || quiz.semesterId === semesterFilter;
-            const programmeMatch = programmeFilter === 'all' || programmeCourseIds.has(quiz.courseId);
+            
+            const semesterMatch = semesterFilter === 'all' || 
+                (quiz.semesterId && quiz.semesterId === semesterFilter) ||
+                (quiz.semesterIds && quiz.semesterIds.includes(semesterFilter));
+
+            const programmeCourseIds = new Set<string>();
+             if (programmeFilter !== 'all') {
+                const programme = programmes.find(p => p.id === programmeFilter);
+                if (programme?.courseIds) {
+                    Object.keys(programme.courseIds).forEach(id => programmeCourseIds.add(id));
+                }
+            }
+            const programmeMatch = programmeFilter === 'all' || 
+                (quiz.courseId && programmeCourseIds.has(quiz.courseId)) ||
+                (quiz.courseIds && quiz.courseIds.some(cid => programmeCourseIds.has(cid)));
+
 
             return searchMatch && semesterMatch && programmeMatch;
         });
     }, [quizzes, searchTerm, programmeFilter, semesterFilter, programmes]);
+    
+    const handleCheckboxChange = (id: string, state: string[], setState: React.Dispatch<React.SetStateAction<string[]>>) => {
+        setState(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+    }
 
     return (
         <Card>
@@ -170,32 +191,29 @@ export default function OnlineQuizzesPage() {
                     <DialogTrigger asChild>
                         <Button><PlusCircle className="mr-2 h-4 w-4"/> Create Quiz</Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-w-3xl">
                         <DialogHeader>
-                            <DialogTitle>Select Course</DialogTitle>
-                            <DialogDescription>Choose the semester, programme, and course this quiz will belong to.</DialogDescription>
+                            <DialogTitle>Select Courses and Semesters</DialogTitle>
+                            <DialogDescription>Choose where this quiz will be available.</DialogDescription>
                         </DialogHeader>
-                        <div className="py-4 space-y-4">
-                             <div className="space-y-1">
-                                <Label htmlFor="semester-select">Semester</Label>
-                                <Select value={createSelectedSemester} onValueChange={setCreateSelectedSemester}>
-                                    <SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger>
-                                    <SelectContent>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                                </Select>
+                        <div className="grid md:grid-cols-3 gap-4 py-4">
+                             <div className="space-y-2 border p-2 rounded-md">
+                                <Label className="font-semibold">Semesters</Label>
+                                <ScrollArea className="h-64">
+                                {semesters.map(s => <div key={s.id} className="flex items-center gap-2"><Checkbox id={`sem-${s.id}`} checked={createSelectedSemesters.includes(s.id)} onCheckedChange={() => handleCheckboxChange(s.id, createSelectedSemesters, setCreateSelectedSemesters)}/><Label htmlFor={`sem-${s.id}`}>{s.name}</Label></div>)}
+                                </ScrollArea>
                             </div>
-                             <div className="space-y-1">
-                                <Label htmlFor="programme-select">Programme</Label>
-                                <Select value={createSelectedProgramme} onValueChange={setCreateSelectedProgramme} disabled={!createSelectedSemester}>
-                                    <SelectTrigger id="programme-select"><SelectValue placeholder="Select a programme..." /></SelectTrigger>
-                                    <SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                                </Select>
+                             <div className="space-y-2 border p-2 rounded-md">
+                                <Label className="font-semibold">Programmes</Label>
+                                <ScrollArea className="h-64">
+                                {programmes.map(p => <div key={p.id} className="flex items-center gap-2"><Checkbox id={`prog-${p.id}`} checked={createSelectedProgrammes.includes(p.id)} onCheckedChange={() => handleCheckboxChange(p.id, createSelectedProgrammes, setCreateSelectedProgrammes)}/><Label htmlFor={`prog-${p.id}`}>{p.name}</Label></div>)}
+                                </ScrollArea>
                             </div>
-                            <div className="space-y-1">
-                                <Label htmlFor="course-select">Course</Label>
-                                <Select value={createSelectedCourse} onValueChange={setCreateSelectedCourse} disabled={!createSelectedProgramme}>
-                                    <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
-                                    <SelectContent>{createDialogFilteredCourses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}</SelectContent>
-                                </Select>
+                            <div className="space-y-2 border p-2 rounded-md">
+                                <Label className="font-semibold">Courses</Label>
+                                <ScrollArea className="h-64">
+                                {createDialogFilteredCourses.map(c => <div key={c.id} className="flex items-center gap-2"><Checkbox id={`course-${c.id}`} checked={createSelectedCourses.includes(c.id)} onCheckedChange={() => handleCheckboxChange(c.id, createSelectedCourses, setCreateSelectedCourses)}/><Label htmlFor={`course-${c.id}`}>{c.name}</Label></div>)}
+                                </ScrollArea>
                             </div>
                         </div>
                         <DialogFooter>

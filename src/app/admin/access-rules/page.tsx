@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { KeyRound, Shield, PlusCircle, Trash2, Pencil, Loader2, Check } from 'lucide-react';
+import { KeyRound, Shield, PlusCircle, Trash2, Pencil, Loader2, Check, Banknote, ClipboardCheck } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { db } from '@/lib/firebase';
 import { ref, onValue, push, update, remove } from 'firebase/database';
@@ -180,14 +180,22 @@ export default function AccessRulesPage() {
                                 <h4 className="text-sm font-medium mb-2">Special Permissions</h4>
                                 <div className="space-y-2 p-3 border rounded-md">
                                      <div className="flex items-center gap-2">
-                                        <Checkbox 
-                                            id='canBeAssignedClass' 
-                                            checked={!!permissions['canBeAssignedClass']} 
-                                            onCheckedChange={(checked) => handlePermissionChange('canBeAssignedClass', !!checked)}
-                                        />
-                                        <Label htmlFor='canBeAssignedClass' className="font-normal">Assignable to Class</Label>
+                                        <Checkbox id='canBeAssignedClass' checked={!!permissions['canBeAssignedClass']} onCheckedChange={(checked) => handlePermissionChange('canBeAssignedClass', !!checked)} />
+                                        <Label htmlFor='canBeAssignedClass' className="font-normal flex items-center gap-2"><Users className="h-4 w-4"/>Assignable to Class</Label>
                                     </div>
                                     <p className="text-xs text-muted-foreground pl-6">Allows this role to be assigned to courses as a lecturer in Lecturer Allocation.</p>
+                                    <Separator/>
+                                     <div className="flex items-center gap-2">
+                                        <Checkbox id='canVerifyPayments' checked={!!permissions['canVerifyPayments']} onCheckedChange={(checked) => handlePermissionChange('canVerifyPayments', !!checked)} />
+                                        <Label htmlFor='canVerifyPayments' className="font-normal flex items-center gap-2"><Banknote className="h-4 w-4"/>Can Verify Payments</Label>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pl-6">Allows this role to verify manually recorded payments.</p>
+                                     <Separator/>
+                                     <div className="flex items-center gap-2">
+                                        <Checkbox id='canVerifyResults' checked={!!permissions['canVerifyResults']} onCheckedChange={(checked) => handlePermissionChange('canVerifyResults', !!checked)} />
+                                        <Label htmlFor='canVerifyResults' className="font-normal flex items-center gap-2"><ClipboardCheck className="h-4 w-4"/>Can Verify Results</Label>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pl-6">Allows this role to approve manually entered student results.</p>
                                 </div>
 
                                 <Separator className="my-4"/>

@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove, query, orderByChild, equalTo } from 'firebase/database';
-import { app, auth, db } from '@/lib/firebase';
+import { app, auth, db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -53,7 +53,8 @@ import { Switch } from '@/components/ui/switch';
 import { DialogTrigger } from '@radix-ui/react-dialog';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-
+import { sendEmail } from '@/ai/flows/send-email-flow';
+import { useAuth } from '@/hooks/use-auth';
 
 type User = {
     uid: string;
@@ -129,6 +130,7 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 };
 
 export default function UserManagementPage() {
+    const { user: adminUser, userProfile: adminProfile } = useAuth();
     const [open, setOpen] = React.useState(false);
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [users, setUsers] = React.useState<User[]>([]);
@@ -174,7 +176,6 @@ export default function UserManagementPage() {
     const [editSubRoleIds, setEditSubRoleIds] = React.useState<string[]>([]);
     const [editProgramme, setEditProgramme] = React.useState('');
     const [editIntake, setEditIntake] = React.useState('');
-    const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Data for dialogs
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
@@ -189,27 +190,17 @@ export default function UserManagementPage() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
     
+    // Messaging dialog
+    const [isMessageOpen, setIsMessageOpen] = React.useState(false);
+    const [messagingUser, setMessagingUser] = React.useState<User | null>(null);
+    const [messageSubject, setMessageSubject] = React.useState('');
+    const [messageBody, setMessageBody] = React.useState('');
+    const [sendingMessage, setSendingMessage] = React.useState(false);
+
 
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
-
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            const userRef = ref(db, `users/${user.uid}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-              const userData = snapshot.val();
-              setCurrentAdmin({ name: userData.name, id: userData.id });
-            }
-          }
-        });
-        
-        return () => {
-            unsubscribe();
-        };
-    }, []);
 
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
@@ -403,7 +394,7 @@ export default function UserManagementPage() {
             await set(ref(db, `users/${user.uid}`), newUser);
             await set(ref(db, `userRoles/${user.uid}`), { role: role });
             const activityRef = push(ref(db, 'recentActivities'));
-            await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
+            await set(activityRef, { user: adminProfile?.name || 'Admin', userId: adminProfile?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
             resetForm(); setOpen(false);
             fetchInitialData();
@@ -468,7 +459,7 @@ export default function UserManagementPage() {
             }
             if(changes.length > 0) action += ` Details: ${changes.join('. ')}.`;
             const activityRef = push(ref(db, 'recentActivities'));
-            await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action, timestamp: serverTimestamp() });
+            await set(activityRef, { user: adminProfile?.name || 'Admin', userId: adminProfile?.id || 'N/A', action, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Updated Successfully', description: `${editName}'s profile has been updated.` });
             setIsEditOpen(false); setEditingUser(null);
             fetchInitialData();
@@ -508,19 +499,49 @@ export default function UserManagementPage() {
             return newExemptions;
         });
     }
+    
+    const handleSendMessage = async () => {
+        if (!messagingUser || !messageSubject || !messageBody || !adminProfile) {
+            toast({ variant: 'destructive', title: 'Subject and message are required.'});
+            return;
+        }
+        setSendingMessage(true);
+        try {
+            const emailBody = `
+                <p>You have received a message from ${adminProfile.name} (${adminProfile.id}):</p>
+                <br/>
+                <p>${messageBody.replace(/\n/g, '<br>')}</p>
+            `;
+
+            await sendEmail({
+                to: [messagingUser.email],
+                subject: messageSubject,
+                body: emailBody,
+                log: true,
+                userIds: [messagingUser.uid]
+            });
+            
+            const notificationLink = messagingUser.role === 'Student' ? '/student/dashboard' : '/staff/dashboard';
+            await createNotification(messagingUser.uid, `You have a new message from the admin: ${messageSubject}`, notificationLink);
+            
+            toast({ title: 'Message Sent', description: `Your message has been sent to ${messagingUser.name}.` });
+            setIsMessageOpen(false);
+            setMessageBody('');
+            setMessageSubject('');
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send', description: error.message });
+        } finally {
+            setSendingMessage(false);
+        }
+    };
 
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
             const query = searchQuery.toLowerCase();
-            const role = user.role || '';
-            const name = user.name || '';
-            const id = user.id || '';
-            const email = user.email || '';
-
-            const roleMatch = roleFilter.toLowerCase() === 'all' || role.toLowerCase() === roleFilter.toLowerCase();
-            const searchMatch = name.toLowerCase().includes(query) || 
-                                id.toLowerCase().includes(query) || 
-                                email.toLowerCase().includes(query);
+            const roleMatch = roleFilter.toLowerCase() === 'all' || (user.role || '').toLowerCase() === roleFilter.toLowerCase();
+            const searchMatch = (user.name || '').toLowerCase().includes(query) || 
+                                (user.id || '').toLowerCase().includes(query) || 
+                                (user.email || '').toLowerCase().includes(query);
             return roleMatch && searchMatch;
         });
     }, [users, roleFilter, searchQuery]);
@@ -555,7 +576,7 @@ export default function UserManagementPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Button variant="outline"><Download className="mr-2 h-4 w-4"/>Export List</Button>
+                <Button variant="outline" onClick={() => {}}><Download className="mr-2 h-4 w-4"/>Export List</Button>
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-4xl">
@@ -647,7 +668,10 @@ export default function UserManagementPage() {
           <TableBody>
             {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
             ) : filteredUsers.map((user) => (
-              <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}><TableCell className="font-medium">{user.id}</TableCell><TableCell>{user.name}</TableCell><TableCell>{user.email}</TableCell>
+              <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
+                <TableCell className="font-medium">{user.id}</TableCell>
+                <TableCell>{user.name}</TableCell>
+                <TableCell>{user.email}</TableCell>
                 <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoleNames && user.subRoleNames.length > 0 && `(${user.subRoleNames.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
                 <TableCell>{user.programmeName || 'N/A'}</TableCell>
                 <TableCell>
@@ -656,12 +680,12 @@ export default function UserManagementPage() {
                         <span className="text-xs text-muted-foreground">{user.lastSeen ? formatDistanceToNow(new Date(user.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
                 </TableCell>
                 <TableCell className="text-right">
-                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => handleOpenEditDialog(user)}>
-                                <Pencil className="mr-2 h-4 w-4"/>Edit Profile
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
                             {user.role === 'Student' && (
                                 <DropdownMenuItem onClick={() => handleDownloadInvoice(user.uid)}>
                                     <Download className="mr-2 h-4 w-4"/>Download Last Invoice
@@ -685,7 +709,7 @@ export default function UserManagementPage() {
              {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>)}
           </TableBody>
         </Table></CardContent>
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}><DialogContent className="sm:max-w-[425px]">
+        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}><DialogContent className="sm:max-w-[425px]">
              <form onSubmit={handleUpdateUser}><DialogHeader><DialogTitle className="font-headline">Edit User Profile</DialogTitle><DialogDescription>Update the user's details below. Email and User ID cannot be changed.</DialogDescription></DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="edit-id" className="text-right">User ID</Label><Input id="edit-id" value={editingUser?.id || ''} className="col-span-3" disabled /></div>
@@ -719,8 +743,24 @@ export default function UserManagementPage() {
                 <DialogFooter><DialogClose asChild><Button variant="outline" type="button" onClick={() => setIsEditOpen(false)}>Cancel</Button></DialogClose><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Update User'}</Button></DialogFooter>
             </form></DialogContent>
         </Dialog>
+        
+        <Dialog open={isMessageOpen} onOpenChange={(open) => { if (!open) { setMessageBody(''); setMessageSubject(''); setMessagingUser(null); } setIsMessageOpen(open); }}>
+             <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Send Message to {messagingUser?.name}</DialogTitle>
+                    <DialogDescription>The message will be sent as an email and an in-app notification.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-1"><Label>Subject</Label><Input value={messageSubject} onChange={e => setMessageSubject(e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Body</Label><Textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} rows={8} /></div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSendMessage} disabled={sendingMessage}>{sendingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </Card>
     </>
   );
 }
-
