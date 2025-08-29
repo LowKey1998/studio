@@ -11,14 +11,12 @@ import { ref, onValue, push, set, serverTimestamp, get, runTransaction } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, MessageSquare, PlusCircle, Trash2, BarChart, FileText } from 'lucide-react';
+import { Loader2, Send, MessageSquare, PlusCircle, Trash2, BarChart, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info } from 'lucide-react';
 
 type PollOption = {
     text: string;
@@ -53,7 +51,9 @@ type EnrolledUser = {
     uid: string;
     name: string;
     profilePictureUrl?: string;
-}
+    role: 'Student' | 'Staff' | 'Admin';
+    subRoles?: string[];
+};
 
 export default function CourseMessagesPage() {
     const params = useParams();
@@ -127,8 +127,7 @@ export default function CourseMessagesPage() {
                 if(usersData[uid]) {
                     enrolled[uid] = { 
                         uid, 
-                        name: usersData[uid]?.name || 'Unknown',
-                        profilePictureUrl: usersData[uid]?.profilePictureUrl || undefined,
+                        ...usersData[uid],
                     };
                     // Listen for changes to each user's profile
                     onValue(ref(db, `users/${uid}`), (snapshot) => {
@@ -313,6 +312,15 @@ export default function CourseMessagesPage() {
         });
     };
     
+    const getSenderRole = (senderId: string) => {
+        const sender = enrolledUsers[senderId];
+        if (!sender) return 'Student'; // Default
+        if (sender.role === 'Staff' || sender.role === 'Admin') {
+            return 'Lecturer';
+        }
+        return 'Student';
+    };
+    
     const filteredUsers = Object.values(enrolledUsers).filter(u => u.name.toLowerCase().includes(mentionQuery));
 
 
@@ -369,7 +377,8 @@ export default function CourseMessagesPage() {
 
             {messages.length > 0 ? (
                 messages.map(message => {
-                     const senderInfo = enrolledUsers[message.senderId];
+                    const senderInfo = enrolledUsers[message.senderId];
+                    const senderRole = getSenderRole(message.senderId);
                      return (
                     <Card key={message.id}>
                         <CardHeader className="flex flex-row items-start gap-4">
@@ -380,7 +389,7 @@ export default function CourseMessagesPage() {
                             <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                     <p className="font-semibold">{senderInfo?.name}</p>
-                                    {currentUserData.subRoles?.includes('Lecturer') && <Badge variant={'default'}>Lecturer</Badge>}
+                                    <Badge variant={senderRole === 'Lecturer' ? 'default' : 'secondary'}>{senderRole}</Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</p>
                             </div>
@@ -425,6 +434,7 @@ export default function CourseMessagesPage() {
                         <CardFooter className="flex-col items-start gap-4">
                             {Object.values(message.comments).sort((a,b) => a.timestamp - b.timestamp).map(comment => {
                                 const commentSenderInfo = enrolledUsers[comment.senderId];
+                                const commentSenderRole = getSenderRole(comment.senderId);
                                 return (
                                 <div key={comment.id} className="flex items-start gap-3 w-full">
                                     <Avatar className="w-8 h-8">
@@ -435,7 +445,7 @@ export default function CourseMessagesPage() {
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-semibold">{commentSenderInfo?.name}</p>
-                                                 {commentSenderInfo && currentUserData.subRoles?.includes('Lecturer') && <Badge variant='default'>Lecturer</Badge>}
+                                                 <Badge variant={commentSenderRole === 'Lecturer' ? 'default' : 'secondary'}>{commentSenderRole}</Badge>
                                             </div>
                                             <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true })}</p>
                                         </div>
@@ -478,7 +488,7 @@ export default function CourseMessagesPage() {
                             </div>
                         </CardFooter>
                     </Card>
-                )})}
+                    )})}
             ) : (
                 <Card>
                     <CardContent className="py-16 text-center text-muted-foreground">
