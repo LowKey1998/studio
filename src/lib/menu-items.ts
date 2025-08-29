@@ -21,7 +21,7 @@ export const allMenuItems = [
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/add-student', label: 'Manual Enrollment', icon: UserPlus },
         { href: '/admin/admissions/students', label: 'Students List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
@@ -188,7 +188,7 @@ export const allMenuItems = [
         icon: MessageSquare,
         roles: ['Admin'],
         items: [
-             { href: '/admin/notifications', label: 'Messages', icon: Mail },
+             { href: '/admin/admissions/notifications', label: 'Messages', icon: Mail },
         ]
     },
     {
@@ -377,7 +377,7 @@ export const studentMenuItems = [
         items: [
             { href: '/student/innovation/idea-board', label: 'Idea Board', icon: Newspaper },
             { href: '/student/innovation/my-projects', label: 'My Projects', icon: Briefcase },
-            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
+            { href: '/student/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
         ]
     },
     {
@@ -389,10 +389,10 @@ export const studentMenuItems = [
         ]
     },
     {
-        label: 'General',
-        icon: Settings,
+        label: 'Communications',
+        icon: MessageSquare,
         items: [
-            { href: '/student/notifications', label: 'Messages', icon: Mail },
+             { href: '/student/notifications', label: 'Messages', icon: Mail },
         ]
     }
   ];
@@ -423,13 +423,19 @@ export const staffBaseMenuItems = [
            { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
       ]
   },
+   {
+        label: 'Communications',
+        icon: MessageSquare,
+        items: [
+             { href: '/staff/notifications', label: 'Messages', icon: Mail },
+        ]
+    },
     {
       label: 'General',
       icon: Settings,
       items: [
         { href: '/staff/library', label: 'Library' },
         { href: '/staff/profile', label: 'My Profile' },
-        { href: '/staff/notifications', label: 'Messages', icon: Mail },
       ]
     }
   ];
