@@ -508,8 +508,10 @@ export default function UserManagementPage() {
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
             const query = searchQuery.toLowerCase();
-            const roleMatch = roleFilter.toLowerCase() === 'all' || user.role.toLowerCase() === roleFilter.toLowerCase();
-            const searchMatch = user.name.toLowerCase().includes(query) || user.id.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
+            const roleMatch = roleFilter.toLowerCase() === 'all' || (user.role || '').toLowerCase() === roleFilter.toLowerCase();
+            const searchMatch = (user.name ?? '').toLowerCase().includes(query) || 
+                                (user.id ?? '').toLowerCase().includes(query) || 
+                                (user.email ?? '').toLowerCase().includes(query);
             return roleMatch && searchMatch;
         });
     }, [users, roleFilter, searchQuery]);
