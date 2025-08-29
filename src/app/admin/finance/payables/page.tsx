@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { format, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { syncExpenseToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncExpenseToSage } from '@/ai/flows/sync-to-sage';
 
 type Payable = {
     id: string;
@@ -34,11 +36,14 @@ export default function PayablesPage() {
     const [dueDate, setDueDate] = React.useState('');
     const [amount, setAmount] = React.useState('');
 
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
+
     const { toast } = useToast();
 
     React.useEffect(() => {
         const payablesRef = ref(db, 'payables');
-        const unsub = onValue(payablesRef, (snapshot) => {
+        const unsubPayables = onValue(payablesRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 setPayables(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()));
@@ -47,7 +52,20 @@ export default function PayablesPage() {
             }
             setLoading(false);
         });
-        return () => unsub();
+
+        const settingsRef = ref(db, 'settings/integrations');
+        const unsubSettings = onValue(settingsRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const integrations = snapshot.val();
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncExpenses);
+                setIsSageEnabled(integrations.sage?.enabled && integrations.sage?.syncExpenses);
+            }
+        });
+
+        return () => {
+            unsubPayables();
+            unsubSettings();
+        };
     }, []);
 
     const resetForm = () => {
@@ -61,11 +79,42 @@ export default function PayablesPage() {
         }
         setSaving(true);
         try {
-            await push(ref(db, 'payables'), {
-                vendor, dueDate, amount: parseFloat(amount), status: 'Unpaid'
-            });
+            const newPayableRef = push(ref(db, 'payables'));
+            const payableData = {
+                vendor, 
+                dueDate, 
+                amount: parseFloat(amount), 
+                status: 'Unpaid' as const
+            };
+            await set(newPayableRef, payableData);
             toast({ title: 'Payable Added' });
-            setIsDialogOpen(false); resetForm();
+
+            const expenseId = newPayableRef.key!;
+            if (isQuickBooksEnabled) {
+                await syncExpenseToQuickbooks({
+                    expenseId,
+                    category: 'Accounts Payable',
+                    amount: payableData.amount,
+                    date: payableData.dueDate,
+                    vendor: payableData.vendor,
+                    description: `Payable to ${payableData.vendor}`
+                });
+                toast({ title: 'Synced to QuickBooks' });
+            }
+             if (isSageEnabled) {
+                await syncExpenseToSage({
+                    expenseId,
+                    category: 'Accounts Payable',
+                    amount: payableData.amount,
+                    date: payableData.dueDate,
+                    vendor: payableData.vendor,
+                    description: `Payable to ${payableData.vendor}`
+                });
+                toast({ title: 'Synced to Sage' });
+            }
+
+            setIsDialogOpen(false); 
+            resetForm();
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Failed to add payable' });
         } finally {
