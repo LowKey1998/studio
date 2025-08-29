@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import { ref, update, onValue } from 'firebase/database';
 import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { createNotification } from '@/lib/firebase';
 import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/hooks/use-auth';
 
 type Staff = {
     uid: string;
@@ -43,6 +44,7 @@ type SubRole = {
 
 
 export default function StaffListPage() {
+    const { user, userProfile } = useAuth();
     const [staff, setStaff] = React.useState<Staff[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
@@ -151,7 +153,6 @@ export default function StaffListPage() {
         try {
             await update(ref(db, `users/${staffUid}`), { department: departmentName });
             toast({ title: "Department Assigned", description: "The staff member's department has been updated." });
-            // Data will refresh via onValue listener
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: "Assignment Failed" });
@@ -164,20 +165,26 @@ export default function StaffListPage() {
     };
 
     const handleSendMessage = async () => {
-        if (!selectedStaff || !messageSubject || !messageBody) {
+        if (!selectedStaff || !messageSubject || !messageBody || !userProfile) {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
             return;
         }
         setSendingMessage(true);
         try {
+            const emailBody = `
+                <p>You have received a message from ${userProfile.name} (${userProfile.id}):</p>
+                <br/>
+                <p>${messageBody.replace(/\n/g, '<br>')}</p>
+            `;
+
             await sendEmail({
                 to: [selectedStaff.email],
                 subject: messageSubject,
-                body: messageBody,
+                body: emailBody,
                 log: true,
                 userIds: [selectedStaff.uid]
             });
-            await createNotification(selectedStaff.uid, `You have a new message from the admin: ${messageSubject}`, '/staff/dashboard'); // Or a more appropriate link
+            await createNotification(selectedStaff.uid, `You have a new message from the admin: ${messageSubject}`, '/staff/dashboard');
             toast({ title: 'Message Sent', description: `Your message has been sent to ${selectedStaff.name}.` });
             setIsMessageOpen(false);
             setMessageBody('');

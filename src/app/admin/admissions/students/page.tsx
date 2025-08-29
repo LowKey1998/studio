@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { db } from "@/lib/firebase";
-import { ref, onValue } from 'firebase/database';
+import { db, auth } from "@/lib/firebase";
+import { ref, onValue, get } from 'firebase/database';
 import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { createNotification } from '@/lib/firebase';
 import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/hooks/use-auth';
 
 type Student = {
     uid: string;
@@ -47,6 +48,7 @@ type Intake = {
 };
 
 export default function StudentsListPage() {
+    const { user, userProfile } = useAuth();
     const [students, setStudents] = React.useState<Student[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
@@ -147,16 +149,22 @@ export default function StudentsListPage() {
     };
 
     const handleSendMessage = async () => {
-        if (!selectedStudent || !messageSubject || !messageBody) {
+        if (!selectedStudent || !messageSubject || !messageBody || !userProfile) {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
             return;
         }
         setSendingMessage(true);
         try {
+            const emailBody = `
+                <p>You have received a message from ${userProfile.name} (${userProfile.id}):</p>
+                <br/>
+                <p>${messageBody.replace(/\n/g, '<br>')}</p>
+            `;
+
             await sendEmail({
                 to: [selectedStudent.email],
                 subject: messageSubject,
-                body: messageBody,
+                body: emailBody,
                 log: true,
                 userIds: [selectedStudent.uid]
             });
