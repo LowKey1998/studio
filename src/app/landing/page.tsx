@@ -47,10 +47,8 @@ export default function LandingPage() {
   const { toast } = useToast();
 
   React.useEffect(() => {
-    if (!authLoading) {
-      if (user) {
+    if (!authLoading && user) {
         router.push('/dashboard');
-      }
     }
   }, [user, authLoading, router]);
 
@@ -172,7 +170,7 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-background overflow-x-hidden">
       <header className="container z-40 bg-background/80 backdrop-blur-sm sticky top-0">
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
@@ -188,11 +186,11 @@ export default function LandingPage() {
           </nav>
         </div>
       </header>
-      <main className="flex-1 w-full overflow-x-hidden">
+      <main className="flex-1">
         
         <section className="relative w-full h-[60vh] md:h-[80vh] flex items-center justify-center text-white">
             <div className="absolute inset-0 bg-black/60 z-10" />
-             <Image 
+            <Image 
                 src={landingSettings.heroImageUrl || "https://picsum.photos/1920/1080"} 
                 alt="Campus hero image" 
                 layout="fill" 
@@ -200,7 +198,7 @@ export default function LandingPage() {
                 className="z-0" 
                 data-ai-hint="university campus" 
                 priority
-             />
+            />
             <div className="container relative z-20 flex flex-col items-center justify-center gap-6 text-center">
                 <div className="mx-auto max-w-4xl">
                 <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1] text-balance">
