@@ -193,7 +193,7 @@ export default function LandingPage() {
              {landingSettings.heroImageUrl ? (
                 <Image src={landingSettings.heroImageUrl} alt="Campus hero image" layout="fill" objectFit="cover" className="z-0" data-ai-hint="university campus" />
             ) : (
-                 <div className="absolute inset-0 bg-slate-800 z-0"/>
+                <Image src="https://picsum.photos/1920/1080" alt="Campus hero image" layout="fill" objectFit="cover" className="z-0" data-ai-hint="university campus" />
             )}
             <div className="container relative z-20 flex flex-col items-center justify-center gap-6 text-center">
                 <div className="mx-auto max-w-4xl">
