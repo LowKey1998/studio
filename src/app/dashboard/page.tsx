@@ -19,17 +19,16 @@ export default function DashboardRedirectPage() {
           const snapshot = await get(userRef);
           if (snapshot.exists()) {
             const userData = snapshot.val();
-            const role = userData.role;
+            const role = userData.role?.toLowerCase();
 
-            // Clear redirection logic
             switch (role) {
-                case 'Admin':
+                case 'admin':
                     router.replace('/admin/dashboard');
                     break;
-                case 'Staff':
+                case 'staff':
                     router.replace('/staff/courses');
                     break;
-                case 'Student':
+                case 'student':
                     router.replace('/student/dashboard');
                     break;
                 default:

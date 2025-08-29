@@ -25,22 +25,22 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { format, isSameDay, getDay, isAfter, isBefore, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, isSameDay, getDay, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
 type LeaveRequest = {
-    id: string;
-    courseId: string;
-    courseName: string;
-    leaveDate: string;
-    reason: string;
-    status: 'Pending' | 'Approved' | 'Declined';
-    dateRequested: string;
-    studentId: string; // The user's UID
-    studentName: string;
-    studentSystemId: string; // The user's STU-XXX ID
-    lecturerId: string;
+  id: string;
+  courseId: string;
+  courseName: string;
+  leaveDate: string;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Declined';
+  dateRequested: string;
+  studentId: string; // The user's UID
+  studentName: string;
+  studentSystemId: string; // The user's STU-XXX ID
+  lecturerId: string;
 };
 
 type UserData = {
@@ -57,8 +57,6 @@ type Course = {
 
 type TimetableEntry = {
     day: string; // "Monday", "Tuesday", etc.
-    startTime: string;
-    endTime: string;
 };
 
 type ClassOverride = {
@@ -73,6 +71,8 @@ const statusVariant: { [key in LeaveRequest['status']]: 'destructive' | 'seconda
   Approved: 'default',
   Declined: 'destructive',
 };
+const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 
 export default function StudentLeavePage() {
     const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
@@ -154,7 +154,7 @@ export default function StudentLeavePage() {
 
     // Calculate valid dates for absence request when a course is selected
     React.useEffect(() => {
-        if (!selectedCourseId) {
+        if (!selectedCourseId || !currentUser) {
             setValidDates([]);
             return;
         }
@@ -162,23 +162,19 @@ export default function StudentLeavePage() {
         const calculateValidDates = async () => {
             const today = new Date();
             const startOfCurrentMonth = startOfMonth(today);
-            const endOfNextMonth = endOfMonth(new Date(today.getFullYear(), today.getMonth() + 2, 1)); // Look ahead ~2 months
-
-            const courseTimetableRef = ref(db, `timetables`);
-            const overridesRef = ref(db, `classOverrides/${selectedCourseId}`);
+            const endOfNextMonth = endOfMonth(new Date(today.getFullYear(), today.getMonth() + 2, 1)); 
 
             const [timetableSnap, overridesSnap, regsSnap] = await Promise.all([
-                get(courseTimetableRef),
-                get(overridesRef),
-                get(ref(db, 'registrations'))
+                get(ref(db, 'timetables')),
+                get(ref(db, `classOverrides/${selectedCourseId}`)),
+                get(ref(db, `registrations/${currentUser.uid}`))
             ]);
 
-            const semesterId = Object.keys(regsSnap.val()[currentUser!.uid]).find(semId => regsSnap.val()[currentUser!.uid][semId].courses.includes(selectedCourseId));
+            const semesterId = Object.keys(regsSnap.val() || {}).find(semId => regsSnap.val()[semId].courses.includes(selectedCourseId));
             if (!semesterId) { setValidDates([]); return; }
             
             const timetableData = timetableSnap.val()?.[semesterId]?.[selectedCourseId];
             const overridesData: Record<string, ClassOverride> = overridesSnap.val() || {};
-
             const recurringDays: number[] = Object.values(timetableData || {}).map((entry: any) => daysOfWeek.indexOf(entry.day)).filter(d => d !== -1);
             
             const possibleDates = eachDayOfInterval({ start: startOfCurrentMonth, end: endOfNextMonth });
@@ -188,20 +184,16 @@ export default function StudentLeavePage() {
                 const dateStr = format(date, 'yyyy-MM-dd');
                 const override = overridesData[dateStr];
                 
-                // If cancelled, it's not a valid date
                 if (override?.status === 'cancelled') return;
-
-                // If rescheduled from this date, it's not valid
+                
                 if (Object.values(overridesData).some(ov => ov.status === 'rescheduled' && ov.originalDate === dateStr)) {
                     return;
                 }
                 
-                // If it's a recurring class day and not cancelled
                 if (recurringDays.includes(getDay(date)) && !override) {
                     validClassDates.push(date);
                 }
                 
-                // If it's a rescheduled class TO this date
                 if (Object.values(overridesData).some(ov => ov.status === 'rescheduled' && ov.newDate === dateStr)) {
                     validClassDates.push(date);
                 }

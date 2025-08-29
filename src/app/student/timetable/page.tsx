@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import Link from 'next/link';
 import { Calendar } from '@/components/ui/calendar';
@@ -27,10 +27,17 @@ type TimetableEntry = {
 type ClassOverride = {
     originalDate: string;
     newDate?: string;
+    newTime?: string;
     status: 'rescheduled' | 'cancelled';
 };
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const timeToMinutes = (time: string) => {
+    if(!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
 
 export default function StudentCalendarViewPage() {
     const [allEntries, setAllEntries] = React.useState<TimetableEntry[]>([]);
@@ -107,49 +114,41 @@ export default function StudentCalendarViewPage() {
 
     const dailyClasses = React.useMemo(() => {
         const classesByDate: Record<string, TimetableEntry[]> = {};
-        if (allEntries.length === 0) return classesByDate;
+        if (allEntries.length === 0 && Object.keys(allOverrides).length === 0) return classesByDate;
 
         const interval = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
 
         interval.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
-            let finalEntries: TimetableEntry[] = [];
+            let finalEntriesForDay: TimetableEntry[] = [];
             
-            // Check for rescheduled classes TO this date
-            for (const courseId in allOverrides) {
-                 const overrideForDate = allOverrides[courseId]?.[dateStr];
-                 if (overrideForDate?.status === 'rescheduled' && overrideForDate.newDate === dateStr) {
-                    // This is complex - we'd need to find the original entry to get details.
-                    // For now, let's assume we need to look it up.
-                 }
-                 const rescheduledToThisDay = Object.values(allOverrides[courseId] || {}).find(ov => ov.status === 'rescheduled' && ov.newDate === dateStr);
-                 if (rescheduledToThisDay) {
-                     const originalDate = parseISO(rescheduledToThisDay.originalDate);
-                     const originalDayOfWeek = daysOfWeek[getDay(originalDate)];
-                     const originalEntry = allEntries.find(e => e.courseId === courseId && e.day === originalDayOfWeek);
-                     if (originalEntry) {
-                         finalEntries.push({ ...originalEntry, day: format(day, 'EEEE') });
-                     }
-                 }
-            }
-
-
-            // Regular schedule
             const dayOfWeek = daysOfWeek[getDay(day)];
             const recurringEntries = allEntries.filter(entry => entry.day === dayOfWeek);
 
             recurringEntries.forEach(entry => {
                 const overrideForThisDate = allOverrides[entry.courseId]?.[dateStr];
-                // if this specific instance was cancelled or rescheduled FROM this date
-                if (overrideForThisDate && (overrideForThisDate.status === 'cancelled' || (overrideForThisDate.status === 'rescheduled' && overrideForThisDate.originalDate === dateStr))) {
-                    // Don't add it
-                } else {
-                    finalEntries.push(entry);
+                if (!overrideForThisDate || overrideForThisDate.status !== 'cancelled') {
+                    finalEntriesForDay.push(entry);
                 }
             });
 
-            if (finalEntries.length > 0) {
-                classesByDate[dateStr] = finalEntries.sort((a,b) => a.startTime.localeCompare(b.startTime));
+            for (const courseId in allOverrides) {
+                 const rescheduledToThisDay = Object.values(allOverrides[courseId] || {}).find(ov => ov.status === 'rescheduled' && ov.newDate === dateStr);
+                 if (rescheduledToThisDay) {
+                     const originalEntryDetails = allEntries.find(e => e.courseId === courseId);
+                     if (originalEntryDetails) {
+                        finalEntriesForDay = finalEntriesForDay.filter(e => e.courseId !== courseId);
+                        finalEntriesForDay.push({ 
+                            ...originalEntryDetails, 
+                            day: format(day, 'EEEE'),
+                            startTime: rescheduledToThisDay.newTime || originalEntryDetails.startTime
+                        });
+                     }
+                 }
+            }
+
+            if (finalEntriesForDay.length > 0) {
+                classesByDate[dateStr] = finalEntriesForDay.sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
             }
         });
         return classesByDate;
@@ -171,32 +170,33 @@ export default function StudentCalendarViewPage() {
                              const dateStr = format(date, 'yyyy-MM-dd');
                              const classes = dailyClasses[dateStr];
                              return (
-                                 <div className={cn("relative w-full h-full p-1", isToday(date) && "font-bold")}>
-                                     <span className="absolute top-1 left-1">{format(date, 'd')}</span>
-                                     {classes && (
-                                         <Popover>
-                                             <PopoverTrigger asChild>
-                                                 <div className="absolute inset-0 cursor-pointer hover:bg-accent/50 rounded-md"></div>
-                                             </PopoverTrigger>
-                                             <PopoverContent className="w-80">
-                                                <h4 className="font-semibold mb-2">{format(date, 'PPP')}</h4>
-                                                <div className="space-y-2">
-                                                    {classes.map((c, i) => (
-                                                        <div key={i} className="text-xs p-2 rounded-md bg-primary/10 border border-primary/20">
-                                                            <p className="font-bold text-primary">{c.courseName}</p>
-                                                            <p>{c.startTime} - {c.endTime} @ {c.venue}</p>
-                                                        </div>
-                                                    ))}
+                                 <Popover>
+                                    <PopoverTrigger asChild>
+                                        <div className={cn("relative w-full h-full p-1 cursor-pointer hover:bg-accent/50 rounded-md", isToday(date) && "font-bold bg-accent/80")}>
+                                             <span className="absolute top-1 left-1">{format(date, 'd')}</span>
+                                             {classes && (
+                                                <div className="absolute bottom-1 right-1 flex items-center justify-center h-4 w-4 bg-primary text-primary-foreground text-[10px] rounded-full">
+                                                    {classes.length}
                                                 </div>
-                                             </PopoverContent>
-                                         </Popover>
-                                     )}
-                                     {classes && (
-                                        <div className="absolute bottom-1 right-1 flex items-center justify-center h-4 w-4 bg-primary text-primary-foreground text-[10px] rounded-full">
-                                            {classes.length}
+                                             )}
+                                         </div>
+                                    </PopoverTrigger>
+                                    {classes && (
+                                     <PopoverContent className="w-80">
+                                        <h4 className="font-semibold mb-2">{format(date, 'PPP')}</h4>
+                                        <div className="space-y-2">
+                                            {classes.map((c, i) => (
+                                                <Link key={i} href={`/student/courses/${c.courseId}`} passHref>
+                                                    <div className="text-xs p-2 rounded-md bg-primary/10 border border-primary/20 hover:bg-primary/20 cursor-pointer">
+                                                        <p className="font-bold text-primary">{c.courseName}</p>
+                                                        <p>{c.startTime} - {c.endTime} @ {c.venue}</p>
+                                                    </div>
+                                                </Link>
+                                            ))}
                                         </div>
-                                     )}
-                                 </div>
+                                     </PopoverContent>
+                                    )}
+                                </Popover>
                              )
                         },
                          Caption: ({...props}) => {

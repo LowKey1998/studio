@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Save } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Save, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update } from 'firebase/database';
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns';
 import { useParams } from 'next/navigation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -98,11 +98,6 @@ export default function CourseSchedulePage() {
             overrideData.status = 'rescheduled';
             overrideData.newDate = format(rescheduleDate, 'yyyy-MM-dd');
             overrideData.newTime = rescheduleTime;
-        } else if (action === 'add') {
-             // This case is for one-off classes, logic would be different.
-             // For now, let's focus on cancel/reschedule of existing classes.
-             toast({ variant: 'destructive', title: 'Feature not implemented' });
-             return;
         } else {
              toast({ variant: 'destructive', title: 'Missing details for reschedule' });
              return;
@@ -117,7 +112,7 @@ export default function CourseSchedulePage() {
         }
     };
     
-    const handleOpenDialog = (date: Date, type: 'cancel' | 'reschedule' | 'add') => {
+    const handleOpenDialog = (date: Date, type: 'cancel' | 'reschedule') => {
         setEditingDate(date);
         setAction(type);
         setRescheduleDate(undefined);
@@ -139,25 +134,20 @@ export default function CourseSchedulePage() {
             
             if (override) {
                  if (override.status === 'cancelled') {
-                    classesByDate[dateStr] = { status: 'cancelled', details: regularClass?.startTime };
-                } else if (override.status === 'rescheduled') {
-                    // This day is cancelled because it's rescheduled FROM here
+                    classesByDate[dateStr] = { status: 'cancelled', details: `Cancelled class at ${regularClass?.startTime}` };
+                } else if (override.status === 'rescheduled' && override.originalDate === dateStr) {
                     classesByDate[dateStr] = { status: 'cancelled', details: `Moved to ${format(parseISO(override.newDate!), 'MMM d')}` };
                 }
             } else if (regularClass) {
-                 // Check if it was rescheduled FROM this day
                  const rescheduledFromThisDay = Object.values(overrides).find(ov => ov.status === 'rescheduled' && ov.originalDate === dateStr);
-                 if (rescheduledFromThisDay) {
-                     classesByDate[dateStr] = { status: 'cancelled', details: `Moved to ${format(parseISO(rescheduledFromThisDay.newDate!), 'MMM d')}` };
-                 } else {
+                 if (!rescheduledFromThisDay) {
                     classesByDate[dateStr] = { status: 'scheduled', time: regularClass.startTime };
                  }
             }
             
-            // Check for classes rescheduled TO this day
             const rescheduledToThisDay = Object.values(overrides).find(ov => ov.status === 'rescheduled' && ov.newDate === dateStr);
             if (rescheduledToThisDay) {
-                classesByDate[dateStr] = { status: 'rescheduled', details: `From ${format(parseISO(rescheduledToThisDay.originalDate), 'MMM d')}`, time: rescheduledToThisDay.newTime };
+                classesByDate[dateStr] = { status: 'rescheduled', details: `Extra class (from ${format(parseISO(rescheduledToThisDay.originalDate), 'MMM d')})`, time: rescheduledToThisDay.newTime };
             }
         });
         return classesByDate;
@@ -186,7 +176,7 @@ export default function CourseSchedulePage() {
                                             classInfo?.status === 'rescheduled' && 'bg-blue-500/10',
                                             classInfo?.status === 'cancelled' && 'bg-destructive/10 line-through'
                                         )}>
-                                            <span>{format(date, 'd')}</span>
+                                            <span className={cn("absolute top-1 left-1", isToday(date) && "font-bold")}>{format(date, 'd')}</span>
                                             {classInfo && (
                                                 <div className="text-xs absolute bottom-1 right-1 font-bold">
                                                     {classInfo.time}
@@ -194,17 +184,15 @@ export default function CourseSchedulePage() {
                                             )}
                                         </div>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-56 p-2 space-y-2">
-                                        <p className="font-bold text-sm">{format(date, 'PPP')}</p>
-                                        {classInfo ? (
-                                            <>
-                                                <Button size="sm" variant="outline" className="w-full" onClick={() => handleOpenDialog(date, 'cancel')}>Cancel Class</Button>
-                                                <Button size="sm" variant="outline" className="w-full" onClick={() => handleOpenDialog(date, 'reschedule')}>Reschedule Class</Button>
-                                            </>
-                                        ) : (
-                                            <Button size="sm" className="w-full" onClick={() => handleOpenDialog(date, 'add')}>Add One-off Class</Button>
-                                        )}
-                                    </PopoverContent>
+                                    {classInfo && (
+                                        <PopoverContent className="w-56 p-2 space-y-2">
+                                            <p className="font-bold text-sm">{format(date, 'PPP')}</p>
+                                            <p className="text-xs">{classInfo.details || `Scheduled class at ${classInfo.time}`}</p>
+                                            <Separator />
+                                            <Button size="sm" variant="outline" className="w-full" onClick={() => handleOpenDialog(date, 'cancel')}>Cancel Class</Button>
+                                            <Button size="sm" variant="outline" className="w-full" onClick={() => handleOpenDialog(date, 'reschedule')}>Reschedule Class</Button>
+                                        </PopoverContent>
+                                    )}
                                 </Popover>
                             );
                         },
@@ -248,4 +236,3 @@ export default function CourseSchedulePage() {
         </Card>
     );
 }
-
