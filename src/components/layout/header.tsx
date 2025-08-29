@@ -4,6 +4,8 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { UserNav } from "./user-nav";
 import { NotificationsPopover } from "../notifications-popover";
+import Link from 'next/link';
+import { Button } from "../ui/button";
 
 export function Header() {
   return (
@@ -11,7 +13,6 @@ export function Header() {
       <div className="flex h-14 items-center px-4">
         <SidebarTrigger />
         <div className="flex flex-1 items-center justify-end space-x-2">
-            <NotificationsPopover />
             <UserNav />
         </div>
       </div>

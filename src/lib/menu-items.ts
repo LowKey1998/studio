@@ -29,8 +29,6 @@ export const allMenuItems = [
         { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2 },
         { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
         { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
-        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
-        { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
@@ -184,7 +182,15 @@ export const allMenuItems = [
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
            { href: '/admin/hr/contracts', label: 'Contracts', icon: FileText },
       ]
-  },
+    },
+     {
+        label: 'Communications',
+        icon: MessageSquare,
+        roles: ['Admin'],
+        items: [
+             { href: '/admin/notifications', label: 'Messages', icon: Mail },
+        ]
+    },
     {
         label: 'Research & Innovation',
         icon: Telescope,
@@ -381,6 +387,13 @@ export const studentMenuItems = [
             { href: '/student/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
             { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
         ]
+    },
+    {
+        label: 'General',
+        icon: Settings,
+        items: [
+            { href: '/student/notifications', label: 'Messages', icon: Mail },
+        ]
     }
   ];
 
@@ -416,6 +429,7 @@ export const staffBaseMenuItems = [
       items: [
         { href: '/staff/library', label: 'Library' },
         { href: '/staff/profile', label: 'My Profile' },
+        { href: '/staff/notifications', label: 'Messages', icon: Mail },
       ]
     }
   ];
