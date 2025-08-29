@@ -1,5 +1,5 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Image as ImageIcon } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Building2, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Image as ImageIcon } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -77,15 +77,7 @@ export const allMenuItems = [
         label: 'Clinicals',
         icon: Stethoscope,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning' },
-            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks' },
-            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management' },
-            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms' },
-            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports' },
-            { href: '/admin/clinicals/community-placement', label: 'Community Placement' },
-            { href: '/admin/clinicals/clinical-assessment', label: 'Final Clinical Assessment' },
-        ]
+        isComingSoon: true,
     },
      {
       label: 'E-Learning',
@@ -115,7 +107,7 @@ export const allMenuItems = [
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/fees', label: 'Fee Management', icon: HandCoins },
+        { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
@@ -156,13 +148,7 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        items: [
-            { href: '/admin/parents/accounts', label: 'Parent Accounts' },
-            { href: '/admin/parents/communication-logs', label: 'Communication Logs' },
-            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders' },
-            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts' },
-            { href: '/admin/parents/portal-settings', label: 'Portal Settings' },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'HR',
@@ -222,16 +208,19 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
+        isComingSoon: true,
     },
     {
       label: 'Quality Assurance',
       icon: Check,
       roles: ['Admin'],
+      isComingSoon: true,
     },
     {
       label: 'Legal & Compliance',
       icon: GitBranch,
       roles: ['Admin'],
+      isComingSoon: true,
     },
     {
       label: 'Facilities & Estates',
@@ -249,11 +238,13 @@ export const allMenuItems = [
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
+        isComingSoon: true,
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
+        isComingSoon: true,
     },
      {
         label: 'Mentorship & Advising',
@@ -269,6 +260,7 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
+        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',
