@@ -23,7 +23,8 @@ type Staff = {
     phoneNumber?: string;
     department?: string;
     role?: string;
-    subRoles?: string[];
+    subRoles?: string[]; // This will now hold IDs
+    subRoleNames?: string[]; // This will be populated for display
 };
 
 type Department = {
@@ -31,9 +32,16 @@ type Department = {
     name: string;
 };
 
+type SubRole = {
+    id: string;
+    name: string;
+};
+
+
 export default function StaffListPage() {
     const [staff, setStaff] = React.useState<Staff[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
+    const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [loading, setLoading] = React.useState(true);
     const { toast } = useToast();
 
@@ -44,28 +52,34 @@ export default function StaffListPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, departmentsSnap] = await Promise.all([
+            const [usersSnap, departmentsSnap, subRolesSnap] = await Promise.all([
                 get(ref(db, 'users')),
-                get(ref(db, 'settings/departments'))
+                get(ref(db, 'settings/departments')),
+                get(ref(db, 'settings/subRoles'))
             ]);
 
             const departmentsData = departmentsSnap.exists() ? departmentsSnap.val() : {};
             setDepartments(Object.keys(departmentsData).map(id => ({ id, ...departmentsData[id] })));
             
-            const usersData = usersSnap.exists() ? usersSnap.val() : {};
-            const staffMap = new Map<string, Staff>();
+            const subRolesData = subRolesSnap.exists() ? subRolesSnap.val() : {};
+            const subRolesList = Object.keys(subRolesData).map(id => ({ id, name: subRolesData[id].name }));
+            const subRolesMap = new Map(subRolesList.map(role => [role.id, role.name]));
+            setSubRoles(subRolesList);
 
+            const usersData = usersSnap.exists() ? usersSnap.val() : {};
+            const staffList: Staff[] = [];
             for (const uid in usersData) {
                 if (usersData[uid].role === 'Staff' || usersData[uid].role === 'Admin') {
-                    if (!staffMap.has(uid)) {
-                        staffMap.set(uid, {
-                            uid,
-                            ...usersData[uid],
-                        });
-                    }
+                    const userSubRoleIds = usersData[uid].subRoles || [];
+                    const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id) || 'Unknown Role').filter(Boolean);
+                    
+                    staffList.push({
+                        uid,
+                        ...usersData[uid],
+                        subRoleNames: subRoleNames,
+                    });
                 }
             }
-            const staffList = Array.from(staffMap.values());
             setStaff(staffList.sort((a,b) => a.name.localeCompare(b.name)));
 
         } catch (error) {
@@ -107,7 +121,7 @@ export default function StaffListPage() {
             s.email,
             s.phoneNumber || 'N/A',
             s.department || 'N/A',
-            s.subRoles?.join(', ') || s.role || 'Staff',
+            s.subRoleNames?.join(', ') || s.role || 'Staff',
         ]);
 
         (doc as any).autoTable({
@@ -202,7 +216,7 @@ export default function StaffListPage() {
                                         </SelectContent>
                                     </Select>
                                 </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">{member.subRoles?.join(', ') || member.role}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{member.subRoleNames?.join(', ') || member.role}</TableCell>
                             </TableRow>
                         ))
                         ) : (

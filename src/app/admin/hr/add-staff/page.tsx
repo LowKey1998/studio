@@ -47,7 +47,7 @@ export default function AddStaffPage() {
     const [password, setPassword] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
     const [role, setRole] = React.useState('Staff'); // Default to staff
-    const [subRoles, setSubRoles] = React.useState<string[]>([]);
+    const [subRoleIds, setSubRoleIds] = React.useState<string[]>([]);
     const [department, setDepartment] = React.useState('');
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [availableDepartments, setAvailableDepartments] = React.useState<Department[]>([]);
@@ -93,12 +93,12 @@ export default function AddStaffPage() {
         setPassword('');
         setPhoneNumber('');
         setRole('Staff');
-        setSubRoles([]);
+        setSubRoleIds([]);
         setDepartment('');
     };
     
-    const handleSubRoleChange = (subRoleName: string) => {
-        setSubRoles(prev => prev.includes(subRoleName) ? prev.filter(r => r !== subRoleName) : [...prev, subRoleName]);
+    const handleSubRoleChange = (subRoleId: string) => {
+        setSubRoleIds(prev => prev.includes(subRoleId) ? prev.filter(id => id !== subRoleId) : [...prev, subRoleId]);
     };
 
     const handleCreateStaff = async (e: React.FormEvent) => {
@@ -139,7 +139,7 @@ export default function AddStaffPage() {
                 phoneNumber, 
                 role: 'Staff', 
                 status: 'active',
-                subRoles: subRoles,
+                subRoles: subRoleIds,
                 department: department
             };
 
@@ -196,8 +196,8 @@ export default function AddStaffPage() {
                                 <div key={subRoleItem.id} className="flex items-center gap-2">
                                     <Checkbox 
                                         id={`create-${subRoleItem.id}`} 
-                                        checked={subRoles.includes(subRoleItem.name)} 
-                                        onCheckedChange={() => handleSubRoleChange(subRoleItem.name)} 
+                                        checked={subRoleIds.includes(subRoleItem.id)} 
+                                        onCheckedChange={() => handleSubRoleChange(subRoleItem.id)} 
                                         disabled={loading}
                                     />
                                     <Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label>

@@ -49,21 +49,14 @@ export default function LecturerAllocationPage() {
                     Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
                 );
                 
-                const roleIdToNameMap = new Map<string, string>();
-                for (const roleId in subRolesData) {
-                    roleIdToNameMap.set(roleId, subRolesData[roleId].name);
-                }
-                const lecturerRoleNames = new Set(Array.from(lecturerRoleIds).map(id => roleIdToNameMap.get(id)).filter(Boolean));
-
-
                 const lecturersList: Lecturer[] = [];
                 const lecturerMap = new Map<string, string>();
 
                 for (const uid in usersData) {
                     const user = usersData[uid];
                     if (user.role === 'Staff') {
-                        // Check if the user has any of the designated lecturer sub-roles by name
-                        const userHasLecturerRole = user.subRoles?.some((userSubRoleName: string) => lecturerRoleNames.has(userSubRoleName));
+                        // Check if the user has any of the designated lecturer sub-roles by ID
+                        const userHasLecturerRole = user.subRoles?.some((userSubRoleId: string) => lecturerRoleIds.has(userSubRoleId));
                         
                         if (userHasLecturerRole) {
                            lecturersList.push({ uid, name: user.name });

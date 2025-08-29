@@ -62,7 +62,8 @@ type User = {
     email: string;
     phoneNumber?: string;
     role: string;
-    subRoles?: string[];
+    subRoles?: string[]; // Will now hold IDs
+    subRoleNames?: string[]; // For display
     programmeId?: string;
     programmeName?: string;
     year?: number;
@@ -138,7 +139,7 @@ export default function UserManagementPage() {
     const [password, setPassword] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
     const [role, setRole] = React.useState('');
-    const [subRoles, setSubRoles] = React.useState<string[]>([]);
+    const [subRoleIds, setSubRoleIds] = React.useState<string[]>([]);
     const [programme, setProgramme] = React.useState('');
     const [isTransfer, setIsTransfer] = React.useState(false);
     const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
@@ -170,7 +171,7 @@ export default function UserManagementPage() {
     const [editingUser, setEditingUser] = React.useState<User | null>(null);
     const [editName, setEditName] = React.useState('');
     const [editRole, setEditRole] = React.useState('');
-    const [editSubRoles, setEditSubRoles] = React.useState<string[]>([]);
+    const [editSubRoleIds, setEditSubRoleIds] = React.useState<string[]>([]);
     const [editProgramme, setEditProgramme] = React.useState('');
     const [editIntake, setEditIntake] = React.useState('');
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
@@ -205,13 +206,6 @@ export default function UserManagementPage() {
           }
         });
         
-        const subRolesRef = ref(db, 'settings/subRoles');
-        const unsubSubRoles = get(subRolesRef).then((snapshot) => {
-            if (snapshot.exists()) {
-                setAvailableSubRoles(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
-            }
-        });
-
         return () => {
             unsubscribe();
         };
@@ -231,24 +225,34 @@ export default function UserManagementPage() {
 
             const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
             const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
+            const subRolesData = subRolesSnap.exists() ? subRolesSnap.val() : {};
 
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] }))); else setAllProgrammes([]);
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] }))); else setAllIntakes([]);
-            if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesSnap.val()).map(id => ({id, ...subRolesSnap.val()[id]}))); else setAvailableSubRoles([])
+            if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]}))); else setAvailableSubRoles([])
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
             if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
             
+            const subRolesMap = new Map(Object.entries(subRolesData).map(([id, role]: [string, any]) => [id, role.name]));
+
             const usersRef = ref(db, 'users');
             onValue(usersRef, (usersSnap) => {
                  if (usersSnap.exists()) {
                     const usersData = usersSnap.val();
-                    const usersList: User[] = Object.keys(usersData).map(uid => ({
-                        uid,
-                        ...usersData[uid],
-                        status: usersData[uid].status || 'active',
-                        programmeName: usersData[uid].programmeId ? programmesData[usersData[uid].programmeId]?.name : undefined,
-                    }));
+                    const usersList: User[] = Object.keys(usersData).map(uid => {
+                        const user = usersData[uid];
+                        const userSubRoleIds = user.subRoles || [];
+                        const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id) || 'Unknown Role').filter(Boolean);
+
+                        return {
+                            uid,
+                            ...user,
+                            status: user.status || 'active',
+                            programmeName: user.programmeId ? programmesData[user.programmeId]?.name : undefined,
+                            subRoleNames: subRoleNames
+                        }
+                    });
                     setUsers(usersList);
                 } else { setUsers([]); }
                 setTableLoading(false);
@@ -266,7 +270,7 @@ export default function UserManagementPage() {
     }, [fetchInitialData]);
 
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoles([]); setProgramme(''); setIsTransfer(false); setExemptedCourses({});
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); setProgramme(''); setIsTransfer(false); setExemptedCourses({});
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
         setGuardianName(''); setGuardianContact('');
@@ -275,8 +279,8 @@ export default function UserManagementPage() {
         setSelectedIntake(''); setSelectedYear(''); setSelectedSemester('');
     };
     
-    const handleSubRoleChange = (subRoleName: string, setRoles: React.Dispatch<React.SetStateAction<string[]>>) => {
-        setRoles(prev => prev.includes(subRoleName) ? prev.filter(r => r !== subRoleName) : [...prev, subRoleName]);
+    const handleSubRoleChange = (subRoleId: string, setIds: React.Dispatch<React.SetStateAction<string[]>>) => {
+        setIds(prev => prev.includes(subRoleId) ? prev.filter(id => id !== subRoleId) : [...prev, subRoleId]);
     };
     
     React.useEffect(() => {
@@ -392,7 +396,7 @@ export default function UserManagementPage() {
                 });
                 if(isTransfer && Object.keys(exemptedCourses).length > 0) newUser.exemptedCourses = exemptedCourses;
             } else if (role === 'staff') {
-                 if (subRoles.length > 0) newUser.subRoles = subRoles;
+                 if (subRoleIds.length > 0) newUser.subRoles = subRoleIds;
             }
 
 
@@ -415,7 +419,7 @@ export default function UserManagementPage() {
         setEditingUser(user); 
         setEditName(user.name); 
         setEditRole(user.role); 
-        setEditSubRoles(user.subRoles || []); 
+        setEditSubRoleIds(user.subRoles || []); 
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
         setIsEditOpen(true);
@@ -444,7 +448,7 @@ export default function UserManagementPage() {
             const userRef = ref(db, `users/${editingUser.uid}`);
             const updatedUserData: Partial<User> = { name: editName, role: editRole };
              if (editRole === 'Staff') {
-                updatedUserData.subRoles = editSubRoles;
+                updatedUserData.subRoles = editSubRoleIds;
              }
              if (editRole === 'Student') {
                 updatedUserData.intakeId = editIntake;
@@ -457,7 +461,7 @@ export default function UserManagementPage() {
             const changes = [];
             if(editingUser.name !== editName) changes.push(`Name changed to '${editName}'`);
             if(editingUser.role !== editRole) changes.push(`Role changed from ${editingUser.role} to ${editRole}`);
-            if(JSON.stringify(editingUser.subRoles || []) !== JSON.stringify(editSubRoles)) changes.push(`Sub-roles changed to '${editSubRoles.join(', ')}'`);
+            if(JSON.stringify(editingUser.subRoles || []) !== JSON.stringify(editSubRoleIds)) changes.push(`Sub-roles changed`);
             if (editRole === 'Student') {
                  if (editingUser.intakeId !== editIntake) changes.push(`Intake updated`);
                  if (editingUser.programmeId !== editProgramme) changes.push(`Programme updated`);
@@ -509,9 +513,9 @@ export default function UserManagementPage() {
         return users.filter(user => {
             const query = searchQuery.toLowerCase();
             const roleMatch = roleFilter.toLowerCase() === 'all' || (user.role || '').toLowerCase() === roleFilter.toLowerCase();
-            const searchMatch = (user.name ?? '').toLowerCase().includes(query) || 
-                                (user.id ?? '').toLowerCase().includes(query) || 
-                                (user.email ?? '').toLowerCase().includes(query);
+            const searchMatch = (user.name || '').toLowerCase().includes(query) || 
+                                (user.id || '').toLowerCase().includes(query) || 
+                                (user.email || '').toLowerCase().includes(query);
             return roleMatch && searchMatch;
         });
     }, [users, roleFilter, searchQuery]);
@@ -577,7 +581,7 @@ export default function UserManagementPage() {
                                                 <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Phone Number (Optional)</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
-                                                <div className="space-y-1"><Label>Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
+                                                <div className="space-y-1"><Label>Initial Password</Label><Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={loading}/></div>
                                                 <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender} disabled={loading}><SelectTrigger><SelectValue placeholder="Select gender"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
                                                 <div className="space-y-1"><Label>National ID</Label><Input placeholder="e.g., 123456/78/9" value={nationalId} onChange={e => setNationalId(e.target.value)} disabled={loading}/></div>
@@ -593,7 +597,7 @@ export default function UserManagementPage() {
                                             {role === 'staff' && (<div className="space-y-2 rounded-md border p-3">
                                                 <Label>Sub-Roles</Label>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                                        {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setSubRoles)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
+                                                        {availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`create-${subRoleItem.id}`} checked={subRoleIds.includes(subRoleItem.id)} onCheckedChange={() => handleSubRoleChange(subRoleItem.id, setSubRoleIds)} disabled={loading}/><Label htmlFor={`create-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}
                                                     </div>
                                             </div>)}
                                             {role === 'student' && (<div className="space-y-4 rounded-md border p-3">
@@ -638,7 +642,7 @@ export default function UserManagementPage() {
             {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
             ) : filteredUsers.map((user) => (
               <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}><TableCell className="font-medium">{user.id}</TableCell><TableCell>{user.name}</TableCell><TableCell>{user.email}</TableCell>
-                <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoles && user.subRoles.length > 0 && `(${user.subRoles.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
+                <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoleNames && user.subRoleNames.length > 0 && `(${user.subRoleNames.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
                 <TableCell>{user.programmeName || 'N/A'}</TableCell>
                 <TableCell>
                     {user.isOnline ? 
@@ -702,7 +706,7 @@ export default function UserManagementPage() {
                     )}
                     {editRole === 'Staff' && (
                     <>
-                        <div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoles.includes(subRoleItem.name)} onCheckedChange={() => handleSubRoleChange(subRoleItem.name, setEditSubRoles)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>
+                        <div className="grid grid-cols-4 items-start gap-4 pt-2"><Label className="text-right pt-2">Sub-Roles</Label><div className="col-span-3 space-y-2">{availableSubRoles.map(subRoleItem => (<div key={subRoleItem.id} className="flex items-center gap-2"><Checkbox id={`edit-${subRoleItem.id}`} checked={editSubRoleIds.includes(subRoleItem.id)} onCheckedChange={() => handleSubRoleChange(subRoleItem.id, setEditSubRoleIds)} disabled={loading}/><Label htmlFor={`edit-${subRoleItem.id}`} className="font-normal">{subRoleItem.name}</Label></div>))}</div></div>
                     </>
                     )}
                 </div>
