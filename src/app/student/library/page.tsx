@@ -5,13 +5,25 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, BookCheck, BookX, Loader2, Library, BookUp } from "lucide-react";
+import { Search, BookCheck, BookX, PlusCircle, Loader2, Library, BookUp, Upload } from "lucide-react";
 import Image from 'next/image';
-import { db, auth, createNotification } from '@/lib/firebase';
-import { ref, get, onValue, serverTimestamp, update, push, remove } from 'firebase/database';
+import { db, auth, storage } from '@/lib/firebase';
+import { ref, get, set, push, onValue, serverTimestamp, update, remove } from 'firebase/database';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 type Book = {
     id: string;
@@ -48,18 +60,39 @@ export default function LibraryPage() {
     const [bookRequests, setBookRequests] = React.useState<Record<string, any>>({});
     const { toast } = useToast();
 
+    // Add Book Dialog State
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [formLoading, setFormLoading] = React.useState(false);
+    const [title, setTitle] = React.useState('');
+    const [author, setAuthor] = React.useState('');
+    const [genre, setGenre] = React.useState('');
+    const [barcode, setBarcode] = React.useState('');
+    const [year, setYear] = React.useState('');
+    const [count, setCount] = React.useState('');
+    const [imageUrl, setImageUrl] = React.useState('');
+    const [imageFile, setImageFile] = React.useState<File | null>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
     React.useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
           if (user) {
             setCurrentUser(user);
             const userRef = ref(db, `users/${user.uid}`);
-            onValue(userRef, (snapshot) => {
-                if (snapshot.exists()) setUserData(snapshot.val());
+            const userUnsub = onValue(userRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    setUserData(snapshot.val());
+                } else {
+                    setUserData(null);
+                }
             });
-            const requestsRef = ref(db, 'bookRequests');
+             const requestsRef = ref(db, 'bookRequests');
             onValue(requestsRef, (snapshot) => {
                 if (snapshot.exists()) setBookRequests(snapshot.val());
             })
+            return () => userUnsub();
+          } else {
+            setCurrentUser(null);
+            setUserData(null);
           }
         });
         return () => unsubscribeAuth();
@@ -110,8 +143,6 @@ export default function LibraryPage() {
                 requestDate: new Date().toISOString(),
                 status: 'Pending',
             };
-            updates[`libraryBooks/${book.id}/status`] = 'Requested';
-            updates[`libraryBooks/${book.id}/requesterId`] = currentUser.uid;
             
             await update(ref(db), updates);
 
@@ -133,9 +164,7 @@ export default function LibraryPage() {
         try {
             const updates: Record<string, any> = {};
             updates[`bookRequests/${requestId}`] = null;
-            updates[`libraryBooks/${book.id}/status`] = 'Available';
-            updates[`libraryBooks/${book.id}/requesterId`] = null;
-
+            
             await update(ref(db), updates);
             toast({ title: 'Request Canceled', description: 'Your book request has been canceled.'});
         } catch (error: any) {
@@ -150,6 +179,7 @@ export default function LibraryPage() {
         book.genre.toLowerCase().includes(searchTerm.toLowerCase())
     );
     
+
     return (
         <div className="space-y-6">
         <Card className="shadow-lg border-0">
@@ -179,9 +209,9 @@ export default function LibraryPage() {
         ) : filteredBooks.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredBooks.map((book) => {
-                const isAvailable = (book.count || 0) > 0 && book.status === 'Available';
-                const hasRequested = book.requesterId === currentUser?.uid && book.status === 'Requested';
-                
+                const isAvailable = (book.count || 0) > 0;
+                const userHasRequestPending = Object.values(bookRequests).some(req => req.bookId === book.id && req.userId === currentUser?.uid && req.status === 'Pending');
+
                 return (
                     <Card key={book.id} className="flex flex-col overflow-hidden shadow-lg transition-transform duration-300 hover:-translate-y-1">
                         <CardHeader className="p-0">
@@ -198,14 +228,14 @@ export default function LibraryPage() {
                                 {book.genre && <Badge variant="outline">{book.genre}</Badge>}
                                 {book.year && <Badge variant="outline">Year: {book.year}</Badge>}
                             </div>
-                            {book.count && <p className="text-sm text-muted-foreground">Copies Available: {book.status === 'Available' ? (book.count || 0) : 0}</p>}
+                             {book.count !== undefined && <p className="text-sm text-muted-foreground">Copies Available: {book.count}</p>}
                         </CardContent>
                         <CardFooter className="flex justify-between items-center bg-muted/50 p-4">
-                            <Badge variant={statusConfig[book.status].variant} className="flex items-center">
-                                {statusConfig[book.status].icon}
-                                {book.status}
+                            <Badge variant={isAvailable ? 'default' : 'secondary'} className="flex items-center">
+                                {isAvailable ? <BookCheck className="mr-1 h-4 w-4" /> : <BookX className="mr-1 h-4 w-4" />}
+                                {isAvailable ? 'Available' : 'Checked Out'}
                             </Badge>
-                            {hasRequested ? (
+                            {userHasRequestPending ? (
                                 <Button variant="destructive" size="sm" onClick={() => handleCancelRequest(book)}>Cancel Request</Button>
                             ) : (
                                 <Button 

@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as AuthUser } from 'firebase/auth';
 import { auth, db, createNotification } from '@/lib/firebase';
-import { ref, update, onValue, get, set, push, remove } from 'firebase/database';
+import { ref, update, onValue, get, set, push, remove, runTransaction } from 'firebase/database';
 import { format, addDays } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from '@/components/ui/input';
@@ -228,8 +228,21 @@ export default function BookRequestsPage() {
         if (!request) return;
 
         setActionLoading(request.id);
+        const bookRef = ref(db, `libraryBooks/${request.bookId}`);
+
         try {
-            await update(ref(db, `libraryBooks/${request.bookId}`), { status: 'Checked Out', requesterId: null });
+            await runTransaction(bookRef, (book) => {
+                if (book && book.count > 0) {
+                    book.count--;
+                    if (book.count === 0) {
+                        book.status = 'Checked Out';
+                    }
+                    return book;
+                } else {
+                    return; // Abort transaction
+                }
+            });
+
             await update(ref(db, `bookRequests/${request.id}`), {
                 status: 'Checked Out',
                 checkoutDate: new Date().toISOString(),
@@ -245,7 +258,9 @@ export default function BookRequestsPage() {
             setIsCheckoutDialogOpen(false);
             setCheckoutRequestId(null);
             setReturnDate(undefined);
-        } catch(e: any) { toast({ variant: 'destructive', title: 'Checkout Failed', description: e.message }); } 
+        } catch(e: any) { 
+            toast({ variant: 'destructive', title: 'Checkout Failed', description: 'The book may no longer be available.' });
+        } 
         finally { setActionLoading(null); }
     };
     
@@ -255,7 +270,6 @@ export default function BookRequestsPage() {
         try {
             const updates: Record<string, any> = {};
             updates[`bookRequests/${request.id}/status`] = 'Declined';
-            updates[`libraryBooks/${request.bookId}/status`] = 'Available';
             updates[`libraryBooks/${request.bookId}/requesterId`] = null;
 
             await update(ref(db), updates);
@@ -275,11 +289,22 @@ export default function BookRequestsPage() {
             toast({ variant: 'destructive', title: "Missing fields" }); return;
         }
         setActionLoading('direct-checkout');
+        const bookRef = ref(db, `libraryBooks/${selectedBook}`);
+        const user = allUsers.find(u => u.uid === selectedUser);
+        const book = allBooks.find(b => b.id === selectedBook);
+        if (!book || !user) return;
+
         try {
-            const book = allBooks.find(b => b.id === selectedBook);
-            const user = allUsers.find(u => u.uid === selectedUser);
-            if (!book || !user) throw new Error("Invalid book or user selected.");
-            if (book.status !== 'Available') throw new Error("This book is not currently available for checkout.");
+            await runTransaction(bookRef, (currentBook) => {
+                if (currentBook && currentBook.count > 0) {
+                    currentBook.count--;
+                    if(currentBook.count === 0) {
+                        currentBook.status = 'Checked Out';
+                    }
+                    return currentBook;
+                }
+                return; // Abort
+            });
 
             const newRequestRef = push(ref(db, 'bookRequests'));
             await set(newRequestRef, {
@@ -292,7 +317,6 @@ export default function BookRequestsPage() {
                 checkoutDate: new Date().toISOString(),
                 dueDate: format(directCheckoutDate, 'yyyy-MM-dd')
             });
-            await update(ref(db, `libraryBooks/${book.id}`), { status: 'Checked Out' });
             await createNotification(
                 user.uid,
                 `A book "${book.title}" has been checked out to you. It is due on ${format(directCheckoutDate, 'PPP')}.`,
@@ -303,14 +327,23 @@ export default function BookRequestsPage() {
             setSelectedBook('');
             setSelectedUser('');
             setDirectCheckoutDate(undefined);
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Direct Checkout Failed', description: e.message }); }
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Direct Checkout Failed', description: 'Book might be unavailable.' }); }
         finally { setActionLoading(null); }
     }
 
     const handleReturn = async (request: BookRequest) => {
         setActionLoading(request.id);
+        const bookRef = ref(db, `libraryBooks/${request.bookId}`);
         try {
-            await update(ref(db, `libraryBooks/${request.bookId}`), { status: 'Available' });
+            await runTransaction(bookRef, (book) => {
+                if(book){
+                    book.count = (book.count || 0) + 1;
+                    book.status = 'Available';
+                    return book;
+                }
+                return;
+            });
+            
             await update(ref(db, `bookRequests/${request.id}`), { status: 'Returned' });
             await createNotification(
                 request.userId,
@@ -335,7 +368,7 @@ export default function BookRequestsPage() {
     
     const canManage = React.useMemo(() => {
         if (!userData) return false;
-        return userData.role?.toLowerCase() === 'admin';
+        return userData.role?.toLowerCase() === 'admin' || userData.subRoles?.includes('Librarian');
     }, [userData]);
 
     const filteredUsers = React.useMemo(() => {
@@ -355,7 +388,7 @@ export default function BookRequestsPage() {
                     <Alert variant="destructive">
                         <Info className="h-4 w-4" />
                         <AlertTitle>Access Denied</AlertTitle>
-                        <AlertDescription>You do not have permission to view this page. This feature is restricted to Administrators.</AlertDescription>
+                        <AlertDescription>You do not have permission to view this page. This feature is restricted to Administrators and Librarians.</AlertDescription>
                     </Alert>
                 </CardContent>
             </Card>
