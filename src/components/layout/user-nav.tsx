@@ -13,18 +13,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileDialog } from "../profile-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { onValue, ref } from 'firebase/database';
 
 export function UserNav() {
-  const { user, userProfile, loading } = useAuth();
+  const { user, userProfile: initialProfile, loading } = useAuth();
+  const [userProfile, setUserProfile] = React.useState(initialProfile);
   const router = useRouter();
   const { toast } = useToast();
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    setUserProfile(initialProfile);
+  }, [initialProfile]);
+  
+  React.useEffect(() => {
+    if (!user) return;
+    
+    const userRef = ref(db, `users/${user.uid}`);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+        if (snapshot.exists()) {
+            setUserProfile(p => ({...p, ...snapshot.val()}));
+        }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
 
   const handleLogout = async () => {
     try {

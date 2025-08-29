@@ -21,16 +21,24 @@ export default function DashboardRedirectPage() {
             const userData = snapshot.val();
             const role = userData.role;
 
-            if (role === 'Admin') {
-              router.replace('/admin/dashboard');
-            } else if (role === 'Staff') {
-              router.replace('/staff/courses');
-            } else if (role === 'Student') {
-              router.replace('/student/dashboard');
-            } else {
-              router.replace('/login');
+            // Clear redirection logic
+            switch (role) {
+                case 'Admin':
+                    router.replace('/admin/dashboard');
+                    break;
+                case 'Staff':
+                    router.replace('/staff/courses');
+                    break;
+                case 'Student':
+                    router.replace('/student/dashboard');
+                    break;
+                default:
+                    router.replace('/login');
+                    break;
             }
           } else {
+            // If no user data in DB, sign out and redirect to login
+            await auth.signOut();
             router.replace('/login');
           }
         } catch (error) {

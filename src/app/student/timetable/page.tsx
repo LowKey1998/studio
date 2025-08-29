@@ -4,10 +4,12 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import Link from 'next/link';
 
 type TimetableEntry = {
+    courseId: string;
     day: string;
     startTime: string;
     endTime: string;
@@ -80,7 +82,7 @@ export default function StudentTimetablePage() {
                                 const semesterName = allSemesters[semesterId]?.name || 'Unknown Semester';
                                 const entries = allTimetables[semesterId][courseId];
                                 for (const entryId in entries) {
-                                    allEntries.push({ ...entries[entryId], courseCode, courseName, semesterName });
+                                    allEntries.push({ ...entries[entryId], courseId, courseCode, courseName, semesterName });
                                 }
                             }
                         }
@@ -122,12 +124,14 @@ export default function StudentTimetablePage() {
                                         .filter(entry => entry.day === day)
                                         .sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                                         .map((entry, index) => (
-                                            <div key={index} className="p-2 rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
-                                                <p className="font-bold text-sm text-primary">{entry.courseName}</p>
-                                                <p className="text-xs text-primary/80">{entry.courseCode} ({entry.semesterName})</p>
-                                                <p className="text-xs text-primary/80">{entry.startTime} - {entry.endTime}</p>
-                                                <p className="text-xs text-primary/80">Venue: {entry.venue}</p>
-                                            </div>
+                                            <Link key={index} href={`/student/courses/${entry.courseId}`} className="block">
+                                                <div className="p-2 rounded-md bg-primary/10 text-primary-foreground border border-primary/20 hover:bg-primary/20 transition-colors">
+                                                    <p className="font-bold text-sm text-primary">{entry.courseName}</p>
+                                                    <p className="text-xs text-primary/80">{entry.courseCode} ({entry.semesterName})</p>
+                                                    <p className="text-xs text-primary/80">{entry.startTime} - {entry.endTime}</p>
+                                                    <p className="text-xs text-primary/80">Venue: {entry.venue}</p>
+                                                </div>
+                                            </Link>
                                         ))
                                 )}
                             </div>
