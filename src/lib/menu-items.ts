@@ -131,7 +131,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/student-life/hostel-allocation', label: 'Hostel Allocation', icon: Home },
             { href: '/admin/student-life/medical-deferrals', label: 'Medical Deferrals', icon: Stethoscope },
-            { href: '/admin/student-life/leave-of-Absence', label: 'Leave of Absence', icon: Calendar },
+            { href: '/admin/student-life/leave-of-absence', label: 'Leave of Absence', icon: Calendar },
             { href: '/admin/student-life/complaints', label: 'Complaint Submissions', icon: ShieldAlert },
             { href: '/admin/student-life/events', label: 'Event Calendar', icon: Calendar },
             { href: '/admin/student-life/clubs', label: 'Clubs & Associations', icon: Users },
@@ -377,7 +377,7 @@ export const studentMenuItems = [
         items: [
             { href: '/student/innovation/idea-board', label: 'Idea Board', icon: Newspaper },
             { href: '/student/innovation/my-projects', label: 'My Projects', icon: Briefcase },
-            { href: '/student/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
         ]
     },
     {
