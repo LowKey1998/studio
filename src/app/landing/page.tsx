@@ -9,8 +9,8 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, BarChart2, CheckCircle2, Library, MessageSquare, MonitorPlay, Shield, Wallet, Banknote, Clock, FileText } from 'lucide-react';
 import Image from 'next/image';
 import { db } from '@/lib/firebase';
-import { ref, get, push, serverTimestamp } from 'firebase/database';
-import { format, parseISO, differenceInDays, isBefore } from 'date-fns';
+import { ref, get, push, serverTimestamp, onValue } from 'firebase/database';
+import { format, parseISO, differenceInDays, isAfter } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -22,11 +22,16 @@ import { useTheme } from '@/components/theme-provider';
 
 type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 type Programme = { id: string; name: string; };
+type LandingPageSettings = {
+  heroImageUrl?: string;
+  featuresImageUrl?: string;
+};
 
 export default function LandingPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
+  const [landingSettings, setLandingSettings] = React.useState<LandingPageSettings>({});
   const [countdown, setCountdown] = React.useState('');
   const [programmes, setProgrammes] = React.useState<Programme[]>([]);
   const { institutionName } = useTheme();
@@ -36,7 +41,6 @@ export default function LandingPage() {
   const [inquiryContact, setInquiryContact] = React.useState('');
   const [inquiryProgramme, setInquiryProgramme] = React.useState('');
   const [inquiryResults, setInquiryResults] = React.useState('');
-  const [inquiryFile, setInquiryFile] = React.useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { toast } = useToast();
 
@@ -48,43 +52,47 @@ export default function LandingPage() {
 
 
   React.useEffect(() => {
-    const fetchSettings = async () => {
-        const settingsRef = ref(db, 'settings');
-        const programmesRef = ref(db, 'programmes');
-
-        const [settingsSnapshot, programmesSnapshot] = await Promise.all([
-            get(settingsRef),
-            get(programmesRef)
-        ]);
-
-        if (settingsSnapshot.exists()) {
-            const data = settingsSnapshot.val();
+    const settingsRef = ref(db, 'settings');
+    const unsubSettings = onValue(settingsRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
             if(data.bankDetails) setBankDetails(data.bankDetails);
-            
-            const calendarEventsRef = ref(db, 'calendarEvents');
-            const calSnap = await get(calendarEventsRef);
-            if(calSnap.exists()){
-                const events = Object.values(calSnap.val()) as {title: string, date: string}[];
-                const now = new Date();
-                const deadlineEvents = events
-                    .filter(e => e.title.toLowerCase().includes('deadline') && isBefore(parseISO(e.date), now))
-                    .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            if(data.landingPage) setLandingSettings(data.landingPage);
+        }
+    });
 
-                if(deadlineEvents.length > 0){
-                    const nextDeadline = parseISO(deadlineEvents[0].date);
-                    const daysLeft = differenceInDays(nextDeadline, now);
-                     if (daysLeft >= 0) {
-                        setCountdown(`${daysLeft} day(s) until next payment deadline.`);
-                    }
+    const programmesRef = ref(db, 'programmes');
+    const unsubProgrammes = onValue(programmesRef, (snapshot) => {
+        if (snapshot.exists()){
+            const data = snapshot.val();
+            setProgrammes(Object.keys(data).map(id => ({id, name: data[id].name})));
+        }
+    });
+
+    const calendarRef = ref(db, 'calendarEvents');
+    const unsubCalendar = onValue(calendarRef, (snapshot) => {
+        if(snapshot.exists()){
+            const events = Object.values(snapshot.val()) as {title: string, date: string}[];
+            const now = new Date();
+            const deadlineEvents = events
+                .filter(e => e.title.toLowerCase().includes('deadline') && isAfter(parseISO(e.date), now))
+                .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            if(deadlineEvents.length > 0){
+                const nextDeadline = parseISO(deadlineEvents[0].date);
+                const daysLeft = differenceInDays(nextDeadline, now);
+                 if (daysLeft >= 0) {
+                    setCountdown(`${daysLeft} day(s) until next payment deadline.`);
                 }
             }
         }
-        if (programmesSnapshot.exists()){
-            const data = programmesSnapshot.val();
-            setProgrammes(Object.keys(data).map(id => ({id, name: data[id].name})));
-        }
+    });
+
+    return () => {
+        unsubSettings();
+        unsubProgrammes();
+        unsubCalendar();
     };
-    fetchSettings();
   }, []);
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
@@ -95,9 +103,7 @@ export default function LandingPage() {
       }
       setIsSubmitting(true);
       try {
-        // In a real app you'd upload the file to storage here if one exists
-        
-        await push(ref(db, 'admissions/leads'), {
+        const leadData = {
             name: inquiryName,
             phone: inquiryContact,
             programmeOfInterest: inquiryProgramme,
@@ -105,19 +111,19 @@ export default function LandingPage() {
             source: 'Website Inquiry Form',
             status: 'New',
             createdAt: serverTimestamp()
-        });
+        };
+        await push(ref(db, 'admissions/leads'), leadData);
 
         toast({
             variant: 'success',
             title: 'Inquiry Sent!',
-            description: "Thank you for your interest in our institution. Our admissions team will contact you shortly."
+            description: "Thank you for your interest. Our admissions team will contact you shortly."
         });
         
         setInquiryName('');
         setInquiryContact('');
         setInquiryProgramme('');
         setInquiryResults('');
-        setInquiryFile(null);
 
       } catch (error) {
            toast({ variant: 'destructive', title: 'Submission failed. Please try again.'});
@@ -178,35 +184,41 @@ export default function LandingPage() {
       </header>
       <main className="flex-1">
         
-        <section className="w-full">
-          <div className="container flex flex-col items-center justify-center gap-6 pb-12 pt-10 text-center md:pb-24 md:pt-16 lg:py-32">
-            <div className="mx-auto max-w-4xl">
-              <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1]">
-                A modern platform to manage your entire institution
-              </h1>
-              <p className="mt-6 max-w-[750px] mx-auto text-lg text-muted-foreground sm:text-xl">
-                {institutionName} provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
-              </p>
-            </div>
-            <div className="flex w-full items-center justify-center gap-4">
-              <Button asChild size="lg">
-                  <Link href="#inquiry-form">Inquire Now</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                  <Link href="/vacancies">View Openings</Link>
-              </Button>
-            </div>
-            {countdown && (
-                <div className="mt-4 animate-pulse text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-2">
-                  <Clock className="h-4 w-4"/>
-                  <span>{countdown}</span>
+        <section className="relative w-full h-[60vh] md:h-[80vh] flex items-center justify-center text-white">
+            <div className="absolute inset-0 bg-black/60 z-10" />
+             {landingSettings.heroImageUrl ? (
+                <Image src={landingSettings.heroImageUrl} alt="Campus hero image" layout="fill" objectFit="cover" className="z-0" data-ai-hint="university campus" />
+            ) : (
+                 <div className="absolute inset-0 bg-slate-800 z-0"/>
+            )}
+            <div className="container relative z-20 flex flex-col items-center justify-center gap-6 text-center">
+                <div className="mx-auto max-w-4xl">
+                <h1 className="text-4xl font-bold leading-tight tracking-tighter md:text-5xl lg:text-6xl lg:leading-[1.1] text-balance">
+                    A modern platform to manage your entire institution
+                </h1>
+                <p className="mt-6 max-w-[750px] mx-auto text-lg text-slate-200 sm:text-xl">
+                    {institutionName} provides a seamless, integrated experience for students, staff, and administrators, from course registration to library management.
+                </p>
                 </div>
-              )}
-          </div>
+                <div className="flex w-full items-center justify-center gap-4">
+                <Button asChild size="lg">
+                    <Link href="#inquiry-form">Inquire Now</Link>
+                </Button>
+                <Button asChild variant="secondary" size="lg">
+                    <Link href="/vacancies">View Openings</Link>
+                </Button>
+                </div>
+                {countdown && (
+                    <div className="mt-4 text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/80 text-destructive-foreground px-4 py-2">
+                    <Clock className="h-4 w-4"/>
+                    <span>{countdown}</span>
+                    </div>
+                )}
+            </div>
         </section>
 
         {bankDetails?.bankName && (
-            <section className="w-full pb-12 lg:pb-24">
+            <section className="w-full py-12 lg:py-24">
                 <div className="container">
                 <Card>
                     <CardHeader>
@@ -227,9 +239,13 @@ export default function LandingPage() {
             </section>
         )}
 
-        {/* Features Section */}
-        <section id="features" className="bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
-            <div className="container">
+        <section id="features" className="relative bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
+             {landingSettings.featuresImageUrl && (
+                <div className="absolute inset-0 z-0 opacity-10">
+                    <Image src={landingSettings.featuresImageUrl} alt="Abstract background" layout="fill" objectFit="cover" />
+                </div>
+            )}
+            <div className="container relative z-10">
                 <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
                     <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Everything You Need</h2>
                     <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
@@ -238,7 +254,7 @@ export default function LandingPage() {
                 </div>
                 <div className="mx-auto grid justify-center gap-4 sm:grid-cols-2 md:max-w-[64rem] md:grid-cols-3 mt-12">
                     {features.map((feature, i) => (
-                        <div key={i} className="relative overflow-hidden rounded-lg border bg-background p-2">
+                        <div key={i} className="relative overflow-hidden rounded-lg border bg-background/80 p-2 backdrop-blur-sm">
                             <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
                                 {feature.icon}
                                 <div className="space-y-2">
@@ -252,7 +268,6 @@ export default function LandingPage() {
             </div>
         </section>
         
-        {/* Showcase Section */}
         <section className="container py-12 lg:py-24">
           <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
               <h2 className="font-headline text-3xl leading-[1.1] sm:text-3xl md:text-5xl">Designed for Everyone</h2>
@@ -282,7 +297,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Inquiry Form */}
         <section id="inquiry-form" className="w-full pb-12 lg:pb-24">
             <div className="container">
           <Card className="max-w-2xl mx-auto shadow-lg">
@@ -300,7 +314,6 @@ export default function LandingPage() {
                           <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
                       </div>
                       <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
-                      <div className="space-y-1"><Label htmlFor="inq-file">Upload Supporting Document (Optional)</Label><Input id="inq-file" type="file" onChange={e => setInquiryFile(e.target.files?.[0] || null)}/></div>
                       <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
                   </form>
               </CardContent>
@@ -308,7 +321,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* CTA Section */}
         <section id="cta" className="bg-slate-50/50 dark:bg-slate-900/50 py-12 lg:py-24">
           <div className="container">
               <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
@@ -328,7 +340,7 @@ export default function LandingPage() {
             <div className="flex flex-col items-center justify-between gap-4 border-t py-10 md:h-24 md:flex-row md:py-0">
                 <div className="flex flex-col items-center gap-4 px-8 md:flex-row md:gap-2 md:px-0">
                     <Logo />
-                    <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">© {new Date().getFullYear()} TechElevate SaaS. All rights reserved.</p>
+                    <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">© {new Date().getFullYear()} {institutionName}. All rights reserved.</p>
                 </div>
             </div>
         </footer>

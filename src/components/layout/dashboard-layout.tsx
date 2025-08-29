@@ -109,9 +109,8 @@ export default function DashboardLayout({
   }, []);
 
   const menuItems = React.useMemo(() => {
-    if (!userProfile || !userProfile.role) {
-      return [];
-    }
+    if (!userProfile?.role) return [];
+
     if (userProfile.role.toLowerCase() === 'admin') {
       return allMenuItems;
     }
@@ -119,42 +118,33 @@ export default function DashboardLayout({
       return studentMenuItems;
     }
     if (userProfile.role.toLowerCase() === 'staff') {
-      const staffPermissions = userProfile.permissions || {};
-      const baseMenu = staffBaseMenuItems.map(category => {
-        if (!category.items) return category;
-        const filteredSubItems = category.items.filter(subItem => {
-          if (!subItem.permission) return true;
-          if (typeof subItem.permission === 'string' && subItem.permission.startsWith('/')) {
-            return !!staffPermissions[subItem.permission];
-          }
-          return userProfile.subRoles?.includes(subItem.permission);
-        });
-        if (filteredSubItems.length > 0) {
-          return { ...category, items: filteredSubItems };
-        }
-        return null;
-      }).filter(Boolean) as any[];
+        const staffPermissions = userProfile.permissions || {};
+        
+        return allMenuItems.map(category => {
+            if (!category.items) {
+                 return category.roles?.includes(userProfile.role) ? category : null;
+            }
 
-      const additionalMenu = allMenuItems.map(category => {
-        if (!category.items) return null;
-        const permittedSubItems = category.items.filter(subItem => staffPermissions[subItem.href]);
-        if (permittedSubItems.length > 0) {
-          return { ...category, items: permittedSubItems };
-        }
-        return null;
-      }).filter(Boolean);
+            const filteredItems = category.items.filter(item => {
+                const requiredPermission = (item as any).permission;
+                if (!requiredPermission) return true; // No specific permission needed
+                if (typeof requiredPermission === 'string' && requiredPermission.startsWith('/')) {
+                    return !!staffPermissions[requiredPermission];
+                }
+                return userProfile.subRoles?.includes(requiredPermission);
+            });
+            
+            // Check if the main category role allows access OR if there are any permitted sub-items
+            if (category.roles?.includes(userProfile.role) || filteredItems.length > 0) {
+                 return { ...category, items: filteredItems };
+            }
 
-      const combinedMenu = [...baseMenu];
-      const baseCategories = new Set(baseMenu.map(c => c.label));
-      additionalMenu.forEach(category => {
-        if (category && !baseCategories.has(category.label)) {
-          combinedMenu.push(category);
-        }
-      });
-      return combinedMenu;
+            return null;
+        }).filter(Boolean);
     }
     return [];
-  }, [userProfile]);
+}, [userProfile]);
+
   
   React.useEffect(() => {
     if (loading || !menuItems.length) return;
@@ -174,6 +164,7 @@ export default function DashboardLayout({
 
     const filteredItems = menuItems
       .map(category => {
+        if (!category) return null;
         if (!search.trim()) {
           return category;
         }

@@ -1,5 +1,5 @@
 
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Building2 } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Image as ImageIcon } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -22,7 +22,6 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
-        { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
@@ -31,7 +30,6 @@ export const allMenuItems = [
         { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
-        { href: '/admin/payments', label: 'Payments', icon: DollarSign },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
@@ -80,13 +78,13 @@ export const allMenuItems = [
         icon: Stethoscope,
         roles: ['Admin'],
         items: [
-            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning', icon: Calendar },
-            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks', icon: Book },
-            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management', icon: UserCog },
-            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms', icon: ClipboardEdit },
-            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
-            { href: '/admin/clinicals/community-placement', label: 'Community Placement', icon: Building2 },
-            { href: '/admin/clinicals/clinical-assessment', label: 'Final Clinical Assessment Reports', icon: FileSignature },
+            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning' },
+            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks' },
+            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management' },
+            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms' },
+            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports' },
+            { href: '/admin/clinicals/community-placement', label: 'Community Placement' },
+            { href: '/admin/clinicals/clinical-assessment', label: 'Final Clinical Assessment' },
         ]
     },
      {
@@ -159,11 +157,11 @@ export const allMenuItems = [
         icon: Users,
         roles: ['Admin'],
         items: [
-            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
-            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
-            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: DollarSign },
-            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: AlertTriangle },
-            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+            { href: '/admin/parents/accounts', label: 'Parent Accounts' },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs' },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders' },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts' },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings' },
         ]
     },
     {
@@ -302,6 +300,7 @@ export const allMenuItems = [
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
             { href: '/admin/institution-settings', label: 'Institution Settings', icon: Building2 },
+            { href: '/admin/settings/landing-page', label: 'Landing Page Content', icon: ImageIcon },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
             { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
         ]
