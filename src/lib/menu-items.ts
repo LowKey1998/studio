@@ -223,7 +223,7 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        items: [],
+        isComingSoon: true,
     },
     {
       label: 'Quality Assurance',
@@ -263,13 +263,13 @@ export const allMenuItems = [
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        items: [],
+        isComingSoon: true,
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        items: [],
+        isComingSoon: true,
     },
      {
         label: 'Mentorship & Advising',
@@ -285,7 +285,7 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        items: [],
+        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',

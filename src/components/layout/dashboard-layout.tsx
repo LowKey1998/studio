@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { get, ref, onValue, update, serverTimestamp, onDisconnect } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
-import { allMenuItems } from '@/lib/menu-items';
+import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 
@@ -110,12 +110,31 @@ export default function DashboardLayout({
   const menuItems = React.useMemo(() => {
     if (!userProfile?.role) return [];
 
-    let baseMenu = allMenuItems;
-    // This logic can be expanded. For now, we assume admin sees all.
-    // In a real app, you'd filter `allMenuItems` based on `userProfile.permissions` for staff.
-    
-    return baseMenu;
-}, [userProfile]);
+    switch (userProfile.role) {
+      case 'Admin':
+        return allMenuItems;
+      case 'Student':
+        return studentMenuItems;
+      case 'Staff':
+        // For staff, filter both base items and admin items based on permissions
+        const staffMenu = staffBaseMenuItems.map(category => ({
+            ...category,
+            items: category.items?.filter(item => {
+                // If a permission is specified, check if the user has it
+                return item.permission ? userProfile.subRoles?.includes(item.permission) : true;
+            })
+        })).filter(category => category.items && category.items.length > 0);
+        
+        const adminMenuForStaff = allMenuItems.map(category => ({
+            ...category,
+            items: category.items?.filter(item => userProfile.permissions?.[item.href])
+        })).filter(category => category.items && category.items.length > 0);
+
+        return [...staffMenu, ...adminMenuForStaff];
+      default:
+        return [];
+    }
+  }, [userProfile]);
 
   
   React.useEffect(() => {
@@ -138,9 +157,6 @@ export default function DashboardLayout({
       .map(category => {
         if (!category) return null;
         
-        const hasAccess = category.roles?.includes(userProfile?.role || '');
-        if (!hasAccess) return null;
-
         let categoryItems = category.items || [];
         if (search.trim()) {
              const searchLower = search.toLowerCase();
@@ -164,42 +180,39 @@ export default function DashboardLayout({
     return (
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
-                if (!item) return null;
-                if (item.items && item.items.length > 0) {
-                    return (
-                        <AccordionItem value={item.label} key={item.label} className="border-none">
-                            <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
-                                <div className="flex items-center gap-2">
-                                    <item.icon className="h-4 w-4" />
-                                    <span>{item.label}</span>
-                                    {item.isComingSoon && <Badge variant="secondary" className="text-xs">Soon</Badge>}
-                                </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="pl-4">
-                                 <SidebarMenu>
-                                    {item.items.map((subItem: any) => (
-                                        <SidebarMenuItem key={subItem.href}>
-                                            <Link href={subItem.href}>
-                                                <SidebarMenuButton 
-                                                    isActive={pathname.startsWith(subItem.href)}
-                                                >
-                                                    {subItem.icon && <subItem.icon />}
-                                                    <span>{subItem.label}</span>
-                                                     {subItem.notificationKey && notificationCounts[subItem.notificationKey] > 0 && (
-                                                        <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
-                                                            {notificationCounts[subItem.notificationKey]}
-                                                        </span>
-                                                    )}
-                                                </SidebarMenuButton>
-                                            </Link>
-                                        </SidebarMenuItem>
-                                    ))}
-                                </SidebarMenu>
-                            </AccordionContent>
-                        </AccordionItem>
-                    )
-                }
-                 return null;
+                if (!item || !item.items || item.items.length === 0) return null;
+                return (
+                    <AccordionItem value={item.label} key={item.label} className="border-none">
+                        <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
+                            <div className="flex items-center gap-2">
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.label}</span>
+                                {item.isComingSoon && <Badge variant="secondary" className="text-xs">Soon</Badge>}
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pl-4">
+                             <SidebarMenu>
+                                {item.items.map((subItem: any) => (
+                                    <SidebarMenuItem key={subItem.href}>
+                                        <Link href={subItem.href}>
+                                            <SidebarMenuButton 
+                                                isActive={pathname.startsWith(subItem.href)}
+                                            >
+                                                {subItem.icon && <subItem.icon />}
+                                                <span>{subItem.label}</span>
+                                                 {subItem.notificationKey && notificationCounts[subItem.notificationKey] > 0 && (
+                                                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
+                                                        {notificationCounts[subItem.notificationKey]}
+                                                    </span>
+                                                )}
+                                            </SidebarMenuButton>
+                                        </Link>
+                                    </SidebarMenuItem>
+                                ))}
+                            </SidebarMenu>
+                        </AccordionContent>
+                    </AccordionItem>
+                )
             })}
         </Accordion>
     )
