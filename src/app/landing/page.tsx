@@ -170,7 +170,7 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-background overflow-x-hidden">
+    <div className="flex flex-col min-h-screen bg-background">
       <header className="container z-40 bg-background/80 backdrop-blur-sm sticky top-0">
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />

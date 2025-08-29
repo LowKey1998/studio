@@ -110,17 +110,15 @@ export default function DashboardLayout({
   const menuItems = React.useMemo(() => {
     if (!userProfile?.role) return [];
 
-    switch (userProfile.role) {
-      case 'Admin':
+    switch (userProfile.role.toLowerCase()) {
+      case 'admin':
         return allMenuItems;
-      case 'Student':
+      case 'student':
         return studentMenuItems;
-      case 'Staff':
-        // For staff, filter both base items and admin items based on permissions
+      case 'staff':
         const staffMenu = staffBaseMenuItems.map(category => ({
             ...category,
             items: category.items?.filter(item => {
-                // If a permission is specified, check if the user has it
                 return item.permission ? userProfile.subRoles?.includes(item.permission) : true;
             })
         })).filter(category => category.items && category.items.length > 0);
