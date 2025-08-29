@@ -13,7 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Send, MessageSquare, PlusCircle, Trash2, BarChart, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Input } from '@/components/ui/input';
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -26,9 +26,6 @@ type PollOption = {
 type Message = {
     id: string;
     senderId: string;
-    senderName: string;
-    senderRole: 'Lecturer' | 'Student';
-    senderProfilePictureUrl?: string;
     type: 'discussion' | 'poll';
     title: string;
     content: string;
@@ -40,9 +37,6 @@ type Message = {
 type Comment = {
     id: string;
     senderId: string;
-    senderName: string;
-    senderRole: 'Lecturer' | 'Student';
-    senderProfilePictureUrl?: string;
     content: string;
     timestamp: number;
 };
@@ -52,7 +46,6 @@ type EnrolledUser = {
     name: string;
     profilePictureUrl?: string;
     role: 'Student' | 'Staff' | 'Admin';
-    subRoles?: string[];
 };
 
 export default function CourseMessagesPage() {
@@ -70,7 +63,7 @@ export default function CourseMessagesPage() {
     const [comments, setComments] = React.useState<Record<string, string>>({}); // messageId -> comment text
     const [loading, setLoading] = React.useState(true);
     const [formLoading, setFormLoading] = React.useState(false);
-    const [commentLoading, setCommentLoading] = React.useState<string | null>(null); // messageId being commented on
+    const [commentLoading, setCommentLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [currentUserData, setCurrentUserData] = React.useState<any>(null);
     const [enrolledUsers, setEnrolledUsers] = React.useState<Record<string, EnrolledUser>>({});
@@ -78,7 +71,6 @@ export default function CourseMessagesPage() {
     const [mentionQuery, setMentionQuery] = React.useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = React.useState(false);
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -97,24 +89,21 @@ export default function CourseMessagesPage() {
         if (!courseId) return;
         setLoading(true);
 
-        // Fetch enrolled users for mentions and profile pictures
         const fetchUsers = async () => {
             const usersRef = ref(db, 'users');
-            const registrationsRef = ref(db, `registrations`);
+            const registrationsRef = ref(db, 'registrations');
             const [usersSnap, regsSnap] = await Promise.all([get(usersRef), get(registrationsRef)]);
-            const usersData = usersSnap.val();
-            const regsData = regsSnap.val();
+            const usersData = usersSnap.val() || {};
+            const regsData = regsSnap.val() || {};
             const studentUids = new Set<string>();
 
-            if (regsData) {
-                Object.keys(regsData).forEach(userId => {
-                    Object.keys(regsData[userId]).forEach(semester => {
-                        if (regsData[userId][semester].courses.includes(courseId)) {
-                            studentUids.add(userId);
-                        }
-                    });
+            Object.keys(regsData).forEach(userId => {
+                Object.keys(regsData[userId]).forEach(semester => {
+                    if (regsData[userId][semester].courses?.includes(courseId)) {
+                        studentUids.add(userId);
+                    }
                 });
-            }
+            });
             
             const courseRef = ref(db, `courses/${courseId}`);
             const courseSnap = await get(courseRef);
@@ -125,17 +114,7 @@ export default function CourseMessagesPage() {
             const enrolled: Record<string, EnrolledUser> = {};
             Array.from(studentUids).forEach(uid => {
                 if(usersData[uid]) {
-                    enrolled[uid] = { 
-                        uid, 
-                        ...usersData[uid],
-                    };
-                    // Listen for changes to each user's profile
-                    onValue(ref(db, `users/${uid}`), (snapshot) => {
-                        if(snapshot.exists()) {
-                            const updatedData = snapshot.val();
-                             setEnrolledUsers(prev => ({...prev, [uid]: {uid, ...updatedData}}));
-                        }
-                    });
+                    enrolled[uid] = { uid, ...usersData[uid] };
                 }
             });
             setEnrolledUsers(enrolled);
@@ -156,7 +135,6 @@ export default function CourseMessagesPage() {
             setLoading(false);
         });
 
-
         return () => unsubscribe();
     }, [courseId]);
     
@@ -166,9 +144,7 @@ export default function CourseMessagesPage() {
         setPollOptions(newOptions);
     };
 
-    const handleAddPollOption = () => {
-        setPollOptions([...pollOptions, '']);
-    };
+    const handleAddPollOption = () => setPollOptions([...pollOptions, '']);
     
     const handleRemovePollOption = (index: number) => {
         if (pollOptions.length <= 2) return;
@@ -176,14 +152,13 @@ export default function CourseMessagesPage() {
         setPollOptions(newOptions);
     };
 
-
     const handlePostMessage = async () => {
         if (!currentUser || !currentUserData) return;
         setFormLoading(true);
 
         const messagesRef = ref(db, `courseMessages/${courseId}`);
         const newMessageRef = push(messagesRef);
-        let postData: Partial<Message> = {};
+        let postData: Partial<Omit<Message, 'id' | 'senderId' | 'timestamp' | 'comments'>> = {};
         
         try {
             if(activeTab === 'discussion') {
@@ -193,12 +168,12 @@ export default function CourseMessagesPage() {
                      title: discussionTitle,
                      content: discussionContent,
                  };
-            } else { // poll
+            } else {
                 if (!pollQuestion.trim() || pollOptions.some(opt => !opt.trim())) { setFormLoading(false); return; }
                 postData = {
                     type: 'poll',
                     title: pollQuestion,
-                    content: 'Please cast your vote.', // Placeholder content
+                    content: 'Please cast your vote.',
                     options: pollOptions.map(opt => ({ text: opt, votes: {} })),
                 };
             }
@@ -207,42 +182,31 @@ export default function CourseMessagesPage() {
                 ...postData,
                 senderId: currentUser.uid,
                 timestamp: serverTimestamp(),
-                comments: {}
             });
             
             setDiscussionTitle(''); setDiscussionContent('');
             setPollQuestion(''); setPollOptions(['', '']);
-
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setFormLoading(false);
-        }
+        } catch (error) { console.error(error); } 
+        finally { setFormLoading(false); }
     };
     
     const handlePostComment = async (messageId: string) => {
         const commentText = comments[messageId];
         if (!commentText?.trim() || !currentUser || !currentUserData) return;
-
         setCommentLoading(messageId);
         try {
-            const commentsRef = ref(db, `courseMessages/${courseId}/${messageId}/comments`);
-            const newCommentRef = push(commentsRef);
+            const newCommentRef = push(ref(db, `courseMessages/${courseId}/${messageId}/comments`));
             await set(newCommentRef, {
                 senderId: currentUser.uid,
                 content: commentText,
                 timestamp: serverTimestamp()
             });
 
-             // Handle notifications for mentions
             const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
             let match;
             const mentionedUids = new Set<string>();
             while ((match = mentionRegex.exec(commentText)) !== null) {
-                const uid = match[2];
-                if (uid !== currentUser.uid) { // Don't notify user for self-mention
-                    mentionedUids.add(uid);
-                }
+                if (match[2] !== currentUser.uid) mentionedUids.add(match[2]);
             }
 
             const courseSnap = await get(ref(db, `courses/${courseId}`));
@@ -253,16 +217,12 @@ export default function CourseMessagesPage() {
             await Promise.all(notificationPromises);
 
             setComments(prev => ({ ...prev, [messageId]: '' }));
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setCommentLoading(null);
-        }
+        } catch (error) { console.error(error); } 
+        finally { setCommentLoading(null); }
     };
 
     const handleCommentChange = (messageId: string, value: string) => {
         setComments(prev => ({ ...prev, [messageId]: value }));
-
         const caretPos = textareaRef.current?.selectionStart;
         if (caretPos) {
             const textBeforeCaret = value.substring(0, caretPos);
@@ -281,9 +241,7 @@ export default function CourseMessagesPage() {
         const caretPos = textareaRef.current?.selectionStart || currentText.length;
         const textBeforeCaret = currentText.substring(0, caretPos);
         const textAfterCaret = currentText.substring(caretPos);
-        
         const textForDb = textBeforeCaret.replace(/@\w*$/, `@[${name}](${uid}) `) + textAfterCaret;
-
         setComments(prev => ({ ...prev, [messageId]: textForDb }));
         setIsMentionPopoverOpen(false);
         setMentionQuery('');
@@ -292,46 +250,32 @@ export default function CourseMessagesPage() {
     const renderContent = (content: string) => {
         const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
         const parts = content.split(mentionRegex);
-
         return parts.map((part, i) => {
-            if (i % 3 === 1) { // This is the name part of a match
-                return <strong key={i} className="text-primary bg-primary/10 px-1 rounded-sm">@{parts[i]}</strong>;
-            }
-            if (i % 3 === 2) { // This is the UID part, we don't render it
-                return null;
-            }
-            return part; // This is a regular text part
+            if (i % 3 === 1) return <strong key={i} className="text-primary bg-primary/10 px-1 rounded-sm">@{part}</strong>;
+            if (i % 3 === 2) return null;
+            return part;
         });
     };
     
     const handleVote = (messageId: string, optionIndex: number) => {
         if (!currentUser) return;
         const voteRef = ref(db, `courseMessages/${courseId}/${messageId}/options/${optionIndex}/votes/${currentUser.uid}`);
-        runTransaction(voteRef, (currentData) => {
-            return true;
-        });
+        runTransaction(voteRef, () => true);
     };
     
-    const getSenderRole = (senderId: string) => {
-        const sender = enrolledUsers[senderId];
-        if (!sender) return 'Student'; // Default
-        if (sender.role === 'Staff' || sender.role === 'Admin') {
-            return 'Lecturer';
-        }
-        return 'Student';
+    const getSenderInfo = (senderId: string) => {
+        return enrolledUsers[senderId] || { name: 'Unknown User', role: 'Student' };
     };
-    
-    const filteredUsers = Object.values(enrolledUsers).filter(u => u.name.toLowerCase().includes(mentionQuery));
 
+    const filteredUsers = Object.values(enrolledUsers).filter(u => u.name.toLowerCase().includes(mentionQuery));
 
     if (loading) {
         return (
             <div className="space-y-4">
                 <Card><CardContent className="p-4"><Skeleton className="h-24 w-full"/></CardContent></Card>
                 <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
-                <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
             </div>
-        )
+        );
     }
 
     return (
@@ -369,26 +313,24 @@ export default function CourseMessagesPage() {
                 </CardContent>
                 <CardFooter className="justify-end">
                     <Button onClick={handlePostMessage} disabled={formLoading}>
-                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MessageSquare className="mr-2 h-4 w-4"/>}
-                        Post
+                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MessageSquare className="mr-2 h-4 w-4"/>} Post
                     </Button>
                 </CardFooter>
             </Card>
 
-            {messages.length > 0 ? (
-                messages.map(message => {
-                    const senderInfo = enrolledUsers[message.senderId];
-                    const senderRole = getSenderRole(message.senderId);
-                     return (
+            {messages.map(message => {
+                const senderInfo = getSenderInfo(message.senderId);
+                const senderRole = senderInfo.role === 'Student' ? 'Student' : 'Lecturer';
+                return (
                     <Card key={message.id}>
                         <CardHeader className="flex flex-row items-start gap-4">
                              <Avatar>
-                                <AvatarImage src={senderInfo?.profilePictureUrl} />
-                                <AvatarFallback>{senderInfo?.name?.charAt(0)}</AvatarFallback>
+                                <AvatarImage src={senderInfo.profilePictureUrl} />
+                                <AvatarFallback>{senderInfo.name?.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                    <p className="font-semibold">{senderInfo?.name}</p>
+                                    <p className="font-semibold">{senderInfo.name}</p>
                                     <Badge variant={senderRole === 'Lecturer' ? 'default' : 'secondary'}>{senderRole}</Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</p>
@@ -433,8 +375,8 @@ export default function CourseMessagesPage() {
                         </CardContent>
                         <CardFooter className="flex-col items-start gap-4">
                             {Object.values(message.comments).sort((a,b) => a.timestamp - b.timestamp).map(comment => {
-                                const commentSenderInfo = enrolledUsers[comment.senderId];
-                                const commentSenderRole = getSenderRole(comment.senderId);
+                                const commentSenderInfo = getSenderInfo(comment.senderId);
+                                const commentSenderRole = commentSenderInfo.role === 'Student' ? 'Student' : 'Lecturer';
                                 return (
                                 <div key={comment.id} className="flex items-start gap-3 w-full">
                                     <Avatar className="w-8 h-8">
@@ -458,7 +400,7 @@ export default function CourseMessagesPage() {
                                     <PopoverTrigger asChild><span/></PopoverTrigger>
                                     <PopoverContent className="w-56 p-1">
                                         <div className="space-y-1">
-                                        {filteredUsers.length > 0 ? Object.values(filteredUsers).map(user => (
+                                        {filteredUsers.length > 0 ? filteredUsers.map(user => (
                                             <Button 
                                                 key={user.uid} 
                                                 variant="ghost" 
@@ -488,17 +430,9 @@ export default function CourseMessagesPage() {
                             </div>
                         </CardFooter>
                     </Card>
-                    )})}
-            ) : (
-                <Card>
-                    <CardContent className="py-16 text-center text-muted-foreground">
-                        <MessageSquare className="mx-auto h-12 w-12"/>
-                        <h3 className="mt-4 text-lg font-semibold">No Messages Yet</h3>
-                        <p className="mt-2 text-sm">Be the first to post a message in this course!</p>
-                    </CardContent>
-                </Card>
-            )}
-
+                )})}
         </div>
     );
 }
+
+    
