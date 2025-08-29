@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Link as LinkIcon, ExternalLink, Save } from 'lucide-react';
+import { Link as LinkIcon, Save, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
 import { ref, onValue, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 type QBIntegrationSettings = {
@@ -42,7 +41,7 @@ export default function QuickBooksPage() {
         return () => unsub();
     }, [user]);
 
-    const handleToggle = async (field: keyof QBIntegrationSettings, checked: boolean) => {
+    const handleToggle = (field: keyof QBIntegrationSettings, checked: boolean) => {
         setSettings(prev => ({...prev, [field]: checked}));
     };
 
@@ -114,7 +113,7 @@ export default function QuickBooksPage() {
                         Save Configuration
                     </Button>
                 )}
-                <Button asChild disabled={!settings.enabled}>
+                <Button asChild variant="outline" disabled={!settings.enabled}>
                     <Link href="/admin/settings#integrations">
                        Configure API Credentials
                     </Link>
