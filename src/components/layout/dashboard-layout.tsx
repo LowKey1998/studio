@@ -179,6 +179,11 @@ export default function DashboardLayout({
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
                 if (!item || !item.items || item.items.length === 0) return null;
+                const categoryNotificationCount = item.items.reduce((acc, subItem) => {
+                    const key = subItem.notificationKey;
+                    return acc + (key && notificationCounts[key] > 0 ? notificationCounts[key] : 0);
+                }, 0);
+                
                 return (
                     <AccordionItem value={item.label} key={item.label} className="border-none">
                         <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
@@ -186,6 +191,11 @@ export default function DashboardLayout({
                                 <item.icon className="h-4 w-4" />
                                 <span>{item.label}</span>
                                 {item.isComingSoon && <Badge variant="secondary" className="text-xs">Soon</Badge>}
+                                {categoryNotificationCount > 0 && (
+                                     <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
+                                        {categoryNotificationCount}
+                                    </span>
+                                )}
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="pl-4">
