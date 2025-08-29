@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import QuizBuilder from '@/components/quiz-builder';
@@ -6,10 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 function CreateQuizPageContent() {
     const searchParams = useSearchParams();
-    const courseId = searchParams.get('courseId');
-    const semesterId = searchParams.get('semesterId');
+    const programmeIds = searchParams.get('programmeIds');
+    const intakeIds = searchParams.get('intakeIds');
 
-    return <QuizBuilder courseId={courseId} semesterId={semesterId} />;
+    return <QuizBuilder programmeIds={programmeIds} intakeIds={intakeIds} />;
 }
 
 

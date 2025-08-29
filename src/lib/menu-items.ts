@@ -188,7 +188,7 @@ export const allMenuItems = [
         icon: MessageSquare,
         roles: ['Admin'],
         items: [
-             { href: '/admin/admissions/notifications', label: 'Messages', icon: Mail },
+             { href: '/admin/admissions/notifications', label: 'Notifications', icon: Mail },
         ]
     },
     {
@@ -385,14 +385,14 @@ export const studentMenuItems = [
         icon: Heart,
         items: [
             { href: '/student/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
-            { href: '/student/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
+            { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
         ]
     },
     {
         label: 'Communications',
         icon: MessageSquare,
         items: [
-             { href: '/student/notifications', label: 'Messages', icon: Mail },
+             { href: '/student/notifications', label: 'Notifications', icon: Mail },
         ]
     }
   ];
@@ -427,7 +427,7 @@ export const staffBaseMenuItems = [
         label: 'Communications',
         icon: MessageSquare,
         items: [
-             { href: '/staff/notifications', label: 'Messages', icon: Mail },
+             { href: '/staff/notifications', label: 'Notifications', icon: Mail },
         ]
     },
     {
@@ -439,4 +439,3 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
-

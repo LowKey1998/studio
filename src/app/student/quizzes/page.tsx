@@ -17,8 +17,9 @@ type Quiz = {
     description: string;
     endTime?: string;
     sections: any[];
-    courseId: string;
-    semesterId: string;
+    courseIds: string[];
+    intakeIds: string[];
+    programmeIds: string[];
 };
 
 type Course = {
@@ -27,10 +28,9 @@ type Course = {
     code: string;
 };
 
-type Semester = {
-    id: string;
-    name: string;
-    status: 'Open' | 'Closed' | 'Archived';
+type UserProfile = {
+    intakeId: string;
+    programmeId: string;
 }
 
 type Submission = {
@@ -43,16 +43,22 @@ export default function QuizzesPage() {
   const [quizzes, setQuizzes] = React.useState<(Quiz & { submission?: Submission, course?: Course })[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
 
   React.useEffect(() => {
     onAuthStateChanged(auth, (user) => {
-        if(user) setCurrentUser(user);
+        if(user) {
+            setCurrentUser(user);
+            get(ref(db, `users/${user.uid}`)).then(snap => {
+                if(snap.exists()) setUserProfile(snap.val());
+            })
+        }
         else setLoading(false);
     });
   }, []);
 
   React.useEffect(() => {
-    if(!currentUser) return;
+    if(!currentUser || !userProfile) return;
     
     const fetchData = async () => {
         setLoading(true);
@@ -60,45 +66,34 @@ export default function QuizzesPage() {
             // Fetch all necessary data in parallel
             const [
                 coursesSnap,
-                semestersSnap,
-                registrationsSnap,
                 quizzesSnap,
                 submissionsSnap
             ] = await Promise.all([
                 get(ref(db, 'courses')),
-                get(ref(db, 'semesters')),
-                get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'quizzes')),
                 get(ref(db, `quizSubmissions`))
             ]);
 
             const allCourses = coursesSnap.exists() ? coursesSnap.val() : {};
-            const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
             const allQuizzes = quizzesSnap.exists() ? quizzesSnap.val() : {};
             const allSubmissions = submissionsSnap.exists() ? submissionsSnap.val() : {};
             
-            const enrolledCourseIds = new Set<string>();
-            if (registrationsSnap.exists()) {
-                const registrations = registrationsSnap.val();
-                for (const semesterId in registrations) {
-                    const registration = registrations[semesterId];
-                    const semesterDetails = allSemesters[semesterId];
-                    if (registration.status === 'Completed' && semesterDetails && semesterDetails.status !== 'Archived') {
-                        registration.courses.forEach((courseId: string) => enrolledCourseIds.add(courseId));
-                    }
-                }
-            }
-
             const relevantQuizzes: (Quiz & { submission?: Submission, course?: Course })[] = [];
             for (const quizId in allQuizzes) {
                 const quiz = allQuizzes[quizId];
-                if (enrolledCourseIds.has(quiz.courseId)) {
+
+                const isForStudent = 
+                    quiz.programmeIds?.includes(userProfile.programmeId) &&
+                    quiz.intakeIds?.includes(userProfile.intakeId);
+
+                if (isForStudent) {
                     const submission = allSubmissions[quizId]?.[currentUser.uid];
                     relevantQuizzes.push({
                         ...quiz,
                         id: quizId,
                         submission: submission,
-                        course: allCourses[quiz.courseId]
+                        // Heuristic to find the course - might need refinement if a quiz is for multiple courses
+                        course: quiz.courseIds ? allCourses[quiz.courseIds[0]] : undefined
                     });
                 }
             }
@@ -113,7 +108,7 @@ export default function QuizzesPage() {
     
     fetchData();
 
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   if (loading) {
       return (
@@ -143,14 +138,14 @@ export default function QuizzesPage() {
       {quizzes.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {quizzes.map((quiz) => {
-                const totalQuestions = quiz.sections.reduce((acc, section) => acc + section.questions.length, 0);
+                const totalQuestions = quiz.sections?.reduce((acc, section) => acc + (section.questions?.length || 0), 0) || 0;
                 const isCompleted = quiz.submission?.status === 'completed';
 
                 return (
                 <Card key={quiz.id} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
                     <CardHeader>
                     <CardTitle className="font-headline">{quiz.title}</CardTitle>
-                    <CardDescription>{quiz.course?.name || 'Unknown Course'} ({quiz.course?.code || ''})</CardDescription>
+                    <CardDescription>{quiz.course?.name || 'General Quiz'} ({quiz.course?.code || ''})</CardDescription>
                     </CardHeader>
                     <CardContent>
                     <div className="flex justify-around text-sm text-muted-foreground">

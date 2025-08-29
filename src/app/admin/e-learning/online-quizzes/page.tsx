@@ -40,11 +40,11 @@ type Quiz = {
     id: string;
     title: string;
     description: string;
-    courseId: string;
-    semesterId: string;
+    courseId?: string; // Legacy, to be phased out
+    semesterId?: string; // Legacy, to be phased out
     // For multiple associations
-    courseIds?: string[];
-    semesterIds?: string[];
+    intakeIds?: string[];
+    programmeIds?: string[];
 };
 
 type Course = {
@@ -59,75 +59,67 @@ type Programme = {
     courseIds?: Record<string, boolean>;
 };
 
-type Semester = {
+type Intake = {
     id: string;
     name: string;
-    status: 'Open' | 'Closed' | 'Archived';
 };
 
 
 export default function OnlineQuizzesPage() {
     const [quizzes, setQuizzes] = React.useState<Quiz[]>([]);
-    const [courses, setCourses] = React.useState<Course[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
-    const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [loading, setLoading] = React.useState(true);
     const router = useRouter();
     const { toast } = useToast();
     
     // Create Dialog State
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
-    const [createSelectedSemesters, setCreateSelectedSemesters] = React.useState<string[]>([]);
+    const [createSelectedIntakes, setCreateSelectedIntakes] = React.useState<string[]>([]);
     const [createSelectedProgrammes, setCreateSelectedProgrammes] = React.useState<string[]>([]);
-    const [createSelectedCourses, setCreateSelectedCourses] = React.useState<string[]>([]);
 
     // Filter State
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
-    const [semesterFilter, setSemesterFilter] = React.useState('all');
+    const [intakeFilter, setIntakeFilter] = React.useState('all');
 
     
     React.useEffect(() => {
         const quizzesRef = ref(db, 'quizzes');
-        const coursesRef = ref(db, 'courses');
         const programmesRef = ref(db, 'programmes');
-        const semestersRef = ref(db, 'semesters');
+        const intakesRef = ref(db, 'intakes');
 
         const unsubQuizzes = onValue(quizzesRef, (snapshot) => {
             setQuizzes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
             setLoading(false);
         });
 
-        const unsubCourses = onValue(coursesRef, (snapshot) => {
-            setCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
-        });
-
         const unsubProgrammes = onValue(programmesRef, (snapshot) => {
             setProgrammes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
         });
         
-        const unsubSemesters = onValue(semestersRef, (snapshot) => {
-            const list: Semester[] = snapshot.exists() ? Object.keys(snapshot.val()).map(key => ({ id: key, ...snapshot.val()[key] })) : [];
-            setSemesters(list.filter(s => s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name)));
+        const unsubIntakes = onValue(intakesRef, (snapshot) => {
+            setIntakes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
         });
 
         return () => {
             unsubQuizzes();
-            unsubCourses();
             unsubProgrammes();
-            unsubSemesters();
+            unsubIntakes();
         }
     }, []);
     
     const handleProceedToBuilder = () => {
-        if (createSelectedCourses.length === 0 || createSelectedSemesters.length === 0) {
-            toast({ variant: 'destructive', title: 'Please select at least one course and semester.' });
+        if (createSelectedProgrammes.length === 0 || createSelectedIntakes.length === 0) {
+            toast({ variant: 'destructive', title: 'Please select at least one programme and intake.' });
             return;
         }
         setIsCreateDialogOpen(false);
-        // For simplicity, we'll pass the first selection. The builder will need logic to handle multiple.
-        // A more robust solution might pass all IDs in the query params.
-        router.push(`/admin/quizzes/builder?courseId=${createSelectedCourses[0]}&semesterId=${createSelectedSemesters[0]}`);
+        const query = new URLSearchParams({
+            programmeIds: createSelectedProgrammes.join(','),
+            intakeIds: createSelectedIntakes.join(',')
+        }).toString();
+        router.push(`/admin/quizzes/builder?${query}`);
     };
 
     const handleDelete = async (quizId: string) => {
@@ -139,42 +131,20 @@ export default function OnlineQuizzesPage() {
             toast({ variant: "destructive", title: "Deletion Failed", description: error.message });
         }
     };
-    
-    const createDialogFilteredCourses = React.useMemo(() => {
-        if (createSelectedProgrammes.length === 0) return courses;
-        const selectedCourseIds = new Set<string>();
-        createSelectedProgrammes.forEach(progId => {
-            const prog = programmes.find(p => p.id === progId);
-            if(prog?.courseIds){
-                Object.keys(prog.courseIds).forEach(id => selectedCourseIds.add(id));
-            }
-        });
-        return courses.filter(c => selectedCourseIds.has(c.id));
-    }, [createSelectedProgrammes, programmes, courses]);
 
     const filteredQuizzes = React.useMemo(() => {
         return quizzes.filter(quiz => {
             const searchMatch = !searchTerm || quiz.title.toLowerCase().includes(searchTerm.toLowerCase());
             
-            const semesterMatch = semesterFilter === 'all' || 
-                (quiz.semesterId && quiz.semesterId === semesterFilter) ||
-                (quiz.semesterIds && quiz.semesterIds.includes(semesterFilter));
+            const intakeMatch = intakeFilter === 'all' || 
+                (quiz.intakeIds && quiz.intakeIds.includes(intakeFilter));
+            
+            const programmeMatch = programmeFilter === 'all' ||
+                (quiz.programmeIds && quiz.programmeIds.includes(programmeFilter));
 
-            const programmeCourseIds = new Set<string>();
-             if (programmeFilter !== 'all') {
-                const programme = programmes.find(p => p.id === programmeFilter);
-                if (programme?.courseIds) {
-                    Object.keys(programme.courseIds).forEach(id => programmeCourseIds.add(id));
-                }
-            }
-            const programmeMatch = programmeFilter === 'all' || 
-                (quiz.courseId && programmeCourseIds.has(quiz.courseId)) ||
-                (quiz.courseIds && quiz.courseIds.some(cid => programmeCourseIds.has(cid)));
-
-
-            return searchMatch && semesterMatch && programmeMatch;
+            return searchMatch && intakeMatch && programmeMatch;
         });
-    }, [quizzes, searchTerm, programmeFilter, semesterFilter, programmes]);
+    }, [quizzes, searchTerm, programmeFilter, intakeFilter]);
     
     const handleCheckboxChange = (id: string, state: string[], setState: React.Dispatch<React.SetStateAction<string[]>>) => {
         setState(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
@@ -191,28 +161,22 @@ export default function OnlineQuizzesPage() {
                     <DialogTrigger asChild>
                         <Button><PlusCircle className="mr-2 h-4 w-4"/> Create Quiz</Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl">
+                    <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Select Courses and Semesters</DialogTitle>
-                            <DialogDescription>Choose where this quiz will be available.</DialogDescription>
+                            <DialogTitle>Select Target Audience</DialogTitle>
+                            <DialogDescription>Choose which intakes and programmes this quiz will be for.</DialogDescription>
                         </DialogHeader>
-                        <div className="grid md:grid-cols-3 gap-4 py-4">
+                        <div className="grid md:grid-cols-2 gap-4 py-4">
                              <div className="space-y-2 border p-2 rounded-md">
-                                <Label className="font-semibold">Semesters</Label>
+                                <Label className="font-semibold">Intakes</Label>
                                 <ScrollArea className="h-64">
-                                {semesters.map(s => <div key={s.id} className="flex items-center gap-2"><Checkbox id={`sem-${s.id}`} checked={createSelectedSemesters.includes(s.id)} onCheckedChange={() => handleCheckboxChange(s.id, createSelectedSemesters, setCreateSelectedSemesters)}/><Label htmlFor={`sem-${s.id}`}>{s.name}</Label></div>)}
+                                {intakes.map(i => <div key={i.id} className="flex items-center gap-2"><Checkbox id={`intake-${i.id}`} checked={createSelectedIntakes.includes(i.id)} onCheckedChange={() => handleCheckboxChange(i.id, createSelectedIntakes, setCreateSelectedIntakes)}/><Label htmlFor={`intake-${i.id}`}>{i.name}</Label></div>)}
                                 </ScrollArea>
                             </div>
                              <div className="space-y-2 border p-2 rounded-md">
                                 <Label className="font-semibold">Programmes</Label>
                                 <ScrollArea className="h-64">
                                 {programmes.map(p => <div key={p.id} className="flex items-center gap-2"><Checkbox id={`prog-${p.id}`} checked={createSelectedProgrammes.includes(p.id)} onCheckedChange={() => handleCheckboxChange(p.id, createSelectedProgrammes, setCreateSelectedProgrammes)}/><Label htmlFor={`prog-${p.id}`}>{p.name}</Label></div>)}
-                                </ScrollArea>
-                            </div>
-                            <div className="space-y-2 border p-2 rounded-md">
-                                <Label className="font-semibold">Courses</Label>
-                                <ScrollArea className="h-64">
-                                {createDialogFilteredCourses.map(c => <div key={c.id} className="flex items-center gap-2"><Checkbox id={`course-${c.id}`} checked={createSelectedCourses.includes(c.id)} onCheckedChange={() => handleCheckboxChange(c.id, createSelectedCourses, setCreateSelectedCourses)}/><Label htmlFor={`course-${c.id}`}>{c.name}</Label></div>)}
                                 </ScrollArea>
                             </div>
                         </div>
@@ -233,9 +197,9 @@ export default function OnlineQuizzesPage() {
                         <SelectTrigger className="md:w-[250px]"><SelectValue placeholder="Filter by programme..." /></SelectTrigger>
                         <SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                     </Select>
-                     <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-                        <SelectTrigger className="md:w-[250px]"><SelectValue placeholder="Filter by semester..." /></SelectTrigger>
-                        <SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                     <Select value={intakeFilter} onValueChange={setIntakeFilter}>
+                        <SelectTrigger className="md:w-[250px]"><SelectValue placeholder="Filter by intake..." /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">All Intakes</SelectItem>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
                 {loading ? (
@@ -243,15 +207,13 @@ export default function OnlineQuizzesPage() {
                 ) : filteredQuizzes.length > 0 ? (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {filteredQuizzes.map(quiz => {
-                            const course = courses.find(c => c.id === quiz.courseId);
-                            const semester = semesters.find(s => s.id === quiz.semesterId);
                             return (
                             <Card key={quiz.id}>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2"><FileQuestion className="h-5 w-5 text-primary" /> {quiz.title}</CardTitle>
                                     <CardDescription>
-                                        <div className="font-semibold">{course ? `${course.name} (${course.code})` : 'Unknown Course'}</div>
-                                        <div>{semester ? semester.name : 'Unknown Semester'}</div>
+                                        <p>Intakes: {quiz.intakeIds?.map(id => intakes.find(i=>i.id===id)?.name).join(', ') || 'N/A'}</p>
+                                        <p>Programmes: {quiz.programmeIds?.map(id => programmes.find(p=>p.id===id)?.name).join(', ') || 'N/A'}</p>
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -34,6 +34,8 @@ type TimetableEntry = {
 type AssessmentEvent = {
     title: string;
     date: string;
+    type: 'deadline' | 'quiz';
+    link?: string;
 };
 
 type SemesterCourses = {
@@ -79,7 +81,7 @@ export default function StudentSemesterOverviewPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap, timetablesSnap, calendarSnap, settingsSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, attendanceSnap, timetablesSnap, calendarSnap, settingsSnap, quizzesSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -87,7 +89,8 @@ export default function StudentSemesterOverviewPage() {
                 get(ref(db, 'attendance')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'calendarEvents')),
-                get(ref(db, 'settings'))
+                get(ref(db, 'settings')),
+                get(ref(db, 'quizzes'))
             ]);
 
             if (settingsSnap.exists()) {
@@ -108,11 +111,14 @@ export default function StudentSemesterOverviewPage() {
             const allAttendance = attendanceSnap.exists() ? attendanceSnap.val() : {};
             const allTimetables = timetablesSnap.exists() ? timetablesSnap.val() : {};
             const allCalendarEvents = calendarSnap.exists() ? Object.values(calendarSnap.val()) : [];
+            const allQuizzes = quizzesSnap.exists() ? quizzesSnap.val() : {};
+            
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
             const semesterCourseMap: Record<string, Course[]> = {};
             const registrationsData = registrationsSnap.val();
+            const userProfile = usersData[currentUser.uid];
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
@@ -176,12 +182,21 @@ export default function StudentSemesterOverviewPage() {
                 const assessmentEvents: AssessmentEvent[] = [];
                 (allCalendarEvents as any[]).forEach((event: any) => {
                     if (event.semester === semesterInfo?.name) {
-                        assessmentEvents.push({ title: event.title, date: event.date });
+                        assessmentEvents.push({ title: event.title, date: event.date, type: 'deadline' });
                         if(event.title.toLowerCase().includes('deadline')) {
                             const eventDate = parseISO(event.date);
                             if (!nextDeadline || eventDate < nextDeadline) {
                                 nextDeadline = eventDate;
                             }
+                        }
+                    }
+                });
+
+                // Get Quizzes
+                 Object.entries(allQuizzes).forEach(([quizId, quiz]: [string, any]) => {
+                    if(quiz.programmeIds?.includes(userProfile.programmeId) && quiz.intakeIds?.includes(userProfile.intakeId)){
+                        if(quiz.startTime) {
+                            assessmentEvents.push({ title: quiz.title, date: quiz.startTime, type: 'quiz', link: `/student/quizzes/${quizId}` });
                         }
                     }
                 });
@@ -303,13 +318,15 @@ export default function StudentSemesterOverviewPage() {
                                             {semester.assessments
                                                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                                                 .map((event, index) => (
-                                                <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
-                                                    <CalendarIcon className="h-4 w-4 text-muted-foreground"/>
+                                                <Link key={index} href={event.link || '#'} passHref>
+                                                <div className="flex items-center gap-2 p-2 border rounded-md hover:bg-accent cursor-pointer">
+                                                    {event.type === 'quiz' ? <FileQuestion className="h-4 w-4 text-muted-foreground"/> : <CalendarIcon className="h-4 w-4 text-muted-foreground"/>}
                                                     <div>
                                                         <p className="text-sm font-medium">{event.title.replace(`- ${semester.semesterName}`, '')}</p>
                                                         <p className="text-xs text-muted-foreground">{format(parseISO(event.date), 'PPP')}</p>
                                                     </div>
                                                 </div>
+                                                </Link>
                                             ))}
                                         </div>
                                     </div>
