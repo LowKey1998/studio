@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 
 export type UserProfile = {
   uid: string;
@@ -14,6 +14,8 @@ export type UserProfile = {
   role: 'Admin' | 'Staff' | 'Student';
   subRoles?: string[];
   permissions?: Record<string, boolean>; // Aggregated permissions
+  isOnline?: boolean;
+  lastSeen?: number;
 } | null;
 
 export type SubRole = {
@@ -33,47 +35,51 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        try {
-            const userRef = ref(db, `users/${user.uid}`);
-            const settingsRef = ref(db, 'settings/subRoles');
-            
-            const [userSnapshot, settingsSnapshot] = await Promise.all([get(userRef), get(settingsRef)]);
-
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
+      setUser(authUser);
+      if (authUser) {
+        const userRef = ref(db, `users/${authUser.uid}`);
+        const settingsRef = ref(db, 'settings/subRoles');
+        
+        onValue(userRef, async (userSnapshot) => {
             if(userSnapshot.exists()){
                 const profileData = userSnapshot.val();
                 let aggregatedPermissions: Record<string, boolean> = {};
 
                 // If user is staff and has sub-roles, aggregate permissions
-                if (profileData.role === 'Staff' && profileData.subRoles && settingsSnapshot.exists()) {
-                    const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
-                    const userSubRoleNames = profileData.subRoles || [];
-                    
-                    Object.values(allSubRoles).forEach(roleDetail => {
-                        if (userSubRoleNames.includes(roleDetail.name)) {
-                             if (roleDetail.permissions) {
-                                for(const key in roleDetail.permissions) {
-                                   aggregatedPermissions[desanitizeKey(key)] = roleDetail.permissions[key];
+                if (profileData.role === 'Staff' && profileData.subRoles) {
+                    const settingsSnapshot = await get(settingsRef);
+                    if (settingsSnapshot.exists()) {
+                        const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
+                        const userSubRoleNames = profileData.subRoles || [];
+                        
+                        Object.values(allSubRoles).forEach(roleDetail => {
+                            if (userSubRoleNames.includes(roleDetail.name)) {
+                                 if (roleDetail.permissions) {
+                                    for(const key in roleDetail.permissions) {
+                                       aggregatedPermissions[desanitizeKey(key)] = roleDetail.permissions[key];
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
 
-                setUserProfile({ uid: user.uid, ...profileData, permissions: aggregatedPermissions });
+                setUserProfile({ uid: authUser.uid, ...profileData, permissions: aggregatedPermissions });
             } else {
                 setUserProfile(null);
             }
-        } catch (e) {
-            console.error(e);
+             setLoading(false);
+        }, (error) => {
+            console.error(error);
             setUserProfile(null);
-        }
+            setLoading(false);
+        });
+
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
