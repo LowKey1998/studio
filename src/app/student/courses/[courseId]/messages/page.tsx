@@ -132,7 +132,10 @@ export default function CourseMessagesPage() {
                     };
                     // Listen for changes to each user's profile
                     onValue(ref(db, `users/${uid}`), (snapshot) => {
-                        setEnrolledUsers(prev => ({...prev, [uid]: {uid, ...snapshot.val()}}));
+                        if(snapshot.exists()) {
+                            const updatedData = snapshot.val();
+                             setEnrolledUsers(prev => ({...prev, [uid]: {uid, ...updatedData}}));
+                        }
                     });
                 }
             });
@@ -481,7 +484,7 @@ export default function CourseMessagesPage() {
                     <CardContent className="py-16 text-center text-muted-foreground">
                         <MessageSquare className="mx-auto h-12 w-12"/>
                         <h3 className="mt-4 text-lg font-semibold">No Messages Yet</h3>
-                        <p className="mt-2 text-sm">Your lecturer hasn't posted any messages in this course.</p>
+                        <p className="mt-2 text-sm">Be the first to post a message in this course!</p>
                     </CardContent>
                 </Card>
             )}
