@@ -62,8 +62,8 @@ export default function LecturerAllocationPage() {
                 for (const uid in usersData) {
                     const user = usersData[uid];
                     if (user.role === 'Staff') {
-                        // Check if the user has any of the designated lecturer sub-roles
-                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => lecturerRoleNames.has(userSubRole));
+                        // Check if the user has any of the designated lecturer sub-roles by name
+                        const userHasLecturerRole = user.subRoles?.some((userSubRoleName: string) => lecturerRoleNames.has(userSubRoleName));
                         
                         if (userHasLecturerRole) {
                            lecturersList.push({ uid, name: user.name });
