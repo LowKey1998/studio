@@ -63,7 +63,7 @@ export default function CourseMessagesPage() {
     const [comments, setComments] = React.useState<Record<string, string>>({}); // messageId -> comment text
     const [loading, setLoading] = React.useState(true);
     const [formLoading, setFormLoading] = React.useState(false);
-    const [commentLoading, setCommentLoading] = React.useState<string | null>(null);
+    const [commentLoading, setCommentLoading] = React.useState<string | null>(null); // messageId being commented on
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [currentUserData, setCurrentUserData] = React.useState<any>(null);
     const [enrolledUsers, setEnrolledUsers] = React.useState<Record<string, EnrolledUser>>({});
@@ -186,6 +186,7 @@ export default function CourseMessagesPage() {
             
             setDiscussionTitle(''); setDiscussionContent('');
             setPollQuestion(''); setPollOptions(['', '']);
+
         } catch (error) { console.error(error); } 
         finally { setFormLoading(false); }
     };
@@ -267,7 +268,7 @@ export default function CourseMessagesPage() {
         return enrolledUsers[senderId] || { name: 'Unknown User', role: 'Student' };
     };
 
-    const filteredUsers = Object.values(enrolledUsers).filter(u => u.name.toLowerCase().includes(mentionQuery));
+    const filteredUsers = Object.values(enrolledUsers).filter(u => u && u.name && u.name.toLowerCase().includes(mentionQuery));
 
     if (loading) {
         return (
