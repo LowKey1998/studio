@@ -26,6 +26,7 @@ import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
+import { Badge } from '../ui/badge';
 
 
 export default function DashboardLayout({
@@ -160,14 +161,16 @@ export default function DashboardLayout({
              const searchLower = search.toLowerCase();
              if(category.label.toLowerCase().includes(searchLower)) {
                  // if category name matches, show all its items
-             } else {
-                 categoryItems = category.items?.filter((subItem: any) =>
+             } else if (category.items) {
+                 categoryItems = category.items.filter((subItem: any) =>
                     subItem.label.toLowerCase().includes(searchLower)
-                 ) || [];
+                 );
+             } else {
+                 return null;
              }
         }
 
-        if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase())) return null;
+        if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase()) && !category.isComingSoon) return null;
 
         return {...category, items: categoryItems};
       })
@@ -178,15 +181,15 @@ export default function DashboardLayout({
     return (
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
-                if (!item || !item.items || item.items.length === 0) return null;
-                const categoryNotificationCount = item.items.reduce((acc, subItem) => {
+                if (!item) return null;
+                const categoryNotificationCount = (item.items || []).reduce((acc, subItem) => {
                     const key = subItem.notificationKey;
                     return acc + (key && notificationCounts[key] > 0 ? notificationCounts[key] : 0);
                 }, 0);
                 
                 return (
-                    <AccordionItem value={item.label} key={item.label} className="border-none">
-                        <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
+                    <AccordionItem value={item.label} key={item.label} className="border-none" disabled={item.isComingSoon}>
+                        <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm" disabled={item.isComingSoon}>
                             <div className="flex items-center gap-2">
                                 <item.icon className="h-4 w-4" />
                                 <span>{item.label}</span>
@@ -200,7 +203,7 @@ export default function DashboardLayout({
                         </AccordionTrigger>
                         <AccordionContent className="pl-4">
                              <SidebarMenu>
-                                {item.items.map((subItem: any) => (
+                                {item.items && item.items.map((subItem: any) => (
                                     <SidebarMenuItem key={subItem.href}>
                                         <Link href={subItem.href}>
                                             <SidebarMenuButton 
