@@ -182,7 +182,7 @@ export const allMenuItems = [
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
            { href: '/admin/hr/contracts', label: 'Contracts', icon: FileText },
       ]
-    },
+  },
      {
         label: 'Communications',
         icon: MessageSquare,
@@ -229,7 +229,7 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: []
     },
     {
       label: 'Quality Assurance',
@@ -269,13 +269,13 @@ export const allMenuItems = [
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: []
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: []
     },
      {
         label: 'Mentorship & Advising',
@@ -291,7 +291,7 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: []
     },
     {
         label: 'Chaplaincy & Spiritual Life',
@@ -314,7 +314,7 @@ export const allMenuItems = [
             { href: '/admin/addons/quickbooks', label: 'QuickBooks Integration', icon: Link },
             { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
             { href: '/admin/addons/mobile-app', label: 'Edutrack360 Mobile App', icon: Smartphone },
-            { href: '/admin/addons/autocad', label: 'AutoCAD', isComingSoon: true, icon: Construction },
+            { href: '/admin/addons/autocad', label: 'AutoCAD', icon: Construction },
         ]
     },
      {
@@ -423,7 +423,7 @@ export const staffBaseMenuItems = [
            { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
       ]
   },
-   {
+    {
         label: 'Communications',
         icon: MessageSquare,
         items: [

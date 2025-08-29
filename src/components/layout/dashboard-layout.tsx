@@ -170,7 +170,7 @@ export default function DashboardLayout({
              }
         }
 
-        if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase()) && !category.isComingSoon) return null;
+        if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase())) return null;
 
         return {...category, items: categoryItems};
       })
@@ -188,12 +188,11 @@ export default function DashboardLayout({
                 }, 0);
                 
                 return (
-                    <AccordionItem value={item.label} key={item.label} className="border-none" disabled={item.isComingSoon}>
-                        <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm" disabled={item.isComingSoon}>
+                    <AccordionItem value={item.label} key={item.label} className="border-none">
+                        <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
                             <div className="flex items-center gap-2">
                                 <item.icon className="h-4 w-4" />
                                 <span>{item.label}</span>
-                                {item.isComingSoon && <Badge variant="secondary" className="text-xs">Soon</Badge>}
                                 {categoryNotificationCount > 0 && (
                                      <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
                                         {categoryNotificationCount}
