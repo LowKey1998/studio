@@ -11,8 +11,10 @@ import { ref, onValue, push, set, serverTimestamp, get, runTransaction } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { formatDistanceToNow } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Loader2, MessageSquare, PlusCircle, Trash2, BarChart, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -50,18 +52,28 @@ type Comment = {
 type EnrolledUser = {
     uid: string;
     name: string;
+    profilePictureUrl?: string;
 }
 
 export default function CourseMessagesPage() {
     const params = useParams();
     const courseId = params.courseId as string;
     const [messages, setMessages] = React.useState<Message[]>([]);
+    
+    // Form state
+    const [activeTab, setActiveTab] = React.useState('discussion');
+    const [discussionTitle, setDiscussionTitle] = React.useState('');
+    const [discussionContent, setDiscussionContent] = React.useState('');
+    const [pollQuestion, setPollQuestion] = React.useState('');
+    const [pollOptions, setPollOptions] = React.useState(['', '']);
+
     const [comments, setComments] = React.useState<Record<string, string>>({}); // messageId -> comment text
     const [loading, setLoading] = React.useState(true);
+    const [formLoading, setFormLoading] = React.useState(false);
     const [commentLoading, setCommentLoading] = React.useState<string | null>(null); // messageId being commented on
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [currentUserData, setCurrentUserData] = React.useState<any>(null);
-    const [enrolledUsers, setEnrolledUsers] = React.useState<EnrolledUser[]>([]);
+    const [enrolledUsers, setEnrolledUsers] = React.useState<Record<string, EnrolledUser>>({});
 
     const [mentionQuery, setMentionQuery] = React.useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = React.useState(false);
@@ -84,21 +96,8 @@ export default function CourseMessagesPage() {
     React.useEffect(() => {
         if (!courseId) return;
         setLoading(true);
-        const messagesRef = ref(db, `courseMessages/${courseId}`);
-        const unsubscribe = onValue(messagesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const messagesList: Message[] = Object.keys(data)
-                    .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
-                    .sort((a, b) => b.timestamp - a.timestamp);
-                setMessages(messagesList);
-            } else {
-                setMessages([]);
-            }
-            setLoading(false);
-        });
 
-        // Fetch enrolled users for mentions
+        // Fetch enrolled users for mentions and profile pictures
         const fetchUsers = async () => {
             const usersRef = ref(db, 'users');
             const registrationsRef = ref(db, `registrations`);
@@ -123,14 +122,101 @@ export default function CourseMessagesPage() {
                 studentUids.add(courseSnap.val().lecturerId);
             }
 
-            const enrolled = Array.from(studentUids).map(uid => ({ uid, name: usersData[uid]?.name || 'Unknown' })).filter(u => u.name !== 'Unknown');
+            const enrolled: Record<string, EnrolledUser> = {};
+            Array.from(studentUids).forEach(uid => {
+                if(usersData[uid]) {
+                    enrolled[uid] = { 
+                        uid, 
+                        name: usersData[uid]?.name || 'Unknown',
+                        profilePictureUrl: usersData[uid]?.profilePictureUrl || undefined,
+                    };
+                    // Listen for changes to each user's profile
+                    onValue(ref(db, `users/${uid}`), (snapshot) => {
+                        setEnrolledUsers(prev => ({...prev, [uid]: {uid, ...snapshot.val()}}));
+                    });
+                }
+            });
             setEnrolledUsers(enrolled);
         };
         fetchUsers();
 
+        const messagesRef = ref(db, `courseMessages/${courseId}`);
+        const unsubscribe = onValue(messagesRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                const messagesList: Message[] = Object.keys(data)
+                    .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
+                    .sort((a, b) => b.timestamp - a.timestamp);
+                setMessages(messagesList);
+            } else {
+                setMessages([]);
+            }
+            setLoading(false);
+        });
+
+
         return () => unsubscribe();
     }, [courseId]);
     
+    const handlePollOptionChange = (index: number, value: string) => {
+        const newOptions = [...pollOptions];
+        newOptions[index] = value;
+        setPollOptions(newOptions);
+    };
+
+    const handleAddPollOption = () => {
+        setPollOptions([...pollOptions, '']);
+    };
+    
+    const handleRemovePollOption = (index: number) => {
+        if (pollOptions.length <= 2) return;
+        const newOptions = pollOptions.filter((_, i) => i !== index);
+        setPollOptions(newOptions);
+    };
+
+
+    const handlePostMessage = async () => {
+        if (!currentUser || !currentUserData) return;
+        setFormLoading(true);
+
+        const messagesRef = ref(db, `courseMessages/${courseId}`);
+        const newMessageRef = push(messagesRef);
+        let postData: Partial<Message> = {};
+        
+        try {
+            if(activeTab === 'discussion') {
+                 if (!discussionTitle.trim() || !discussionContent.trim()) { setFormLoading(false); return; }
+                 postData = {
+                     type: 'discussion',
+                     title: discussionTitle,
+                     content: discussionContent,
+                 };
+            } else { // poll
+                if (!pollQuestion.trim() || pollOptions.some(opt => !opt.trim())) { setFormLoading(false); return; }
+                postData = {
+                    type: 'poll',
+                    title: pollQuestion,
+                    content: 'Please cast your vote.', // Placeholder content
+                    options: pollOptions.map(opt => ({ text: opt, votes: {} })),
+                };
+            }
+
+            await set(newMessageRef, {
+                ...postData,
+                senderId: currentUser.uid,
+                timestamp: serverTimestamp(),
+                comments: {}
+            });
+            
+            setDiscussionTitle(''); setDiscussionContent('');
+            setPollQuestion(''); setPollOptions(['', '']);
+
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setFormLoading(false);
+        }
+    };
     
     const handlePostComment = async (messageId: string) => {
         const commentText = comments[messageId];
@@ -142,9 +228,6 @@ export default function CourseMessagesPage() {
             const newCommentRef = push(commentsRef);
             await set(newCommentRef, {
                 senderId: currentUser.uid,
-                senderName: currentUserData.name,
-                senderRole: currentUserData.role,
-                senderProfilePictureUrl: currentUserData.profilePictureUrl || null,
                 content: commentText,
                 timestamp: serverTimestamp()
             });
@@ -227,12 +310,13 @@ export default function CourseMessagesPage() {
         });
     };
     
-    const filteredUsers = enrolledUsers.filter(u => u.name.toLowerCase().includes(mentionQuery));
+    const filteredUsers = Object.values(enrolledUsers).filter(u => u.name.toLowerCase().includes(mentionQuery));
 
 
     if (loading) {
         return (
             <div className="space-y-4">
+                <Card><CardContent className="p-4"><Skeleton className="h-24 w-full"/></CardContent></Card>
                 <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
                 <Card><CardContent className="p-4"><Skeleton className="h-48 w-full"/></CardContent></Card>
             </div>
@@ -241,18 +325,59 @@ export default function CourseMessagesPage() {
 
     return (
         <div className="space-y-6">
+            <Card>
+                 <CardHeader>
+                    <CardTitle>New Post</CardTitle>
+                    <CardDescription>Start a discussion or create a poll for the class.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="discussion"><FileText className="mr-2 h-4 w-4"/> Start Discussion</TabsTrigger>
+                            <TabsTrigger value="poll"><BarChart className="mr-2 h-4 w-4"/> Create Poll</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="discussion" className="pt-4 space-y-4">
+                            <Input placeholder="Discussion Title..." value={discussionTitle} onChange={e => setDiscussionTitle(e.target.value)} />
+                            <Textarea placeholder="What's on your mind?" value={discussionContent} onChange={e => setDiscussionContent(e.target.value)} rows={4}/>
+                        </TabsContent>
+                         <TabsContent value="poll" className="pt-4 space-y-4">
+                            <Textarea placeholder="What's the poll question?" value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} rows={2}/>
+                            <div className="space-y-2">
+                                {pollOptions.map((option, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                        <Input placeholder={`Option ${index + 1}`} value={option} onChange={e => handlePollOptionChange(index, e.target.value)} />
+                                        <Button type="button" variant="ghost" size="icon" onClick={() => handleRemovePollOption(index)} disabled={pollOptions.length <= 2}>
+                                            <Trash2 className="h-4 w-4 text-destructive"/>
+                                        </Button>
+                                    </div>
+                                ))}
+                                <Button type="button" variant="outline" size="sm" onClick={handleAddPollOption}><PlusCircle className="mr-2 h-4 w-4"/> Add Option</Button>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                </CardContent>
+                <CardFooter className="justify-end">
+                    <Button onClick={handlePostMessage} disabled={formLoading}>
+                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MessageSquare className="mr-2 h-4 w-4"/>}
+                        Post
+                    </Button>
+                </CardFooter>
+            </Card>
+
             {messages.length > 0 ? (
-                messages.map(message => (
+                messages.map(message => {
+                     const senderInfo = enrolledUsers[message.senderId];
+                     return (
                     <Card key={message.id}>
                         <CardHeader className="flex flex-row items-start gap-4">
                              <Avatar>
-                                <AvatarImage src={message.senderProfilePictureUrl} />
-                                <AvatarFallback>{message.senderName?.charAt(0)}</AvatarFallback>
+                                <AvatarImage src={senderInfo?.profilePictureUrl} />
+                                <AvatarFallback>{senderInfo?.name?.charAt(0)}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                    <p className="font-semibold">{message.senderName}</p>
-                                    {message.senderRole && <Badge variant={message.senderRole === 'Lecturer' ? 'default' : 'secondary'}>{message.senderRole}</Badge>}
+                                    <p className="font-semibold">{senderInfo?.name}</p>
+                                    {currentUserData.subRoles?.includes('Lecturer') && <Badge variant={'default'}>Lecturer</Badge>}
                                 </div>
                                 <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</p>
                             </div>
@@ -288,37 +413,39 @@ export default function CourseMessagesPage() {
                                             </div>
                                         )
                                     })}
-                                    {hasVoted && (
+                                    {Object.values(message.options || []).some(opt => opt.votes && opt.votes[currentUser?.uid || '']) && (
                                         <p className="text-xs text-muted-foreground text-center pt-2">You have voted. Your choice is final.</p>
                                     )}
                                 </div>
                             )}
                         </CardContent>
                         <CardFooter className="flex-col items-start gap-4">
-                            {Object.values(message.comments).sort((a,b) => a.timestamp - b.timestamp).map(comment => (
+                            {Object.values(message.comments).sort((a,b) => a.timestamp - b.timestamp).map(comment => {
+                                const commentSenderInfo = enrolledUsers[comment.senderId];
+                                return (
                                 <div key={comment.id} className="flex items-start gap-3 w-full">
                                     <Avatar className="w-8 h-8">
-                                        <AvatarImage src={comment.senderProfilePictureUrl} />
-                                        <AvatarFallback>{comment.senderName?.charAt(0)}</AvatarFallback>
+                                        <AvatarImage src={commentSenderInfo?.profilePictureUrl} />
+                                        <AvatarFallback>{commentSenderInfo?.name?.charAt(0)}</AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 bg-muted rounded-lg p-2">
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-2">
-                                                <p className="text-sm font-semibold">{comment.senderName}</p>
-                                                {comment.senderRole && <Badge variant={comment.senderRole === 'Lecturer' ? 'default' : 'secondary'}>{comment.senderRole}</Badge>}
+                                                <p className="text-sm font-semibold">{commentSenderInfo?.name}</p>
+                                                 {commentSenderInfo && currentUserData.subRoles?.includes('Lecturer') && <Badge variant='default'>Lecturer</Badge>}
                                             </div>
                                             <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true })}</p>
                                         </div>
                                         <p className="text-sm whitespace-pre-wrap">{renderContent(comment.content)}</p>
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                              <div className="w-full relative">
                                 <Popover open={isMentionPopoverOpen} onOpenChange={setIsMentionPopoverOpen}>
                                     <PopoverTrigger asChild><span/></PopoverTrigger>
                                     <PopoverContent className="w-56 p-1">
                                         <div className="space-y-1">
-                                        {filteredUsers.length > 0 ? filteredUsers.map(user => (
+                                        {filteredUsers.length > 0 ? Object.values(filteredUsers).map(user => (
                                             <Button 
                                                 key={user.uid} 
                                                 variant="ghost" 
@@ -348,13 +475,13 @@ export default function CourseMessagesPage() {
                             </div>
                         </CardFooter>
                     </Card>
-                ))
+                )})}
             ) : (
                 <Card>
                     <CardContent className="py-16 text-center text-muted-foreground">
                         <MessageSquare className="mx-auto h-12 w-12"/>
                         <h3 className="mt-4 text-lg font-semibold">No Messages Yet</h3>
-                        <p className="mt-2 text-sm">The lecturer hasn't posted any messages in this course.</p>
+                        <p className="mt-2 text-sm">Your lecturer hasn't posted any messages in this course.</p>
                     </CardContent>
                 </Card>
             )}

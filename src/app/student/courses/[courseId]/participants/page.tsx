@@ -55,19 +55,31 @@ export default function CourseParticipantsPage() {
                         role: 'Lecturer',
                         profilePictureUrl: lecturerData.profilePictureUrl
                     });
+                     onValue(ref(db, `users/${courseData.lecturerId}`), (snapshot) => {
+                        if(snapshot.exists()) {
+                            const updatedData = snapshot.val();
+                             setParticipants(prev => prev.map(p => p.uid === courseData.lecturerId ? {...p, ...updatedData} : p));
+                        }
+                    });
                 }
                 
                 // Add students
                 for (const userId in allRegistrations) {
                     for (const semester in allRegistrations[userId]) {
                         const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && reg.status === 'Completed') {
+                        if (reg.courses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             if (allUsers[userId]) {
                                 userList.push({
                                     uid: userId,
                                     name: allUsers[userId].name,
                                     role: 'Student',
                                     profilePictureUrl: allUsers[userId].profilePictureUrl
+                                });
+                                onValue(ref(db, `users/${userId}`), (snapshot) => {
+                                    if(snapshot.exists()) {
+                                        const updatedData = snapshot.val();
+                                        setParticipants(prev => prev.map(p => p.uid === userId ? {...p, ...updatedData} : p));
+                                    }
                                 });
                             }
                         }
