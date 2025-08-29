@@ -19,6 +19,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useTheme } from '@/components/theme-provider';
+import { Separator } from '@/components/ui/separator';
 
 type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 type Programme = { id: string; name: string; };
@@ -40,6 +41,7 @@ export default function LandingPage() {
   const [inquiryName, setInquiryName] = React.useState('');
   const [inquiryContact, setInquiryContact] = React.useState('');
   const [inquiryProgramme, setInquiryProgramme] = React.useState('');
+  const [studentType, setStudentType] = React.useState('');
   const [inquiryResults, setInquiryResults] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { toast } = useToast();
@@ -97,7 +99,7 @@ export default function LandingPage() {
 
   const handleInquirySubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!inquiryName || !inquiryContact || !inquiryProgramme || !inquiryResults) {
+      if (!inquiryName || !inquiryContact || !inquiryProgramme || !inquiryResults || !studentType) {
           toast({ variant: 'destructive', title: 'Please fill all required fields.'});
           return;
       }
@@ -107,6 +109,7 @@ export default function LandingPage() {
             name: inquiryName,
             phone: inquiryContact,
             programmeOfInterest: inquiryProgramme,
+            studentType: studentType,
             results: inquiryResults,
             source: 'Website Inquiry Form',
             status: 'New',
@@ -116,7 +119,7 @@ export default function LandingPage() {
 
         toast({
             variant: 'success',
-            title: 'Inquiry Sent!',
+            title: 'Application Submitted!',
             description: "Thank you for your interest. Our admissions team will contact you shortly."
         });
         
@@ -124,6 +127,7 @@ export default function LandingPage() {
         setInquiryContact('');
         setInquiryProgramme('');
         setInquiryResults('');
+        setStudentType('');
 
       } catch (error) {
            toast({ variant: 'destructive', title: 'Submission failed. Please try again.'});
@@ -166,7 +170,7 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-dvh bg-background">
+    <div className="flex flex-col min-h-screen bg-background">
       <header className="container z-40 bg-background/80 backdrop-blur-sm sticky top-0">
         <div className="flex h-20 items-center justify-between py-6">
           <Logo />
@@ -202,7 +206,7 @@ export default function LandingPage() {
                 </div>
                 <div className="flex w-full items-center justify-center gap-4">
                 <Button asChild size="lg">
-                    <Link href="#inquiry-form">Inquire Now</Link>
+                    <Link href="#inquiry-form">Apply Now</Link>
                 </Button>
                 <Button asChild variant="secondary" size="lg">
                     <Link href="/vacancies">View Openings</Link>
@@ -298,26 +302,66 @@ export default function LandingPage() {
         </section>
 
         <section id="inquiry-form" className="w-full pb-12 lg:pb-24">
-            <div className="container">
-          <Card className="max-w-2xl mx-auto shadow-lg">
-              <CardHeader className="text-center">
-                  <CardTitle className="font-headline text-3xl">Admissions Inquiry</CardTitle>
-                  <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  <form onSubmit={handleInquirySubmit} className="space-y-4">
-                      <div className="grid md:grid-cols-2 gap-4">
-                          <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
-                          <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
-                      </div>
-                      <div className="space-y-1"><Label htmlFor="inq-prog">Programme of Interest</Label>
-                          <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
-                      </div>
-                      <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
-                      <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Inquiry</Button>
-                  </form>
-              </CardContent>
-          </Card>
+            <div className="container grid md:grid-cols-2 gap-12 items-start">
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <h2 className="font-headline text-3xl">Admission Requirements</h2>
+                        <p className="text-muted-foreground">Please ensure you meet the following criteria before applying.</p>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <h4 className="font-semibold">Minimum Academic Qualifications</h4>
+                            <ul className="list-disc pl-5 mt-2 text-muted-foreground text-sm space-y-1">
+                                <li>Full Grade 12 Certificate with 5 credits or better.</li>
+                                <li>Required subjects: English, Mathematics, and any Science.</li>
+                                <li>Two additional subjects of your choice.</li>
+                            </ul>
+                        </div>
+                         <div>
+                            <h4 className="font-semibold">Required Documents</h4>
+                             <ul className="list-disc pl-5 mt-2 text-muted-foreground text-sm space-y-1">
+                                <li>Certified copy of your Grade 12 Certificate or Statement of Results.</li>
+                                <li>Certified copy of your National Registration Card (NRC) or passport.</li>
+                                <li>Two passport-sized photos.</li>
+                                <li>Recommendation letter from your previous school or employer.</li>
+                            </ul>
+                        </div>
+                         <div>
+                            <h4 className="font-semibold">Transfer & International Students</h4>
+                            <p className="text-muted-foreground text-sm mt-2">Additional documentation, such as academic transcripts and study permits, may be required. Please contact our admissions office for more details.</p>
+                        </div>
+                    </div>
+                </div>
+                 <Card className="shadow-lg">
+                    <CardHeader className="text-center">
+                        <CardTitle className="font-headline text-3xl">Apply Online</CardTitle>
+                        <CardDescription>Interested in joining us? Fill out the form below and our team will get in touch.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleInquirySubmit} className="space-y-4">
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div className="space-y-1"><Label htmlFor="inq-name">Full Name</Label><Input id="inq-name" value={inquiryName} onChange={e => setInquiryName(e.target.value)} required/></div>
+                                <div className="space-y-1"><Label htmlFor="inq-contact">Phone or Email</Label><Input id="inq-contact" value={inquiryContact} onChange={e => setInquiryContact(e.target.value)} required/></div>
+                            </div>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="inq-prog">Programme of Interest</Label>
+                                    <Select value={inquiryProgramme} onValueChange={setInquiryProgramme}><SelectTrigger id="inq-prog"><SelectValue placeholder="Select a programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select>
+                                </div>
+                                 <div className="space-y-1">
+                                    <Label htmlFor="inq-student-type">Student Type</Label>
+                                    <Select value={studentType} onValueChange={setStudentType}><SelectTrigger id="inq-student-type"><SelectValue placeholder="Select type..."/></SelectTrigger><SelectContent>
+                                        <SelectItem value="New Applicant">New Applicant</SelectItem>
+                                        <SelectItem value="Transfer Student">Transfer Student</SelectItem>
+                                        <SelectItem value="International Student">International Student</SelectItem>
+                                    </SelectContent></Select>
+                                </div>
+                            </div>
+                            <div className="space-y-1"><Label htmlFor="inq-results">Results / Qualifications</Label><Textarea id="inq-results" placeholder="e.g., 5 Credits including Maths & English..." value={inquiryResults} onChange={e => setInquiryResults(e.target.value)} required/></div>
+                            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4"/>}Submit Application</Button>
+                        </form>
+                    </CardContent>
+                </Card>
           </div>
         </section>
 
