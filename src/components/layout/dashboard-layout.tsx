@@ -181,7 +181,7 @@ export default function DashboardLayout({
     return (
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
-                if (!item) return null;
+                if (!item || !item.items) return null;
                 const categoryNotificationCount = (item.items || []).reduce((acc, subItem) => {
                     const key = subItem.notificationKey;
                     return acc + (key && notificationCounts[key] > 0 ? notificationCounts[key] : 0);
@@ -202,7 +202,7 @@ export default function DashboardLayout({
                         </AccordionTrigger>
                         <AccordionContent className="pl-4">
                              <SidebarMenu>
-                                {item.items && item.items.map((subItem: any) => (
+                                {item.items.map((subItem: any) => (
                                     <SidebarMenuItem key={subItem.href}>
                                         <Link href={subItem.href}>
                                             <SidebarMenuButton 
