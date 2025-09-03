@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, BookCopy } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -35,11 +35,11 @@ type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; intakeId: string; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; lateRegistrationFee?: number; intakeId: string; year: number; semesterInYear: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
 
@@ -131,7 +131,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         if (!semesterNameInput.trim() || !semesterDates?.from || !selectedIntakeId) { toast({ variant: 'destructive', title: 'Missing Semester Details'}); return; }
         setSaving(true);
         try {
-            const semesterData: Omit<Semester, 'id' | 'intakeId'> & { id?: string; intakeId: string; } = {
+            const semesterData: Omit<Semester, 'id' | 'intakeId' | 'year' | 'semesterInYear'> & { id?: string; intakeId: string; } = {
                 ...(editingSemester || {}),
                 name: semesterNameInput.trim(),
                 intakeId: selectedIntakeId,
@@ -428,7 +428,7 @@ export default function RegistrationManagementPage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
-                <CardDescription>Create semesters and manage which courses are available for student registration.</CardDescription>
+                <CardDescription>Activate which semesters are open for registration for each intake and programme path.</CardDescription>
             </CardHeader>
         </Card>
         
@@ -449,9 +449,9 @@ export default function RegistrationManagementPage() {
             </CardHeader>
             <CardContent>
                  {loading ? (<div className="space-y-4 pt-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
-                ) : filteredIntakes.length > 0 ? (
-                    <Accordion type="multiple" defaultValue={filteredIntakes.map(p => p.id)} className="w-full">
-                           {filteredIntakes.filter(i => selectedIntake === 'all' || i.id === selectedIntake).map(intake => (
+                ) : allIntakes.length > 0 ? (
+                    <Accordion type="multiple" defaultValue={allIntakes.map(p => p.id)} className="w-full">
+                           {allIntakes.filter(i => selectedIntake === 'all' || i.id === selectedIntake).map(intake => (
                                 <AccordionItem value={intake.id} key={intake.id}>
                                     <AccordionTrigger className="font-bold text-xl">{intake.name}</AccordionTrigger>
                                     <AccordionContent className="space-y-4">
@@ -459,7 +459,12 @@ export default function RegistrationManagementPage() {
                                             const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
                                             if (!path || !path.semesters) return null;
                                             
-                                            const sortedSemesters = Object.entries(path.semesters).sort(([a], [b]) => Number(a) - Number(b));
+                                            const sortedSemesterIds = Object.keys(path.semesters).sort((a, b) => {
+                                                const semA = semesters.find(s => s.id === a);
+                                                const semB = semesters.find(s => s.id === b);
+                                                if (!semA || !semB) return 0;
+                                                return semA.year - semB.year || semA.semesterInYear - semB.semesterInYear;
+                                            });
 
                                             return (
                                                 <Card key={programme.id} className="my-2 bg-muted/50">
@@ -467,35 +472,35 @@ export default function RegistrationManagementPage() {
                                                         <CardTitle className="text-base">{programme.name}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
-                                                        {sortedSemesters.map(([semNum, semData]) => {
-                                                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
-                                                            const semesterInYear = (Number(semNum) - 1) % 2 + 1;
-                                                            const semesterName = `${intake.name} Year ${year} Semester ${semesterInYear}`;
-                                                            const label = `Year ${year}, Semester ${semesterInYear}`;
+                                                        {sortedSemesterIds.map((semId) => {
+                                                            const semData = path.semesters[semId];
+                                                            const semester = semesters.find(s => s.id === semId);
+                                                            if (!semester) return null;
+                                                            const label = `Year ${semester.year}, Semester ${semester.semesterInYear}`;
                                                             const historyItems = semData.history ? Object.values(semData.history) : [];
 
                                                             return (
-                                                            <div key={semNum} className="p-4 border rounded-lg bg-card">
+                                                            <div key={semId} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
-                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
+                                                                    <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
                                                                     <div className="flex items-center gap-2">
-                                                                         <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
+                                                                         <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semester.name)}>Set Deadlines</Button>
                                                                          {historyItems.length > 0 && (
                                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
                                                                                 <History className="h-4 w-4 text-blue-600"/>
                                                                             </Button>
                                                                         )}
                                                                         <Switch 
-                                                                            id={`${path.id}-${semNum}`} 
-                                                                            checked={!!activePathSemesters[path.id]?.[semNum]?.active}
-                                                                            onCheckedChange={() => handleToggleSemester(path.id, semNum)}
+                                                                            id={`${path.id}-${semId}`} 
+                                                                            checked={!!activePathSemesters[path.id]?.[semId]?.active}
+                                                                            onCheckedChange={() => handleToggleSemester(path.id, semId)}
                                                                         />
                                                                     </div>
                                                                 </div>
                                                                 {historyItems.length > 0 && (
                                                                      <div className="flex items-center space-x-2 my-2">
-                                                                         <Switch id={`show-reason-${path.id}-${semNum}`} checked={!!activePathSemesters[path.id]?.[semNum]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semNum)}/>
-                                                                         <Label htmlFor={`show-reason-${path.id}-${semNum}`} className="text-xs">Show change reason to students</Label>
+                                                                         <Switch id={`show-reason-${path.id}-${semId}`} checked={!!activePathSemesters[path.id]?.[semId]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semId)}/>
+                                                                         <Label htmlFor={`show-reason-${path.id}-${semId}`} className="text-xs">Show change reason to students</Label>
                                                                      </div>
                                                                 )}
                                                                  <div className="text-sm text-muted-foreground space-y-1">

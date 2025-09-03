@@ -63,7 +63,7 @@ type User = {
     email: string;
     phoneNumber?: string;
     role: string;
-    subRoles?: string[]; // Will now hold IDs
+    subRoles?: string[]; // This will now hold IDs
     subRoleNames?: string[]; // For display
     programmeId?: string;
     programmeName?: string;
@@ -395,7 +395,26 @@ export default function UserManagementPage() {
             await set(ref(db, `userRoles/${user.uid}`), { role: role });
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { user: adminProfile?.name || 'Admin', userId: adminProfile?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
-            toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
+            
+            const welcomeEmailBody = `
+                <h2>Welcome to ${idSettings.name || 'Edutrack360'}!</h2>
+                <p>An account has been created for you. You can now access the portal using the credentials below.</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${newId}</li>
+                    <li><strong>Password:</strong> ${password}</li>
+                </ul>
+                <p>We recommend you log in and change your password at your earliest convenience.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [email],
+                subject: `Welcome! Your Account Credentials`,
+                body: welcomeEmailBody
+            });
+
+            toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId} and an email has been sent.` });
             resetForm(); setOpen(false);
             fetchInitialData();
         } catch (error: any) {

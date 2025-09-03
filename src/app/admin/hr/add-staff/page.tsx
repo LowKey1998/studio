@@ -24,6 +24,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { onAuthStateChanged } from 'firebase/auth';
+import { sendEmail } from "@/ai/flows/send-email-flow";
+
 
 type SubRole = {
     id: string;
@@ -52,6 +54,8 @@ export default function AddStaffPage() {
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [availableDepartments, setAvailableDepartments] = React.useState<Department[]>([]);
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
+    const [idSettings, setIdSettings] = React.useState<any>(null);
+
 
     const [loading, setLoading] = React.useState(false);
     const { toast } = useToast();
@@ -68,18 +72,16 @@ export default function AddStaffPage() {
           }
         });
         
-        const subRolesRef = ref(db, 'settings/subRoles');
-        get(subRolesRef).then((snapshot) => {
-            if (snapshot.exists()) {
-                setAvailableSubRoles(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
-            }
+        get(ref(db, 'settings/subRoles')).then((snapshot) => {
+            if (snapshot.exists()) setAvailableSubRoles(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
         });
         
-        const deptsRef = ref(db, 'settings/departments');
-        get(deptsRef).then((snapshot) => {
-            if (snapshot.exists()) {
-                setAvailableDepartments(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
-            }
+        get(ref(db, 'settings/departments')).then((snapshot) => {
+            if (snapshot.exists()) setAvailableDepartments(Object.keys(snapshot.val()).map(id => ({id, ...snapshot.val()[id]})));
+        });
+        
+        get(ref(db, 'settings/idPrefixes')).then((snapshot) => {
+            if (snapshot.exists()) setIdSettings(snapshot.val());
         });
 
         return () => {
@@ -116,9 +118,7 @@ export default function AddStaffPage() {
         const tempAuth = getAuth(tempApp);
 
         try {
-            const prefixesRef = ref(db, 'settings/idPrefixes');
-            const prefixesSnapshot = await get(prefixesRef);
-            const prefixes = prefixesSnapshot.exists() ? prefixesSnapshot.val() : { staff: 'STF' };
+            const prefixes = idSettings || { staff: 'STF' };
             const counterRef = ref(db, 'userCounters/staff');
             let newId = '';
             
@@ -154,7 +154,25 @@ export default function AddStaffPage() {
                 timestamp: serverTimestamp() 
             });
 
-            toast({ variant: 'success', title: 'Staff Created Successfully', description: `${name} has been created with User ID: ${newId}` });
+            const welcomeEmailBody = `
+                <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
+                <p>A staff account has been created for you. You can now access the portal using the credentials below.</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${newId}</li>
+                    <li><strong>Password:</strong> ${password}</li>
+                </ul>
+                <p>We recommend you log in and change your password at your earliest convenience.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [email],
+                subject: `Welcome! Your Staff Account Credentials`,
+                body: welcomeEmailBody
+            });
+
+            toast({ variant: 'success', title: 'Staff Created Successfully', description: `${name} has been created with User ID: ${newId} and an email with credentials has been sent.` });
             resetForm();
         } catch (error: any) {
             console.error("Error creating staff user:", error);
