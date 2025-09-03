@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 
 type User = {
@@ -330,9 +331,29 @@ export default function AddStudentPage() {
 
             await set(ref(db, `users/${user.uid}`), newUser);
             await set(ref(db, `userRoles/${user.uid}`), { role: role.toLowerCase() });
+            
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { user: currentAdmin?.name || 'Admin', userId: currentAdmin?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
-            toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId}` });
+            
+            const welcomeEmailBody = `
+                <h2>Welcome to ${idSettings.name || 'Edutrack360'}!</h2>
+                <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${newId}</li>
+                    <li><strong>Password:</strong> ${password}</li>
+                </ul>
+                <p>We recommend you log in and change your password at your earliest convenience.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [email],
+                subject: `Welcome to ${idSettings.name || 'Edutrack360'}!`,
+                body: welcomeEmailBody
+            });
+
+            toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId} and an email has been sent.` });
             resetForm(); 
         } catch (error: any) {
             console.error("Error creating user:", error);
