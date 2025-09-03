@@ -69,6 +69,17 @@ type CoursePath = {
 
 type CurrentAdmin = { name: string; id: string; };
 
+const statusVariant: { [key in RegistrationRequest['status']]: 'destructive' | 'secondary' | 'default' } = {
+  'Pending Approval': 'secondary',
+  'Pending Payment': 'destructive',
+  'Completed': 'default',
+};
+const statusText: { [key in RegistrationRequest['status']]: string } = {
+    'Pending Approval': 'Pending Approval',
+    'Pending Payment': 'Approved (Awaiting Payment)',
+    'Completed': 'Enrolled'
+};
+
 export default function ApproveRegistrationsPage() {
     const [pendingRequests, setPendingRequests] = React.useState<GroupedRequests>({});
     const [approvedRequests, setApprovedRequests] = React.useState<GroupedRequests>({});
@@ -445,13 +456,9 @@ export default function ApproveRegistrationsPage() {
                                                     ) : (
                                                         <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
                                                     )}</div>
-                                            ) : type === 'approved' ? ( <div className="flex flex-col items-end gap-2"><Badge variant="default"><ClipboardCheck className="mr-2 h-4 w-4"/>Approved (Pending Payment)</Badge>
-                                                    <AlertDialog><AlertDialogTrigger asChild><Button size="sm" variant="secondary">Force Enroll</Button></AlertDialogTrigger>
-                                                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Force Enrollment?</AlertDialogTitle><AlertDialogDescription>This action should only be used to manually confirm enrollment after verifying payment outside the system. The student will be granted access to their classes immediately.</AlertDialogDescription></AlertDialogHeader>
-                                                            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleForceEnroll(request)}>Yes, force enroll</AlertDialogAction></AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog></div>
-                                            ) : ( <Badge variant="default" className="bg-green-600 hover:bg-green-700"><CheckCircle2 className="mr-2 h-4 w-4"/>Enrolled</Badge>)}
+                                            ) : (
+                                                <Badge variant={statusVariant[request.status]}>{statusText[request.status]}</Badge>
+                                            )}
                                         </div>
                                     </CardHeader>
                                     {type !== 'completed' && (<CardContent className="p-4"><ul className="space-y-2">
@@ -494,7 +501,7 @@ export default function ApproveRegistrationsPage() {
                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-3">
                             <TabsTrigger value="pending">Pending ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(pendingRequests).flat().length})</TabsTrigger>
-                            <TabsTrigger value="approved">Approved ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(approvedRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="approved">Awaiting Payment ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(approvedRequests).flat().length})</TabsTrigger>
                             <TabsTrigger value="completed">Enrolled ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(completedRequests).flat().length})</TabsTrigger>
                         </TabsList>
                         <TabsContent value="pending" className="mt-4">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
@@ -519,4 +526,3 @@ export default function ApproveRegistrationsPage() {
         </div>
     );
 }
-

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Percent, Library } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Percent, Library, Info, Link as LinkIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, update } from 'firebase/database';
@@ -57,9 +57,29 @@ export default function PaymentPlansPage() {
         const unsubPlans = onValue(plansRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                setPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] })));
+                const plans = Object.keys(data).map(id => ({ id, ...data[id] }));
+                 if (!plans.some(p => p.name === 'Deferred Payment Plan')) {
+                    const deferredPlan = {
+                        name: 'Deferred Payment Plan',
+                        installments: 1,
+                        installmentPercentages: [100],
+                        archived: false,
+                        isSystem: true,
+                    };
+                    const newPlanRef = push(ref(db, 'settings/paymentPlans'));
+                    set(newPlanRef, deferredPlan);
+                }
+                setPaymentPlans(plans);
             } else {
-                setPaymentPlans([]);
+                 const deferredPlan = {
+                    name: 'Deferred Payment Plan',
+                    installments: 1,
+                    installmentPercentages: [100],
+                    archived: false,
+                    isSystem: true,
+                };
+                const newPlanRef = push(ref(db, 'settings/paymentPlans'));
+                set(newPlanRef, deferredPlan);
             }
             setLoading(false);
         });
@@ -190,11 +210,15 @@ export default function PaymentPlansPage() {
         }
     };
     
-    const handleDeletePaymentPlan = async (planId: string) => {
+    const handleDeletePaymentPlan = async (plan: PaymentPlan) => {
+        if((plan as any).isSystem) {
+             toast({ variant: 'destructive', title: 'Cannot Archive', description: 'This is a system plan and cannot be archived.' });
+             return;
+        }
         if(!window.confirm("Are you sure you want to archive this payment plan? It will no longer be available for new registrations.")) return;
         setSaving(true);
         try {
-            await update(ref(db, `settings/paymentPlans/${planId}`), { archived: true });
+            await update(ref(db, `settings/paymentPlans/${plan.id}`), { archived: true });
             toast({variant: 'success', title: 'Payment plan archived.'});
         } catch(e: any) {
              toast({ variant: 'destructive', title: 'Failed to archive plan', description: e.message });
@@ -271,9 +295,10 @@ export default function PaymentPlansPage() {
                                     <TableCell className="text-sm text-muted-foreground">{plan.installmentPercentages?.join('% / ')}%</TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="outline" size="sm" onClick={() => openAddToSemesterDialog(plan)}>
-                                            Add to Semester
+                                            <LinkIcon className="mr-2 h-4 w-4" />
+                                            Link to Semesters
                                         </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeletePaymentPlan(plan.id)} disabled={saving}>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDeletePaymentPlan(plan)} disabled={saving || (plan as any).isSystem}>
                                             <Trash2 className="h-4 w-4 text-destructive"/>
                                         </Button>
                                     </TableCell>

@@ -129,7 +129,7 @@ const getOrdinalSuffix = (i: number) => {
     if (i === 2) return '2nd';
     if (i === 3) return '3rd';
     return `${i}th`;
-}
+};
 
 function PayNowSection({
     payment,
@@ -473,7 +473,7 @@ export default function PaymentsPage() {
         if (!currentUser) return;
         setActionLoading(true);
         try {
-            const transactionRef = push(ref(db, `transactions`));
+            const transactionRef = push(ref(db, 'transactions'));
             await set(transactionRef, {
                 transactionId: paymentResponse.transaction_id,
                 invoiceId: payment.invoice.invoiceId,
@@ -487,7 +487,17 @@ export default function PaymentsPage() {
 
              await fetchDataForUser(currentUser);
 
-            toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
+            // Check if full invoice balance is now paid
+            const updatedTotalPaid = totalPaidForInvoice(payment.invoice.invoiceId) + amount;
+            const totalDue = payment.invoice.totalTuition + payment.invoice.totalMandatoryFees + payment.invoice.totalOptionalFees + (payment.invoice.lateFee || 0);
+
+            if(updatedTotalPaid >= totalDue) {
+                const regRef = ref(db, `registrations/${currentUser.uid}/${payment.invoice.semesterId}`);
+                await update(regRef, { status: 'Completed' });
+                toast({ title: "Registration Complete!", description: "You are now fully enrolled for this semester." });
+            } else {
+                 toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
+            }
 
         } catch(error) {
             console.error("Error updating database after payment:", error);
@@ -495,7 +505,13 @@ export default function PaymentsPage() {
         } finally {
             setActionLoading(false);
         }
-      }
+    };
+    
+    const totalPaidForInvoice = (invoiceId: string) => {
+        return rawTransactions
+            .filter(t => t.invoiceId === invoiceId)
+            .reduce((sum, tx) => sum + tx.amount, 0);
+    };
 
     const handleCancelRegistration = async (payment: DuePayment) => {
         if (!currentUser) return;
@@ -569,10 +585,7 @@ export default function PaymentsPage() {
                     const unpaidPayments = payments.filter(p => p.status !== 'Paid');
                     if (unpaidPayments.length === 0) return null;
 
-                    const totalPaidForInvoice = rawTransactions
-                        .filter(t => t.invoiceId === payments[0]?.invoice.invoiceId)
-                        .reduce((sum, tx) => sum + tx.amount, 0);
-
+                    const totalPaid = totalPaidForInvoice(payments[0]?.invoice.invoiceId);
                     const paymentPlan = allPaymentPlans.find(p => p.name === payments[0]?.invoice.paymentPlan) || null;
                     const invoice = payments[0]?.invoice;
                     const semester = semesters.find(s => s.id === invoice.semesterId);
@@ -664,7 +677,7 @@ export default function PaymentsPage() {
                                                     payment={payment}
                                                     userData={userData}
                                                     onPaymentSuccess={handleSuccessfulPayment}
-                                                    totalPaidForInvoice={totalPaidForInvoice}
+                                                    totalPaidForInvoice={totalPaid}
                                                     allCourses={allCourses}
                                                     paymentPlan={paymentPlan}
                                                     semester={semesters.find(s => s.id === payment.invoice.semesterId)}
