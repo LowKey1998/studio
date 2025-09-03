@@ -519,6 +519,36 @@ export default function UserManagementPage() {
         });
     }
     
+    const handleSendCredentials = async (user: User) => {
+        if (!user) return;
+        setTableLoading(true);
+        try {
+            const body = `
+                <h2>Login Details Reminder</h2>
+                <p>Hello ${user.name},</p>
+                <p>Here are your login details for the student portal:</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${user.id}</li>
+                </ul>
+                <p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [user.email],
+                subject: 'Your Portal Login Details',
+                body,
+            });
+            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${user.name}.` });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send Email', description: error.message });
+        } finally {
+            setTableLoading(false);
+        }
+    };
+
+
     const handleSendMessage = async () => {
         if (!messagingUser || !messageSubject || !messageBody || !adminProfile) {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
@@ -705,6 +735,7 @@ export default function UserManagementPage() {
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onClick={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
+                             <DropdownMenuItem onClick={() => handleSendCredentials(user)}><Mail className="mr-2 h-4 w-4"/>Send Credentials</DropdownMenuItem>
                             {user.role === 'Student' && (
                                 <DropdownMenuItem onClick={() => handleDownloadInvoice(user.uid)}>
                                     <Download className="mr-2 h-4 w-4"/>Download Last Invoice
