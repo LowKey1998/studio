@@ -51,14 +51,14 @@ export function useAuth() {
                     const settingsSnapshot = await get(settingsRef);
                     if (settingsSnapshot.exists()) {
                         const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
-                        const userSubRoleNames = profileData.subRoles || [];
+                        const userSubRoleIds = profileData.subRoles || [];
                         
-                        Object.values(allSubRoles).forEach(roleDetail => {
-                            if (userSubRoleNames.includes(roleDetail.name)) {
-                                 if (roleDetail.permissions) {
-                                    for(const key in roleDetail.permissions) {
-                                       aggregatedPermissions[desanitizeKey(key)] = roleDetail.permissions[key];
-                                    }
+                        // Match user's sub-role IDs with the sub-roles in settings
+                        userSubRoleIds.forEach((userSubRoleId: string) => {
+                            const matchingRole = Object.values(allSubRoles).find(role => role.id === userSubRoleId);
+                            if (matchingRole && matchingRole.permissions) {
+                                for(const key in matchingRole.permissions) {
+                                   aggregatedPermissions[desanitizeKey(key)] = matchingRole.permissions[key];
                                 }
                             }
                         });

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { ref, get, child, update, serverTimestamp } from "firebase/database";
+import { ref, get, query, orderByChild, equalTo } from "firebase/database";
 
 import {
   Card,
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState('');
@@ -27,6 +28,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  // State for password reset
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetUserId, setResetUserId] = useState('');
+
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,36 +48,26 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 1. Find the user's data in Realtime DB by their ID
       const usersRef = ref(db, 'users');
-      const snapshot = await get(usersRef);
+      const q = query(usersRef, orderByChild('id'), equalTo(userId.trim()));
+      const snapshot = await get(q);
 
       if (!snapshot.exists()) {
         throw new Error("Invalid User ID or password.");
       }
       
       const usersData = snapshot.val();
-      let userRecord = null;
-      let firebaseUid = null;
-
-      for (const uid in usersData) {
-        if (usersData[uid].id === userId.trim()) {
-          userRecord = usersData[uid];
-          firebaseUid = uid;
-          break;
-        }
-      }
+      const firebaseUid = Object.keys(usersData)[0];
+      const userRecord = usersData[firebaseUid];
 
       if (!userRecord || !firebaseUid) {
           throw new Error("Invalid User ID or password.");
       }
 
-      // 2. Check if the user is disabled in the database
       if (userRecord.status === 'disabled') {
         throw new Error("Your account has been disabled. Please contact administration.");
       }
 
-      // 3. Extract email from the found user
       const userEmail = userRecord.email;
       const userRole = userRecord.role.toLowerCase();
 
@@ -78,15 +75,12 @@ export default function LoginPage() {
         throw new Error("User data is incomplete.");
       }
       
-      // 4. Authenticate with Firebase Auth using the retrieved email
       await signInWithEmailAndPassword(auth, userEmail, password);
       
-      // 5. Update last login timestamp
       await update(ref(db, `users/${firebaseUid}`), {
           lastLogin: serverTimestamp()
       });
 
-      // 6. Redirect based on role
       toast({ variant: 'success', title: 'Login Successful', description: 'Welcome back!' });
       if (userRole === 'admin') {
         router.push('/admin/dashboard');
@@ -106,6 +100,40 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const handlePasswordReset = async () => {
+    if (!resetUserId) {
+        toast({ variant: 'destructive', title: 'User ID required' });
+        return;
+    }
+    setResetLoading(true);
+    try {
+        const usersRef = ref(db, 'users');
+        const q = query(usersRef, orderByChild('id'), equalTo(resetUserId.trim()));
+        const snapshot = await get(q);
+
+        if (!snapshot.exists()) {
+            throw new Error("User ID not found.");
+        }
+        
+        const usersData = snapshot.val();
+        const userEmail = Object.values(usersData)[0].email;
+
+        if (!userEmail) {
+            throw new Error("User email not found in records.");
+        }
+
+        await sendPasswordResetEmail(auth, userEmail);
+        toast({ title: 'Password Reset Email Sent', description: 'Please check your email inbox for instructions.' });
+        setIsResetOpen(false);
+        setResetUserId('');
+
+    } catch(error: any) {
+         toast({ variant: 'destructive', title: 'Password Reset Failed', description: error.message });
+    } finally {
+        setResetLoading(false);
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -137,9 +165,28 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center">
                   <Label htmlFor="password">Password</Label>
-                  <Link href="#" className="ml-auto inline-block text-sm underline">
-                    Forgot your password?
-                  </Link>
+                    <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="link" type="button" className="ml-auto inline-block text-sm underline">Forgot your password?</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Reset Password</DialogTitle>
+                                <DialogDescription>Enter your User ID to receive a password reset link at your registered email address.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4 space-y-2">
+                                <Label htmlFor="reset-user-id">User ID</Label>
+                                <Input id="reset-user-id" placeholder="e.g., STU-001" value={resetUserId} onChange={e => setResetUserId(e.target.value)} />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                                <Button onClick={handlePasswordReset} disabled={resetLoading}>
+                                    {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                    Send Reset Link
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
                 <Input
                   id="password"
