@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -805,7 +805,7 @@ export default function UserManagementPage() {
                     <div className="space-y-1"><Label>Body</Label><Textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} rows={8} /></div>
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button variant="outline" onClick={() => setIsMessageOpen(false)}>Cancel</Button>
                     <Button onClick={handleSendMessage} disabled={sendingMessage}>{sendingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
                 </DialogFooter>
             </DialogContent>
