@@ -10,11 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { db, auth } from "@/lib/firebase";
 import { ref, update, onValue } from 'firebase/database';
-import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2 } from 'lucide-react';
+import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2, MoreVertical } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { createNotification } from '@/lib/firebase';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,11 +45,12 @@ type SubRole = {
 
 
 export default function StaffListPage() {
-    const { user, userProfile } = useAuth();
+    const { user: adminUser, userProfile: adminProfile } = useAuth();
     const [staff, setStaff] = React.useState<Staff[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
 
     // Filter states
@@ -57,14 +59,13 @@ export default function StaffListPage() {
     
     // Dialog states
     const [selectedStaff, setSelectedStaff] = React.useState<Staff | null>(null);
-    const [isDetailOpen, setIsDetailOpen] = React.useState(false);
     const [isMessageOpen, setIsMessageOpen] = React.useState(false);
     const [messageSubject, setMessageSubject] = React.useState('');
     const [messageBody, setMessageBody] = React.useState('');
     const [sendingMessage, setSendingMessage] = React.useState(false);
 
     const fetchData = React.useCallback(async () => {
-        setLoading(true);
+        setTableLoading(true);
         const usersRef = ref(db, 'users');
         const deptsRef = ref(db, 'settings/departments');
         const subRolesRef = ref(db, 'settings/subRoles');
@@ -96,6 +97,7 @@ export default function StaffListPage() {
                     }
                     setStaff(staffList.sort((a,b) => a.name.localeCompare(b.name)));
                     setLoading(false);
+                    setTableLoading(false);
                 });
             });
         });
@@ -159,20 +161,15 @@ export default function StaffListPage() {
         }
     };
     
-    const openDetailDialog = (staffMember: Staff) => {
-        setSelectedStaff(staffMember);
-        setIsDetailOpen(true);
-    };
-
     const handleSendMessage = async () => {
-        if (!selectedStaff || !messageSubject || !messageBody || !userProfile) {
+        if (!selectedStaff || !messageSubject || !messageBody || !adminProfile) {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
             return;
         }
         setSendingMessage(true);
         try {
             const emailBody = `
-                <p>You have received a message from ${userProfile.name} (${userProfile.id}):</p>
+                <p>You have received a message from ${adminProfile.name} (${adminProfile.id}):</p>
                 <br/>
                 <p>${messageBody.replace(/\n/g, '<br>')}</p>
             `;
@@ -193,6 +190,35 @@ export default function StaffListPage() {
             toast({ variant: 'destructive', title: 'Failed to Send', description: error.message });
         } finally {
             setSendingMessage(false);
+        }
+    };
+
+    const handleSendCredentials = async (user: Staff) => {
+        if (!user) return;
+        setTableLoading(true);
+        try {
+            const body = `
+                <h2>Login Details Reminder</h2>
+                <p>Hello ${user.name},</p>
+                <p>Here are your login details for the staff portal:</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${user.id}</li>
+                </ul>
+                <p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [user.email],
+                subject: 'Your Portal Login Details',
+                body,
+            });
+            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${user.name}.` });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send Email', description: error.message });
+        } finally {
+            setTableLoading(false);
         }
     };
 
@@ -241,16 +267,17 @@ export default function StaffListPage() {
                             <TableHead>Email & Phone</TableHead>
                             <TableHead>Department</TableHead>
                             <TableHead>Roles</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? (
+                        {loading || tableLoading ? (
                              Array.from({ length: 10 }).map((_, i) => (
-                                <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                             ))
                         ) : filteredStaff.length > 0 ? (
                             filteredStaff.map(member => (
-                            <TableRow key={member.uid} onClick={() => openDetailDialog(member)} className="cursor-pointer">
+                            <TableRow key={member.uid}>
                                 <TableCell>{member.id}</TableCell>
                                 <TableCell className="font-medium">{member.name}</TableCell>
                                 <TableCell>
@@ -270,11 +297,20 @@ export default function StaffListPage() {
                                     </Select>
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">{member.subRoleNames?.join(', ') || member.role}</TableCell>
+                                 <TableCell className="text-right">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => { setSelectedStaff(member); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleSendCredentials(member)}><Mail className="mr-2 h-4 w-4"/>Send Credentials</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
                             </TableRow>
                         ))
                         ) : (
                              <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">No staff found matching your criteria.</TableCell>
+                                <TableCell colSpan={6} className="h-24 text-center">No staff found matching your criteria.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -287,25 +323,7 @@ export default function StaffListPage() {
             </CardFooter>
         </Card>
         
-        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle>{selectedStaff?.name}</DialogTitle>
-                    <DialogDescription>{selectedStaff?.id} &middot; {selectedStaff?.department}</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-2 text-sm">
-                    <p><strong className="font-semibold">Email:</strong> {selectedStaff?.email}</p>
-                    <p><strong className="font-semibold">Phone:</strong> {selectedStaff?.phoneNumber || 'N/A'}</p>
-                    <p><strong className="font-semibold">Roles:</strong> {selectedStaff?.subRoleNames?.join(', ') || selectedStaff?.role}</p>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
-                    <Button onClick={() => { setIsDetailOpen(false); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4" />Send Message</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-
-        <Dialog open={isMessageOpen} onOpenChange={(open) => { if (!open) { setMessageBody(''); setMessageSubject(''); } setIsMessageOpen(open); }}>
+        <Dialog open={isMessageOpen} onOpenChange={(open) => { if (!open) { setMessageBody(''); setMessageSubject(''); setSelectedStaff(null); } setIsMessageOpen(open); }}>
              <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Send Message to {selectedStaff?.name}</DialogTitle>

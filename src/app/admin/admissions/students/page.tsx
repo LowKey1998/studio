@@ -10,11 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { db, auth } from "@/lib/firebase";
 import { ref, onValue, get } from 'firebase/database';
-import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2 } from 'lucide-react';
+import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2, MoreVertical } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from '@/hooks/use-toast';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { createNotification } from '@/lib/firebase';
@@ -48,11 +49,12 @@ type Intake = {
 };
 
 export default function StudentsListPage() {
-    const { user, userProfile } = useAuth();
+    const { user: adminUser, userProfile: adminProfile } = useAuth();
     const [students, setStudents] = React.useState<Student[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
 
     // Filter states
@@ -93,6 +95,7 @@ export default function StudentsListPage() {
             }
             setStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
             setLoading(false);
+            setTableLoading(false);
         });
 
         return () => {
@@ -149,14 +152,14 @@ export default function StudentsListPage() {
     };
 
     const handleSendMessage = async () => {
-        if (!selectedStudent || !messageSubject || !messageBody || !userProfile) {
+        if (!selectedStudent || !messageSubject || !messageBody || !adminProfile) {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
             return;
         }
         setSendingMessage(true);
         try {
             const emailBody = `
-                <p>You have received a message from ${userProfile.name} (${userProfile.id}):</p>
+                <p>You have received a message from ${adminProfile.name} (${adminProfile.id}):</p>
                 <br/>
                 <p>${messageBody.replace(/\n/g, '<br>')}</p>
             `;
@@ -180,10 +183,34 @@ export default function StudentsListPage() {
         }
     };
     
-    const openDetailDialog = (student: Student) => {
-        setSelectedStudent(student);
-        setIsDetailOpen(true);
-    }
+    const handleSendCredentials = async (user: Student) => {
+        if (!user) return;
+        setTableLoading(true);
+        try {
+            const body = `
+                <h2>Login Details Reminder</h2>
+                <p>Hello ${user.name},</p>
+                <p>Here are your login details for the student portal:</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${user.id}</li>
+                </ul>
+                <p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            await sendEmail({
+                to: [user.email],
+                subject: 'Your Portal Login Details',
+                body,
+            });
+            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${user.name}.` });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send Email', description: error.message });
+        } finally {
+            setTableLoading(false);
+        }
+    };
 
     return (
         <>
@@ -235,17 +262,18 @@ export default function StudentsListPage() {
                                 <TableHead>Contact</TableHead>
                                 <TableHead>Programme</TableHead>
                                 <TableHead>Intake</TableHead>
-                                 <TableHead>Status</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {loading ? (
+                            {loading || tableLoading ? (
                                  Array.from({ length: 10 }).map((_, i) => (
-                                    <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                                 ))
                             ) : filteredStudents.length > 0 ? (
                                 filteredStudents.map(student => (
-                                <TableRow key={student.uid} onClick={() => openDetailDialog(student)} className="cursor-pointer">
+                                <TableRow key={student.uid}>
                                     <TableCell>{student.id}</TableCell>
                                     <TableCell className="font-medium">{student.name}</TableCell>
                                     <TableCell>
@@ -259,11 +287,26 @@ export default function StudentsListPage() {
                                             <span className="flex items-center gap-2 text-xs text-green-600 font-semibold"><div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>Online</span> : 
                                             <span className="text-xs text-muted-foreground">{student.lastSeen ? formatDistanceToNow(new Date(student.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
                                     </TableCell>
+                                    <TableCell className="text-right">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4"/></Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => { setSelectedStudent(student); setIsMessageOpen(true); }}>
+                                                    <Send className="mr-2 h-4 w-4"/>Send Message
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleSendCredentials(student)}>
+                                                    <Mail className="mr-2 h-4 w-4"/>Send Credentials
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </TableCell>
                                 </TableRow>
                             ))
                             ) : (
                                  <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">No students found matching your criteria.</TableCell>
+                                    <TableCell colSpan={7} className="h-24 text-center">No students found matching your criteria.</TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
@@ -276,25 +319,7 @@ export default function StudentsListPage() {
                 </div>
             </CardFooter>
         </Card>
-
-        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle>{selectedStudent?.name}</DialogTitle>
-                    <DialogDescription>{selectedStudent?.id} &middot; {selectedStudent?.programmeName}</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-2 text-sm">
-                    <p><strong className="font-semibold">Email:</strong> {selectedStudent?.email}</p>
-                    <p><strong className="font-semibold">Phone:</strong> {selectedStudent?.phoneNumber || 'N/A'}</p>
-                    <p><strong className="font-semibold">Intake:</strong> {selectedStudent?.intakeName || 'N/A'}</p>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
-                    <Button onClick={() => { setIsDetailOpen(false); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4" />Send Message</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-
+        
         <Dialog open={isMessageOpen} onOpenChange={(open) => { if (!open) { setMessageBody(''); setMessageSubject(''); } setIsMessageOpen(open); }}>
              <DialogContent className="max-w-lg">
                 <DialogHeader>
