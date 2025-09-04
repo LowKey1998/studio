@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToQuickbooks, voidQbInvoice } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 
 
@@ -358,6 +358,7 @@ export default function ApproveRegistrationsPage() {
                 const syncData = {
                     invoiceId: request.invoiceId,
                     studentName: request.studentName,
+                    studentId: request.studentId,
                     amount: tuitionCost + optionalFeesCost + mandatoryFeesCost,
                     date: new Date().toISOString().split('T')[0],
                     description: `Invoice for ${request.semesterName}`,
@@ -367,13 +368,15 @@ export default function ApproveRegistrationsPage() {
                     toast({ title: 'Synced to QuickBooks' });
                 }
                 if(isSageEnabled) {
-                    await syncInvoiceToSage(syncData);
+                    await syncInvoiceToSage(syncData as any);
                     toast({ title: 'Synced to Sage' });
                 }
 
             } else { 
                 await remove(registrationRef);
                 await remove(invoiceRef);
+                if(isQuickBooksEnabled) await voidQbInvoice(request.invoiceId);
+                // No equivalent Sage void action for now
                 await createNotification(
                     request.userId,
                     `Your course registration for ${request.semesterName} has been declined. Please review and resubmit.`,
@@ -554,4 +557,3 @@ export default function ApproveRegistrationsPage() {
         </div>
     );
 }
-

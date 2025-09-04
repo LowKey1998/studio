@@ -50,12 +50,39 @@ const promisify = (qbo: QuickBooks, func: Function) => {
     };
 };
 
+const findCustomerByDisplayName = async (qbo: QuickBooks, displayName: string): Promise<any> => {
+    const findCustomersAsync = promisify(qbo, qbo.findCustomers);
+    const response: any = await findCustomersAsync({ DisplayName: displayName });
+    return response.QueryResponse.Customer?.[0];
+};
+
+const createCustomer = async (qbo: QuickBooks, customerData: any): Promise<any> => {
+    const createCustomerAsync = promisify(qbo, qbo.createCustomer);
+    return await createCustomerAsync(customerData);
+};
+
+const findOrCreateCustomer = async (qbo: QuickBooks, studentName: string, studentId: string) => {
+    const displayName = `${studentName} (${studentId})`;
+    let customer = await findCustomerByDisplayName(qbo, displayName);
+    if (!customer) {
+        customer = await createCustomer(qbo, { DisplayName: displayName });
+    }
+    return customer;
+};
+
+
 // --- API Functions ---
 
 export async function createQbInvoice(invoiceData: any): Promise<any> {
     const qbo = await getQuickBooksClient();
     const createInvoiceAsync = promisify(qbo, qbo.createInvoice);
     try {
+        const studentId = invoiceData.CustomerRef.value;
+        const studentName = invoiceData.CustomerRef.name;
+        const customer = await findOrCreateCustomer(qbo, studentName, studentId);
+        
+        invoiceData.CustomerRef = { value: customer.Id };
+
         const createdInvoice = await createInvoiceAsync(invoiceData);
         console.log('Successfully created QuickBooks Invoice:', createdInvoice);
         return createdInvoice;
@@ -87,6 +114,66 @@ export async function createQbJournalEntryForPayroll(entryData: any): Promise<an
         return createdEntry;
     } catch (error) {
         console.error('Error creating QuickBooks journal entry:', error);
+        throw error;
+    }
+}
+
+export async function createQbPayment(paymentData: { studentId: string, studentName: string, amount: number, invoiceId: string }): Promise<any> {
+    const qbo = await getQuickBooksClient();
+    const createPaymentAsync = promisify(qbo, qbo.createPayment);
+    const findInvoicesAsync = promisify(qbo, qbo.findInvoices);
+
+    try {
+        const customer = await findOrCreateCustomer(qbo, paymentData.studentName, paymentData.studentId);
+        const invoices: any = await findInvoicesAsync({ DocNumber: paymentData.invoiceId });
+        
+        if (!invoices.QueryResponse.Invoice || invoices.QueryResponse.Invoice.length === 0) {
+            throw new Error(`Could not find matching QB invoice for DocNumber: ${paymentData.invoiceId}`);
+        }
+        
+        const qbInvoice = invoices.QueryResponse.Invoice[0];
+
+        const paymentPayload = {
+            CustomerRef: { value: customer.Id },
+            TotalAmt: paymentData.amount,
+            Line: [{
+                Amount: paymentData.amount,
+                LinkedTxn: [{
+                    TxnId: qbInvoice.Id,
+                    TxnType: 'Invoice'
+                }]
+            }]
+        };
+
+        const createdPayment = await createPaymentAsync(paymentPayload);
+        console.log('Successfully created QuickBooks Payment:', createdPayment);
+        return createdPayment;
+
+    } catch (error) {
+         console.error('Error creating QuickBooks payment:', error);
+        throw error;
+    }
+}
+
+export async function voidQbInvoice(invoiceId: string): Promise<any> {
+    const qbo = await getQuickBooksClient();
+    const findInvoicesAsync = promisify(qbo, qbo.findInvoices);
+    const voidInvoiceAsync = promisify(qbo, qbo.voidInvoice);
+
+    try {
+        const invoices: any = await findInvoicesAsync({ DocNumber: invoiceId });
+        if (!invoices.QueryResponse.Invoice || invoices.QueryResponse.Invoice.length === 0) {
+            console.warn(`QuickBooks invoice with DocNumber ${invoiceId} not found. Skipping void.`);
+            return;
+        }
+
+        const qbInvoice = invoices.QueryResponse.Invoice[0];
+        const voidedInvoice = await voidInvoiceAsync(qbInvoice);
+        console.log('Successfully voided QuickBooks Invoice:', voidedInvoice);
+        return voidedInvoice;
+
+    } catch(error) {
+        console.error('Error voiding QuickBooks invoice:', error);
         throw error;
     }
 }

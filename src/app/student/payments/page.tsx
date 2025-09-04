@@ -33,7 +33,8 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-
+import { syncInvoiceToQuickbooks, createQbPayment } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 
 type Invoice = {
   invoiceId: string;
@@ -303,6 +304,9 @@ export default function PaymentsPage() {
     const [calendarEvents, setCalendarEvents] = React.useState<{title: string, date: string}[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
+
 
     // Component state
     const [loading, setLoading] = React.useState(true);
@@ -448,6 +452,8 @@ export default function PaymentsPage() {
                 const settingsData = settingsSnap.val() || {};
                 setAllPaymentPlans(settingsData.paymentPlans ? Object.values(settingsData.paymentPlans) : []);
                 if (settingsData.institution) setInstitutionSettings(settingsData.institution);
+                if (settingsData.integrations?.quickbooks?.enabled) setIsQuickBooksEnabled(true);
+                if (settingsData.integrations?.sage?.enabled) setIsSageEnabled(true);
                 setSemesters(semestersSnap.exists() ? Object.values(semestersSnap.val()) : []);
                 
                 await fetchDataForUser(currentUser);
@@ -484,6 +490,19 @@ export default function PaymentsPage() {
                 paymentDate: new Date().toISOString(),
                 semesterId: payment.invoice.semesterId,
             });
+             
+            const qbSyncData = {
+                studentId: userData!.id,
+                studentName: userData!.name,
+                amount: amount,
+                invoiceId: payment.invoice.invoiceId,
+            };
+
+            if (isQuickBooksEnabled) {
+                await createQbPayment(qbSyncData);
+                toast({ title: 'Payment Synced', description: 'Your payment was synced to QuickBooks.' });
+            }
+             // No Sage payment sync equivalent for now
 
              await fetchDataForUser(currentUser);
 
@@ -499,7 +518,7 @@ export default function PaymentsPage() {
                  toast({ title: 'Payment Successful', description: 'Your payment has been recorded and course access updated.' });
             }
 
-        } catch(error) {
+        } catch(error: any) {
             console.error("Error updating database after payment:", error);
             toast({ variant: 'destructive', title: "Update Error", description: "Payment was successful but records may not be updated. Contact support."});
         } finally {
