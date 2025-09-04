@@ -5,23 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Upload, ShieldAlert, BadgeInfo, HandCoins, PlusCircle, Trash2, Users, Save, Pencil, Link as LinkIcon, KeyRound, Mail, Percent, Banknote } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { db, auth, storage } from '@/lib/firebase';
-import { ref, get, set, update, onValue, push, remove } from 'firebase/database';
+import { db, storage } from '@/lib/firebase';
+import { ref, update, onValue, push, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import Image from 'next/image';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
-import { allMenuItems } from '@/lib/menu-items';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 type IDPrefixes = { 
     student: string; 
@@ -35,8 +32,8 @@ type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
 type Integrations = { 
-    quickbooks: { enabled: boolean; clientId?: string; clientSecret?: string; }; 
-    sage: { enabled: boolean; apiKey?: string; }; 
+    quickbooks?: { enabled?: boolean; clientId?: string; clientSecret?: string; }; 
+    sage?: { enabled?: boolean; apiKey?: string; }; 
     facebook?: { pageAccessToken?: string; formId?: string; }; 
     twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
     smtp?: { service?: string; host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
@@ -174,6 +171,13 @@ export default function SettingsPage() {
             <Card id="integrations" className="shadow-lg">
                 <CardHeader><CardTitle className="font-headline text-2xl">API Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
+                    <Alert variant="default">
+                        <AlertCircle className="h-4 w-4"/>
+                        <AlertTitle>Developer Note</AlertTitle>
+                        <AlertDescription>
+                            The integration flows are currently simulators. The credentials below are stored but not yet used for live API calls.
+                        </AlertDescription>
+                    </Alert>
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
                         <Label className="pt-2">QuickBooks</Label>
                         <div className="sm:col-span-2 space-y-2">
@@ -192,7 +196,7 @@ export default function SettingsPage() {
                                 <Switch id="sage-switch" checked={integrations.sage?.enabled || false} onCheckedChange={(checked) => setIntegrations(p => ({...p, sage: {...p.sage, enabled: checked}}))} disabled={saving} />
                                 <Label htmlFor="sage-switch">{integrations.sage?.enabled ? "Enabled" : "Disabled"}</Label>
                            </div>
-                           <Input placeholder="Sage API Key" value={integrations.sage?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage?.enabled}/>
+                           <Input type="password" placeholder="Sage API Key" value={integrations.sage?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, sage: {...p.sage, apiKey: e.target.value}}))} disabled={saving || !integrations.sage?.enabled}/>
                         </div>
                     </div>
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
