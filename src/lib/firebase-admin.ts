@@ -20,9 +20,7 @@ function getAdminApp(): App {
 
   // Check if essential credentials are provided
   if (!cert.projectId || !cert.clientEmail || !cert.privateKey) {
-    console.error("Firebase Admin SDK credentials are not fully configured in .env.local file.");
-    // In a real production scenario, you might want to throw an error here
-    // For this environment, we'll proceed but some features will fail.
+    console.error("Firebase Admin SDK credentials are not fully configured. Some server-side features may not work.");
   }
 
   return initializeApp({
