@@ -21,6 +21,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { format } from 'date-fns';
 
 type IDPrefixes = { 
     student: string; 
@@ -34,7 +35,7 @@ type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
 type Integrations = { 
-    quickbooks: { enabled: boolean; apiKey?: string; }; 
+    quickbooks: { enabled: boolean; clientId?: string; clientSecret?: string; }; 
     sage: { enabled: boolean; apiKey?: string; }; 
     facebook?: { pageAccessToken?: string; formId?: string; }; 
     twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
@@ -180,7 +181,8 @@ export default function SettingsPage() {
                                 <Switch id="quickbooks-switch" checked={integrations.quickbooks?.enabled || false} onCheckedChange={(checked) => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, enabled: checked}}))} disabled={saving} />
                                 <Label htmlFor="quickbooks-switch">{integrations.quickbooks?.enabled ? "Enabled" : "Disabled"}</Label>
                            </div>
-                           <Input placeholder="QuickBooks API Key" value={integrations.quickbooks?.apiKey || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, apiKey: e.target.value}}))} disabled={saving || !integrations.quickbooks?.enabled}/>
+                           <Input type="password" placeholder="QuickBooks Client ID" value={integrations.quickbooks?.clientId || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, clientId: e.target.value}}))} disabled={saving || !integrations.quickbooks?.enabled}/>
+                           <Input type="password" placeholder="QuickBooks Client Secret" value={integrations.quickbooks?.clientSecret || ''} onChange={e => setIntegrations(p => ({...p, quickbooks: {...p.quickbooks, clientSecret: e.target.value}}))} disabled={saving || !integrations.quickbooks?.enabled}/>
                         </div>
                     </div>
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">

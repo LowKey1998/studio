@@ -20,6 +20,8 @@ type QBIntegrationSettings = {
     syncInvoices: boolean;
     syncExpenses: boolean;
     syncPayroll: boolean;
+    clientId?: string;
+    clientSecret?: string;
 };
 
 export default function QuickBooksPage() {
@@ -59,6 +61,7 @@ export default function QuickBooksPage() {
     };
     
     const canManage = userProfile?.role === 'Admin';
+    const isConfigured = !!settings.clientId && !!settings.clientSecret;
 
     if (loading) {
         return <Skeleton className="h-96 w-full"/>
@@ -85,10 +88,10 @@ export default function QuickBooksPage() {
                 {canManage ? (
                      <div className="space-y-4 pt-4 border-t">
                          <div className="flex items-center space-x-2">
-                            <Switch id="quickbooks-enabled" checked={settings.enabled} onCheckedChange={(val) => handleToggle('enabled', val)} />
-                            <Label htmlFor="quickbooks-enabled" className="text-lg">{settings.enabled ? 'Integration is Active' : 'Integration is Inactive'}</Label>
+                            <Switch id="quickbooks-enabled" checked={settings.enabled} onCheckedChange={(val) => handleToggle('enabled', val)} disabled={!isConfigured}/>
+                            <Label htmlFor="quickbooks-enabled" className="text-lg">{settings.enabled && isConfigured ? 'Integration is Active' : 'Integration is Inactive'}</Label>
                         </div>
-                        <div className={`space-y-4 pl-8 transition-opacity ${settings.enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                        <div className={`space-y-4 pl-8 transition-opacity ${settings.enabled && isConfigured ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
                             <h4 className="font-semibold">Sync Options</h4>
                             <div className="flex items-center space-x-2">
                                 <Checkbox id="sync-invoices" checked={settings.syncInvoices} onCheckedChange={(val) => handleToggle('syncInvoices', !!val)} />
@@ -113,7 +116,7 @@ export default function QuickBooksPage() {
                         Save Configuration
                     </Button>
                 )}
-                <Button asChild variant="outline" disabled={!settings.enabled}>
+                <Button asChild variant="outline">
                     <Link href="/admin/settings#integrations">
                        Configure API Credentials
                     </Link>
