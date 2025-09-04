@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -6,6 +7,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll } from '@/services/quickbooks';
 
 // --- Invoice Sync ---
 
@@ -30,10 +32,18 @@ const syncInvoiceFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async (input) => {
-    console.log(`Simulating QuickBooks Invoice Sync for ${input.studentName}.`);
-    console.log(`Invoice ID: ${input.invoiceId}, Amount: ${input.amount}, Date: ${input.date}`);
-    console.log(`Description: ${input.description}`);
-    // In a real application, you would make an API call to QuickBooks here.
+    await createQbInvoice({
+      CustomerRef: { name: input.studentName, value: input.invoiceId.split('-')[0] }, // Using student name as customer, and part of invoice as customer ID
+      Line: [{
+        Amount: input.amount,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: {
+          ItemRef: { value: '1' } // Assuming a generic service item with ID '1'
+        }
+      }],
+      DocNumber: input.invoiceId,
+      TxnDate: input.date,
+    });
   }
 );
 
@@ -62,9 +72,19 @@ const syncExpenseFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async (input) => {
-    console.log(`Simulating QuickBooks Expense Sync for category: ${input.category}.`);
-    console.log(`Amount: ${input.amount}, Date: ${input.date}, Vendor: ${input.vendor || 'N/A'}`);
-    // In a real application, you would make an API call to QuickBooks here.
+    await createQbExpense({
+      AccountRef: { value: '41' }, // Expense Account
+      PaymentType: 'Check',
+      TotalAmt: input.amount,
+      EntityRef: input.vendor ? { name: input.vendor, type: 'Vendor', value: '0' } : undefined, // Vendor reference if exists
+      Line: [{
+          Amount: input.amount,
+          DetailType: 'AccountBasedExpenseLineDetail',
+          AccountBasedExpenseLineDetail: {
+              AccountRef: { name: input.category, value: '41' } // Map category to an expense account
+          }
+      }]
+    });
   }
 );
 
@@ -93,8 +113,37 @@ const syncPayrollFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async (input) => {
-    console.log(`Simulating QuickBooks Payroll Sync for ${input.staffName} for ${input.month}.`);
-    console.log(`Gross: ${input.grossSalary}, Deductions: ${input.deductions}, Net: ${input.netPay}`);
-    // In a real application, you would make an API call to QuickBooks here.
+    await createQbJournalEntryForPayroll({
+        TxnDate: new Date().toISOString().split('T')[0],
+        Line: [
+            {
+                DetailType: "JournalEntryLineDetail",
+                Amount: input.grossSalary,
+                JournalEntryLineDetail: {
+                    PostingType: "Debit",
+                    AccountRef: { name: "Payroll Expenses", value: "60" } 
+                },
+                Description: `Payroll for ${input.staffName} - ${input.month}`
+            },
+            {
+                DetailType: "JournalEntryLineDetail",
+                Amount: input.deductions,
+                JournalEntryLineDetail: {
+                    PostingType: "Credit",
+                    AccountRef: { name: "Payroll Liabilities", value: "61" }
+                },
+                Description: `Deductions for ${input.staffName}`
+            },
+            {
+                DetailType: "JournalEntryLineDetail",
+                Amount: input.netPay,
+                JournalEntryLineDetail: {
+                    PostingType: "Credit",
+                    AccountRef: { name: "Bank", value: "35" } // Assuming payment from main bank account
+                },
+                Description: `Net Pay to ${input.staffName}`
+            }
+        ]
+    });
   }
 );
