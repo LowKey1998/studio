@@ -2,6 +2,9 @@
 import { initializeApp, getApps, getApp, type App } from 'firebase-admin/app';
 import { credential } from 'firebase-admin';
 
+// Force load environment variables at the very beginning
+require('dotenv').config();
+
 function getAdminApp(): App {
   if (getApps().length > 0) {
     return getApp();
@@ -17,6 +20,13 @@ function getAdminApp(): App {
     clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
     privateKey: privateKey,
   };
+
+  // Check if essential credentials are provided
+  if (!cert.projectId || !cert.clientEmail || !cert.privateKey) {
+    console.error("Firebase Admin SDK credentials are not fully configured in .env file.");
+    // In a real production scenario, you might want to throw an error here
+    // For this environment, we'll proceed but some features will fail.
+  }
 
   return initializeApp({
     credential: credential.cert(cert),
