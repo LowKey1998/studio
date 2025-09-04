@@ -65,7 +65,7 @@ export default function PayrollPage() {
         const unsubSettings = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const integrations = snapshot.val();
-                setIsQuickBooksEnabled(integrations.quickbooks?.enabled);
+                setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncPayroll);
                 setIsSageEnabled(integrations.sage?.enabled);
             }
         });

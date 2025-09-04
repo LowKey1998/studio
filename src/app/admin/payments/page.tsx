@@ -2,7 +2,7 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -120,7 +120,7 @@ export default function PaymentsManagementPage() {
             if (settingsSnap.exists()) {
                 const integrations = settingsSnap.val();
                 setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncInvoices);
-                setIsSageEnabled(integrations.sage?.enabled && integrations.sage?.syncInvoices);
+                setIsSageEnabled(integrations.sage?.enabled);
             }
 
 
@@ -177,7 +177,7 @@ export default function PaymentsManagementPage() {
                 
                 const invoice = allInvoices[tx.userId]?.[tx.invoiceId];
                 if (invoice) {
-                    const key = `${tx.userId}-${invoice.semesterId}`;
+                    const key = `${tx.userId}-${invoice.semester}`;
                      if (studentPaymentMap[key]) {
                         studentPaymentMap[key].totalPaid += tx.amount;
                     }
@@ -247,6 +247,8 @@ export default function PaymentsManagementPage() {
             };
 
             if (isQuickBooksEnabled) {
+                // Here we would call a payment creation flow
+                // For now, let's re-use the invoice sync as a placeholder for any transaction
                 await syncInvoiceToQuickbooks(syncData);
                 toast({ title: 'Synced to QuickBooks', description: 'Payment was successfully synced.' });
             }

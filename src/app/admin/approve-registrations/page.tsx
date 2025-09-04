@@ -20,6 +20,9 @@ import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
+
 
 type RegistrationRequest = {
   userId: string;
@@ -101,6 +104,9 @@ export default function ApproveRegistrationsPage() {
 
     const [editingSelections, setEditingSelections] = React.useState<Record<string, string[]>>({});
     const [scholarshipReviewRequest, setScholarshipReviewRequest] = React.useState<RegistrationRequest | null>(null);
+    
+    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
+    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -128,14 +134,19 @@ export default function ApproveRegistrationsPage() {
                 get(ref(db, 'optionalFees')),
                 get(ref(db, 'mandatoryFees')),
                 get(ref(db, 'registrations')),
-                get(ref(db, 'settings/enrollmentPolicy')),
+                get(ref(db, 'settings')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'assessments')),
             ]);
             
-            if (settingsSnap.exists()) setEnrollmentPolicy(settingsSnap.val());
+            if (settingsSnap.exists()) {
+                const settingsData = settingsSnap.val();
+                setEnrollmentPolicy(settingsData.enrollmentPolicy);
+                setIsQuickBooksEnabled(settingsData.integrations?.quickbooks?.enabled);
+                setIsSageEnabled(settingsData.integrations?.sage?.enabled);
+            }
             const coursesData = new Map<string, Course>();
             if (coursesSnap.exists()) Object.entries(coursesSnap.val()).forEach(([id, data]) => coursesData.set(id, { id, ...(data as Omit<Course, 'id'>) }));
             setAllCourses(coursesData);
@@ -343,6 +354,23 @@ export default function ApproveRegistrationsPage() {
                     title: 'Registration Approved',
                     description: `${request.studentName}'s registration is now ${newStatus === 'Completed' ? 'enrolled' : 'pending payment'}.`,
                 });
+                 // Sync to QuickBooks/Sage
+                const syncData = {
+                    invoiceId: request.invoiceId,
+                    studentName: request.studentName,
+                    amount: tuitionCost + optionalFeesCost + mandatoryFeesCost,
+                    date: new Date().toISOString().split('T')[0],
+                    description: `Invoice for ${request.semesterName}`,
+                };
+                if(isQuickBooksEnabled) {
+                    await syncInvoiceToQuickbooks(syncData);
+                    toast({ title: 'Synced to QuickBooks' });
+                }
+                if(isSageEnabled) {
+                    await syncInvoiceToSage(syncData);
+                    toast({ title: 'Synced to Sage' });
+                }
+
             } else { 
                 await remove(registrationRef);
                 await remove(invoiceRef);
@@ -526,3 +554,4 @@ export default function ApproveRegistrationsPage() {
         </div>
     );
 }
+
