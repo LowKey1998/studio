@@ -1,7 +1,4 @@
 
-import { config } from 'dotenv';
-config();
-
 import '@/ai/flows/summarize-notifications.ts';
 import '@/ai/flows/post-job-vacancy.ts';
 import '@/ai/flows/create-google-doc.ts';
