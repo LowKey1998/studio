@@ -129,14 +129,16 @@ export default function AddStaffPage() {
                 return count;
             });
 
+            // Note: This creates a user but doesn't handle secondary auth instances well.
+            // For a production app, an admin SDK backend function would be safer.
             const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
             const user = userCredential.user;
-            
+
             const newStaffUser = { 
                 id: newId, 
                 name, 
                 email, 
-                phoneNumber, 
+                phoneNumber: phone, 
                 role: 'Staff', 
                 status: 'active',
                 subRoles: subRoleIds,
@@ -176,7 +178,7 @@ export default function AddStaffPage() {
             resetForm();
         } catch (error: any) {
             console.error("Error creating staff user:", error);
-            toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
+            toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message });
         } finally {
             await deleteApp(tempApp);
             setLoading(false);
