@@ -182,7 +182,7 @@ export default function BulkImportPage() {
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
                 const authUser = userCredential.user;
 
-                const { role, status, intakeName, ...dbStudentData } = student;
+                const { intakeName, ...dbStudentData } = student;
                 
                 const newUser = {
                     ...dbStudentData,
@@ -248,6 +248,7 @@ export default function BulkImportPage() {
                             onChange={handleFileChange}
                             ref={fileInputRef}
                             className="max-w-xs"
+                            disabled={isProcessing}
                         />
                         <Button onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileUp className="mr-2 h-4"/>}
