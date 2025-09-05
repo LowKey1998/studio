@@ -169,15 +169,15 @@ export default function BulkImportPage() {
                         role: 'Student' as const,
                         status: 'active' as const,
                         dob: formattedDob,
-                        gender: row.gender,
-                        nationality: row.nationality,
-                        address: row.address,
-                        disability: row.disability,
+                        gender: row.gender ?? '',
+                        nationality: row.nationality ?? '',
+                        address: row.address ?? '',
+                        disability: row.disability ?? '',
                         guardian: {
-                            name: row.guardian_names,
-                            relationship: row.guardian_relationship,
-                            email: row.guardian_email,
-                            contact: row.guardian_phone,
+                            name: row.guardian_names ?? '',
+                            relationship: row.guardian_relationship ?? '',
+                            email: row.guardian_email ?? '',
+                            contact: row.guardian_phone ?? '',
                         },
                         intakeId: intake.id,
                         intakeName: intake.name,
@@ -282,7 +282,7 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        1. Ensure your Excel file has one sheet per intake, with the sheet name matching the intake name.<br/>
+                        1. Ensure your Excel file has one sheet per intake.<br/>
                         2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number`, `Student number` or `reg_no`).<br/>
                         3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
                         4. Confirm the preview is correct, then click "Confirm & Import".
