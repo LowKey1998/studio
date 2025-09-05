@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Loader2, Info, UserPlus, FileUp } from 'lucide-react';
+import { Upload, Loader2, Info, UserPlus, FileUp, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 import { useToast } from '@/hooks/use-toast';
@@ -59,6 +58,7 @@ type ProcessedStudent = {
     };
     intakeId?: string;
     intakeName?: string;
+    imported?: boolean; // To track import status
 };
 
 type Intake = {
@@ -71,6 +71,7 @@ export default function BulkImportPage() {
     const [studentsToImport, setStudentsToImport] = React.useState<ProcessedStudent[]>([]);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isSaving, setIsSaving] = React.useState(false);
+    const [singleRowSaving, setSingleRowSaving] = React.useState<string | null>(null);
     const [idSettings, setIdSettings] = React.useState<any>(null);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     
@@ -181,6 +182,7 @@ export default function BulkImportPage() {
                         },
                         intakeId: intake.id,
                         intakeName: intake.name,
+                        imported: false
                     }
                 }).filter(s => s.name && s.email && s.id);
                 
@@ -205,69 +207,92 @@ export default function BulkImportPage() {
             setIsProcessing(false);
         }
     };
-
-
-    const handleImport = async () => {
-        if (studentsToImport.length === 0) return;
-        setIsSaving(true);
-        let successCount = 0;
-        const errors: string[] = [];
-
-        const tempAppName = `temp-bulk-import-${Date.now()}`;
+    
+    const importStudent = async (student: ProcessedStudent) => {
+        const tempAppName = `temp-bulk-import-single-${Date.now()}`;
         const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
         const tempApp = initializeApp(firebaseConfig, tempAppName);
         const tempAuth = getAuth(tempApp);
 
-        for (const student of studentsToImport) {
+        try {
+            const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
+            const snapshot = await get(userQuery);
+            if (snapshot.exists()) {
+                throw new Error(`Student ID ${student.id} already exists.`);
+            }
+
+            const password = Math.random().toString(36).slice(-8);
             try {
-                // Check if a database record with this student ID already exists
-                const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
-                const snapshot = await get(userQuery);
-                if(snapshot.exists()){
-                     errors.push(`Skipped ${student.name}: Student ID ${student.id} already exists.`);
-                     continue;
-                }
+                const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
+                const authUser = userCredential.user;
 
-                // Create user
-                const password = Math.random().toString(36).slice(-8); 
-                try {
-                    const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
-                    const authUser = userCredential.user;
+                const { intakeName, ...dbStudentData } = student;
+                const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
+                delete newUser.imported;
 
-                    const { intakeName, ...dbStudentData } = student;
-                    const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
-                    
-                    await set(ref(db, `users/${authUser.uid}`), newUser);
+                await set(ref(db, `users/${authUser.uid}`), newUser);
 
-                    const welcomeEmailBody = `<h2>Welcome!</h2><p>An account has been created. Use User ID: ${student.id} and Password: ${password} to log in.</p>`;
-                    await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
+                const welcomeEmailBody = `<h2>Welcome!</h2><p>An account has been created. Use User ID: ${student.id} and Password: ${password} to log in.</p>`;
+                await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
 
-                    successCount++;
-                } catch (error: any) {
-                    if (error.code === 'auth/email-already-in-use') {
-                        // Email exists in Auth, but we already know the DB record doesn't exist.
-                        // Let's try to find the auth user and create the DB record.
-                        // NOTE: Client-side SDK cannot get user by email directly. This is a best-effort approach.
-                        // A more robust solution would involve a backend function. For now, we'll log this case.
-                         errors.push(`Skipped ${student.name}: Email ${student.email} is already in use by another authenticated user. Cannot create DB record without auth UID.`);
-                    } else {
-                        throw error;
+            } catch (error: any) {
+                 if (error.code === 'auth/email-already-in-use') {
+                    const userQueryByEmail = query(ref(db, 'users'), orderByChild('email'), equalTo(student.email));
+                    const userSnap = await get(userQueryByEmail);
+                    if (userSnap.exists()) {
+                        throw new Error(`Email ${student.email} is already in use by another student.`);
                     }
+                    // This case is tricky without backend functions. For now, we will log it as an error.
+                    throw new Error(`Email ${student.email} is already in use by an auth user but has no database record. Manual intervention required.`);
                 }
+                throw error;
+            }
+        } finally {
+            await deleteApp(tempApp);
+        }
+    }
+    
+    const handleImportSingleRow = async (student: ProcessedStudent, index: number) => {
+        setSingleRowSaving(student.id);
+        try {
+            await importStudent(student);
+            toast({ variant: 'success', title: 'Student Imported', description: `${student.name} imported successfully.` });
+            setStudentsToImport(prev => prev.map((s, i) => i === index ? {...s, imported: true} : s));
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: `Import Failed for ${student.name}`, description: error.message });
+        } finally {
+            setSingleRowSaving(null);
+        }
+    };
+
+
+    const handleImportAllRemaining = async () => {
+        const remainingStudents = studentsToImport.filter(s => !s.imported);
+        if (remainingStudents.length === 0) return;
+        setIsSaving(true);
+        let successCount = 0;
+        const errors: string[] = [];
+        
+        for (const [index, student] of studentsToImport.entries()) {
+             if (student.imported) continue;
+            try {
+                await importStudent(student);
+                successCount++;
+                setStudentsToImport(prev => prev.map((s, i) => i === index ? {...s, imported: true} : s));
             } catch (error: any) {
                 errors.push(`Failed for ${student.name} (${student.email}): ${error.code || error.message}`);
             }
         }
         
-        await deleteApp(tempApp);
         toast({ variant: 'success', title: 'Import Complete', description: `${successCount} students imported successfully.` });
         if(errors.length > 0) {
              toast({ variant: 'destructive', duration: 10000, title: 'Import Errors Occurred', description: (<ul className="list-disc pl-5 mt-2">{errors.slice(0, 5).map((e, i)=><li key={i}>{e}</li>)}{errors.length > 5 && <li>and {errors.length-5} more...</li>}</ul>) });
         }
-
-        resetFileState();
+        
         setIsSaving(false);
     };
+
+    const unimportedCount = studentsToImport.filter(s => !s.imported).length;
 
     return (
         <Card>
@@ -281,9 +306,9 @@ export default function BulkImportPage() {
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
                         1. Ensure your Excel file has one sheet per intake.<br/>
-                        2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number`, `Student number` or `reg_no`).<br/>
+                        2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number` or `reg_no`).<br/>
                         3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
-                        4. Confirm the preview is correct, then click "Confirm & Import".
+                        4. Confirm the preview is correct, then import students individually or all at once.
                     </AlertDescription>
                 </Alert>
                 <div>
@@ -332,27 +357,34 @@ export default function BulkImportPage() {
                                         <TableHead>Student ID</TableHead>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Email</TableHead>
+                                        <TableHead>Intake</TableHead>
                                         <TableHead>Phone</TableHead>
                                         <TableHead>DOB</TableHead>
                                         <TableHead>Gender</TableHead>
-                                        <TableHead>Nationality</TableHead>
                                         <TableHead>Guardian</TableHead>
-                                        <TableHead>Intake</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {studentsToImport.map((student, index) => (
-                                        <TableRow key={index} className={!student.intakeId ? 'bg-destructive/10' : ''}>
+                                        <TableRow key={index} className={student.imported ? 'bg-green-100/50' : ''}>
                                             <TableCell>{student.id}</TableCell>
                                             <TableCell>{student.name}</TableCell>
                                             <TableCell>{student.email}</TableCell>
+                                            <TableCell>{student.intakeName}</TableCell>
                                             <TableCell>{student.phoneNumber}</TableCell>
                                             <TableCell>{student.dob}</TableCell>
                                             <TableCell>{student.gender}</TableCell>
-                                            <TableCell>{student.nationality}</TableCell>
                                             <TableCell>{student.guardian?.name}</TableCell>
-                                            <TableCell>
-                                                {student.intakeName || <span className="text-destructive font-semibold">Not Mapped!</span>}
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    size="sm"
+                                                    disabled={student.imported || !!singleRowSaving}
+                                                    onClick={() => handleImportSingleRow(student, index)}
+                                                >
+                                                    {singleRowSaving === student.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : student.imported ? <Check className="mr-2 h-4 w-4"/> : null}
+                                                    {student.imported ? 'Imported' : 'Import'}
+                                                </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -364,9 +396,9 @@ export default function BulkImportPage() {
             </CardContent>
             {studentsToImport.length > 0 && (
                 <CardFooter>
-                     <Button onClick={handleImport} disabled={isSaving}>
+                     <Button onClick={handleImportAllRemaining} disabled={isSaving || unimportedCount === 0}>
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4"/>}
-                        Confirm & Import {studentsToImport.length} Students
+                        Confirm & Import {unimportedCount} Remaining Students
                     </Button>
                 </CardFooter>
             )}
