@@ -21,8 +21,8 @@ export const allMenuItems = [
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
       items: [
-        { href: '/admin/admissions/add-student', label: 'Manual Enrollment', icon: UserPlus },
-        { href: '/admin/admissions/students', label: 'Students List', icon: Users },
+        { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/bulk-import', label: 'Bulk Import Students', icon: Upload },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
@@ -33,7 +33,6 @@ export const allMenuItems = [
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
         { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase },
-        { href: '/admin/admissions/bulk-import', label: 'Bulk Import Students', icon: Upload },
         { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send },
         { href: '/admin/admissions/inquiries', label: 'Inquiries', icon: Search },
       ]

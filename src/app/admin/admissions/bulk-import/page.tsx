@@ -2,62 +2,52 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Loader2, Info } from 'lucide-react';
+import { Upload, Download, Loader2, Info, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 import { useToast } from '@/hooks/use-toast';
-import { db, auth } from '@/lib/firebase';
-import { ref, push, serverTimestamp, set, runTransaction, get, query, orderByChild, equalTo } from 'firebase/database';
+import { db } from '@/lib/firebase';
+import { ref, push, set, runTransaction, get, query, orderByChild, equalTo } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { format } from 'date-fns';
 
 type StudentImport = {
-    name: string;
-    email: string;
-    password?: string;
-    phoneNumber?: string;
-    programmeName?: string;
-    intakeName?: string;
-    year?: number;
-    semesterInYear?: number;
-    dob?: string;
+    // These match the structure of your Excel file for direct mapping
+    last_name?: string;
+    first_name?: string;
+    middle_name?: string;
+    date_of_birth?: string;
+    reg_no?: string;
     gender?: string;
-    nationalId?: string;
+    student_email?: string;
+    student_phone?: string;
+    nationality?: string;
+    disability?: string;
+    Student_number?: string;
+    guardian_names?: string;
+    guardian_relationship?: string;
+    guardian_email?: string;
+    guardian_phone?: string;
+    address?: string;
 };
-
-type Programme = { id: string; name: string; };
-type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; };
-
 
 export default function BulkImportPage() {
     const [studentsToImport, setStudentsToImport] = React.useState<StudentImport[]>([]);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isSaving, setIsSaving] = React.useState(false);
     const [idSettings, setIdSettings] = React.useState<any>(null);
-    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
-    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
 
     const { toast } = useToast();
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     React.useEffect(() => {
         const fetchData = async () => {
-            const [settingsSnap, programmesSnap, intakesSnap, semestersSnap] = await Promise.all([
-                get(ref(db, 'settings/idPrefixes')),
-                get(ref(db, 'programmes')),
-                get(ref(db, 'intakes')),
-                get(ref(db, 'semesters')),
-            ]);
+            const settingsSnap = await get(ref(db, 'settings/idPrefixes'));
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
-            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
-            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })));
         };
         fetchData();
     }, []);
@@ -67,6 +57,7 @@ export default function BulkImportPage() {
         if (!file) return;
 
         setIsProcessing(true);
+        setStudentsToImport([]); // Clear previous preview
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -74,25 +65,18 @@ export default function BulkImportPage() {
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet);
+                const json = XLSX.utils.sheet_to_json<StudentImport>(worksheet);
                 
-                const newStudents: StudentImport[] = json.map((row: any) => ({
-                    name: row.name || row.Name || '',
-                    email: row.email || row.Email || '',
-                    password: row.password || row.Password || 'password123',
-                    phoneNumber: row.phoneNumber || row.Phone || '',
-                    programmeName: row.programmeName || row['Programme Name'] || '',
-                    intakeName: row.intakeName || row['Intake Name'] || '',
-                    year: Number(row.year) || undefined,
-                    semesterInYear: Number(row.semesterInYear) || undefined,
-                    dob: row.dob || '',
-                    gender: row.gender || '',
-                    nationalId: row.nationalId || '',
-                })).filter(student => student.name && student.email && student.programmeName && student.intakeName && student.year && student.semesterInYear);
+                const validStudents = json.filter(student => student.first_name && student.last_name && student.student_email);
 
-                setStudentsToImport(newStudents);
-                 toast({ variant: 'success', title: 'File Processed', description: `${newStudents.length} valid student records found in the file.` });
+                setStudentsToImport(validStudents);
+                if (validStudents.length > 0) {
+                     toast({ variant: 'success', title: 'File Processed', description: `${validStudents.length} valid student records found and ready for review.` });
+                } else {
+                     toast({ variant: 'destructive', title: 'No Valid Records', description: 'Could not find any valid student records in the file. Ensure columns like first_name, last_name, and student_email are present.' });
+                }
             } catch (error) {
+                console.error(error);
                 toast({ variant: 'destructive', title: 'Error processing file', description: 'Please ensure it is a valid Excel file with the correct columns.'});
             } finally {
                 setIsProcessing(false);
@@ -113,81 +97,88 @@ export default function BulkImportPage() {
         const tempAuth = getAuth(tempApp);
 
         for (const student of studentsToImport) {
-            try {
-                const programme = allProgrammes.find(p => p.name.toLowerCase() === student.programmeName?.toLowerCase());
-                const intake = allIntakes.find(i => i.name.toLowerCase() === student.intakeName?.toLowerCase());
-                
-                if (!programme || !intake) {
-                    errors.push(`Skipped ${student.name}: Invalid programme or intake name.`);
-                    continue;
-                }
-                
-                const semester = allSemesters.find(s => s.intakeId === intake.id && s.year === student.year && s.semesterInYear === student.semesterInYear);
-                if (!semester) {
-                    errors.push(`Skipped ${student.name}: No matching semester found for the given intake, year, and semester number.`);
-                    continue;
-                }
+            const fullName = [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ');
+            const email = student.student_email;
+            
+            if (!email) {
+                errors.push(`Skipped record (no email): ${fullName}`);
+                continue;
+            }
 
-                // Generate ID
-                const prefixes = idSettings || { student: 'STU' };
-                const counterRef = ref(db, `userCounters/student`);
+            try {
+                const password = Math.random().toString(36).slice(-8); // Generate random password
+                
+                // Use reg_no if provided, otherwise generate new ID
+                const providedId = student.Student_number || student.reg_no;
                 let newId = '';
-                await runTransaction(counterRef, (currentCount) => {
-                    const count = (currentCount || 0) + 1;
-                    const basePrefix = prefixes.student;
+
+                if (providedId) {
+                     newId = providedId;
+                     const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(newId));
+                     const snapshot = await get(userQuery);
+                     if(snapshot.exists()){
+                         errors.push(`Skipped ${fullName}: Student ID ${newId} already exists.`);
+                         continue;
+                     }
+                } else {
+                    const counterRef = ref(db, 'userCounters/student');
+                    await runTransaction(counterRef, (currentCount) => (currentCount || 0) + 1);
+                    const newCount = (await get(counterRef)).val();
+                    const basePrefix = idSettings?.student || 'STU';
                     let datePart = '';
                     const now = new Date();
-                    if(idSettings.includeYear) datePart += format(now, 'yy');
-                    if(idSettings.includeMonth) datePart += format(now, 'MM');
-                    newId = `${basePrefix}${datePart}${String(count).padStart(3, '0')}`;
-                    return count;
-                });
+                    if(idSettings?.includeYear) datePart += format(now, 'yy');
+                    if(idSettings?.includeMonth) datePart += format(now, 'MM');
+                    newId = `${basePrefix}${datePart}${String(newCount).padStart(3, '0')}`;
+                }
                 
-                // Create Auth User
-                const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, student.password || 'password123');
+                const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
                 const authUser = userCredential.user;
 
-                // Create DB User
                 const newUser = {
                     id: newId,
-                    name: student.name,
-                    email: student.email,
-                    phoneNumber: student.phoneNumber,
+                    name: fullName,
+                    email: email,
+                    phoneNumber: student.student_phone,
                     role: 'Student',
                     status: 'active',
-                    programmeId: programme.id,
-                    intakeId: intake.id,
-                    year: student.year,
-                    semesterId: semester.id,
-                    dob: student.dob,
+                    dob: student.date_of_birth,
                     gender: student.gender,
-                    nationalId: student.nationalId,
+                    nationality: student.nationality,
+                    disability: student.disability,
+                    address: student.address,
+                    guardian: {
+                        name: student.guardian_names,
+                        relationship: student.guardian_relationship,
+                        email: student.guardian_email,
+                        contact: student.guardian_phone,
+                    },
                 };
                 await set(ref(db, `users/${authUser.uid}`), newUser);
 
                  // Send Welcome Email
                 const welcomeEmailBody = `
-                    <h2>Welcome to ${idSettings.name || 'Edutrack360'}!</h2>
+                    <h2>Welcome to ${idSettings?.name || 'Edutrack360'}!</h2>
                     <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
                     <ul>
                         <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">Portal Login</a></li>
                         <li><strong>User ID:</strong> ${newId}</li>
-                        <li><strong>Password:</strong> ${student.password || 'password123'}</li>
+                        <li><strong>Password:</strong> ${password}</li>
                     </ul>
                     <p>We recommend you log in and change your password at your earliest convenience.</p>
                 `;
-                await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings.name || 'Edutrack360'}!`, body: welcomeEmailBody });
+                await sendEmail({ to: [email], subject: `Welcome to ${idSettings?.name || 'Edutrack360'}!`, body: welcomeEmailBody });
 
                 successCount++;
             } catch (error: any) {
-                errors.push(`Failed for ${student.name}: ${error.message}`);
+                errors.push(`Failed for ${fullName}: ${error.message}`);
             }
         }
         
         await deleteApp(tempApp);
         toast({ variant: 'success', title: 'Import Complete', description: `${successCount} students imported successfully.` });
         if(errors.length > 0) {
-            toast({ variant: 'destructive', title: 'Import Errors', description: (<ul>{errors.map((e, i)=><li key={i}>{e}</li>)}</ul>) });
+             toast({ variant: 'destructive', duration: 10000, title: 'Import Errors Occurred', description: (<ul>{errors.map((e, i)=><li key={i}>{e}</li>)}</ul>) });
         }
 
         setStudentsToImport([]);
@@ -201,14 +192,15 @@ export default function BulkImportPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Bulk Import Students</CardTitle>
-                <CardDescription>Import new students in bulk using an Excel file (.xlsx, .xls).</CardDescription>
+                <CardDescription>Add new students in bulk by uploading an Excel file (.xlsx, .xls).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                  <Alert>
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        Your Excel file must have columns: `name`, `email`, `password`, `programmeName`, `intakeName`, `year`, `semesterInYear`. Other optional columns: `phoneNumber`, `dob`, `gender`, `nationalId`. Ensure programme and intake names match exactly what is in the system.
+                        Your Excel file must have columns: `first_name`, `last_name`, and `student_email`. All other columns are optional.
+                        A random password will be generated and emailed to the student. If a `Student_number` or `reg_no` is provided and doesn't exist, it will be used; otherwise, a new ID is generated.
                     </AlertDescription>
                 </Alert>
                 <div>
@@ -220,6 +212,7 @@ export default function BulkImportPage() {
                             accept=".xlsx, .xls"
                             onChange={handleFileChange}
                             ref={fileInputRef}
+                            className="max-w-xs"
                         />
                         <Button onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Upload className="mr-2 h-4"/>}
@@ -228,25 +221,25 @@ export default function BulkImportPage() {
                     </div>
                 </div>
                  {studentsToImport.length > 0 && (
-                    <div className="space-y-4">
-                        <h3 className="font-semibold">Preview Data</h3>
+                    <div className="space-y-4 pt-4">
+                        <h3 className="font-semibold">Preview Data ({studentsToImport.length} Records)</h3>
                         <div className="max-h-96 overflow-y-auto border rounded-md">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Email</TableHead>
-                                        <TableHead>Programme</TableHead>
-                                        <TableHead>Intake</TableHead>
+                                        <TableHead>Phone</TableHead>
+                                        <TableHead>Student Number</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {studentsToImport.map((student, index) => (
                                         <TableRow key={index}>
-                                            <TableCell>{student.name}</TableCell>
-                                            <TableCell>{student.email}</TableCell>
-                                            <TableCell>{student.programmeName}</TableCell>
-                                            <TableCell>{student.intakeName}</TableCell>
+                                            <TableCell>{[student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ')}</TableCell>
+                                            <TableCell>{student.student_email}</TableCell>
+                                            <TableCell>{student.student_phone || 'N/A'}</TableCell>
+                                            <TableCell>{student.Student_number || student.reg_no || '(Auto-generate)'}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -255,12 +248,14 @@ export default function BulkImportPage() {
                     </div>
                  )}
             </CardContent>
-            <CardFooter>
-                 <Button onClick={handleImport} disabled={isSaving || studentsToImport.length === 0}>
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4"/>}
-                    Import {studentsToImport.length > 0 ? studentsToImport.length : ''} Students
-                </Button>
-            </CardFooter>
+            {studentsToImport.length > 0 && (
+                <CardFooter>
+                     <Button onClick={handleImport} disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4"/>}
+                        Confirm & Import {studentsToImport.length} Students
+                    </Button>
+                </CardFooter>
+            )}
         </Card>
     );
 }

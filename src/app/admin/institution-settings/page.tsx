@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -21,7 +20,7 @@ type NamePart = {
 
 type Institution = {
   name: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
   color?: string;
   nameParts?: NamePart[];
 };
@@ -74,7 +73,8 @@ export default function InstitutionSettingsPage() {
     };
 
     const handleRemoveBackground = async () => {
-        if (!logoFile && !institution.logoUrl) {
+        const imageUrl = logoPreview || institution.logoUrl;
+        if (!imageUrl) {
             toast({ variant: 'destructive', title: 'No logo selected', description: 'Please upload a logo first.' });
             return;
         }
@@ -82,15 +82,11 @@ export default function InstitutionSettingsPage() {
         setSaving(true);
         toast({ title: 'AI Magic in Progress...', description: 'Removing the logo background. This may take a moment.' });
         
-        const imageUrl = logoPreview || institution.logoUrl!;
-        
         try {
-            // Always convert to a data URI before sending to the flow
-            let dataUri: string;
             const response = await fetch(imageUrl);
             const blob = await response.blob();
             const reader = new FileReader();
-            dataUri = await new Promise((resolve) => {
+            const dataUri = await new Promise<string>((resolve) => {
                 reader.onloadend = () => resolve(reader.result as string);
                 reader.readAsDataURL(blob);
             });
@@ -98,12 +94,10 @@ export default function InstitutionSettingsPage() {
             const result = await removeBackground({ imageUrl: dataUri });
             setLogoPreview(result.imageWithTransparentBackground);
             
-            // To make this savable, we need to convert the data URI back to a blob/file
             const newBlob = await (await fetch(result.imageWithTransparentBackground)).blob();
             const newFile = new File([newBlob], "logo_transparent.png", { type: "image/png" });
             setLogoFile(newFile);
             
-            setInstitution(prev => ({ ...prev, logoUrl: result.imageWithTransparentBackground }));
             toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Don\'t forget to save.' });
         } catch (error: any) {
             console.error("Background removal error:", error);
@@ -117,7 +111,7 @@ export default function InstitutionSettingsPage() {
         if (window.confirm("Are you sure you want to remove the logo?")) {
             setLogoFile(null);
             setLogoPreview(null);
-            setInstitution(prev => ({ ...prev, logoUrl: undefined }));
+            setInstitution(prev => ({ ...prev, logoUrl: null }));
             toast({ title: 'Logo Removed', description: 'Click "Save Changes" to confirm.' });
         }
     };
@@ -138,16 +132,12 @@ export default function InstitutionSettingsPage() {
             
             const updates = { 
                 name: institution.name,
-                logoUrl: finalLogoUrl || null, // Ensure it saves null if undefined
+                logoUrl: finalLogoUrl, // Will be null if removed, or new URL if uploaded
                 color: institution.color,
                 nameParts: institution.nameParts,
             };
 
-            if (finalLogoUrl === undefined || finalLogoUrl === null) {
-                await dbSet(ref(db, 'settings/institution'), updates);
-            } else {
-                 await update(settingsRef, updates);
-            }
+            await update(settingsRef, updates);
             
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -156,6 +146,8 @@ export default function InstitutionSettingsPage() {
             setSaving(false);
         }
     };
+
+    const currentLogoUrl = logoPreview || institution.logoUrl;
 
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6">
@@ -181,16 +173,16 @@ export default function InstitutionSettingsPage() {
                      </div>
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4">
                         <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
-                            {logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
+                            {currentLogoUrl ? (<Image src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
                         </div>
                         <div className="flex flex-col gap-2">
                             <Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/>
                              <div className="flex gap-2">
-                                <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || (!logoFile && !institution.logoUrl)}>
+                                <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || !currentLogoUrl}>
                                     <Wand2 className="mr-2 h-4 w-4"/>
                                     Remove Background (AI)
                                 </Button>
-                                 <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLogo} disabled={saving || (!logoFile && !institution.logoUrl)}>
+                                 <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLogo} disabled={saving || !currentLogoUrl}>
                                     <Trash2 className="mr-2 h-4 w-4"/>
                                     Remove Logo
                                 </Button>
