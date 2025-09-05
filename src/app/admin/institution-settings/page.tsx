@@ -5,10 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2 } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
-import { ref, update, onValue } from 'firebase/database';
+import { ref, update, onValue, set as dbSet, remove as dbRemove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
@@ -112,6 +112,15 @@ export default function InstitutionSettingsPage() {
             setSaving(false);
         }
     };
+    
+    const handleRemoveLogo = () => {
+        if (window.confirm("Are you sure you want to remove the logo?")) {
+            setLogoFile(null);
+            setLogoPreview(null);
+            setInstitution(prev => ({ ...prev, logoUrl: undefined }));
+            toast({ title: 'Logo Removed', description: 'Click "Save Changes" to confirm.' });
+        }
+    };
 
 
     const handleSaveChanges = async (e: React.FormEvent) => {
@@ -119,7 +128,6 @@ export default function InstitutionSettingsPage() {
         setSaving(true);
         try {
             const settingsRef = ref(db, 'settings/institution');
-            
             let finalLogoUrl = institution.logoUrl;
 
             if (logoFile) {
@@ -128,12 +136,19 @@ export default function InstitutionSettingsPage() {
                 finalLogoUrl = await getDownloadURL(snapshot.ref);
             }
             
-            await update(settingsRef, { 
+            const updates = { 
                 name: institution.name,
-                logoUrl: finalLogoUrl,
+                logoUrl: finalLogoUrl || null, // Ensure it saves null if undefined
                 color: institution.color,
                 nameParts: institution.nameParts,
-            });
+            };
+
+            if (finalLogoUrl === undefined || finalLogoUrl === null) {
+                await dbSet(ref(db, 'settings/institution'), updates);
+            } else {
+                 await update(settingsRef, updates);
+            }
+            
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
@@ -168,12 +183,18 @@ export default function InstitutionSettingsPage() {
                         <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
                             {logoPreview || institution.logoUrl ? (<Image src={logoPreview || institution.logoUrl!} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
                         </div>
-                        <div className="space-y-2">
+                        <div className="flex flex-col gap-2">
                             <Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file));}}} accept="image/*" className="max-w-xs"/>
-                            <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || (!logoFile && !institution.logoUrl)}>
-                                <Wand2 className="mr-2 h-4 w-4"/>
-                                Remove Background (AI)
-                            </Button>
+                             <div className="flex gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || (!logoFile && !institution.logoUrl)}>
+                                    <Wand2 className="mr-2 h-4 w-4"/>
+                                    Remove Background (AI)
+                                </Button>
+                                 <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLogo} disabled={saving || (!logoFile && !institution.logoUrl)}>
+                                    <Trash2 className="mr-2 h-4 w-4"/>
+                                    Remove Logo
+                                </Button>
+                             </div>
                         </div>
                         </div>
                      </div>
