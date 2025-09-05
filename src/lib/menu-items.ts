@@ -112,7 +112,7 @@ export const allMenuItems = [
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
-        { href: '/admin/finance/bank-integration', label: 'Bank API Integration', icon: Banknote },
+        { href: '/admin/finance/bank-integration', label: 'Bank Details', icon: Banknote },
       ]
     },
     {
@@ -282,6 +282,7 @@ export const allMenuItems = [
         roles: ['Admin'],
         items: [
             { href: '/admin/users', label: 'User Management', icon: Users },
+            { href: '/admin/institution-settings', label: 'Institution Settings', icon: Settings },
             { href: '/admin/settings', label: 'System Settings', icon: Settings },
             { href: '/admin/access-rules', label: 'Access Rules', icon: KeyRound },
             { href: '/admin/error-logs', label: 'Error Logs', icon: Terminal },

@@ -196,6 +196,11 @@ export default function UserManagementPage() {
     const [messageSubject, setMessageSubject] = React.useState('');
     const [messageBody, setMessageBody] = React.useState('');
     const [sendingMessage, setSendingMessage] = React.useState(false);
+    
+    // Bulk email dialog
+    const [isBulkEmailOpen, setIsBulkEmailOpen] = React.useState(false);
+    const [bulkEmailSubject, setBulkEmailSubject] = React.useState('');
+    const [bulkEmailBody, setBulkEmailBody] = React.useState('');
     const [sendingBulkEmail, setSendingBulkEmail] = React.useState(false);
 
 
@@ -569,7 +574,27 @@ export default function UserManagementPage() {
         }
     };
     
-    const handleSendLinkToAll = async () => {
+    const handleOpenBulkEmail = () => {
+        const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com';
+        setBulkEmailSubject(`Portal Access Link - ${idSettings?.name || 'Edutrack360'}`);
+        setBulkEmailBody(`
+Hello,
+
+This is a reminder that you can access your student or staff portal using the link below. If you have forgotten your password, you can use the "Forgot Password" link on the login page.
+
+Portal Link: ${portalUrl}
+
+Best regards,
+The Administration
+        `.trim());
+        setIsBulkEmailOpen(true);
+    };
+
+    const handleSendBulkEmail = async () => {
+        if (!bulkEmailSubject.trim() || !bulkEmailBody.trim()) {
+            toast({ variant: 'destructive', title: 'Subject and Body are required.'});
+            return;
+        }
         if (!window.confirm(`This will send an email to all ${users.length} users in the database. Are you sure you want to proceed?`)) {
             return;
         }
@@ -581,18 +606,9 @@ export default function UserManagementPage() {
                 return;
             }
 
-            const subject = `Access Your Portal - ${idSettings?.name || 'Edutrack360'}`;
-            const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com';
-            const body = `
-                <h2>${idSettings?.name || 'Edutrack360'} Portal</h2>
-                <p>Hello,</p>
-                <p>This is a reminder that you can access your student or staff portal using the link below. If you have forgotten your password, you can use the "Forgot Password" link on the login page.</p>
-                <p><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
-                <p>Best regards,<br/>The Administration</p>
-            `;
-
-            const result = await sendEmail({ to: recipientEmails, subject, body });
+            const result = await sendEmail({ to: recipientEmails, subject: bulkEmailSubject, body: bulkEmailBody });
             toast({ title: 'Emails Sent', description: result.result });
+            setIsBulkEmailOpen(false);
 
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to Send Bulk Email', description: error.message });
@@ -643,7 +659,7 @@ export default function UserManagementPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Button variant="outline" onClick={handleSendLinkToAll} disabled={sendingBulkEmail}>
+                <Button variant="outline" onClick={handleOpenBulkEmail} disabled={sendingBulkEmail}>
                     {sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mail className="mr-2 h-4 w-4"/>}
                     Send Link to All
                 </Button>
@@ -828,6 +844,23 @@ export default function UserManagementPage() {
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setIsMessageOpen(false)}>Cancel</Button>
                     <Button onClick={handleSendMessage} disabled={sendingMessage}>{sendingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isBulkEmailOpen} onOpenChange={setIsBulkEmailOpen}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Send Bulk Email</DialogTitle>
+                    <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
+                </DialogHeader>
+                 <div className="py-4 space-y-4">
+                    <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
+                </div>
+                 <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

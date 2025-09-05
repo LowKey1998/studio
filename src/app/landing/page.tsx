@@ -33,7 +33,6 @@ export default function LandingPage() {
   const router = useRouter();
   const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
   const [landingSettings, setLandingSettings] = React.useState<LandingPageSettings>({});
-  const [countdown, setCountdown] = React.useState('');
   const [programmes, setProgrammes] = React.useState<Programme[]>([]);
   const { institutionName } = useTheme();
   
@@ -71,29 +70,9 @@ export default function LandingPage() {
         }
     });
 
-    const calendarRef = ref(db, 'calendarEvents');
-    const unsubCalendar = onValue(calendarRef, (snapshot) => {
-        if(snapshot.exists()){
-            const events = Object.values(snapshot.val()) as {title: string, date: string}[];
-            const now = new Date();
-            const deadlineEvents = events
-                .filter(e => e.title.toLowerCase().includes('deadline') && isAfter(parseISO(e.date), now))
-                .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            if(deadlineEvents.length > 0){
-                const nextDeadline = parseISO(deadlineEvents[0].date);
-                const daysLeft = differenceInDays(nextDeadline, now);
-                 if (daysLeft >= 0) {
-                    setCountdown(`${daysLeft} day(s) until next payment deadline.`);
-                }
-            }
-        }
-    });
-
     return () => {
         unsubSettings();
         unsubProgrammes();
-        unsubCalendar();
     };
   }, []);
 
@@ -216,12 +195,6 @@ export default function LandingPage() {
                     <Link href="/vacancies">View Openings</Link>
                 </Button>
                 </div>
-                {countdown && (
-                    <div className="mt-4 text-sm font-semibold flex items-center gap-2 rounded-full bg-destructive/80 text-destructive-foreground px-4 py-2">
-                    <Clock className="h-4 w-4"/>
-                    <span>{countdown}</span>
-                    </div>
-                )}
             </div>
         </section>
 

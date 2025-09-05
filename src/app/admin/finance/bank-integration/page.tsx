@@ -10,32 +10,39 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, set } from 'firebase/database';
 
-type BankSettings = {
-    apiKey: string;
-    apiSecret: string;
+type BankDetails = {
+    bankName?: string;
+    accountName?: string;
+    accountNumber?: string;
+    branchCode?: string;
+    swiftCode?: string;
 };
 
 export default function BankIntegrationPage() {
-    const [settings, setSettings] = React.useState<BankSettings>({ apiKey: '', apiSecret: ''});
+    const [details, setDetails] = React.useState<BankDetails>({});
     const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
 
     React.useEffect(() => {
         const fetchSettings = async () => {
-            const settingsRef = ref(db, 'settings/bankIntegration');
+            const settingsRef = ref(db, 'settings/bankDetails');
             const snapshot = await get(settingsRef);
             if (snapshot.exists()) {
-                setSettings(snapshot.val());
+                setDetails(snapshot.val());
             }
         };
         fetchSettings();
     }, []);
 
+    const handleInputChange = (field: keyof BankDetails, value: string) => {
+        setDetails(prev => ({...prev, [field]: value }));
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            await set(ref(db, 'settings/bankIntegration'), settings);
-            toast({ title: 'Settings Saved', description: 'Bank integration settings have been updated.' });
+            await set(ref(db, 'settings/bankDetails'), details);
+            toast({ title: 'Settings Saved', description: 'Bank details have been updated.' });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
         } finally {
@@ -46,17 +53,29 @@ export default function BankIntegrationPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Bank API Integration</CardTitle>
-                <CardDescription>Manage the integration with bank APIs to automate transaction fetching and streamline reconciliation processes.</CardDescription>
+                <CardTitle>Bank Details Configuration</CardTitle>
+                <CardDescription>Enter the institution's bank account details to be displayed on the public website for direct deposits.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 max-w-lg">
                 <div className="space-y-1">
-                    <Label htmlFor="api-key">API Key</Label>
-                    <Input id="api-key" type="password" placeholder="Enter your bank's API key" value={settings.apiKey} onChange={e => setSettings({...settings, apiKey: e.target.value})}/>
+                    <Label htmlFor="bankName">Bank Name</Label>
+                    <Input id="bankName" placeholder="e.g., Zambia National Commercial Bank" value={details.bankName || ''} onChange={e => handleInputChange('bankName', e.target.value)}/>
                 </div>
                 <div className="space-y-1">
-                    <Label htmlFor="api-secret">API Secret</Label>
-                    <Input id="api-secret" type="password" placeholder="Enter your bank's API secret" value={settings.apiSecret} onChange={e => setSettings({...settings, apiSecret: e.target.value})}/>
+                    <Label htmlFor="accountName">Account Name</Label>
+                    <Input id="accountName" placeholder="e.g., Edutrack 360" value={details.accountName || ''} onChange={e => handleInputChange('accountName', e.target.value)}/>
+                </div>
+                 <div className="space-y-1">
+                    <Label htmlFor="accountNumber">Account Number</Label>
+                    <Input id="accountNumber" placeholder="e.g., 0123456789123" value={details.accountNumber || ''} onChange={e => handleInputChange('accountNumber', e.target.value)}/>
+                </div>
+                 <div className="space-y-1">
+                    <Label htmlFor="branchCode">Branch Code</Label>
+                    <Input id="branchCode" placeholder="e.g., 010203" value={details.branchCode || ''} onChange={e => handleInputChange('branchCode', e.target.value)}/>
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="swiftCode">SWIFT Code (Optional)</Label>
+                    <Input id="swiftCode" placeholder="e.g., ZNCOZMLU" value={details.swiftCode || ''} onChange={e => handleInputChange('swiftCode', e.target.value)}/>
                 </div>
             </CardContent>
             <CardFooter>
