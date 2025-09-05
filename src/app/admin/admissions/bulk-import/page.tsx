@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -149,13 +150,11 @@ export default function BulkImportPage() {
                 const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
                 const studentsFromSheet = json.map(row => {
-                     const dobValue = row.date_of_birth;
+                    const dobValue = row.date_of_birth;
                     let formattedDob = '';
                     if (dobValue) {
                         try {
-                            // Check if it's already a Date object (from xlsx library) or a string
                             const dateObj = new Date(dobValue);
-                            // Check if the date is valid
                             if (!isNaN(dateObj.getTime())) {
                                 formattedDob = dateObj.toISOString().split('T')[0];
                             }
@@ -216,51 +215,39 @@ export default function BulkImportPage() {
         if (idSnapshot.exists()) {
             throw new Error(`Student ID ${student.id} already exists in the database.`);
         }
-
+    
         const tempAppName = `temp-bulk-import-${Date.now()}`;
         const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
         const tempApp = initializeApp(firebaseConfig, tempAppName);
         const tempAuth = getAuth(tempApp);
-
+    
         try {
             const password = Math.random().toString(36).slice(-8);
             let authUserUid: string;
             let newUserCreated = false;
-
+    
             try {
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
                 authUserUid = userCredential.user.uid;
                 newUserCreated = true;
             } catch (error: any) {
                 if (error.code === 'auth/email-already-in-use') {
-                    // Auth user exists, let's find them and use their UID
-                    const userByEmailQuery = query(ref(db, 'users'), orderByChild('email'), equalTo(student.email));
-                    const emailSnapshot = await get(userByEmailQuery);
-                    if (emailSnapshot.exists()) {
-                        const existingUserUid = Object.keys(emailSnapshot.val())[0];
-                         // Check if this existing user *also* already has a student ID record.
-                        const existingId = emailSnapshot.val()[existingUserUid].id;
-                        if(existingId) {
-                            throw new Error(`Email ${student.email} is already linked to user ID ${existingId}.`);
-                        }
-                        authUserUid = existingUserUid;
-                    } else {
-                        // This case is rare: auth user exists but no DB record. We can't proceed without a UID.
-                        throw new Error(`Email ${student.email} exists in authentication, but no database record was found. Manual intervention required.`);
-                    }
+                    // This is the tricky case. We cannot get the UID of an existing user from the client-side just by email if they aren't logged in.
+                    // The safe approach is to inform the admin.
+                    throw new Error(`Email ${student.email} is already in use in Firebase Authentication, but no matching database profile was found. Please delete this user from the Firebase Authentication console and try again.`);
                 } else {
                     // Re-throw other auth errors
                     throw error;
                 }
             }
-
-            // At this point, we have a UID (either new or existing)
+    
+            // At this point, we have a newly created auth user UID
             const { intakeName, ...dbStudentData } = student;
             const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
             delete newUser.imported;
-
+    
             await set(ref(db, `users/${authUserUid}`), newUser);
-
+    
             const welcomeEmailBody = `
                 <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
                 <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
@@ -273,11 +260,12 @@ export default function BulkImportPage() {
                 <p>Best regards,<br/>The Administration</p>
             `;
             await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
-
+    
         } finally {
             await deleteApp(tempApp);
         }
     }
+    
     
     const handleImportSingleRow = async (student: ProcessedStudent, index: number) => {
         setSingleRowSaving(student.id);
@@ -286,7 +274,7 @@ export default function BulkImportPage() {
             toast({ variant: 'success', title: 'Student Imported', description: `${student.name} imported successfully.` });
             setStudentsToImport(prev => prev.map((s, i) => i === index ? {...s, imported: true} : s));
         } catch (error: any) {
-            toast({ variant: 'destructive', title: `Import Failed for ${student.name}`, description: error.message });
+            toast({ variant: 'destructive', duration: 10000, title: `Import Failed for ${student.name}`, description: error.message });
         } finally {
             setSingleRowSaving(null);
         }
@@ -384,10 +372,10 @@ export default function BulkImportPage() {
                                         <TableHead>Student ID</TableHead>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Email</TableHead>
-                                        <TableHead>Intake</TableHead>
                                         <TableHead>Phone</TableHead>
                                         <TableHead>DOB</TableHead>
                                         <TableHead>Gender</TableHead>
+                                        <TableHead>Intake</TableHead>
                                         <TableHead>Guardian</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
@@ -398,10 +386,10 @@ export default function BulkImportPage() {
                                             <TableCell>{student.id}</TableCell>
                                             <TableCell>{student.name}</TableCell>
                                             <TableCell>{student.email}</TableCell>
-                                            <TableCell>{student.intakeName}</TableCell>
                                             <TableCell>{student.phoneNumber}</TableCell>
                                             <TableCell>{student.dob}</TableCell>
                                             <TableCell>{student.gender}</TableCell>
+                                            <TableCell>{student.intakeName}</TableCell>
                                             <TableCell>{student.guardian?.name}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button
