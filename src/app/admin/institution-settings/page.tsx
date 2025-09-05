@@ -5,10 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Wand2, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
-import { ref, update, onValue, set as dbSet, remove as dbRemove } from 'firebase/database';
+import { ref, update, onValue } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
@@ -30,7 +30,7 @@ export default function InstitutionSettingsPage() {
     const [institution, setInstitution] = React.useState<Institution>({ name: 'Edutrack360', nameParts: [] });
     const [logoFile, setLogoFile] = React.useState<File | null>(null);
     const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
-    const [logoRemoved, setLogoRemoved] = React.useState(false);
+    const [logoAction, setLogoAction] = React.useState<'keep' | 'remove' | 'upload'>('keep');
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const { toast } = useToast();
@@ -74,6 +74,24 @@ export default function InstitutionSettingsPage() {
         setInstitution(prev => ({ ...prev, nameParts: newParts }));
     };
 
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setLogoFile(file);
+            setLogoPreview(URL.createObjectURL(file));
+            setLogoAction('upload');
+        }
+    };
+
+    const handleRemoveLogo = () => {
+        if (window.confirm("Are you sure you want to remove the logo?")) {
+            setLogoFile(null);
+            setLogoPreview(null);
+            setLogoAction('remove');
+            toast({ title: 'Logo Marked for Removal', description: 'Click "Save Changes" to confirm.' });
+        }
+    };
+
     const handleRemoveBackground = async () => {
         const imageUrl = logoPreview || institution.logoUrl;
         if (!imageUrl) {
@@ -87,37 +105,31 @@ export default function InstitutionSettingsPage() {
         try {
             const response = await fetch(imageUrl);
             const blob = await response.blob();
-            const dataUri = await new Promise<string>((resolve) => {
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.readAsDataURL(blob);
-            });
-
-            const result = await removeBackground({ imageUrl: dataUri });
-            setLogoPreview(result.imageWithTransparentBackground);
-            
-            const newBlob = await (await fetch(result.imageWithTransparentBackground)).blob();
-            const newFile = new File([newBlob], "logo_transparent.png", { type: "image/png" });
-            setLogoFile(newFile);
-            setLogoRemoved(false); // A new file has been created, so it's not "removed"
-            
-            toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Don\'t forget to save.' });
-        } catch (error: any) {
-            console.error("Background removal error:", error);
-            toast({ variant: 'destructive', title: 'AI Failed', description: error.message || 'Could not remove background. The image might be too complex or in an unsupported format.' });
-        } finally {
-            setSaving(false);
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const dataUri = reader.result as string;
+                try {
+                    const result = await removeBackground({ imageUrl: dataUri });
+                    setLogoPreview(result.imageWithTransparentBackground);
+                    const newBlob = await (await fetch(result.imageWithTransparentBackground)).blob();
+                    const newFile = new File([newBlob], "logo_transparent.png", { type: "image/png" });
+                    setLogoFile(newFile);
+                    setLogoAction('upload');
+                    toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Don\'t forget to save.' });
+                } catch (aiError: any) {
+                    console.error("Background removal error:", aiError);
+                    toast({ variant: 'destructive', title: 'AI Failed', description: aiError.message || 'Could not remove background. The image might be too complex or in an unsupported format.' });
+                } finally {
+                    setSaving(false);
+                }
+            };
+            reader.readAsDataURL(blob);
+        } catch (fetchError: any) {
+             console.error("Error fetching image for background removal:", fetchError);
+             toast({ variant: 'destructive', title: 'Image Fetch Failed', description: 'Could not load the image to process it.'});
+             setSaving(false);
         }
     };
-    
-    const handleRemoveLogo = () => {
-        if (window.confirm("Are you sure you want to remove the logo?")) {
-            setLogoFile(null);
-            setLogoPreview(null);
-            setLogoRemoved(true);
-            toast({ title: 'Logo Marked for Removal', description: 'Click "Save Changes" to confirm.' });
-        }
-    };
-
 
     const handleSaveChanges = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -126,11 +138,11 @@ export default function InstitutionSettingsPage() {
             const settingsRef = ref(db, 'settings/institution');
             let finalLogoUrl = institution.logoUrl;
 
-            if (logoFile) {
+            if (logoAction === 'upload' && logoFile) {
                 const logoStorageRef = storageRef(storage, `institution/logo_${Date.now()}`);
                 const snapshot = await uploadBytes(logoStorageRef, logoFile);
                 finalLogoUrl = await getDownloadURL(snapshot.ref);
-            } else if (logoRemoved) {
+            } else if (logoAction === 'remove') {
                 finalLogoUrl = null;
             }
             
@@ -142,7 +154,7 @@ export default function InstitutionSettingsPage() {
             };
 
             await update(settingsRef, updates);
-            setLogoRemoved(false); // Reset removal state after saving
+            setLogoAction('keep'); // Reset action state after saving
             
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -152,7 +164,7 @@ export default function InstitutionSettingsPage() {
         }
     };
 
-    const currentLogoUrl = logoRemoved ? null : logoPreview || institution.logoUrl;
+    const currentLogoUrl = logoAction === 'remove' ? null : logoPreview || institution.logoUrl;
 
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6">
@@ -181,7 +193,7 @@ export default function InstitutionSettingsPage() {
                             {currentLogoUrl ? (<Image src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
                         </div>
                         <div className="flex flex-col gap-2">
-                            <Input id="institution-logo" type="file" onChange={(e) => { const file = e.target.files?.[0]; if(file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file)); setLogoRemoved(false); }}} accept="image/*" className="max-w-xs"/>
+                            <Input id="institution-logo" type="file" onChange={handleFileSelect} accept="image/*" className="max-w-xs"/>
                              <div className="flex gap-2">
                                 <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || !currentLogoUrl}>
                                     <Wand2 className="mr-2 h-4 w-4"/>
