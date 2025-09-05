@@ -14,7 +14,7 @@ import { db, createNotification } from '@/lib/firebase';
 import { sendEmail } from './send-email-flow';
 import { format } from 'date-fns';
 
-export const FindOrCreateUserInputSchema = z.object({
+const FindOrCreateUserInputSchema = z.object({
   id: z.string().describe("The user's system ID (e.g., STU-001)."),
   name: z.string().describe("The user's full name."),
   email: z.string().email().describe("The user's email address."),
@@ -53,7 +53,7 @@ export async function findOrCreateUser(input: FindOrCreateUserInput): Promise<Fi
 }
 
 
-export const findOrCreateUserFlow = ai.defineFlow(
+const findOrCreateUserFlow = ai.defineFlow(
   {
     name: 'findOrCreateUserFlow',
     inputSchema: FindOrCreateUserInputSchema,
@@ -114,19 +114,21 @@ export const findOrCreateUserFlow = ai.defineFlow(
         status: 'active',
     });
 
-    // Send welcome email
-     const welcomeEmailBody = `
-        <h2>Welcome to the Institution!</h2>
-        <p>An account has been created for you. You can now access the portal using the credentials below.</p>
-        <ul>
-            <li><strong>Portal Link:</strong> <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}">${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}</a></li>
-            <li><strong>User ID:</strong> ${input.id}</li>
-            ${!userExistsInAuth ? `<li><strong>Password:</strong> ${password}</li>` : ''}
-        </ul>
-        <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
-        <p>Best regards,<br/>The Administration</p>
-    `;
-    await sendEmail({ to: [input.email], subject: `Your Student Account Details`, body: welcomeEmailBody });
+    // Send welcome email only if a new password was set (i.e., a new auth user was created)
+    if (!userExistsInAuth && password) {
+         const welcomeEmailBody = `
+            <h2>Welcome to the Institution!</h2>
+            <p>An account has been created for you. You can now access the portal using the credentials below.</p>
+            <ul>
+                <li><strong>Portal Link:</strong> <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}">${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}</a></li>
+                <li><strong>User ID:</strong> ${input.id}</li>
+                <li><strong>Password:</strong> ${password}</li>
+            </ul>
+            <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
+            <p>Best regards,<br/>The Administration</p>
+        `;
+        await sendEmail({ to: [input.email], subject: `Your Student Account Details`, body: welcomeEmailBody });
+    }
 
     return { uid: authUser.uid, status: userExistsInAuth ? 'updated' : 'created' };
   }
