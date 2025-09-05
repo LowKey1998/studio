@@ -50,7 +50,7 @@ type ProcessedStudent = {
     nationality?: string;
     address?: string;
     disability?: string;
-    guardian: {
+    guardian?: {
         name?: string;
         relationship?: string;
         email?: string;
@@ -133,24 +133,29 @@ export default function BulkImportPage() {
         setIsProcessing(true);
         try {
              const allProcessedStudents: ProcessedStudent[] = [];
+             let invalidSheetMappings = false;
+
              sheetNames.forEach(sheetName => {
                 const intakeId = sheetToIntakeMap[sheetName];
                 if (!intakeId) return; // Skip sheets not mapped to an intake
 
                 const intake = allIntakes.find(i => i.id === intakeId);
-                if (!intake) return;
+                if (!intake) {
+                    invalidSheetMappings = true;
+                    return;
+                }
 
                 const worksheet = workbook.Sheets[sheetName];
                 const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
                 const studentsFromSheet = json.map(row => ({
-                    id: (row.Student_number || row.reg_no || '').trim(),
+                    id: (row.Student_number || row.reg_no || '').toString().trim(),
                     name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
-                    email: row.student_email || '',
-                    phoneNumber: row.student_phone,
+                    email: (row.student_email || '').toString().trim(),
+                    phoneNumber: (row.student_phone || '').toString().trim(),
                     role: 'Student' as const,
                     status: 'active' as const,
-                    dob: row.date_of_birth,
+                    dob: row.date_of_birth ? new Date(row.date_of_birth).toISOString().split('T')[0] : '',
                     gender: row.gender,
                     nationality: row.nationality,
                     address: row.address,
@@ -168,6 +173,10 @@ export default function BulkImportPage() {
                 allProcessedStudents.push(...studentsFromSheet);
             });
             
+            if (invalidSheetMappings) {
+                toast({ variant: 'destructive', title: 'Invalid Mapping', description: 'One or more sheets were mapped to a non-existent intake and were skipped.' });
+            }
+
             setStudentsToImport(allProcessedStudents);
             if (allProcessedStudents.length > 0) {
                  toast({ variant: 'success', title: 'Data Processed', description: `${allProcessedStudents.length} valid student records found. Please review before importing.` });
@@ -259,10 +268,10 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        1. Upload an Excel file containing your student data.<br/>
-                        2. Map each sheet in your file to the correct intake using the dropdowns.<br/>
-                        3. Click "Process & Preview" to see the data before importing.<br/>
-                        4. Confirm the preview is correct, then click "Confirm & Import" to create student accounts.
+                        1. Ensure your Excel file has one sheet per intake, and the sheet name exactly matches the intake name in the system.<br/>
+                        2. Required columns: `first_name`, `last_name`, `student_email`, and `Student_number` (or `reg_no`).<br/>
+                        3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
+                        4. Confirm the preview is correct, then click "Confirm & Import".
                     </AlertDescription>
                 </Alert>
                 <div>
@@ -321,7 +330,7 @@ export default function BulkImportPage() {
                                             <TableCell>{student.name}</TableCell>
                                             <TableCell>{student.email}</TableCell>
                                             <TableCell>
-                                                {student.intakeName || <span className="text-destructive font-semibold">Not Found!</span>}
+                                                {student.intakeName || <span className="text-destructive font-semibold">Not Mapped!</span>}
                                             </TableCell>
                                         </TableRow>
                                     ))}
