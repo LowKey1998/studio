@@ -7,59 +7,18 @@ import { Upload, Loader2, Info, UserPlus, FileUp, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 import { useToast } from '@/hooks/use-toast';
-import { db, auth } from '@/lib/firebase';
-import { ref, push, set, get, query, orderByChild, equalTo } from 'firebase/database';
+import { db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { sendEmail } from '@/ai/flows/send-email-flow';
-import { format } from 'date-fns';
+import { findOrCreateUser, type FindOrCreateUserInput } from '@/ai/flows/find-or-create-user';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 
-type StudentImportRecord = {
-    last_name?: string;
-    first_name?: string;
-    middle_name?: string;
-    date_of_birth?: string | Date;
-    reg_no?: string;
-    gender?: string;
-    student_email?: string;
-    student_phone?: string;
-    nationality?: string;
-    disability?: string;
-    Student_number?: string;
-    'Student number'?: string;
-    guardian_names?: string;
-    guardian_relationship?: string;
-    guardian_email?: string;
-    guardian_phone?: string;
-    address?: string;
-};
-
-type ProcessedStudent = {
-    id: string;
-    name: string;
-    email: string;
-    phoneNumber?: string;
-    role: 'Student';
-    status: 'active';
-    dob?: string;
-    gender?: string;
-    nationality?: string;
-    address?: string;
-    disability?: string;
-    guardian?: {
-        name?: string;
-        relationship?: string;
-        email?: string;
-        contact?: string;
-    };
-    intakeId?: string;
+type ProcessedStudent = Omit<FindOrCreateUserInput, 'password'> & {
     intakeName?: string;
-    imported?: boolean; // To track import status
+    imported?: boolean;
 };
 
 type Intake = {
@@ -147,7 +106,7 @@ export default function BulkImportPage() {
                 }
 
                 const worksheet = workbook.Sheets[sheetName];
-                const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+                const json: any[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
                 const studentsFromSheet = json.map(row => {
                     const dobValue = row.date_of_birth;
@@ -164,21 +123,20 @@ export default function BulkImportPage() {
                     }
                     return {
                         id: (row.Student_number || row['Student number'] || row.reg_no || '').toString().trim(),
-                        name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
+                        name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || '',
                         email: (row.student_email || '').toString().trim(),
                         phoneNumber: (row.student_phone || '').toString().trim(),
                         role: 'Student' as const,
-                        status: 'active' as const,
                         dob: formattedDob,
-                        gender: row.gender ?? '',
-                        nationality: row.nationality ?? '',
-                        address: row.address ?? '',
-                        disability: row.disability ?? '',
+                        gender: row.gender || '',
+                        nationality: row.nationality || '',
+                        address: row.address || '',
+                        disability: row.disability || '',
                         guardian: {
-                            name: row.guardian_names ?? '',
-                            relationship: row.guardian_relationship ?? '',
-                            email: row.guardian_email ?? '',
-                            contact: row.guardian_phone ?? '',
+                            name: row.guardian_names || '',
+                            relationship: row.guardian_relationship || '',
+                            email: row.guardian_email || '',
+                            contact: row.guardian_phone || '',
                         },
                         intakeId: intake.id,
                         intakeName: intake.name,
@@ -209,62 +167,14 @@ export default function BulkImportPage() {
     };
     
     const importStudent = async (student: ProcessedStudent) => {
-        // Check if student ID already has a database record
-        const userByIdQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
-        const idSnapshot = await get(userByIdQuery);
-        if (idSnapshot.exists()) {
-            throw new Error(`Student ID ${student.id} already exists in the database.`);
-        }
-    
-        const tempAppName = `temp-bulk-import-${Date.now()}`;
-        const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
-        const tempApp = initializeApp(firebaseConfig, tempAppName);
-        const tempAuth = getAuth(tempApp);
-    
-        try {
-            const password = Math.random().toString(36).slice(-8);
-            let authUserUid: string;
-            let newUserCreated = false;
-    
-            try {
-                const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
-                authUserUid = userCredential.user.uid;
-                newUserCreated = true;
-            } catch (error: any) {
-                if (error.code === 'auth/email-already-in-use') {
-                    // This is the tricky case. We cannot get the UID of an existing user from the client-side just by email if they aren't logged in.
-                    // The safe approach is to inform the admin.
-                    throw new Error(`Email ${student.email} is already in use in Firebase Authentication, but no matching database profile was found. Please delete this user from the Firebase Authentication console and try again.`);
-                } else {
-                    // Re-throw other auth errors
-                    throw error;
-                }
-            }
-    
-            // At this point, we have a newly created auth user UID
-            const { intakeName, ...dbStudentData } = student;
-            const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
-            delete newUser.imported;
-    
-            await set(ref(db, `users/${authUserUid}`), newUser);
-    
-            const welcomeEmailBody = `
-                <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
-                <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
-                <ul>
-                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
-                    <li><strong>User ID:</strong> ${student.id}</li>
-                    ${newUserCreated ? `<li><strong>Password:</strong> ${password}</li>` : ''}
-                </ul>
-                <p>We recommend you log in and change your password at your earliest convenience.</p>
-                <p>Best regards,<br/>The Administration</p>
-            `;
-            await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
-    
-        } finally {
-            await deleteApp(tempApp);
-        }
-    }
+        const password = Math.random().toString(36).slice(-8);
+        const { intakeName, imported, ...studentData } = student;
+        
+        await findOrCreateUser({
+            ...studentData,
+            password,
+        });
+    };
     
     
     const handleImportSingleRow = async (student: ProcessedStudent, index: number) => {
@@ -288,12 +198,11 @@ export default function BulkImportPage() {
         let successCount = 0;
         const errors: string[] = [];
         
-        for (const [index, student] of studentsToImport.entries()) {
-             if (student.imported) continue;
+        for (const student of remainingStudents) {
             try {
                 await importStudent(student);
                 successCount++;
-                setStudentsToImport(prev => prev.map((s, i) => i === index ? {...s, imported: true} : s));
+                setStudentsToImport(prev => prev.map(s => s.id === student.id ? {...s, imported: true} : s));
             } catch (error: any) {
                 errors.push(`Failed for ${student.name} (${student.email}): ${error.message}`);
             }
@@ -420,3 +329,4 @@ export default function BulkImportPage() {
         </Card>
     );
 }
+
