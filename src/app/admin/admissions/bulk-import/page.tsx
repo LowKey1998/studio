@@ -31,6 +31,7 @@ type StudentImportRecord = {
     nationality?: string;
     disability?: string;
     Student_number?: string;
+    'Student number'?: string;
     guardian_names?: string;
     guardian_relationship?: string;
     guardian_email?: string;
@@ -73,7 +74,6 @@ export default function BulkImportPage() {
     const [idSettings, setIdSettings] = React.useState<any>(null);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     
-    // New state for sheet mapping
     const [workbook, setWorkbook] = React.useState<XLSX.WorkBook | null>(null);
     const [sheetNames, setSheetNames] = React.useState<string[]>([]);
     const [sheetToIntakeMap, setSheetToIntakeMap] = React.useState<Record<string, string>>({});
@@ -116,7 +116,6 @@ export default function BulkImportPage() {
                 const wb = XLSX.read(data, { type: 'array', cellDates: true });
                 setWorkbook(wb);
                 setSheetNames(wb.SheetNames);
-                // Initialize map with empty values
                 const initialMap: Record<string, string> = {};
                 wb.SheetNames.forEach(name => { initialMap[name] = '' });
                 setSheetToIntakeMap(initialMap);
@@ -137,7 +136,7 @@ export default function BulkImportPage() {
 
              sheetNames.forEach(sheetName => {
                 const intakeId = sheetToIntakeMap[sheetName];
-                if (!intakeId) return; // Skip sheets not mapped to an intake
+                if (!intakeId) return; 
 
                 const intake = allIntakes.find(i => i.id === intakeId);
                 if (!intake) {
@@ -149,7 +148,7 @@ export default function BulkImportPage() {
                 const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
                 const studentsFromSheet = json.map(row => ({
-                    id: (row.Student_number || row.reg_no || '').toString().trim(),
+                    id: (row.Student_number || row['Student number'] || row.reg_no || '').toString().trim(),
                     name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
                     email: (row.student_email || '').toString().trim(),
                     phoneNumber: (row.student_phone || '').toString().trim(),
@@ -206,7 +205,7 @@ export default function BulkImportPage() {
 
         for (const student of studentsToImport) {
             try {
-                const password = Math.random().toString(36).slice(-8); // Generate random password
+                const password = Math.random().toString(36).slice(-8); 
                 
                 const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
                 const snapshot = await get(userQuery);
@@ -268,8 +267,8 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        1. Ensure your Excel file has one sheet per intake, and the sheet name exactly matches the intake name in the system.<br/>
-                        2. Required columns: `first_name`, `last_name`, `student_email`, and `Student_number` (or `reg_no`).<br/>
+                        1. Ensure your Excel file has one sheet per intake.<br/>
+                        2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number`, `Student number` or `reg_no`).<br/>
                         3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
                         4. Confirm the preview is correct, then click "Confirm & Import".
                     </AlertDescription>
