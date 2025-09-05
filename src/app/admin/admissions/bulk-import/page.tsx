@@ -151,10 +151,13 @@ export default function BulkImportPage() {
                     const dobValue = row.date_of_birth;
                     let formattedDob = '';
                     if (dobValue) {
-                        const dateObj = new Date(dobValue);
-                        if (!isNaN(dateObj.getTime())) {
-                            // The date is valid, format it
-                            formattedDob = dateObj.toISOString().split('T')[0];
+                        try {
+                            const dateObj = new Date(dobValue);
+                            if (!isNaN(dateObj.getTime())) {
+                                formattedDob = dateObj.toISOString().split('T')[0];
+                            }
+                        } catch (e) {
+                             console.warn("Invalid date found in sheet:", dobValue);
                         }
                     }
 
@@ -279,7 +282,7 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        1. Ensure your Excel file has one sheet per intake.<br/>
+                        1. Ensure your Excel file has one sheet per intake, with the sheet name matching the intake name.<br/>
                         2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number`, `Student number` or `reg_no`).<br/>
                         3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
                         4. Confirm the preview is correct, then click "Confirm & Import".
@@ -324,13 +327,18 @@ export default function BulkImportPage() {
                     <div className="space-y-4 pt-4">
                         <Separator />
                         <h3 className="font-semibold">Step 3: Preview Data ({studentsToImport.length} Records)</h3>
-                        <div className="max-h-96 overflow-y-auto border rounded-md">
+                        <div className="max-h-96 overflow-x-auto border rounded-md">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Student ID</TableHead>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Email</TableHead>
+                                        <TableHead>Phone</TableHead>
+                                        <TableHead>DOB</TableHead>
+                                        <TableHead>Gender</TableHead>
+                                        <TableHead>Nationality</TableHead>
+                                        <TableHead>Guardian</TableHead>
                                         <TableHead>Intake</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -340,6 +348,11 @@ export default function BulkImportPage() {
                                             <TableCell>{student.id}</TableCell>
                                             <TableCell>{student.name}</TableCell>
                                             <TableCell>{student.email}</TableCell>
+                                            <TableCell>{student.phoneNumber}</TableCell>
+                                            <TableCell>{student.dob}</TableCell>
+                                            <TableCell>{student.gender}</TableCell>
+                                            <TableCell>{student.nationality}</TableCell>
+                                            <TableCell>{student.guardian?.name}</TableCell>
                                             <TableCell>
                                                 {student.intakeName || <span className="text-destructive font-semibold">Not Mapped!</span>}
                                             </TableCell>
