@@ -229,8 +229,8 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        1. Ensure your Excel file has one sheet per intake.<br/>
-                        2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number` or `reg_no`).<br/>
+                        1. Ensure your Excel file has one sheet per intake, with the sheet named after the intake (e.g., "2024JAN").<br/>
+                        2. Required columns: `first_name`, `last_name`, `student_email`, and (`Student_number`, `Student number` or `reg_no`).<br/>
                         3. Map each sheet to the correct intake, then click "Process & Preview".<br/>
                         4. Confirm the preview is correct, then import students individually or all at once.
                     </AlertDescription>
@@ -329,4 +329,3 @@ export default function BulkImportPage() {
         </Card>
     );
 }
-
