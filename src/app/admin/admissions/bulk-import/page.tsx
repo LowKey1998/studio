@@ -17,7 +17,6 @@ import { sendEmail } from '@/ai/flows/send-email-flow';
 import { format } from 'date-fns';
 
 type StudentImportRecord = {
-    // These match the structure of your Excel file for direct mapping
     last_name?: string;
     first_name?: string;
     middle_name?: string;
@@ -54,8 +53,8 @@ type ProcessedStudent = {
         email?: string;
         contact?: string;
     };
-    intakeId?: string; // This will be detected
-    intakeName?: string; // For display
+    intakeId?: string;
+    intakeName?: string;
 };
 
 type Intake = {
@@ -87,39 +86,38 @@ export default function BulkImportPage() {
         fetchData();
     }, []);
 
-    const detectIntake = (studentId: string): Intake | null => {
-        if (!studentId || allIntakes.length === 0) return null;
-        // Find the intake whose name is a prefix of the student ID
-        const matchedIntake = allIntakes.find(intake => studentId.startsWith(intake.name));
-        return matchedIntake || null;
-    };
-
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
         setIsProcessing(true);
-        setStudentsToImport([]); // Clear previous preview
+        setStudentsToImport([]);
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const data = new Uint8Array(e.target?.result as ArrayBuffer);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
                 
-                const processedStudents: ProcessedStudent[] = json.map(row => {
-                    const studentId = (row.Student_number || row.reg_no || '').trim();
-                    const intake = detectIntake(studentId);
-                    
-                    return {
-                        id: studentId,
+                const allProcessedStudents: ProcessedStudent[] = [];
+                let invalidSheetNames: string[] = [];
+
+                workbook.SheetNames.forEach(sheetName => {
+                    const intake = allIntakes.find(i => i.name.trim().toLowerCase() === sheetName.trim().toLowerCase());
+                    if (!intake) {
+                        invalidSheetNames.push(sheetName);
+                        return;
+                    }
+
+                    const worksheet = workbook.Sheets[sheetName];
+                    const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+
+                    const studentsFromSheet = json.map(row => ({
+                        id: (row.Student_number || row.reg_no || '').trim(),
                         name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
                         email: row.student_email || '',
                         phoneNumber: row.student_phone,
-                        role: 'Student',
-                        status: 'active',
+                        role: 'Student' as const,
+                        status: 'active' as const,
                         dob: row.date_of_birth,
                         gender: row.gender,
                         nationality: row.nationality,
@@ -131,20 +129,27 @@ export default function BulkImportPage() {
                             email: row.guardian_email,
                             contact: row.guardian_phone,
                         },
-                        intakeId: intake?.id,
-                        intakeName: intake?.name,
-                    };
-                }).filter(s => s.name && s.email && s.id); // Ensure essential fields are present
+                        intakeId: intake.id,
+                        intakeName: intake.name,
+                    })).filter(s => s.name && s.email && s.id);
+                    
+                    allProcessedStudents.push(...studentsFromSheet);
+                });
 
-                setStudentsToImport(processedStudents);
-                if (processedStudents.length > 0) {
-                     toast({ variant: 'success', title: 'File Processed', description: `${processedStudents.length} valid student records found. Please review before importing.` });
+                setStudentsToImport(allProcessedStudents);
+
+                if (allProcessedStudents.length > 0) {
+                     toast({ variant: 'success', title: 'File Processed', description: `${allProcessedStudents.length} valid student records found. Please review before importing.` });
                 } else {
-                     toast({ variant: 'destructive', title: 'No Valid Records', description: 'Could not find any valid student records. Ensure columns like first_name, last_name, student_email, and reg_no/Student_number are present and correctly formatted.' });
+                     toast({ variant: 'destructive', title: 'No Valid Records', description: 'Could not find any valid student records. Ensure sheets are named after existing intakes and columns are correctly formatted.' });
+                }
+
+                if (invalidSheetNames.length > 0) {
+                    toast({ variant: 'destructive', title: 'Unmatched Sheets', description: `The following sheets did not match any existing intakes: ${invalidSheetNames.join(', ')}` });
                 }
             } catch (error) {
                 console.error(error);
-                toast({ variant: 'destructive', title: 'Error processing file', description: 'Please ensure it is a valid Excel file with the correct columns.'});
+                toast({ variant: 'destructive', title: 'Error processing file', description: 'Please ensure it is a valid Excel file.'});
             } finally {
                 setIsProcessing(false);
             }
@@ -164,10 +169,6 @@ export default function BulkImportPage() {
         const tempAuth = getAuth(tempApp);
 
         for (const student of studentsToImport) {
-            if (!student.intakeId) {
-                errors.push(`Skipped ${student.name}: No matching intake found for ID ${student.id}.`);
-                continue;
-            }
             try {
                 const password = Math.random().toString(36).slice(-8); // Generate random password
                 
@@ -181,7 +182,6 @@ export default function BulkImportPage() {
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
                 const authUser = userCredential.user;
 
-                // We don't need to pass role and status, as they are fixed.
                 const { role, status, intakeName, ...dbStudentData } = student;
                 
                 const newUser = {
@@ -192,7 +192,6 @@ export default function BulkImportPage() {
                 
                 await set(ref(db, `users/${authUser.uid}`), newUser);
 
-                 // Send Welcome Email
                 const welcomeEmailBody = `
                     <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
                     <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
@@ -236,7 +235,7 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        Your Excel file must contain at least `first_name`, `last_name`, `student_email`, and either `reg_no` or `Student_number`. A random password will be generated and emailed to each student. The system will automatically detect the intake based on the student ID prefix (e.g., an ID like "2024JAN-001" will be matched to the "2024JAN" intake if it exists).
+                        Create a separate sheet for each intake and name the sheet exactly as the intake is named in the system (e.g., "2024JAN"). The file must contain columns for at least `first_name`, `last_name`, `student_email`, and either `reg_no` or `Student_number`. A random password will be generated and emailed to each student.
                     </AlertDescription>
                 </Alert>
                 <div>
