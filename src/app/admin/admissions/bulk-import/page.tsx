@@ -149,11 +149,13 @@ export default function BulkImportPage() {
                 const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
                 const studentsFromSheet = json.map(row => {
-                    const dobValue = row.date_of_birth;
+                     const dobValue = row.date_of_birth;
                     let formattedDob = '';
                     if (dobValue) {
                         try {
+                            // Check if it's already a Date object (from xlsx library) or a string
                             const dateObj = new Date(dobValue);
+                            // Check if the date is valid
                             if (!isNaN(dateObj.getTime())) {
                                 formattedDob = dateObj.toISOString().split('T')[0];
                             }
@@ -161,7 +163,6 @@ export default function BulkImportPage() {
                              console.warn("Invalid date found in sheet:", dobValue);
                         }
                     }
-
                     return {
                         id: (row.Student_number || row['Student number'] || row.reg_no || '').toString().trim(),
                         name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
@@ -209,44 +210,70 @@ export default function BulkImportPage() {
     };
     
     const importStudent = async (student: ProcessedStudent) => {
-        const tempAppName = `temp-bulk-import-single-${Date.now()}`;
+        // Check if student ID already has a database record
+        const userByIdQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
+        const idSnapshot = await get(userByIdQuery);
+        if (idSnapshot.exists()) {
+            throw new Error(`Student ID ${student.id} already exists in the database.`);
+        }
+
+        const tempAppName = `temp-bulk-import-${Date.now()}`;
         const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID };
         const tempApp = initializeApp(firebaseConfig, tempAppName);
         const tempAuth = getAuth(tempApp);
 
         try {
-            const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
-            const snapshot = await get(userQuery);
-            if (snapshot.exists()) {
-                throw new Error(`Student ID ${student.id} already exists.`);
-            }
-
             const password = Math.random().toString(36).slice(-8);
+            let authUserUid: string;
+            let newUserCreated = false;
+
             try {
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
-                const authUser = userCredential.user;
-
-                const { intakeName, ...dbStudentData } = student;
-                const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
-                delete newUser.imported;
-
-                await set(ref(db, `users/${authUser.uid}`), newUser);
-
-                const welcomeEmailBody = `<h2>Welcome!</h2><p>An account has been created. Use User ID: ${student.id} and Password: ${password} to log in.</p>`;
-                await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
-
+                authUserUid = userCredential.user.uid;
+                newUserCreated = true;
             } catch (error: any) {
-                 if (error.code === 'auth/email-already-in-use') {
-                    const userQueryByEmail = query(ref(db, 'users'), orderByChild('email'), equalTo(student.email));
-                    const userSnap = await get(userQueryByEmail);
-                    if (userSnap.exists()) {
-                        throw new Error(`Email ${student.email} is already in use by another student.`);
+                if (error.code === 'auth/email-already-in-use') {
+                    // Auth user exists, let's find them and use their UID
+                    const userByEmailQuery = query(ref(db, 'users'), orderByChild('email'), equalTo(student.email));
+                    const emailSnapshot = await get(userByEmailQuery);
+                    if (emailSnapshot.exists()) {
+                        const existingUserUid = Object.keys(emailSnapshot.val())[0];
+                         // Check if this existing user *also* already has a student ID record.
+                        const existingId = emailSnapshot.val()[existingUserUid].id;
+                        if(existingId) {
+                            throw new Error(`Email ${student.email} is already linked to user ID ${existingId}.`);
+                        }
+                        authUserUid = existingUserUid;
+                    } else {
+                        // This case is rare: auth user exists but no DB record. We can't proceed without a UID.
+                        throw new Error(`Email ${student.email} exists in authentication, but no database record was found. Manual intervention required.`);
                     }
-                    // This case is tricky without backend functions. For now, we will log it as an error.
-                    throw new Error(`Email ${student.email} is already in use by an auth user but has no database record. Manual intervention required.`);
+                } else {
+                    // Re-throw other auth errors
+                    throw error;
                 }
-                throw error;
             }
+
+            // At this point, we have a UID (either new or existing)
+            const { intakeName, ...dbStudentData } = student;
+            const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
+            delete newUser.imported;
+
+            await set(ref(db, `users/${authUserUid}`), newUser);
+
+            const welcomeEmailBody = `
+                <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
+                <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
+                <ul>
+                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>User ID:</strong> ${student.id}</li>
+                    ${newUserCreated ? `<li><strong>Password:</strong> ${password}</li>` : ''}
+                </ul>
+                <p>We recommend you log in and change your password at your earliest convenience.</p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+            await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
+
         } finally {
             await deleteApp(tempApp);
         }
@@ -280,7 +307,7 @@ export default function BulkImportPage() {
                 successCount++;
                 setStudentsToImport(prev => prev.map((s, i) => i === index ? {...s, imported: true} : s));
             } catch (error: any) {
-                errors.push(`Failed for ${student.name} (${student.email}): ${error.code || error.message}`);
+                errors.push(`Failed for ${student.name} (${student.email}): ${error.message}`);
             }
         }
         
