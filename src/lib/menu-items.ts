@@ -33,7 +33,7 @@ export const allMenuItems = [
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
         { href: '/admin/admissions/agents', label: 'Agent Management', icon: Briefcase },
-        { href: '/admin/admissions/bulk-import', label: 'Bulk Import/Export', icon: Upload },
+        { href: '/admin/admissions/bulk-import', label: 'Import from Excel', icon: Upload },
         { href: '/admin/admissions/follow-ups', label: 'Automated Follow-Ups', icon: Send },
         { href: '/admin/admissions/inquiries', label: 'Inquiries', icon: Search },
       ]
@@ -230,7 +230,7 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        items: []
+        isComingSoon: true,
     },
     {
       label: 'Quality Assurance',
