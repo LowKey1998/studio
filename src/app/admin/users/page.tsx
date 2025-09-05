@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -195,6 +196,7 @@ export default function UserManagementPage() {
     const [messageSubject, setMessageSubject] = React.useState('');
     const [messageBody, setMessageBody] = React.useState('');
     const [sendingMessage, setSendingMessage] = React.useState(false);
+    const [sendingBulkEmail, setSendingBulkEmail] = React.useState(false);
 
 
     const [loading, setLoading] = React.useState(false);
@@ -566,6 +568,39 @@ export default function UserManagementPage() {
             setSendingMessage(false);
         }
     };
+    
+    const handleSendLinkToAll = async () => {
+        if (!window.confirm(`This will send an email to all ${users.length} users in the database. Are you sure you want to proceed?`)) {
+            return;
+        }
+        setSendingBulkEmail(true);
+        try {
+            const recipientEmails = users.map(u => u.email).filter(Boolean);
+            if(recipientEmails.length === 0) {
+                toast({variant: 'destructive', title: 'No users with emails found.'});
+                return;
+            }
+
+            const subject = `Access Your Portal - ${idSettings?.name || 'Edutrack360'}`;
+            const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com';
+            const body = `
+                <h2>${idSettings?.name || 'Edutrack360'} Portal</h2>
+                <p>Hello,</p>
+                <p>This is a reminder that you can access your student or staff portal using the link below. If you have forgotten your password, you can use the "Forgot Password" link on the login page.</p>
+                <p><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
+                <p>Best regards,<br/>The Administration</p>
+            `;
+
+            const result = await sendEmail({ to: recipientEmails, subject, body });
+            toast({ title: 'Emails Sent', description: result.result });
+
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send Bulk Email', description: error.message });
+        } finally {
+            setSendingBulkEmail(false);
+        }
+    };
+
 
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
@@ -608,7 +643,10 @@ export default function UserManagementPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Button variant="outline" onClick={() => {}}><Download className="mr-2 h-4 w-4"/>Export List</Button>
+                <Button variant="outline" onClick={handleSendLinkToAll} disabled={sendingBulkEmail}>
+                    {sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mail className="mr-2 h-4 w-4"/>}
+                    Send Link to All
+                </Button>
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-4xl">
