@@ -84,9 +84,10 @@ export default function InstitutionSettingsPage() {
     };
 
     const handleRemoveLogo = () => {
-        if (window.confirm("Are you sure you want to remove the logo?")) {
+        if (window.confirm("Are you sure you want to remove the logo? This will be finalized when you save changes.")) {
             setLogoFile(null);
             setLogoPreview(null);
+            setInstitution(prev => ({ ...prev, logoUrl: null })); // Clear the current logo URL from state
             setLogoAction('remove');
             toast({ title: 'Logo Marked for Removal', description: 'Click "Save Changes" to confirm.' });
         }
