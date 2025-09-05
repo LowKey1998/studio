@@ -116,11 +116,12 @@ const findOrCreateUserFlow = ai.defineFlow(
 
     // Send welcome email only if a new password was set (i.e., a new auth user was created)
     if (!userExistsInAuth && password) {
+         const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com'; // Fallback to a placeholder
          const welcomeEmailBody = `
             <h2>Welcome to the Institution!</h2>
             <p>An account has been created for you. You can now access the portal using the credentials below.</p>
             <ul>
-                <li><strong>Portal Link:</strong> <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}">${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}</a></li>
+                <li><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></li>
                 <li><strong>User ID:</strong> ${input.id}</li>
                 <li><strong>Password:</strong> ${password}</li>
             </ul>
