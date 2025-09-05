@@ -23,7 +23,7 @@ type StudentImportRecord = {
     last_name?: string;
     first_name?: string;
     middle_name?: string;
-    date_of_birth?: string;
+    date_of_birth?: string | Date;
     reg_no?: string;
     gender?: string;
     student_email?: string;
@@ -147,27 +147,39 @@ export default function BulkImportPage() {
                 const worksheet = workbook.Sheets[sheetName];
                 const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
-                const studentsFromSheet = json.map(row => ({
-                    id: (row.Student_number || row['Student number'] || row.reg_no || '').toString().trim(),
-                    name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
-                    email: (row.student_email || '').toString().trim(),
-                    phoneNumber: (row.student_phone || '').toString().trim(),
-                    role: 'Student' as const,
-                    status: 'active' as const,
-                    dob: row.date_of_birth ? new Date(row.date_of_birth).toISOString().split('T')[0] : '',
-                    gender: row.gender,
-                    nationality: row.nationality,
-                    address: row.address,
-                    disability: row.disability,
-                    guardian: {
-                        name: row.guardian_names,
-                        relationship: row.guardian_relationship,
-                        email: row.guardian_email,
-                        contact: row.guardian_phone,
-                    },
-                    intakeId: intake.id,
-                    intakeName: intake.name,
-                })).filter(s => s.name && s.email && s.id);
+                const studentsFromSheet = json.map(row => {
+                    const dobValue = row.date_of_birth;
+                    let formattedDob = '';
+                    if (dobValue) {
+                        const dateObj = new Date(dobValue);
+                        if (!isNaN(dateObj.getTime())) {
+                            // The date is valid, format it
+                            formattedDob = dateObj.toISOString().split('T')[0];
+                        }
+                    }
+
+                    return {
+                        id: (row.Student_number || row['Student number'] || row.reg_no || '').toString().trim(),
+                        name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
+                        email: (row.student_email || '').toString().trim(),
+                        phoneNumber: (row.student_phone || '').toString().trim(),
+                        role: 'Student' as const,
+                        status: 'active' as const,
+                        dob: formattedDob,
+                        gender: row.gender,
+                        nationality: row.nationality,
+                        address: row.address,
+                        disability: row.disability,
+                        guardian: {
+                            name: row.guardian_names,
+                            relationship: row.guardian_relationship,
+                            email: row.guardian_email,
+                            contact: row.guardian_phone,
+                        },
+                        intakeId: intake.id,
+                        intakeName: intake.name,
+                    }
+                }).filter(s => s.name && s.email && s.id);
                 
                 allProcessedStudents.push(...studentsFromSheet);
             });
