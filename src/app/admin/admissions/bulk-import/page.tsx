@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth } from '@/lib/firebase';
-import { ref, push, set, runTransaction, get, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, push, set, get, query, orderByChild, equalTo } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { initializeApp, deleteApp } from 'firebase/app';
@@ -220,42 +220,40 @@ export default function BulkImportPage() {
 
         for (const student of studentsToImport) {
             try {
-                const password = Math.random().toString(36).slice(-8); 
-                
+                // Check if a database record with this student ID already exists
                 const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(student.id));
                 const snapshot = await get(userQuery);
                 if(snapshot.exists()){
                      errors.push(`Skipped ${student.name}: Student ID ${student.id} already exists.`);
                      continue;
                 }
-                
-                const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
-                const authUser = userCredential.user;
 
-                const { intakeName, ...dbStudentData } = student;
-                
-                const newUser = {
-                    ...dbStudentData,
-                    role: 'Student',
-                    status: 'active'
-                };
-                
-                await set(ref(db, `users/${authUser.uid}`), newUser);
+                // Create user
+                const password = Math.random().toString(36).slice(-8); 
+                try {
+                    const userCredential = await createUserWithEmailAndPassword(tempAuth, student.email, password);
+                    const authUser = userCredential.user;
 
-                const welcomeEmailBody = `
-                    <h2>Welcome to ${idSettings?.name || 'the Institution'}!</h2>
-                    <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
-                    <ul>
-                        <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">Portal Login</a></li>
-                        <li><strong>User ID:</strong> ${student.id}</li>
-                        <li><strong>Password:</strong> ${password}</li>
-                    </ul>
-                    <p>We recommend you log in and change your password at your earliest convenience.</p>
-                    <p>Regards,<br/>The Administration</p>
-                `;
-                await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
+                    const { intakeName, ...dbStudentData } = student;
+                    const newUser = { ...dbStudentData, role: 'Student', status: 'active' };
+                    
+                    await set(ref(db, `users/${authUser.uid}`), newUser);
 
-                successCount++;
+                    const welcomeEmailBody = `<h2>Welcome!</h2><p>An account has been created. Use User ID: ${student.id} and Password: ${password} to log in.</p>`;
+                    await sendEmail({ to: [student.email], subject: `Welcome to ${idSettings?.name || 'the Institution'}!`, body: welcomeEmailBody });
+
+                    successCount++;
+                } catch (error: any) {
+                    if (error.code === 'auth/email-already-in-use') {
+                        // Email exists in Auth, but we already know the DB record doesn't exist.
+                        // Let's try to find the auth user and create the DB record.
+                        // NOTE: Client-side SDK cannot get user by email directly. This is a best-effort approach.
+                        // A more robust solution would involve a backend function. For now, we'll log this case.
+                         errors.push(`Skipped ${student.name}: Email ${student.email} is already in use by another authenticated user. Cannot create DB record without auth UID.`);
+                    } else {
+                        throw error;
+                    }
+                }
             } catch (error: any) {
                 errors.push(`Failed for ${student.name} (${student.email}): ${error.code || error.message}`);
             }
