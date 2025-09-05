@@ -15,6 +15,9 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { format } from 'date-fns';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 
 type StudentImportRecord = {
     last_name?: string;
@@ -70,6 +73,11 @@ export default function BulkImportPage() {
     const [idSettings, setIdSettings] = React.useState<any>(null);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     
+    // New state for sheet mapping
+    const [workbook, setWorkbook] = React.useState<XLSX.WorkBook | null>(null);
+    const [sheetNames, setSheetNames] = React.useState<string[]>([]);
+    const [sheetToIntakeMap, setSheetToIntakeMap] = React.useState<Record<string, string>>({});
+
     const { toast } = useToast();
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -86,76 +94,95 @@ export default function BulkImportPage() {
         fetchData();
     }, []);
 
+    const resetFileState = () => {
+        setWorkbook(null);
+        setSheetNames([]);
+        setSheetToIntakeMap({});
+        setStudentsToImport([]);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        setIsProcessing(true);
-        setStudentsToImport([]);
+        resetFileState();
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-                
-                const allProcessedStudents: ProcessedStudent[] = [];
-                let invalidSheetNames: string[] = [];
-
-                workbook.SheetNames.forEach(sheetName => {
-                    const intake = allIntakes.find(i => i.name.trim().toLowerCase() === sheetName.trim().toLowerCase());
-                    if (!intake) {
-                        invalidSheetNames.push(sheetName);
-                        return;
-                    }
-
-                    const worksheet = workbook.Sheets[sheetName];
-                    const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
-
-                    const studentsFromSheet = json.map(row => ({
-                        id: (row.Student_number || row.reg_no || '').trim(),
-                        name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
-                        email: row.student_email || '',
-                        phoneNumber: row.student_phone,
-                        role: 'Student' as const,
-                        status: 'active' as const,
-                        dob: row.date_of_birth,
-                        gender: row.gender,
-                        nationality: row.nationality,
-                        address: row.address,
-                        disability: row.disability,
-                        guardian: {
-                            name: row.guardian_names,
-                            relationship: row.guardian_relationship,
-                            email: row.guardian_email,
-                            contact: row.guardian_phone,
-                        },
-                        intakeId: intake.id,
-                        intakeName: intake.name,
-                    })).filter(s => s.name && s.email && s.id);
-                    
-                    allProcessedStudents.push(...studentsFromSheet);
-                });
-
-                setStudentsToImport(allProcessedStudents);
-
-                if (allProcessedStudents.length > 0) {
-                     toast({ variant: 'success', title: 'File Processed', description: `${allProcessedStudents.length} valid student records found. Please review before importing.` });
-                } else {
-                     toast({ variant: 'destructive', title: 'No Valid Records', description: 'Could not find any valid student records. Ensure sheets are named after existing intakes and columns are correctly formatted.' });
-                }
-
-                if (invalidSheetNames.length > 0) {
-                    toast({ variant: 'destructive', title: 'Unmatched Sheets', description: `The following sheets did not match any existing intakes: ${invalidSheetNames.join(', ')}` });
-                }
+                const wb = XLSX.read(data, { type: 'array', cellDates: true });
+                setWorkbook(wb);
+                setSheetNames(wb.SheetNames);
+                // Initialize map with empty values
+                const initialMap: Record<string, string> = {};
+                wb.SheetNames.forEach(name => { initialMap[name] = '' });
+                setSheetToIntakeMap(initialMap);
             } catch (error) {
                 console.error(error);
                 toast({ variant: 'destructive', title: 'Error processing file', description: 'Please ensure it is a valid Excel file.'});
-            } finally {
-                setIsProcessing(false);
             }
         };
         reader.readAsArrayBuffer(file);
     };
+
+    const handleProcessSheets = () => {
+        if (!workbook) return;
+        setIsProcessing(true);
+        try {
+             const allProcessedStudents: ProcessedStudent[] = [];
+             sheetNames.forEach(sheetName => {
+                const intakeId = sheetToIntakeMap[sheetName];
+                if (!intakeId) return; // Skip sheets not mapped to an intake
+
+                const intake = allIntakes.find(i => i.id === intakeId);
+                if (!intake) return;
+
+                const worksheet = workbook.Sheets[sheetName];
+                const json: StudentImportRecord[] = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+
+                const studentsFromSheet = json.map(row => ({
+                    id: (row.Student_number || row.reg_no || '').trim(),
+                    name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '),
+                    email: row.student_email || '',
+                    phoneNumber: row.student_phone,
+                    role: 'Student' as const,
+                    status: 'active' as const,
+                    dob: row.date_of_birth,
+                    gender: row.gender,
+                    nationality: row.nationality,
+                    address: row.address,
+                    disability: row.disability,
+                    guardian: {
+                        name: row.guardian_names,
+                        relationship: row.guardian_relationship,
+                        email: row.guardian_email,
+                        contact: row.guardian_phone,
+                    },
+                    intakeId: intake.id,
+                    intakeName: intake.name,
+                })).filter(s => s.name && s.email && s.id);
+                
+                allProcessedStudents.push(...studentsFromSheet);
+            });
+            
+            setStudentsToImport(allProcessedStudents);
+            if (allProcessedStudents.length > 0) {
+                 toast({ variant: 'success', title: 'Data Processed', description: `${allProcessedStudents.length} valid student records found. Please review before importing.` });
+            } else {
+                 toast({ variant: 'destructive', title: 'No Valid Records', description: 'Could not find any valid student records. Ensure sheets are mapped and columns are correctly formatted.' });
+            }
+
+        } catch (error) {
+             console.error(error);
+             toast({ variant: 'destructive', title: 'Error processing sheets', description: 'Something went wrong while reading the data.'});
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
 
     const handleImport = async () => {
         if (studentsToImport.length === 0) return;
@@ -217,10 +244,7 @@ export default function BulkImportPage() {
              toast({ variant: 'destructive', duration: 10000, title: 'Import Errors Occurred', description: (<ul className="list-disc pl-5 mt-2">{errors.slice(0, 5).map((e, i)=><li key={i}>{e}</li>)}{errors.length > 5 && <li>and {errors.length-5} more...</li>}</ul>) });
         }
 
-        setStudentsToImport([]);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
+        resetFileState();
         setIsSaving(false);
     };
 
@@ -235,12 +259,14 @@ export default function BulkImportPage() {
                     <Info className="h-4 w-4" />
                     <AlertTitle>Instructions</AlertTitle>
                     <AlertDescription>
-                        Create a separate sheet for each intake and name the sheet exactly as the intake is named in the system (e.g., "2024JAN"). The file must contain columns for at least `first_name`, `last_name`, `student_email`, and either `reg_no` or `Student_number`. A random password will be generated and emailed to each student.
+                        1. Upload an Excel file containing your student data.<br/>
+                        2. Map each sheet in your file to the correct intake using the dropdowns.<br/>
+                        3. Click "Process & Preview" to see the data before importing.<br/>
+                        4. Confirm the preview is correct, then click "Confirm & Import" to create student accounts.
                     </AlertDescription>
                 </Alert>
                 <div>
-                    <h3 className="font-semibold">Upload File</h3>
-                    <p className="text-sm text-muted-foreground mb-2">Select an Excel file from your computer.</p>
+                    <h3 className="font-semibold">Step 1: Upload File</h3>
                     <div className="flex gap-2">
                         <Input 
                             type="file" 
@@ -248,17 +274,36 @@ export default function BulkImportPage() {
                             onChange={handleFileChange}
                             ref={fileInputRef}
                             className="max-w-xs"
-                            disabled={isProcessing}
                         />
-                        <Button onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
-                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileUp className="mr-2 h-4"/>}
-                            {isProcessing ? 'Processing...' : 'Select File'}
-                        </Button>
                     </div>
                 </div>
+
+                {sheetNames.length > 0 && (
+                    <div className="space-y-4">
+                        <Separator />
+                        <h3 className="font-semibold">Step 2: Map Sheets to Intakes</h3>
+                        <div className="space-y-2 max-w-md">
+                        {sheetNames.map(name => (
+                            <div key={name} className="flex items-center gap-4">
+                                <Label className="w-1/3 truncate">{name}</Label>
+                                <Select value={sheetToIntakeMap[name]} onValueChange={(value) => setSheetToIntakeMap(prev => ({...prev, [name]: value}))}>
+                                    <SelectTrigger><SelectValue placeholder="Select an intake..."/></SelectTrigger>
+                                    <SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                        ))}
+                        </div>
+                        <Button onClick={handleProcessSheets} disabled={isProcessing}>
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                            Process & Preview Data
+                        </Button>
+                    </div>
+                )}
+
                  {studentsToImport.length > 0 && (
                     <div className="space-y-4 pt-4">
-                        <h3 className="font-semibold">Preview Data ({studentsToImport.length} Records)</h3>
+                        <Separator />
+                        <h3 className="font-semibold">Step 3: Preview Data ({studentsToImport.length} Records)</h3>
                         <div className="max-h-96 overflow-y-auto border rounded-md">
                             <Table>
                                 <TableHeader>
