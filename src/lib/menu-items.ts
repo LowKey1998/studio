@@ -76,7 +76,15 @@ export const allMenuItems = [
         label: 'Clinicals',
         icon: Stethoscope,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning', icon: Calendar },
+            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks', icon: Book },
+            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management', icon: UserPlus },
+            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms', icon: ClipboardEdit },
+            { href: '/admin/clinicals/community-placement', label: 'Community Placement', icon: MapPin },
+            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
+            { href: '/admin/clinicals/clinical-assessment', label: 'Final Clinical Assessment', icon: ClipboardCheck },
+        ]
     },
      {
       label: 'E-Learning',
@@ -146,7 +154,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: UserCheckIcon },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: MessageSquare },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: DollarSign },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: AlertTriangle },
+        ]
     },
     {
       label: 'HR',
@@ -164,6 +178,7 @@ export const allMenuItems = [
            { href: '/admin/hr/probation-tracking', label: 'Probation Tracking', icon: Clock },
            { href: '/admin/hr/training', label: 'Training Logs', icon: Book },
            { href: '/admin/hr/performance', label: 'Performance Appraisal', icon: Star },
+           { href: '/admin/hr/contracts', label: 'Staff Contracts', icon: FileText },
            { href: '/admin/hr/allocation', label: 'Staff Allocation', icon: Users2 },
       ]
   },
@@ -205,37 +220,59 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '#', label: 'Coming Soon', icon: Info },
+        ]
     },
     {
       label: 'Quality Assurance',
       icon: Check,
       roles: ['Admin'],
-      isComingSoon: true,
+      items: [
+          { href: '/admin/qa/accreditation', label: 'Accreditation Tracker', icon: Shield },
+          { href: '/admin/qa/audit-reports', label: 'Internal Audit Reports', icon: FileText },
+          { href: '/admin/qa/course-eval', label: 'Course Evaluation Results', icon: BarChart2 },
+          { href: '/admin/qa/kpi-dashboard', label: 'KPI Dashboard', icon: LayoutDashboard },
+      ]
     },
     {
       label: 'Legal & Compliance',
       icon: GitBranch,
       roles: ['Admin'],
-      isComingSoon: true,
+      items: [
+        { href: '/admin/legal/case-management', label: 'Case Management', icon: Briefcase },
+        { href: '/admin/legal/contract-repository', label: 'Contract Repository', icon: Book },
+        { href: '/admin/legal/policy-uploads', label: 'Policy Uploads', icon: FileUp },
+        { href: '/admin/legal/disciplinary-logs', label: 'Student Disciplinary Logs', icon: UserX },
+      ]
     },
     {
       label: 'Facilities & Estates',
       icon: Building,
       roles: ['Admin'],
-      isComingSoon: true,
+      items: [
+          { href: '/admin/facilities/room-management', label: 'Room Management', icon: Building2 },
+          { href: '/admin/facilities/assets', label: 'Classroom & Lab Assets', icon: Beaker },
+          { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
+          { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: ClipboardList },
+          { href: '/admin/facilities/utilities', label: 'ZESCO & Water Reports', icon: FileText },
+      ]
     },
     {
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+             { href: '#', label: 'Coming Soon', icon: Info },
+        ]
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+             { href: '#', label: 'Coming Soon', icon: Info },
+        ]
     },
      {
         label: 'Mentorship & Advising',
@@ -251,7 +288,9 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+             { href: '#', label: 'Coming Soon', icon: Info },
+        ]
     },
     {
         label: 'Chaplaincy & Spiritual Life',
