@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect } from 'react';
 
 // This page is now a layout with tabs, so we redirect the base route
-// to the first tab, which is the course path.
+// to the first tab, which is assignments.
 export default function RedirectPage() {
     const router = useRouter();
     const params = useParams();
@@ -12,7 +12,7 @@ export default function RedirectPage() {
 
     useEffect(() => {
         if (courseId) {
-            router.replace(`/student/courses/${courseId}/path`);
+            router.replace(`/student/courses/${courseId}/assignments`);
         }
     }, [router, courseId]);
 

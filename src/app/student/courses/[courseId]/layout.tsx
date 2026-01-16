@@ -37,7 +37,6 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
     }, [courseId]);
 
     const navItems = [
-        { name: 'Course Path', href: `/student/courses/${courseId}/path`, icon: <Route/> },
         { name: 'Assignments', href: `/student/courses/${courseId}/assignments`, icon: <BookMarked/> },
         { name: 'Resources', href: `/student/courses/${courseId}/resources`, icon: <Folder/> },
         { name: 'Schedule', href: `/student/courses/${courseId}/schedule`, icon: <Calendar /> },
@@ -48,8 +47,11 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
     ];
     
     const checkActive = (href: string) => {
-        // More robust check for active tab
-        return pathname === href || (pathname === `/student/courses/${courseId}` && href.endsWith('/path'));
+        // A more robust check for the base route
+        if(href.endsWith('/assignments')) {
+            return pathname === href || pathname === `/student/courses/${courseId}`;
+        }
+        return pathname.startsWith(href);
     }
 
     if (loading) {
@@ -65,7 +67,7 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
     return (
         <div className="space-y-6">
              <Button variant="outline" asChild>
-                <Link href="/student/classes"><ChevronLeft className="mr-2 h-4 w-4" /> Back to All Classes</Link>
+                <Link href="/student/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to All Classes</Link>
             </Button>
             <Card>
                 <CardHeader>
