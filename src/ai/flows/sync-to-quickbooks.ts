@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -7,13 +6,14 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll } from '@/services/quickbooks';
+import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll, voidQbInvoice as voidQbInvoiceService } from '@/services/quickbooks';
 
 // --- Invoice Sync ---
 
 const SyncInvoiceInputSchema = z.object({
   invoiceId: z.string(),
   studentName: z.string(),
+  studentId: z.string(),
   amount: z.number(),
   date: z.string(),
   description: z.string(),
@@ -33,7 +33,7 @@ const syncInvoiceFlow = ai.defineFlow(
   },
   async (input) => {
     await createQbInvoice({
-      CustomerRef: { name: input.studentName, value: input.invoiceId.split('-')[0] }, // Using student name as customer, and part of invoice as customer ID
+      CustomerRef: { name: input.studentName, value: input.studentId }, // Using studentId
       Line: [{
         Amount: input.amount,
         DetailType: 'SalesItemLineDetail',
@@ -44,6 +44,22 @@ const syncInvoiceFlow = ai.defineFlow(
       DocNumber: input.invoiceId,
       TxnDate: input.date,
     });
+  }
+);
+
+// --- Void Invoice ---
+export async function voidQbInvoice(invoiceId: string): Promise<void> {
+    await voidQbInvoiceFlow({ invoiceId });
+}
+
+const voidQbInvoiceFlow = ai.defineFlow(
+  {
+    name: 'voidQbInvoiceFlow',
+    inputSchema: z.object({ invoiceId: z.string() }),
+    outputSchema: z.void(),
+  },
+  async ({ invoiceId }) => {
+    await voidQbInvoiceService(invoiceId);
   }
 );
 

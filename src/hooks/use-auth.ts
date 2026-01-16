@@ -19,7 +19,6 @@ export type UserProfile = {
 } | null;
 
 export type SubRole = {
-  id: string;
   name: string;
   permissions: Record<string, boolean>;
 };
@@ -55,7 +54,7 @@ export function useAuth() {
                         
                         // Match user's sub-role IDs with the sub-roles in settings
                         userSubRoleIds.forEach((userSubRoleId: string) => {
-                            const matchingRole = Object.values(allSubRoles).find(role => role.id === userSubRoleId);
+                            const matchingRole = allSubRoles[userSubRoleId];
                             if (matchingRole && matchingRole.permissions) {
                                 for(const key in matchingRole.permissions) {
                                    aggregatedPermissions[desanitizeKey(key)] = matchingRole.permissions[key];
