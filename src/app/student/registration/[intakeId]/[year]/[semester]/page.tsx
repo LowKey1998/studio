@@ -152,18 +152,8 @@ export default function RegisterForSemesterPage() {
                     (p: CoursePath) => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId
                 );
                 
-<<<<<<< HEAD:src/app/student/registration/[intakeId]/[year]/[semester]/page.tsx
                 if (!userPath) throw new Error("A course path has not been defined for your intake and programme.");
 
-=======
-                const userPath = allCoursePaths.find(p => p.intakeId === userDataVal.intakeId && p.programmeId === userDataVal.programmeId);
-                
-                if (!userPath) {
-                    throw new Error("A course path has not been defined for your intake and programme.");
-                }
-                
-                // Step 4: Load all necessary data for the page
->>>>>>> 23a608259e5a957932cfd245d227572e521b80f4:src/app/student/registration/[year]/[semester]/page.tsx
                 const allCourses = coursesSnap.val() || {};
                 const allSemesters = semestersSnap.val() || {};
                 const allSettings = settingsSnap.val() || {};
@@ -436,3 +426,5 @@ export default function RegisterForSemesterPage() {
         </div>
     );
 }
+
+    
