@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set } from 'firebase/database';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,6 +34,9 @@ type StudentPaymentInfo = {
 };
 
 type PaymentRecord = {
+    key: number;
+    userId?: string;
+    invoiceId?: string;
     amount: string;
     comment: string;
 };
@@ -62,7 +66,7 @@ export default function PaymentsManagementPage() {
     // Bulk Record Dialog state
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [formLoading, setFormLoading] = React.useState(false);
-    const [bulkPayments, setBulkPayments] = React.useState<Record<string, PaymentRecord>>({});
+    const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
 
     const { toast } = useToast();
 
@@ -168,33 +172,46 @@ export default function PaymentsManagementPage() {
         fetchPaymentData();
     }, [fetchPaymentData]);
     
-    const handleBulkPaymentChange = (key: string, field: 'amount' | 'comment', value: string) => {
-        setBulkPayments(prev => ({
-            ...prev,
-            [key]: {
-                ...prev[key] || { amount: '', comment: '' },
-                [field]: value
+    const handleAddPaymentRow = () => {
+        setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '' }]);
+    };
+    
+    const handleRemovePaymentRow = (key: number) => {
+        setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
+    };
+
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string) => {
+        setBulkPaymentRows(prev => prev.map(row => {
+            if (row.key === key) {
+                if (field === 'userId') {
+                    const [userId, invoiceId] = value.split('|');
+                    return { ...row, userId, invoiceId };
+                }
+                return { ...row, [field]: value };
             }
+            return row;
         }));
     };
     
     const handleSaveBulkPayments = async () => {
         setFormLoading(true);
-        const paymentsToRecord = Object.entries(bulkPayments).filter(([,p]) => parseFloat(p.amount) > 0);
+        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && parseFloat(p.amount) > 0);
 
         if(paymentsToRecord.length === 0) {
-            toast({ variant: 'destructive', title: 'No payments entered.'});
+            toast({ variant: 'destructive', title: 'No valid payments entered.'});
             setFormLoading(false);
             return;
         }
 
         try {
-            for (const [key, paymentRecord] of paymentsToRecord) {
-                const [userId, invoiceId] = key.split('-');
+            for (const paymentRecord of paymentsToRecord) {
+                const { userId, invoiceId, amount, comment } = paymentRecord;
+                if (!userId || !invoiceId) continue;
+                
                 const studentInfo = paymentInfos.find(p => p.userId === userId && p.invoiceId === invoiceId);
                 if (!studentInfo) continue;
                 
-                const amount = parseFloat(paymentRecord.amount);
+                const paymentAmount = parseFloat(amount);
                 const newTxId = `MANUAL-${Date.now()}`;
 
                 const txRef = push(ref(db, 'transactions'));
@@ -202,27 +219,27 @@ export default function PaymentsManagementPage() {
                     transactionId: newTxId,
                     userId: userId,
                     invoiceId: invoiceId,
-                    amount: amount,
+                    amount: paymentAmount,
                     currency: 'ZMW',
                     status: 'successful',
                     paymentDate: new Date().toISOString(),
                     method: 'Manual',
-                    comment: paymentRecord.comment,
+                    comment: comment,
                     recordedBy: 'Admin/Accountant',
                 });
                 
                 // Sync to external services
-                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount, date: new Date().toISOString().split('T')[0], description: `Manual Payment: ${paymentRecord.comment || 'N/A'}` };
+                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: `Manual Payment: ${comment || 'N/A'}` };
                 if (isQuickBooksEnabled) await createQbPayment(syncData);
-                if (isSageEnabled) await syncInvoiceToSage(syncData); // Assuming similar payload
+                if (isSageEnabled) await syncInvoiceToSage(syncData);
                 
-                await createNotification(userId, `A manual payment of ZMW ${amount.toFixed(2)} was recorded for your account. Comment: ${paymentRecord.comment || 'N/A'}`, '/student/payments');
+                await createNotification(userId, `A manual payment of ZMW ${paymentAmount.toFixed(2)} was recorded for your account. Comment: ${comment || 'N/A'}`, '/student/payments');
             }
             
             toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) have been successfully recorded.` });
             await fetchPaymentData();
             setIsBulkRecordOpen(false);
-            setBulkPayments({});
+            setBulkPaymentRows([]);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Failed to record payments', description: e.message });
         } finally {
@@ -300,36 +317,52 @@ export default function PaymentsManagementPage() {
                             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
                                 <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
-                                    <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Enter payment amounts for students matching your current filters. Only entries with an amount will be saved.</DialogDescription></DialogHeader>
+                                    <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Add rows and select students to record payments.</DialogDescription></DialogHeader>
                                     <div className="flex-1 overflow-auto">
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead>Student</TableHead>
+                                                    <TableHead className="w-[250px]">Student</TableHead>
                                                     <TableHead>Total Due</TableHead>
                                                     <TableHead>Opening Balance</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
                                                     <TableHead className="w-[200px]">Comment</TableHead>
+                                                    <TableHead className="w-[50px]"></TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {filteredData.filter(p => p.balance > 0).map(student => {
-                                                    const key = `${student.userId}-${student.invoiceId}`;
-                                                    const amountPaid = parseFloat(bulkPayments[key]?.amount || '0');
-                                                    const newBalance = student.balance - amountPaid;
-                                                    return(
-                                                    <TableRow key={key}>
-                                                        <TableCell>{student.studentName}<br/><span className="text-xs text-muted-foreground">{student.studentId}</span></TableCell>
-                                                        <TableCell>ZMW {student.totalDue.toFixed(2)}</TableCell>
-                                                        <TableCell>ZMW {student.balance.toFixed(2)}</TableCell>
-                                                        <TableCell><Input type="number" placeholder="0.00" value={bulkPayments[key]?.amount || ''} onChange={(e) => handleBulkPaymentChange(key, 'amount', e.target.value)} /></TableCell>
+                                                {bulkPaymentRows.map((row) => {
+                                                    const studentInfo = paymentInfos.find(p => p.userId === row.userId && p.invoiceId === row.invoiceId);
+                                                    const amountPaid = parseFloat(row.amount || '0');
+                                                    const newBalance = studentInfo ? studentInfo.balance - amountPaid : 0;
+                                                    return (
+                                                    <TableRow key={row.key}>
+                                                        <TableCell>
+                                                            <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}>
+                                                                <SelectTrigger><SelectValue placeholder="Select student..."/></SelectTrigger>
+                                                                <SelectContent>
+                                                                    {paymentInfos.filter(p => p.balance > 0).map(s => (
+                                                                        <SelectItem key={`${s.userId}-${s.invoiceId}`} value={`${s.userId}|${s.invoiceId}`}>
+                                                                            {s.studentName} ({s.studentId}) - {semesters.find(sem => sem.id === s.semester)?.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </TableCell>
+                                                        <TableCell>ZMW {studentInfo?.totalDue.toFixed(2) || '0.00'}</TableCell>
+                                                        <TableCell>ZMW {studentInfo?.balance.toFixed(2) || '0.00'}</TableCell>
+                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
-                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={bulkPayments[key]?.comment || ''} onChange={(e) => handleBulkPaymentChange(key, 'comment', e.target.value)} /></TableCell>
+                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} /></TableCell>
+                                                        <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                                     </TableRow>
                                                 )})}
                                             </TableBody>
                                         </Table>
+                                    </div>
+                                    <div className="pt-4">
+                                        <Button variant="outline" onClick={handleAddPaymentRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Student Payment</Button>
                                     </div>
                                     <DialogFooter>
                                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -361,6 +394,17 @@ export default function PaymentsManagementPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline text-xl">Fee Reports</CardTitle>
+                    <CardDescription>Download lists of students who have paid for specific optional services.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                   <p className="text-sm text-muted-foreground">This feature is temporarily disabled and will be re-enabled in a future update.</p>
+                </CardContent>
+            </Card>
+
         </div>
     );
 }
