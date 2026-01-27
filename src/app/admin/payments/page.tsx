@@ -185,11 +185,11 @@ export default function PaymentsManagementPage() {
             }
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
 
-            if (!usersSnap.exists() || !regsSnap.exists()) {
+            if (!usersSnap.exists()) {
                 setPaymentInfos([]); setLoading(false); return;
             }
             
-            const registrations = regsSnap.val();
+            const registrations = regsSnap.exists() ? regsSnap.val() : {};
             const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
             
             const invoicesSnap = await get(ref(db, 'invoices'));
@@ -232,7 +232,7 @@ export default function PaymentsManagementPage() {
                 const tx = transactions[txId];
                 if(tx.status !== 'successful') continue;
                 
-                const invoice = allInvoices[tx.userId]?.[tx.invoiceId];
+                const invoice = Object.values(allInvoices[tx.userId] || {}).find((inv: any) => inv.invoiceId === tx.invoiceId) as any;
                 if (invoice) {
                     const key = `${tx.userId}-${invoice.semesterId}`;
                      if (studentPaymentMap[key]) {
@@ -265,28 +265,38 @@ export default function PaymentsManagementPage() {
         fetchPaymentData();
     }, [fetchPaymentData]);
     
-     const handleAddPaymentRow = (isUnlinked = false) => {
-        setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '', isUnlinked }]);
+    const handleAddPaymentRow = () => {
+        setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '' }]);
     };
     
     const handleRemovePaymentRow = (key: number) => {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: 'userId' | 'semesterId' | 'amount' | 'comment' | 'reference' | 'totalDue', value: string) => {
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number) => {
         setBulkPaymentRows(prev => prev.map(row => {
-            if (row.key === key) {
-                let updatedRow = { ...row, [field]: value };
-                if (field === 'userId') {
-                    updatedRow = { ...updatedRow, semesterId: undefined, invoiceId: undefined, amount: '', comment: '', totalDue: undefined };
+            if (row.key !== key) return row;
+    
+            if (field === 'userId') {
+                if (value === '__UNLINKED__') {
+                    // Convert to unlinked row
+                    return { key: row.key, isUnlinked: true, amount: '', comment: '' };
                 }
-                if (field === 'semesterId') {
-                    const matchingInfo = paymentInfos.find(p => p.userId === row.userId && p.semester === value);
-                    updatedRow = { ...updatedRow, invoiceId: matchingInfo?.invoiceId, amount: '', comment: '', totalDue: matchingInfo?.totalDue };
-                }
-                return updatedRow;
+                // Convert back to or set as student row
+                return { key: row.key, userId: value as string, amount: '', comment: '' };
             }
-            return row;
+    
+            const updatedRow = { ...row, [field]: value };
+    
+            if (field === 'semesterId' && !updatedRow.isUnlinked) {
+                const info = paymentInfos.find(p => p.userId === updatedRow.userId && p.semester === value);
+                updatedRow.invoiceId = info?.invoiceId;
+                updatedRow.totalDue = info?.balance ?? 0;
+                if (info === undefined) {
+                    updatedRow.totalDue = undefined;
+                }
+            }
+            return updatedRow;
         }));
     };
     
@@ -443,6 +453,11 @@ export default function PaymentsManagementPage() {
         Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
 
+    const studentOptions = React.useMemo(() => [
+        { value: '__UNLINKED__', label: '--- Student Not Found / Unlinked Payment ---' },
+        ...allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))
+    ], [allStudents]);
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -490,12 +505,41 @@ export default function PaymentsManagementPage() {
                                                 {bulkPaymentRows.map((row) => {
                                                     const selectedInvoiceInfo = !row.isUnlinked && row.userId && row.semesterId ? paymentInfos.find(p => p.userId === row.userId && p.semester === row.semesterId) : null;
                                                     const amountPaid = parseFloat(row.amount || '0');
-                                                    const newBalance = selectedInvoiceInfo ? selectedInvoiceInfo.balance - amountPaid : (row.totalDue || 0) - amountPaid;
+                                                    const totalDueForCalc = row.totalDue ?? selectedInvoiceInfo?.balance ?? 0;
+                                                    const newBalance = totalDueForCalc - amountPaid;
+
                                                     return (
                                                     <TableRow key={row.key}>
-                                                        <TableCell>{row.isUnlinked ? <Input placeholder="Ref name/ID..." value={row.reference || ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'reference', e.target.value)} /> : <SearchableSelect value={row.userId} onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)} options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))} placeholder="Select student..." />}</TableCell>
-                                                        <TableCell>{!row.isUnlinked && <SearchableSelect value={row.semesterId} onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)} options={semesters.map(s => ({ value: s.id, label: s.name }))} placeholder="Select semester..." disabled={!row.userId} />}</TableCell>
-                                                        <TableCell>{selectedInvoiceInfo ? `ZMW ${selectedInvoiceInfo?.balance.toFixed(2)}` : row.isUnlinked ? 'N/A' : <Input type="number" placeholder="Set Total Due" value={row.totalDue || ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} disabled={!row.semesterId} />}</TableCell>
+                                                        <TableCell>
+                                                            <SearchableSelect
+                                                                value={row.userId || (row.isUnlinked ? '__UNLINKED__' : undefined)}
+                                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}
+                                                                options={studentOptions}
+                                                                placeholder="Select student..."
+                                                            />
+                                                            {row.isUnlinked && (
+                                                                <Input
+                                                                    placeholder="Enter Reference for unlinked payment"
+                                                                    value={row.reference || ''}
+                                                                    onChange={(e) => handleBulkPaymentRowChange(row.key, 'reference', e.target.value)}
+                                                                    className="mt-2"
+                                                                />
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {!row.isUnlinked && (
+                                                                <SearchableSelect
+                                                                    value={row.semesterId}
+                                                                    onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)}
+                                                                    options={semesters.map(s => ({ value: s.id, label: s.name }))}
+                                                                    placeholder="Select semester..."
+                                                                    disabled={!row.userId}
+                                                                />
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {selectedInvoiceInfo ? `ZMW ${selectedInvoiceInfo?.balance.toFixed(2)}` : row.isUnlinked ? 'N/A' : <Input type="number" placeholder="Set Total Due" value={row.totalDue ?? ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} disabled={!row.semesterId} />}
+                                                        </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId && !row.isUnlinked} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
                                                         <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} /></TableCell>
@@ -506,8 +550,7 @@ export default function PaymentsManagementPage() {
                                         </Table>
                                     </div>
                                     <div className="pt-4 flex gap-2">
-                                        <Button variant="outline" onClick={() => handleAddPaymentRow(false)}><PlusCircle className="mr-2 h-4 w-4"/>Add Student Payment</Button>
-                                        <Button variant="secondary" onClick={() => handleAddPaymentRow(true)}><PlusCircle className="mr-2 h-4 w-4"/>Add Unlinked Payment</Button>
+                                        <Button variant="outline" onClick={handleAddPaymentRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Payment Row</Button>
                                     </div>
                                     <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveBulkPayments} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Save Payments</Button></DialogFooter>
                                 </DialogContent>
