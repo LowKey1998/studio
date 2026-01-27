@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set } from 'firebase/database';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -272,7 +272,7 @@ export default function PaymentsManagementPage() {
     
     const handleSaveBulkPayments = async () => {
         setFormLoading(true);
-        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && p.invoiceId && parseFloat(p.amount) > 0);
+        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && p.semesterId && parseFloat(p.amount) > 0);
 
         if(paymentsToRecord.length === 0) {
             toast({ variant: 'destructive', title: 'No valid payments entered.'});
@@ -280,13 +280,57 @@ export default function PaymentsManagementPage() {
             return;
         }
 
+        const allUsersSnap = await get(ref(db, 'users'));
+        const allUsersData = allUsersSnap.exists() ? allUsersSnap.val() : {};
+
         try {
             for (const paymentRecord of paymentsToRecord) {
-                const { userId, invoiceId, amount, comment } = paymentRecord;
-                if (!userId || !invoiceId) continue;
+                let { userId, invoiceId, semesterId, amount, comment } = paymentRecord;
+                if (!userId || !semesterId) continue;
                 
-                const studentInfo = paymentInfos.find(p => p.userId === userId && p.invoiceId === invoiceId);
-                if (!studentInfo) continue;
+                const studentInfo = allStudents.find(s => s.uid === userId);
+                const semesterInfo = semesters.find(s => s.id === semesterId);
+
+                if (!studentInfo || !semesterInfo) continue;
+                
+                if (!invoiceId) {
+                    const regCheckRef = ref(db, `registrations/${userId}/${semesterId}`);
+                    const regCheckSnap = await get(regCheckRef);
+
+                    if (regCheckSnap.exists() && regCheckSnap.val().invoiceId) {
+                        invoiceId = regCheckSnap.val().invoiceId;
+                    } else {
+                        const studentProfile = allUsersData[userId];
+                        if (!studentProfile) continue;
+
+                        toast({title: "Creating new invoice...", description: `No existing invoice found for ${studentInfo.name} for ${semesterInfo.name}. A new one will be created.`});
+
+                        const newInvoiceRef = push(ref(db, `invoices/${userId}`));
+                        invoiceId = newInvoiceRef.key!;
+                        await set(newInvoiceRef, {
+                            invoiceId,
+                            totalTuition: 0,
+                            totalMandatoryFees: 0,
+                            totalOptionalFees: 0,
+                            paymentPlan: 'Full Payment',
+                            dateCreated: new Date().toISOString(),
+                            semester: semesterInfo.name,
+                            semesterId: semesterInfo.id,
+                            courses: [],
+                            optionalFees: [],
+                        });
+
+                        await set(regCheckRef, {
+                            courses: [],
+                            invoiceId,
+                            status: 'Completed',
+                            paymentPlan: 'Full Payment',
+                            programmeId: studentProfile.programmeId,
+                            registrationDate: new Date().toISOString(),
+                            semesterName: semesterInfo.name,
+                        });
+                    }
+                }
                 
                 const paymentAmount = parseFloat(amount);
                 const newTxId = `MANUAL-${Date.now()}`;
@@ -305,7 +349,7 @@ export default function PaymentsManagementPage() {
                     recordedBy: 'Admin/Accountant',
                 });
                 
-                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: comment || 'N/A' };
+                const syncData = { invoiceId, studentId: studentInfo.id, studentName: studentInfo.name, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: comment || 'N/A' };
                 if (isQuickBooksEnabled) await createQbPayment(syncData);
                 if (isSageEnabled) await syncInvoiceToSage(syncData as any);
                 
@@ -387,7 +431,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
@@ -400,7 +444,7 @@ export default function PaymentsManagementPage() {
                                                 <TableRow>
                                                     <TableHead className="w-[250px]">Student</TableHead>
                                                     <TableHead className="w-[250px]">Semester</TableHead>
-                                                    <TableHead>Balance</TableHead>
+                                                    <TableHead>Total Balance</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
                                                     <TableHead className="w-[200px]">Comment</TableHead>
@@ -487,7 +531,5 @@ export default function PaymentsManagementPage() {
 
         </div>
     );
+}
 
-    
-
-    
