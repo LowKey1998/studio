@@ -20,13 +20,33 @@ import { usePathname, useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth, UserProfile } from '@/hooks/use-auth';
 import { get, ref, onValue, update, serverTimestamp, onDisconnect } from 'firebase/database';
 import { Skeleton } from '../ui/skeleton';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Badge } from '../ui/badge';
+
+const hasStaffPermission = (item: any, profile: UserProfile) => {
+    if (!profile) return false;
+    
+    // Base items without a specific permission check are for all staff
+    const isBaseItemWithNoPerm = staffBaseMenuItems.some(cat => cat.items?.some(i => i.href === item.href && !i.permission));
+    if (isBaseItemWithNoPerm) return true;
+    
+    // Role-based permission check (e.g., 'Lecturer')
+    if (item.permission && profile.subRoleNames?.some(name => name.toLowerCase() === item.permission.toLowerCase())) {
+        return true;
+    }
+
+    // href-based permission check from 'Access Rules'
+    if (profile.permissions && profile.permissions[item.href]) {
+        return true;
+    }
+
+    return false;
+};
 
 
 export default function DashboardLayout({
@@ -116,43 +136,37 @@ export default function DashboardLayout({
         return allMenuItems;
       case 'student':
         return studentMenuItems;
-      case 'staff':
-        // Start with the base menu for all staff
-        const finalStaffMenu = [...staffBaseMenuItems];
-        
-        // Create a map of existing categories for efficient lookup
-        const categoryMap = new Map(finalStaffMenu.map(c => [c.label, c]));
+      case 'staff': {
+            const staffMenu: any[] = [];
+            const categoryMap = new Map();
 
-        // Iterate through all possible admin menu items
-        allMenuItems.forEach(adminCategory => {
-            if (!adminCategory.items) return;
+            // Combine all possible menu definitions
+            [...staffBaseMenuItems, ...allMenuItems].forEach(category => {
+                if (!category.items || category.isComingSoon) return;
 
-            // Filter for items the staff member has permission to see
-            const permittedItems = adminCategory.items.filter(item => 
-                userProfile.permissions?.[item.href]
-            );
+                // Filter items based on the user's permissions
+                const permittedItems = category.items.filter(item => hasStaffPermission(item, userProfile));
 
-            if (permittedItems.length > 0) {
-                // If the category already exists (e.g., 'Academics', 'HR'), add items to it
-                if (categoryMap.has(adminCategory.label)) {
-                    const existingCategory = categoryMap.get(adminCategory.label)!;
-                    // Add only unique items
-                    permittedItems.forEach(newItem => {
-                        if (!existingCategory.items?.some(existingItem => existingItem.href === newItem.href)) {
-                            existingCategory.items?.push(newItem);
+                // If there are permitted items, add them to the correct category
+                if (permittedItems.length > 0) {
+                    if (!categoryMap.has(category.label)) {
+                        const newCategory = { ...category, items: [] };
+                        staffMenu.push(newCategory);
+                        categoryMap.set(category.label, newCategory);
+                    }
+                    
+                    const existingCategoryItems = categoryMap.get(category.label).items;
+                    permittedItems.forEach((newItem: any) => {
+                        // Avoid adding duplicates if they appear in both base and all menus
+                        if (!existingCategoryItems.some((i: any) => i.href === newItem.href)) {
+                            existingCategoryItems.push(newItem);
                         }
                     });
-                } else {
-                    // If the category doesn't exist, add it to the menu
-                    const newCategory = { ...adminCategory, items: permittedItems };
-                    finalStaffMenu.push(newCategory);
-                    categoryMap.set(newCategory.label, newCategory);
                 }
-            }
-        });
-        
-        // Filter out any categories that ended up with no items
-        return finalStaffMenu.filter(category => category.items && category.items.length > 0);
+            });
+
+            return staffMenu;
+        }
       default:
         return [];
     }

@@ -208,63 +208,63 @@ export default function UserManagementPage() {
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
 
-    const fetchInitialData = React.useCallback(async () => {
+    // Fetches all static data and sets up listeners
+    React.useEffect(() => {
         setTableLoading(true);
-        try {
-            const [programmesSnap, coursesSnap, intakesSnap, subRolesSnap, settingsSnap, semestersSnap] = await Promise.all([
-                get(child(ref(db), 'programmes')),
-                get(child(ref(db), 'courses')),
-                get(child(ref(db), 'intakes')),
-                get(child(ref(db), 'settings/subRoles')),
-                get(child(ref(db), 'settings/idPrefixes')),
-                get(child(ref(db), 'semesters')),
-            ]);
 
-            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
-            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
-            const subRolesData = subRolesSnap.exists() ? subRolesSnap.val() : {};
+        const refs = {
+            users: ref(db, 'users'),
+            programmes: ref(db, 'programmes'),
+            courses: ref(db, 'courses'),
+            intakes: ref(db, 'intakes'),
+            subRoles: ref(db, 'settings/subRoles'),
+            idPrefixes: ref(db, 'settings/idPrefixes'),
+            semesters: ref(db, 'semesters')
+        };
 
-            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] }))); else setAllProgrammes([]);
-            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] }))); else setAllIntakes([]);
-            if (subRolesSnap.exists()) setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]}))); else setAvailableSubRoles([])
-            if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
-            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] }))); else setAllSemesters([]);
-            
+        const dataCache = {
+            users: {},
+            programmes: {},
+            subRoles: {}
+        };
+
+        const processAndSetUsers = () => {
+            const usersData = dataCache.users as Record<string, any>;
+            const programmesData = dataCache.programmes as Record<string, any>;
+            const subRolesData = dataCache.subRoles as Record<string, any>;
+
             const subRolesMap = new Map(Object.entries(subRolesData).map(([id, role]: [string, any]) => [id, role.name]));
 
-            const usersRef = ref(db, 'users');
-            onValue(usersRef, (usersSnap) => {
-                 if (usersSnap.exists()) {
-                    const usersData = usersSnap.val();
-                    const usersList: User[] = Object.keys(usersData).map(uid => {
-                        const user = usersData[uid];
-                        const userSubRoleIds = user.subRoles || [];
-                        const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id) || 'Unknown Role').filter(Boolean);
+            const usersList: User[] = Object.keys(usersData).map(uid => {
+                const user = usersData[uid];
+                const userSubRoleIds = user.subRoles || [];
+                const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean);
 
-                        return {
-                            uid,
-                            ...user,
-                            status: user.status || 'active',
-                            programmeName: user.programmeId ? programmesData[user.programmeId]?.name : undefined,
-                            subRoleNames: subRoleNames
-                        }
-                    });
-                    setUsers(usersList);
-                } else { setUsers([]); }
-                setTableLoading(false);
+                return {
+                    uid,
+                    ...user,
+                    status: user.status || 'active',
+                    programmeName: user.programmeId ? programmesData[user.programmeId]?.name : undefined,
+                    subRoleNames: subRoleNames
+                };
             });
+            setUsers(usersList);
+            setTableLoading(false);
+        };
+        
+        const unsubscribers = [
+            onValue(refs.users, (snapshot) => { dataCache.users = snapshot.val() || {}; processAndSetUsers(); }),
+            onValue(refs.programmes, (snapshot) => { dataCache.programmes = snapshot.val() || {}; setAllProgrammes(Object.keys(dataCache.programmes).map(id => ({ id, ...dataCache.programmes[id] }))); processAndSetUsers(); }),
+            onValue(refs.subRoles, (snapshot) => { dataCache.subRoles = snapshot.val() || {}; setAvailableSubRoles(Object.keys(dataCache.subRoles).map(id => ({id, ...dataCache.subRoles[id]}))); processAndSetUsers(); }),
+            onValue(refs.courses, (snapshot) => setAllCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : [])),
+            onValue(refs.intakes, (snapshot) => setAllIntakes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : [])),
+            onValue(refs.semesters, (snapshot) => setAllSemesters(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : [])),
+            onValue(refs.idPrefixes, (snapshot) => setIdSettings(snapshot.exists() ? snapshot.val() : { student: 'STU', staff: 'STF', admin: 'ADM' })),
+        ];
 
-        } catch (error) {
-            console.error("Error fetching data:", error);
-             toast({ variant: 'destructive', title: 'Failed to fetch data', description: 'Could not load data from the database.' });
-              setTableLoading(false);
-        }
-    }, [toast]);
+        return () => unsubscribers.forEach(unsub => unsub());
 
-    React.useEffect(() => {
-        fetchInitialData();
-    }, [fetchInitialData]);
+    }, []);
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); setProgramme(''); setIsTransfer(false); setExemptedCourses({});
@@ -422,7 +422,6 @@ export default function UserManagementPage() {
 
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId} and an email has been sent.` });
             resetForm(); setOpen(false);
-            fetchInitialData();
         } catch (error: any) {
             console.error("Error creating user:", error);
             toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
@@ -449,10 +448,10 @@ export default function UserManagementPage() {
         try {
             await updateUserStatus({ uid: user.uid, disabled: disabling });
             toast({ variant: 'success', title: 'User Status Updated', description: `${user.name} has been ${disabling ? 'disabled' : 'enabled'}.` });
-            fetchInitialData();
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Update Failed', description: `Failed to ${disabling ? 'disable' : 'enable'} user.` });
-            setTableLoading(false);
+        } finally {
+             setTableLoading(false);
         }
     };
 
@@ -487,7 +486,6 @@ export default function UserManagementPage() {
             await set(activityRef, { user: adminProfile?.name || 'Admin', userId: adminProfile?.id || 'N/A', action, timestamp: serverTimestamp() });
             toast({ variant: 'success', title: 'User Updated Successfully', description: `${editName}'s profile has been updated.` });
             setIsEditOpen(false); setEditingUser(null);
-            fetchInitialData();
         } catch (error: any) {
              console.error("Error updating user:", error);
             toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'An unexpected error occurred.' });

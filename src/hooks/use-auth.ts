@@ -13,6 +13,7 @@ export type UserProfile = {
   profilePictureUrl?: string;
   role: 'Admin' | 'Staff' | 'Student';
   subRoles?: string[];
+  subRoleNames?: string[];
   permissions?: Record<string, boolean>; // Aggregated permissions
   isOnline?: boolean;
   lastSeen?: number;
@@ -44,6 +45,7 @@ export function useAuth() {
             if(userSnapshot.exists()){
                 const profileData = userSnapshot.val();
                 let aggregatedPermissions: Record<string, boolean> = {};
+                const subRoleNames: string[] = [];
 
                 // If user is staff and has sub-roles, aggregate permissions
                 if (profileData.role === 'Staff' && profileData.subRoles) {
@@ -52,19 +54,21 @@ export function useAuth() {
                         const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
                         const userSubRoleIds = profileData.subRoles || [];
                         
-                        // Match user's sub-role IDs with the sub-roles in settings
                         userSubRoleIds.forEach((userSubRoleId: string) => {
                             const matchingRole = allSubRoles[userSubRoleId];
-                            if (matchingRole && matchingRole.permissions) {
-                                for(const key in matchingRole.permissions) {
-                                   aggregatedPermissions[desanitizeKey(key)] = matchingRole.permissions[key];
+                            if (matchingRole) {
+                                subRoleNames.push(matchingRole.name);
+                                if (matchingRole.permissions) {
+                                    for(const key in matchingRole.permissions) {
+                                       aggregatedPermissions[desanitizeKey(key)] = matchingRole.permissions[key];
+                                    }
                                 }
                             }
                         });
                     }
                 }
 
-                setUserProfile({ uid: authUser.uid, ...profileData, permissions: aggregatedPermissions });
+                setUserProfile({ uid: authUser.uid, ...profileData, permissions: aggregatedPermissions, subRoleNames });
             } else {
                 setUserProfile(null);
             }
