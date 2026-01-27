@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2 } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -19,6 +19,9 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -50,6 +53,65 @@ type Semester = {
     id: string;
     name: string;
 };
+
+// --- Reusable Searchable Select Component ---
+function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
+    options: { value: string, label: string }[];
+    value: string | undefined;
+    onValueChange: (value: string) => void;
+    placeholder: string;
+    disabled?: boolean;
+}) {
+    const [open, setOpen] = React.useState(false);
+    const [search, setSearch] = React.useState('');
+
+    const filteredOptions = React.useMemo(() => 
+        options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase())),
+        [options, search]
+    );
+
+    const selectedLabel = value ? options.find(o => o.value === value)?.label : placeholder;
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between" disabled={disabled}>
+                    <span className="truncate">{selectedLabel}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" side="bottom" align="start">
+                <div className="p-2">
+                    <Input 
+                        placeholder="Search..."
+                        className="h-9"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                </div>
+                <Separator />
+                <ScrollArea className="h-[200px]">
+                    <div className="p-1">
+                    {filteredOptions.length > 0 ? filteredOptions.map(option => (
+                        <Button 
+                            key={option.value}
+                            variant="ghost" 
+                            className="w-full justify-start h-auto py-2 px-2 text-left"
+                            onClick={() => {
+                                onValueChange(option.value);
+                                setOpen(false);
+                                setSearch('');
+                            }}
+                        >
+                            {option.label}
+                        </Button>
+                    )) : <p className="p-2 text-center text-sm text-muted-foreground">No results found.</p>}
+                    </div>
+                </ScrollArea>
+            </PopoverContent>
+        </Popover>
+    )
+}
 
 export default function PaymentsManagementPage() {
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
@@ -351,25 +413,25 @@ export default function PaymentsManagementPage() {
                                                     return (
                                                     <TableRow key={row.key}>
                                                         <TableCell>
-                                                            <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)} value={row.userId}>
-                                                                <SelectTrigger><SelectValue placeholder="Select student..."/></SelectTrigger>
-                                                                <SelectContent>{allStudents.map(s => <SelectItem key={s.uid} value={s.uid}>{s.name} ({s.id})</SelectItem>)}</SelectContent>
-                                                            </Select>
+                                                            <SearchableSelect
+                                                                value={row.userId}
+                                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}
+                                                                options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))}
+                                                                placeholder="Select student..."
+                                                            />
                                                         </TableCell>
                                                          <TableCell>
                                                             {row.userId && (
-                                                                <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'invoiceId', val)} value={row.invoiceId} disabled={studentInvoices.length === 0}>
-                                                                    <SelectTrigger>
-                                                                        <SelectValue placeholder={studentInvoices.length > 0 ? "Select invoice..." : "No invoices"}/>
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        {studentInvoices.map(inv => (
-                                                                            <SelectItem key={inv.invoiceId} value={inv.invoiceId}>
-                                                                                {semesters.find(sem => sem.id === inv.semester)?.name} (Bal: {inv.balance.toFixed(2)})
-                                                                            </SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
+                                                                <SearchableSelect
+                                                                    value={row.invoiceId}
+                                                                    onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'invoiceId', val)}
+                                                                    options={studentInvoices.map(inv => ({ 
+                                                                        value: inv.invoiceId, 
+                                                                        label: `${semesters.find(sem => sem.id === inv.semester)?.name} (Bal: ${inv.balance.toFixed(2)})`
+                                                                    }))}
+                                                                    placeholder={studentInvoices.length > 0 ? "Select invoice..." : "No invoices"}
+                                                                    disabled={studentInvoices.length === 0}
+                                                                />
                                                             )}
                                                         </TableCell>
                                                         <TableCell>ZMW {selectedInvoiceInfo?.balance.toFixed(2) || '0.00'}</TableCell>
@@ -428,4 +490,5 @@ export default function PaymentsManagementPage() {
 
         </div>
     );
-}
+
+    
