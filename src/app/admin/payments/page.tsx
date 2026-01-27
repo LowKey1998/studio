@@ -4,11 +4,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Link2Off } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
-import { ref, get, update, push, set } from 'firebase/database';
+import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,8 @@ import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+
 
 type StudentPaymentInfo = {
     userId: string;
@@ -39,22 +41,27 @@ type StudentPaymentInfo = {
 
 type PaymentRecord = {
     key: number;
+    isUnlinked?: boolean;
+    reference?: string;
     userId?: string;
     semesterId?: string;
     invoiceId?: string;
+    totalDue?: number;
     amount: string;
     comment: string;
 };
 
-type Programme = {
+type UnlinkedPayment = {
     id: string;
-    name: string;
+    reference: string;
+    amount: number;
+    comment: string;
+    date: string;
 };
 
-type Semester = {
-    id: string;
-    name: string;
-};
+
+type Programme = { id: string; name: string; };
+type Semester = { id: string; name: string; };
 
 // --- Reusable Searchable Select Component ---
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
@@ -117,6 +124,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 
 export default function PaymentsManagementPage() {
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
+    const [unlinkedPayments, setUnlinkedPayments] = React.useState<UnlinkedPayment[]>([]);
     const [allStudents, setAllStudents] = React.useState<{ uid: string, id: string, name: string }[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
@@ -133,22 +141,35 @@ export default function PaymentsManagementPage() {
     const [formLoading, setFormLoading] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
 
+    // Linking Dialog state
+    const [isLinkingOpen, setIsLinkingOpen] = React.useState(false);
+    const [linkingPayment, setLinkingPayment] = React.useState<UnlinkedPayment | null>(null);
+    const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
+    const [selectedLinkSemester, setSelectedLinkSemester] = React.useState('');
+
+
     const { toast } = useToast();
 
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'settings/integrations'))
+                get(ref(db, 'settings/integrations')),
+                get(ref(db, 'unlinkedPayments'))
             ]);
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
+            if (unlinkedSnap.exists()) {
+                setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
+            } else {
+                setUnlinkedPayments([]);
+            }
             if (settingsSnap.exists()) {
                 const integrations = settingsSnap.val();
                 setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncInvoices);
@@ -246,25 +267,26 @@ export default function PaymentsManagementPage() {
         fetchPaymentData();
     }, [fetchPaymentData]);
     
-    const handleAddPaymentRow = () => {
-        setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '' }]);
+     const handleAddPaymentRow = (isUnlinked = false) => {
+        setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '', isUnlinked }]);
     };
     
     const handleRemovePaymentRow = (key: number) => {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: 'userId' | 'semesterId' | 'amount' | 'comment', value: string) => {
+    const handleBulkPaymentRowChange = (key: number, field: 'userId' | 'semesterId' | 'amount' | 'comment' | 'reference' | 'totalDue', value: string) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key === key) {
+                let updatedRow = { ...row, [field]: value };
                 if (field === 'userId') {
-                    return { ...row, userId: value, semesterId: undefined, invoiceId: undefined, amount: '', comment: '' };
+                    updatedRow = { ...updatedRow, semesterId: undefined, invoiceId: undefined, amount: '', comment: '', totalDue: undefined };
                 }
                 if (field === 'semesterId') {
                     const matchingInfo = paymentInfos.find(p => p.userId === row.userId && p.semester === value);
-                    return { ...row, semesterId: value, invoiceId: matchingInfo?.invoiceId, amount: '', comment: '' };
+                    updatedRow = { ...updatedRow, invoiceId: matchingInfo?.invoiceId, amount: '', comment: '', totalDue: matchingInfo?.totalDue };
                 }
-                return { ...row, [field]: value };
+                return updatedRow;
             }
             return row;
         }));
@@ -272,7 +294,7 @@ export default function PaymentsManagementPage() {
     
     const handleSaveBulkPayments = async () => {
         setFormLoading(true);
-        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && p.semesterId && parseFloat(p.amount) > 0);
+        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && (p.isUnlinked && p.reference || !p.isUnlinked && p.userId && p.semesterId));
 
         if(paymentsToRecord.length === 0) {
             toast({ variant: 'destructive', title: 'No valid payments entered.'});
@@ -280,80 +302,51 @@ export default function PaymentsManagementPage() {
             return;
         }
 
-        const allUsersSnap = await get(ref(db, 'users'));
-        const allUsersData = allUsersSnap.exists() ? allUsersSnap.val() : {};
-
         try {
             for (const paymentRecord of paymentsToRecord) {
-                let { userId, invoiceId, semesterId, amount, comment } = paymentRecord;
-                if (!userId || !semesterId) continue;
-                
-                const studentInfo = allStudents.find(s => s.uid === userId);
-                const semesterInfo = semesters.find(s => s.id === semesterId);
-
-                if (!studentInfo || !semesterInfo) continue;
-                
-                if (!invoiceId) {
-                    const regCheckRef = ref(db, `registrations/${userId}/${semesterId}`);
-                    const regCheckSnap = await get(regCheckRef);
-
-                    if (regCheckSnap.exists() && regCheckSnap.val().invoiceId) {
-                        invoiceId = regCheckSnap.val().invoiceId;
-                    } else {
-                        const studentProfile = allUsersData[userId];
-                        if (!studentProfile) continue;
-
-                        toast({title: "Creating new invoice...", description: `No existing invoice found for ${studentInfo.name} for ${semesterInfo.name}. A new one will be created.`});
-
+                if (paymentRecord.isUnlinked) {
+                    const { reference, amount, comment } = paymentRecord;
+                    const newUnlinkedRef = push(ref(db, 'unlinkedPayments'));
+                    await set(newUnlinkedRef, {
+                        reference,
+                        amount: parseFloat(amount),
+                        comment,
+                        date: new Date().toISOString()
+                    });
+                } else {
+                    let { userId, invoiceId, semesterId, amount, comment, totalDue } = paymentRecord;
+                    if (!userId || !semesterId) continue;
+                    
+                    const studentInfo = allStudents.find(s => s.uid === userId);
+                    const semesterInfo = semesters.find(s => s.id === semesterId);
+                    if (!studentInfo || !semesterInfo) continue;
+                    
+                    if (!invoiceId) {
                         const newInvoiceRef = push(ref(db, `invoices/${userId}`));
                         invoiceId = newInvoiceRef.key!;
                         await set(newInvoiceRef, {
                             invoiceId,
-                            totalTuition: 0,
+                            totalTuition: totalDue || 0, // Use manually entered amount
                             totalMandatoryFees: 0,
                             totalOptionalFees: 0,
-                            paymentPlan: 'Full Payment',
                             dateCreated: new Date().toISOString(),
                             semester: semesterInfo.name,
                             semesterId: semesterInfo.id,
                             courses: [],
                             optionalFees: [],
                         });
-
-                        await set(regCheckRef, {
-                            courses: [],
-                            invoiceId,
-                            status: 'Completed',
-                            paymentPlan: 'Full Payment',
-                            programmeId: studentProfile.programmeId,
-                            registrationDate: new Date().toISOString(),
-                            semesterName: semesterInfo.name,
+                        await set(ref(db, `registrations/${userId}/${semesterId}`), {
+                            courses: [], invoiceId, status: 'Completed', paymentPlan: 'Manual', programmeId: '', registrationDate: new Date().toISOString(), semesterName: semesterInfo.name,
                         });
                     }
+                    
+                    const newTxId = `MANUAL-${Date.now()}`;
+                    await push(ref(db, 'transactions'), {
+                        transactionId: newTxId, userId, invoiceId, amount: parseFloat(amount), currency: 'ZMW', status: 'successful', paymentDate: new Date().toISOString(), method: 'Manual', comment,
+                    });
+                    
+                    await createNotification(userId, `A manual payment of ZMW ${parseFloat(amount).toFixed(2)} was recorded for your account. Comment: ${comment || 'N/A'}`, '/student/payments');
                 }
-                
-                const paymentAmount = parseFloat(amount);
-                const newTxId = `MANUAL-${Date.now()}`;
-
-                const txRef = push(ref(db, 'transactions'));
-                await set(txRef, {
-                    transactionId: newTxId,
-                    userId: userId,
-                    invoiceId: invoiceId,
-                    amount: paymentAmount,
-                    currency: 'ZMW',
-                    status: 'successful',
-                    paymentDate: new Date().toISOString(),
-                    method: 'Manual',
-                    comment: comment,
-                    recordedBy: 'Admin/Accountant',
-                });
-                
-                const syncData = { invoiceId, studentId: studentInfo.id, studentName: studentInfo.name, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: comment || 'N/A' };
-                if (isQuickBooksEnabled) await createQbPayment(syncData);
-                if (isSageEnabled) await syncInvoiceToSage(syncData as any);
-                
-                await createNotification(userId, `A manual payment of ZMW ${paymentAmount.toFixed(2)} was recorded for your account. Comment: ${comment || 'N/A'}`, '/student/payments');
             }
             
             toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) have been successfully recorded.` });
@@ -366,6 +359,44 @@ export default function PaymentsManagementPage() {
             setFormLoading(false);
         }
     }
+    
+    const handleLinkPayment = async () => {
+        if (!linkingPayment || !selectedLinkStudent || !selectedLinkSemester) {
+            toast({ variant: 'destructive', title: 'Please select a student and semester.'});
+            return;
+        }
+        setFormLoading(true);
+        try {
+            let invoiceId = paymentInfos.find(p => p.userId === selectedLinkStudent && p.semester === selectedLinkSemester)?.invoiceId;
+            const studentInfo = allStudents.find(s => s.uid === selectedLinkStudent);
+            
+            if (!invoiceId && studentInfo) {
+                // Simplified invoice creation for linking
+                const newInvoiceRef = push(ref(db, `invoices/${selectedLinkStudent}`));
+                invoiceId = newInvoiceRef.key!;
+                 await set(newInvoiceRef, { invoiceId, totalTuition: linkingPayment.amount, dateCreated: new Date().toISOString(), semesterId: selectedLinkSemester });
+                 await update(ref(db, `registrations/${selectedLinkStudent}/${selectedLinkSemester}`), { invoiceId });
+            }
+            if(!invoiceId || !studentInfo) throw new Error("Could not find or create an invoice for this selection.");
+
+            const newTxId = `LINKED-${linkingPayment.id}`;
+            await push(ref(db, 'transactions'), {
+                transactionId: newTxId, userId: selectedLinkStudent, invoiceId: invoiceId, amount: linkingPayment.amount, currency: 'ZMW', status: 'successful', paymentDate: linkingPayment.date, method: 'Manual (Linked)', comment: `Linked from unverified payment. Original Ref: ${linkingPayment.reference}`,
+            });
+
+            await remove(ref(db, `unlinkedPayments/${linkingPayment.id}`));
+            await createNotification(selectedLinkStudent, `A payment of ZMW ${linkingPayment.amount.toFixed(2)} was linked to your account.`, '/student/payments');
+            
+            toast({ title: 'Payment Linked!', description: 'The payment has been successfully linked to the student.'});
+            await fetchPaymentData();
+            setIsLinkingOpen(false);
+        } catch (e:any) {
+            toast({ variant: 'destructive', title: 'Linking Failed', description: e.message });
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
 
     const filteredData = React.useMemo(() => {
         return paymentInfos.filter(p => {
@@ -434,7 +465,7 @@ export default function PaymentsManagementPage() {
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
-                            <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
+                            <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
                                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
                                 <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
                                     <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Add rows and select students to record payments.</DialogDescription></DialogHeader>
@@ -442,9 +473,9 @@ export default function PaymentsManagementPage() {
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead className="w-[250px]">Student</TableHead>
+                                                    <TableHead className="w-[250px]">Student / Reference</TableHead>
                                                     <TableHead className="w-[250px]">Semester</TableHead>
-                                                    <TableHead>Total Balance</TableHead>
+                                                    <TableHead>Total Due</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
                                                     <TableHead className="w-[200px]">Comment</TableHead>
@@ -453,83 +484,118 @@ export default function PaymentsManagementPage() {
                                             </TableHeader>
                                             <TableBody>
                                                 {bulkPaymentRows.map((row) => {
-                                                    const selectedInvoiceInfo = row.userId && row.semesterId ? paymentInfos.find(p => p.userId === row.userId && p.semester === row.semesterId) : null;
+                                                    const selectedInvoiceInfo = !row.isUnlinked && row.userId && row.semesterId ? paymentInfos.find(p => p.userId === row.userId && p.semester === row.semesterId) : null;
                                                     const amountPaid = parseFloat(row.amount || '0');
-                                                    const newBalance = selectedInvoiceInfo ? selectedInvoiceInfo.balance - amountPaid : 0;
+                                                    const newBalance = selectedInvoiceInfo ? selectedInvoiceInfo.balance - amountPaid : (row.totalDue || 0) - amountPaid;
                                                     return (
                                                     <TableRow key={row.key}>
-                                                        <TableCell>
-                                                            <SearchableSelect
-                                                                value={row.userId}
-                                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}
-                                                                options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))}
-                                                                placeholder="Select student..."
-                                                            />
-                                                        </TableCell>
-                                                         <TableCell>
-                                                            <SearchableSelect
-                                                                value={row.semesterId}
-                                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)}
-                                                                options={semesters.map(s => ({ value: s.id, label: s.name }))}
-                                                                placeholder="Select semester..."
-                                                                disabled={!row.userId}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell>ZMW {selectedInvoiceInfo?.balance.toFixed(2) || '0.00'}</TableCell>
-                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
+                                                        <TableCell>{row.isUnlinked ? <Input placeholder="Ref name/ID..." value={row.reference || ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'reference', e.target.value)} /> : <SearchableSelect value={row.userId} onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)} options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))} placeholder="Select student..." />}</TableCell>
+                                                        <TableCell>{!row.isUnlinked && <SearchableSelect value={row.semesterId} onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)} options={semesters.map(s => ({ value: s.id, label: s.name }))} placeholder="Select semester..." disabled={!row.userId} />}</TableCell>
+                                                        <TableCell>{selectedInvoiceInfo ? `ZMW ${selectedInvoiceInfo?.balance.toFixed(2)}` : row.isUnlinked ? 'N/A' : <Input type="number" placeholder="Set Total Due" value={row.totalDue || ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} disabled={!row.semesterId} />}</TableCell>
+                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId && !row.isUnlinked} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
-                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} disabled={!row.semesterId} /></TableCell>
+                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} /></TableCell>
                                                         <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                                     </TableRow>
                                                 )})}
                                             </TableBody>
                                         </Table>
                                     </div>
-                                    <div className="pt-4">
-                                        <Button variant="outline" onClick={handleAddPaymentRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
+                                    <div className="pt-4 flex gap-2">
+                                        <Button variant="outline" onClick={() => handleAddPaymentRow(false)}><PlusCircle className="mr-2 h-4 w-4"/>Add Student Payment</Button>
+                                        <Button variant="secondary" onClick={() => handleAddPaymentRow(true)}><PlusCircle className="mr-2 h-4 w-4"/>Add Unlinked Payment</Button>
                                     </div>
-                                    <DialogFooter>
-                                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                        <Button onClick={handleSaveBulkPayments} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Save Payments</Button>
-                                    </DialogFooter>
+                                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveBulkPayments} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Save Payments</Button></DialogFooter>
                                 </DialogContent>
                             </Dialog>
                         </div>
                      </div>
-                    <Table>
-                         <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
-                            ) : filteredData.length > 0 ? (
-                                filteredData.map((p, index) => (
-                                    <TableRow key={`${p.userId}-${index}`}>
-                                        <TableCell className="font-medium">{p.studentId}</TableCell>
-                                        <TableCell>{p.studentName}</TableCell>
-                                        <TableCell className="text-right">{p.totalDue.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right text-green-600">{p.totalPaid.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right font-bold">{p.balance.toFixed(2)}</TableCell>
-                                        <TableCell className="text-center"><Badge variant={statusVariant[p.status]}>{p.status}</Badge></TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow><TableCell colSpan={6} className="h-24 text-center">No payment data found for the selected filters.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                     <Tabs defaultValue="studentPayments">
+                        <TabsList>
+                            <TabsTrigger value="studentPayments">Student Payments</TabsTrigger>
+                            <TabsTrigger value="unlinkedPayments">Unlinked Payments ({unlinkedPayments.length})</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="studentPayments">
+                            <Table>
+                                <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
+                                    ) : filteredData.length > 0 ? (
+                                        filteredData.map((p, index) => (
+                                            <TableRow key={`${p.userId}-${index}`}>
+                                                <TableCell className="font-medium">{p.studentId}</TableCell>
+                                                <TableCell>{p.studentName}</TableCell>
+                                                <TableCell className="text-right">{p.totalDue.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right text-green-600">{p.totalPaid.toFixed(2)}</TableCell>
+                                                <TableCell className="text-right font-bold">{p.balance.toFixed(2)}</TableCell>
+                                                <TableCell className="text-center"><Badge variant={statusVariant[p.status]}>{p.status}</Badge></TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={6} className="h-24 text-center">No payment data found for the selected filters.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </TabsContent>
+                         <TabsContent value="unlinkedPayments">
+                             <Table>
+                                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Comment</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {unlinkedPayments.length > 0 ? unlinkedPayments.map(p => (
+                                        <TableRow key={p.id}>
+                                            <TableCell>{format(parseISO(p.date), 'PPP')}</TableCell>
+                                            <TableCell>{p.reference}</TableCell>
+                                            <TableCell>{p.comment}</TableCell>
+                                            <TableCell className="text-right font-medium">{p.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button size="sm" variant="outline" onClick={() => { setLinkingPayment(p); setIsLinkingOpen(true); }}><LinkIcon className="mr-2 h-4 w-4" />Link to Student</Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    )) : <TableRow><TableCell colSpan={5} className="h-24 text-center">No unlinked payments.</TableCell></TableRow>}
+                                </TableBody>
+                             </Table>
+                         </TabsContent>
+                    </Tabs>
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle className="font-headline text-xl">Fee Reports</CardTitle>
-                    <CardDescription>Download lists of students who have paid for specific optional services.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                   <p className="text-sm text-muted-foreground">This feature is temporarily disabled and will be re-enabled in a future update.</p>
-                </CardContent>
-            </Card>
-
+            <Dialog open={isLinkingOpen} onOpenChange={setIsLinkingOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Link Unverified Payment</DialogTitle><DialogDescription>Match this payment to a student's invoice.</DialogDescription></DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className="p-3 bg-muted rounded-md text-sm">
+                            <p><strong>Reference:</strong> {linkingPayment?.reference}</p>
+                            <p><strong>Amount:</strong> ZMW {linkingPayment?.amount.toFixed(2)}</p>
+                            <p><strong>Comment:</strong> {linkingPayment?.comment}</p>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Student</Label>
+                             <SearchableSelect
+                                value={selectedLinkStudent}
+                                onValueChange={setSelectedLinkStudent}
+                                options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))}
+                                placeholder="Select student to link to..."
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Semester/Invoice</Label>
+                            <SearchableSelect
+                                value={selectedLinkSemester}
+                                onValueChange={setSelectedLinkSemester}
+                                options={semesters.map(s => ({ value: s.id, label: s.name }))}
+                                placeholder="Select semester..."
+                                disabled={!selectedLinkStudent}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button onClick={handleLinkPayment} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Link Payment</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
 
+    
