@@ -220,9 +220,7 @@ export const allMenuItems = [
         label: 'Community Engagement',
         icon: Handshake,
         roles: ['Admin'],
-        items: [
-            { href: '#', label: 'Coming Soon', icon: Info },
-        ]
+        isComingSoon: true,
     },
     {
       label: 'Quality Assurance',
@@ -262,17 +260,13 @@ export const allMenuItems = [
         label: 'Transport',
         icon: Truck,
         roles: ['Admin'],
-        items: [
-             { href: '#', label: 'Coming Soon', icon: Info },
-        ]
+        isComingSoon: true,
     },
      {
         label: 'Partnerships',
         icon: Handshake,
         roles: ['Admin'],
-        items: [
-             { href: '#', label: 'Coming Soon', icon: Info },
-        ]
+        isComingSoon: true,
     },
      {
         label: 'Mentorship & Advising',
@@ -288,9 +282,7 @@ export const allMenuItems = [
         label: 'Media & PR',
         icon: Newspaper,
         roles: ['Admin'],
-        items: [
-             { href: '#', label: 'Coming Soon', icon: Info },
-        ]
+        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',
@@ -399,27 +391,17 @@ export const staffBaseMenuItems = [
       ],
     },
     {
-      label: 'Leave & Timetable',
-      icon: Calendar,
+      label: 'My Workspace',
+      icon: Briefcase,
       items: [
-        { href: '/staff/leave', label: 'My Leave' },
-        { href: '/staff/calendar', label: 'Academic Calendar' },
-      ]
-    },
-     {
-      label: 'HR',
-      icon: UserCog,
-      items: [
-           { href: '/staff/onboarding', label: 'My Onboarding' },
-           { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
-      ]
-  },
-    {
-      label: 'General',
-      icon: Settings,
-      items: [
-        { href: '/staff/library', label: 'Library' },
         { href: '/staff/profile', label: 'My Profile' },
+        { href: '/staff/leave', label: 'My Leave' },
+        { href: '/staff/onboarding', label: 'My Onboarding' },
+        { href: '/staff/calendar', label: 'Academic Calendar' },
+        { href: '/staff/library', label: 'Library' },
+        { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
       ]
     }
   ];
+
+    
