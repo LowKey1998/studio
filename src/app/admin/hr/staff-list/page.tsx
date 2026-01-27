@@ -11,8 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { db, auth } from "@/lib/firebase";
 import { ref, update, onValue } from 'firebase/database';
 import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2, MoreVertical } from 'lucide-react';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -125,7 +123,9 @@ export default function StaffListPage() {
         });
     }, [staff, searchTerm, departmentFilter]);
     
-    const handlePrint = () => {
+    const handlePrint = async () => {
+        const { default: jsPDF } = await import('jspdf');
+        await import('jspdf-autotable');
         const doc = new jsPDF();
         doc.setFontSize(18);
         doc.text("Staff List Report", 14, 22);

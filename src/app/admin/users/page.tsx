@@ -51,8 +51,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
 import { DialogTrigger } from '@radix-ui/react-dialog';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -633,6 +631,33 @@ The Administration
         if (!prog || !prog.courseIds) return [];
         return allCourses.filter(c => prog.courseIds![c.id]);
     }, [programme, allProgrammes, allCourses]);
+
+    const handlePrint = async () => {
+        const { default: jsPDF } = await import('jspdf');
+        await import('jspdf-autotable');
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text("Users Report", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Filter: ${roleFilter}`, 14, 30);
+        
+        const tableColumn = ["ID", "Name", "Email", "Role", "Programme"];
+        const tableRows = filteredUsers.map(user => [
+            user.id,
+            user.name,
+            user.email,
+            user.role,
+            user.programmeName || 'N/A'
+        ]);
+
+        (doc as any).autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 35
+        });
+        
+        doc.save(`users_report_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
 
     const handlePastePrefix = () => {
         if (!role) {

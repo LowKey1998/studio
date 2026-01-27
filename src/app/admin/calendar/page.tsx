@@ -25,8 +25,6 @@ import { db, storage } from '@/lib/firebase';
 import { ref as dbRef, update, push, get, set, onValue, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getZambianPublicHolidays } from '@/lib/holidays';
 import { Switch } from '@/components/ui/switch';
@@ -277,7 +275,9 @@ export default function AdminCalendarPage() {
 
   const handleAddFromPopover = (date: Date) => { setNewEvents([{ title: '', date, file: null, semester: '' }]); setIsDialogOpen(true); setPopoverOpen(false); }
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    await import('jspdf-autotable');
     const doc = new jsPDF();
     doc.setFontSize(18); doc.text('Academic Calendar', 14, 22);
     const tableColumn = ["Date", "Event"];
