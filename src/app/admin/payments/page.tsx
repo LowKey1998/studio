@@ -3,12 +3,12 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2 } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
-import { ref, get, update, push, set, remove } from 'firebase/database';
-import { format, parseISO, isBefore } from 'date-fns';
+import { ref, get, update, push, set } from 'firebase/database';
+import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
+import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 
 type StudentPaymentInfo = {
@@ -33,13 +33,10 @@ type StudentPaymentInfo = {
     invoiceId: string;
 };
 
-type Transaction = {
-    transactionId: string;
-    invoiceId: string;
-    amount: number;
-    paymentDate: string;
-    status: 'successful' | 'failed';
-}
+type PaymentRecord = {
+    amount: string;
+    comment: string;
+};
 
 type Programme = {
     id: string;
@@ -51,23 +48,10 @@ type Semester = {
     name: string;
 };
 
-type OptionalFee = {
-    id: string;
-    name: string;
-    amount: number;
-}
-
-type FeeReportStudent = {
-    id: string;
-    name: string;
-};
-
-
 export default function PaymentsManagementPage() {
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [optionalFees, setOptionalFees] = React.useState<OptionalFee[]>([]);
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
@@ -76,69 +60,46 @@ export default function PaymentsManagementPage() {
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
 
-
-    // Dialog state
-    const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
+    // Bulk Record Dialog state
+    const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [formLoading, setFormLoading] = React.useState(false);
-    const [selectedStudent, setSelectedStudent] = React.useState<StudentPaymentInfo | null>(null);
-    const [paymentAmount, setPaymentAmount] = React.useState('');
-    const [paymentMethod, setPaymentMethod] = React.useState('Cash');
-    const [transactionId, setTransactionId] = React.useState('');
-
-    // Fee Report State
-    const [selectedFee, setSelectedFee] = React.useState('');
-    const [selectedFeeSemester, setSelectedFeeSemester] = React.useState('');
-    const [feeReportData, setFeeReportData] = React.useState<FeeReportStudent[] | null>(null);
-    const [reportLoading, setReportLoading] = React.useState(false);
-
+    const [bulkPayments, setBulkPayments] = React.useState<Record<string, PaymentRecord>>({});
 
     const { toast } = useToast();
 
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, feeTemplatesSnap, settingsSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'settings/feeTemplates')),
                 get(ref(db, 'settings/integrations'))
             ]);
             
-            if (programmesSnap.exists()) {
-                setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
-            }
-             if (semestersSnap.exists()) {
-                setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
-            }
-            if (feeTemplatesSnap.exists()) {
-                 const allFees = feeTemplatesSnap.val();
-                setOptionalFees(Object.keys(allFees).filter(id => allFees[id].type === 'Optional').map(id => ({ id, ...allFees[id]})));
-            }
+            if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
+            if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
             if (settingsSnap.exists()) {
                 const integrations = settingsSnap.val();
                 setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncInvoices);
                 setIsSageEnabled(integrations.sage?.enabled);
             }
 
-
             if (!usersSnap.exists() || !regsSnap.exists()) {
-                setPaymentInfos([]);
-                setLoading(false);
-                return;
+                setPaymentInfos([]); setLoading(false); return;
             }
 
             const users = usersSnap.val();
             const registrations = regsSnap.val();
             const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
-
-            const studentPaymentMap: Record<string, Omit<StudentPaymentInfo, 'status'>> = {};
             
             const invoicesSnap = await get(ref(db, 'invoices'));
             const allInvoices = invoicesSnap.exists() ? invoicesSnap.val() : {};
 
+            const studentPaymentMap: Record<string, Omit<StudentPaymentInfo, 'status'>> = {};
+            
             for (const userId in registrations) {
                  if (!users[userId] || users[userId].role !== 'Student') continue;
 
@@ -163,14 +124,13 @@ export default function PaymentsManagementPage() {
                     if (reg.invoiceId && allInvoices[userId] && allInvoices[userId][reg.invoiceId]) {
                         const invoice = allInvoices[userId][reg.invoiceId];
                          const totalPayable = invoice.applyScholarship 
-                            ? invoice.totalMandatoryFees + invoice.totalOptionalFees
-                            : invoice.totalTuition + invoice.totalMandatoryFees + invoice.totalOptionalFees;
+                            ? (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0)
+                            : (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0);
                         studentPaymentMap[key].totalDue += totalPayable;
                     }
                  }
             }
 
-            // Calculate total paid from transactions
             for (const txId in transactions) {
                 const tx = transactions[txId];
                 if(tx.status !== 'successful') continue;
@@ -185,15 +145,12 @@ export default function PaymentsManagementPage() {
             }
             
             const paymentInfoList = Object.values(studentPaymentMap)
-                .filter(p => p.totalDue > 0) // Only show students with invoices
+                .filter(p => p.totalDue > 0)
                 .map(p => {
                     const balance = p.totalDue - p.totalPaid;
                     let status: StudentPaymentInfo['status'] = 'Pending';
                     if (balance <= 0.01) {
                         status = 'Paid';
-                    } else {
-                        // A simple overdue check for now. Can be enhanced with due dates.
-                        status = 'Pending'; 
                     }
                     return { ...p, balance, status };
                 });
@@ -212,75 +169,66 @@ export default function PaymentsManagementPage() {
         fetchPaymentData();
     }, [fetchPaymentData]);
     
-    const handleRecordPayment = async () => {
-        if(!selectedStudent || !paymentAmount || !paymentMethod) {
-            toast({ variant: 'destructive', title: 'Missing fields' });
+    const handleBulkPaymentChange = (key: string, field: 'amount' | 'comment', value: string) => {
+        setBulkPayments(prev => ({
+            ...prev,
+            [key]: {
+                ...prev[key] || { amount: '', comment: '' },
+                [field]: value
+            }
+        }));
+    };
+    
+    const handleSaveBulkPayments = async () => {
+        setFormLoading(true);
+        const paymentsToRecord = Object.entries(bulkPayments).filter(([,p]) => parseFloat(p.amount) > 0);
+
+        if(paymentsToRecord.length === 0) {
+            toast({ variant: 'destructive', title: 'No payments entered.'});
+            setFormLoading(false);
             return;
         }
-        setFormLoading(true);
+
         try {
-            const amount = parseFloat(paymentAmount);
-            if (isNaN(amount) || amount <= 0) {
-                 toast({ variant: 'destructive', title: 'Invalid amount' }); return;
+            for (const [key, paymentRecord] of paymentsToRecord) {
+                const [userId, invoiceId] = key.split('-');
+                const studentInfo = paymentInfos.find(p => p.userId === userId && p.invoiceId === invoiceId);
+                if (!studentInfo) continue;
+                
+                const amount = parseFloat(paymentRecord.amount);
+                const newTxId = `MANUAL-${Date.now()}`;
+
+                const txRef = push(ref(db, 'transactions'));
+                await set(txRef, {
+                    transactionId: newTxId,
+                    userId: userId,
+                    invoiceId: invoiceId,
+                    amount: amount,
+                    currency: 'ZMW',
+                    status: 'successful',
+                    paymentDate: new Date().toISOString(),
+                    method: 'Manual',
+                    comment: paymentRecord.comment,
+                    recordedBy: 'Admin/Accountant',
+                });
+                
+                // Sync to external services
+                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount, date: new Date().toISOString().split('T')[0], description: `Manual Payment: ${paymentRecord.comment || 'N/A'}` };
+                if (isQuickBooksEnabled) await createQbPayment(syncData);
+                if (isSageEnabled) await syncInvoiceToSage(syncData); // Assuming similar payload
+                
+                await createNotification(userId, `A manual payment of ZMW ${amount.toFixed(2)} was recorded for your account. Comment: ${paymentRecord.comment || 'N/A'}`, '/student/payments');
             }
-
-            const newTxId = transactionId.trim() || `CASH-${Date.now()}`;
-            const txRef = push(ref(db, 'transactions'));
-            await set(txRef, {
-                transactionId: newTxId,
-                userId: selectedStudent.userId,
-                invoiceId: selectedStudent.invoiceId,
-                amount: amount,
-                currency: 'ZMW',
-                status: 'successful',
-                paymentDate: new Date().toISOString(),
-                method: paymentMethod,
-                recordedBy: 'Admin/Accountant',
-            });
             
-            const syncData = {
-                invoiceId: selectedStudent.invoiceId,
-                studentName: selectedStudent.studentName,
-                amount: amount,
-                date: new Date().toISOString(),
-                description: `Payment via ${paymentMethod}`
-            };
-
-            if (isQuickBooksEnabled) {
-                // Here we would call a payment creation flow
-                // For now, let's re-use the invoice sync as a placeholder for any transaction
-                await syncInvoiceToQuickbooks(syncData);
-                toast({ title: 'Synced to QuickBooks', description: 'Payment was successfully synced.' });
-            }
-            if (isSageEnabled) {
-                await syncInvoiceToSage(syncData);
-                toast({ title: 'Synced to Sage', description: 'Payment was successfully synced.' });
-            }
-
-            await createNotification(
-                selectedStudent.userId,
-                `A payment of ZMW ${amount.toFixed(2)} was manually recorded for your account.`,
-                '/student/payments'
-            );
-            
-            toast({ title: "Payment Recorded", description: `Payment of ZMW ${amount.toFixed(2)} for ${selectedStudent.studentName} has been recorded.` });
-            
-            fetchPaymentData(); // Refresh data
-            setIsRecordPaymentOpen(false);
-            resetDialog();
-
+            toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) have been successfully recorded.` });
+            await fetchPaymentData();
+            setIsBulkRecordOpen(false);
+            setBulkPayments({});
         } catch (e: any) {
-             toast({ variant: 'destructive', title: 'Failed to record payment', description: e.message });
+            toast({ variant: 'destructive', title: 'Failed to record payments', description: e.message });
         } finally {
             setFormLoading(false);
         }
-    }
-    
-    const resetDialog = () => {
-        setSelectedStudent(null);
-        setPaymentAmount('');
-        setPaymentMethod('Cash');
-        setTransactionId('');
     }
 
     const filteredData = React.useMemo(() => {
@@ -310,97 +258,18 @@ export default function PaymentsManagementPage() {
         filteredData.forEach(p => {
             const programmeName = programmes.find(prog => prog.id === p.programmeId)?.name || 'N/A';
             const semesterName = semesters.find(sem => sem.id === p.semester)?.name || 'N/A';
-            const row = [
-                p.studentId,
-                p.studentName,
-                programmeName,
-                semesterName,
-                p.totalDue.toFixed(2),
-                p.totalPaid.toFixed(2),
-                p.balance.toFixed(2),
-                p.status
-            ];
+            const row = [ p.studentId, p.studentName, programmeName, semesterName, p.totalDue.toFixed(2), p.totalPaid.toFixed(2), p.balance.toFixed(2), p.status ];
             tableRows.push(row);
         });
 
         doc.setFontSize(18);
         doc.text("Payments Report", 14, 22);
-        (doc as any).autoTable({
-            head: [tableColumn],
-            body: tableRows,
-            startY: 30
-        });
+        (doc as any).autoTable({ head: [tableColumn], body: tableRows, startY: 30 });
         doc.save(`payments_report_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
-    const handleGenerateFeeReport = async () => {
-        if (!selectedFee || !selectedFeeSemester) {
-            toast({ variant: 'destructive', title: 'Please select a fee and semester.' });
-            return;
-        }
-        setReportLoading(true);
-        setFeeReportData(null);
-        try {
-            const registrationsSnap = await get(ref(db, 'registrations'));
-            const usersSnap = await get(ref(db, 'users'));
-            if (!registrationsSnap.exists() || !usersSnap.exists()) {
-                toast({ variant: 'destructive', title: 'No data found' });
-                return;
-            }
-
-            const registrations = registrationsSnap.val();
-            const users = usersSnap.val();
-            const studentList: FeeReportStudent[] = [];
-            
-            const selectedSemesterName = semesters.find(s => s.id === selectedFeeSemester)?.name;
-
-            for (const userId in registrations) {
-                const semesterReg = registrations[userId][selectedFeeSemester];
-                if (semesterReg && (semesterReg.status === 'Completed' || semesterReg.status === 'Pending Payment') && semesterReg.optionalFees?.includes(selectedFee)) {
-                    if (users[userId]) {
-                        studentList.push({ id: users[userId].id, name: users[userId].name });
-                    }
-                }
-            }
-
-            if (studentList.length === 0) {
-                toast({ title: 'No students found for this fee in the selected semester.' });
-            }
-            setFeeReportData(studentList);
-        } catch (error) {
-            console.error(error);
-            toast({ variant: 'destructive', title: 'Failed to generate report.' });
-        } finally {
-            setReportLoading(false);
-        }
-    };
-    
-    const handleDownloadFeeReport = () => {
-        if (!feeReportData || !selectedFee || !selectedFeeSemester) return;
-        
-        const fee = optionalFees.find(f => f.id === selectedFee);
-        const semester = semesters.find(s => s.id === selectedFeeSemester);
-        if (!fee || !semester) return;
-        
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text(`Student Report for ${fee.name}`, 14, 22);
-        doc.setFontSize(12);
-        doc.text(`Semester: ${semester.name}`, 14, 30);
-        doc.text(`Generated on: ${format(new Date(), 'PPP')}`, 14, 35);
-        
-        (doc as any).autoTable({
-            head: [['Student ID', 'Student Name']],
-            body: feeReportData.map(s => [s.id, s.name]),
-            startY: 45
-        });
-        doc.save(`report_${fee.name.replace(/\s+/g, '_')}.pdf`);
-    }
-
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {
-        Paid: 'default',
-        Pending: 'secondary',
-        Overdue: 'destructive',
+        Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
 
     return (
@@ -423,52 +292,58 @@ export default function PaymentsManagementPage() {
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
                         <div className="flex-1 min-w-[200px]">
                             <Label htmlFor="search">Search Student</Label>
-                            <div className="relative">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                            </div>
+                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
-                         <div className="flex-1 min-w-[200px]">
-                            <Label htmlFor="programme-filter">Filter by Programme</Label>
-                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
-                         <div className="flex-1 min-w-[200px]">
-                             <Label htmlFor="semester-filter">Filter by Semester</Label>
-                            <Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
-                            <Dialog open={isRecordPaymentOpen} onOpenChange={(open) => { if(!open) resetDialog(); setIsRecordPaymentOpen(open); }}>
-                                <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payment</Button></DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader><DialogTitle>Record Manual Payment</DialogTitle><DialogDescription>Use for cash payments or to verify an unrecorded transaction.</DialogDescription></DialogHeader>
-                                    <div className="grid gap-4 py-4">
-                                        <div className="space-y-1"><Label htmlFor="student-select">Student</Label><Select onValueChange={(val) => setSelectedStudent(paymentInfos.find(p => p.userId === val) || null)}><SelectTrigger id="student-select"><SelectValue placeholder="Select a student..."/></SelectTrigger><SelectContent>{paymentInfos.filter(p => p.balance > 0).map(s => (<SelectItem key={s.userId} value={s.userId}>{s.studentName} ({s.studentId}) - Bal: {s.balance.toFixed(2)}</SelectItem>))}</SelectContent></Select></div>
-                                        <div className="space-y-1"><Label htmlFor="payment-amount">Amount (ZMW)</Label><Input id="payment-amount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} /></div>
-                                        <div className="space-y-1"><Label htmlFor="payment-method">Payment Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger id="payment-method"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Transfer">Bank Transfer</SelectItem><SelectItem value="Flutterwave">Flutterwave (Verification)</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div>
-                                        <div className="space-y-1"><Label htmlFor="transaction-id">Transaction ID (Optional)</Label><Input id="transaction-id" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} placeholder="e.g., from bank slip or Flutterwave"/></div>
+                            <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
+                                <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
+                                <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+                                    <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Enter payment amounts for multiple students below. Only entries with an amount will be saved.</DialogDescription></DialogHeader>
+                                    <div className="flex-1 overflow-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Student</TableHead>
+                                                    <TableHead>Total Due</TableHead>
+                                                    <TableHead>Opening Balance</TableHead>
+                                                    <TableHead className="w-[150px]">Amount Paid</TableHead>
+                                                    <TableHead>New Balance</TableHead>
+                                                    <TableHead className="w-[200px]">Comment</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {paymentInfos.filter(p => p.balance > 0).map(student => {
+                                                    const key = `${student.userId}-${student.invoiceId}`;
+                                                    const amountPaid = parseFloat(bulkPayments[key]?.amount || '0');
+                                                    const newBalance = student.balance - amountPaid;
+                                                    return(
+                                                    <TableRow key={key}>
+                                                        <TableCell>{student.studentName}<br/><span className="text-xs text-muted-foreground">{student.studentId}</span></TableCell>
+                                                        <TableCell>ZMW {student.totalDue.toFixed(2)}</TableCell>
+                                                        <TableCell>ZMW {student.balance.toFixed(2)}</TableCell>
+                                                        <TableCell><Input type="number" placeholder="0.00" value={bulkPayments[key]?.amount || ''} onChange={(e) => handleBulkPaymentChange(key, 'amount', e.target.value)} /></TableCell>
+                                                        <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
+                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={bulkPayments[key]?.comment || ''} onChange={(e) => handleBulkPaymentChange(key, 'comment', e.target.value)} /></TableCell>
+                                                    </TableRow>
+                                                )})}
+                                            </TableBody>
+                                        </Table>
                                     </div>
-                                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleRecordPayment} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Record</Button></DialogFooter>
+                                    <DialogFooter>
+                                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                        <Button onClick={handleSaveBulkPayments} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Save Payments</Button>
+                                    </DialogFooter>
                                 </DialogContent>
                             </Dialog>
                         </div>
                      </div>
                     <Table>
-                         <TableHeader>
-                            <TableRow>
-                                <TableHead>Student ID</TableHead>
-                                <TableHead>Student Name</TableHead>
-                                <TableHead className="text-right">Total Due</TableHead>
-                                <TableHead className="text-right">Total Paid</TableHead>
-                                <TableHead className="text-right">Balance</TableHead>
-                                <TableHead className="text-center">Status</TableHead>
-                            </TableRow>
-                        </TableHeader>
+                         <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {loading ? (
-                                Array.from({length: 5}).map((_, i) => (
-                                    <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full"/></TableCell></TableRow>
-                                ))
+                            {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
                             ) : filteredData.length > 0 ? (
                                 filteredData.map((p, index) => (
                                     <TableRow key={`${p.userId}-${index}`}>
@@ -481,88 +356,14 @@ export default function PaymentsManagementPage() {
                                     </TableRow>
                                 ))
                             ) : (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">No payment data found for the selected filters.</TableCell>
-                                </TableRow>
+                                <TableRow><TableCell colSpan={6} className="h-24 text-center">No payment data found for the selected filters.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="font-headline text-xl">Fee Reports</CardTitle>
-                    <CardDescription>Download lists of students who have paid for specific optional services.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor="fee-semester-select">Select Semester</Label>
-                            <Select value={selectedFeeSemester} onValueChange={setSelectedFeeSemester}>
-                                <SelectTrigger id="fee-semester-select">
-                                    <SelectValue placeholder="Select a semester..."/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {semesters.map(semester => (
-                                        <SelectItem key={semester.id} value={semester.id}>{semester.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label htmlFor="fee-select">Select Optional Fee</Label>
-                            <Select value={selectedFee} onValueChange={setSelectedFee}>
-                                <SelectTrigger id="fee-select">
-                                    <SelectValue placeholder="Select a fee..."/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {optionalFees.map(fee => (
-                                        <SelectItem key={fee.id} value={fee.id}>{fee.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                     <Button onClick={handleGenerateFeeReport} disabled={!selectedFee || !selectedFeeSemester || reportLoading} className="mt-4">
-                        {reportLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Generate Report
-                    </Button>
-
-                    {feeReportData && (
-                        <div className="mt-6">
-                            <div className="flex justify-between items-center mb-2">
-                                <h4 className="font-semibold">Report for {optionalFees.find(f=>f.id === selectedFee)?.name} - {semesters.find(s=>s.id === selectedFeeSemester)?.name}</h4>
-                                <Button onClick={handleDownloadFeeReport} variant="outline" size="sm">
-                                    <Download className="mr-2 h-4 w-4"/> Download PDF
-                                </Button>
-                            </div>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Student ID</TableHead>
-                                        <TableHead>Student Name</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {feeReportData.length > 0 ? (
-                                        feeReportData.map(student => (
-                                            <TableRow key={student.id}>
-                                                <TableCell>{student.id}</TableCell>
-                                                <TableCell>{student.name}</TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={2} className="text-center h-24">No students have paid for this fee in the selected semester.</TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
         </div>
     );
 }
+
+    
