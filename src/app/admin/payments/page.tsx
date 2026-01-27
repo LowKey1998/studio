@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Link2Off } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -16,7 +16,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
-import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -57,6 +56,17 @@ type UnlinkedPayment = {
     comment: string;
     date: string;
     semesterId?: string;
+};
+
+type Transaction = {
+    key: string; // Firebase key
+    transactionId: string;
+    invoiceId?: string;
+    userId: string;
+    amount: number;
+    paymentDate: string;
+    status: 'successful' | 'failed';
+    method?: string;
 };
 
 
@@ -128,6 +138,7 @@ export default function PaymentsManagementPage() {
     const [allStudents, setAllStudents] = React.useState<{ uid: string, id: string, name: string }[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
@@ -136,9 +147,10 @@ export default function PaymentsManagementPage() {
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
 
-    // Bulk Record Dialog state
+    // Dialog states
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [formLoading, setFormLoading] = React.useState(false);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
 
     // Linking Dialog state
@@ -191,7 +203,8 @@ export default function PaymentsManagementPage() {
             }
             
             const registrations = regsSnap.exists() ? regsSnap.val() : {};
-            const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
+            const transactionsData = transactionsSnap.exists() ? transactionsSnap.val() : {};
+            setRawTransactions(Object.entries(transactionsData).map(([key, data]) => ({ key, ...(data as any) })).sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
             
             const invoicesSnap = await get(ref(db, 'invoices'));
             const allInvoices = invoicesSnap.exists() ? invoicesSnap.val() : {};
@@ -229,15 +242,18 @@ export default function PaymentsManagementPage() {
                  }
             }
 
-            for (const txId in transactions) {
-                const tx = transactions[txId];
+            for (const txId in transactionsData) {
+                const tx = transactionsData[txId];
                 if(tx.status !== 'successful') continue;
                 
                 const invoice = Object.values(allInvoices[tx.userId] || {}).find((inv: any) => inv.invoiceId === tx.invoiceId) as any;
                 if (invoice) {
-                    const key = `${tx.userId}-${invoice.semesterId}`;
-                     if (studentPaymentMap[key]) {
-                        studentPaymentMap[key].totalPaid += tx.amount;
+                    const semesterId = Object.keys(registrations[tx.userId] || {}).find(semId => registrations[tx.userId][semId].invoiceId === tx.invoiceId);
+                    if (semesterId) {
+                        const key = `${tx.userId}-${semesterId}`;
+                        if (studentPaymentMap[key]) {
+                            studentPaymentMap[key].totalPaid += tx.amount;
+                        }
                     }
                 }
             }
@@ -274,7 +290,7 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number) => {
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number | undefined) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key !== key) return row;
     
@@ -282,21 +298,18 @@ export default function PaymentsManagementPage() {
     
             if (field === 'userId') {
                 if (value === '__UNLINKED__') {
-                    // Keep semesterId, but reset student-specific fields
                     return { 
                         ...row, 
                         isUnlinked: true, 
                         userId: undefined, 
                         invoiceId: undefined, 
-                        totalDue: 0 // Reset total due for unlinked
+                        totalDue: 0
                     };
                 }
-                // Convert back to or set as student row
                 updatedRow.isUnlinked = false;
                 updatedRow.reference = undefined;
             }
     
-            // Auto-populate invoice and balance if student and semester are selected
             const studentId = updatedRow.userId;
             const semId = updatedRow.semesterId;
             
@@ -319,7 +332,7 @@ export default function PaymentsManagementPage() {
         setFormLoading(true);
         const paymentsToRecord = bulkPaymentRows.filter(p => 
             parseFloat(p.amount) > 0 && 
-            p.semesterId && // Semester is now always required
+            p.semesterId &&
             ((p.isUnlinked && p.reference) || (!p.isUnlinked && p.userId))
         );
 
@@ -354,7 +367,7 @@ export default function PaymentsManagementPage() {
                         invoiceId = newInvoiceRef.key!;
                         await set(newInvoiceRef, {
                             invoiceId,
-                            totalTuition: totalDue || 0, // Use manually entered amount
+                            totalTuition: totalDue || 0,
                             totalMandatoryFees: 0,
                             totalOptionalFees: 0,
                             dateCreated: new Date().toISOString(),
@@ -363,13 +376,12 @@ export default function PaymentsManagementPage() {
                             courses: [],
                             optionalFees: [],
                         });
-                        await set(ref(db, `registrations/${userId}/${semesterId}`), {
-                            courses: [], invoiceId, status: 'Completed', paymentPlan: 'Manual', programmeId: '', registrationDate: new Date().toISOString(), semesterName: semesterInfo.name,
-                        });
+                        await update(ref(db, `registrations/${userId}/${semesterId}`), { invoiceId });
                     }
                     
                     const newTxId = `MANUAL-${Date.now()}`;
-                    await push(ref(db, 'transactions'), {
+                    const txRef = push(ref(db, 'transactions'));
+                    await set(txRef, {
                         transactionId: newTxId, userId, invoiceId, amount: parseFloat(amount), currency: 'ZMW', status: 'successful', paymentDate: new Date().toISOString(), method: 'Manual', comment,
                     });
                     
@@ -401,7 +413,6 @@ export default function PaymentsManagementPage() {
             const studentInfo = allStudents.find(s => s.uid === selectedLinkStudent);
             
             if (!invoiceId && studentInfo) {
-                // Simplified invoice creation for linking
                 const newInvoiceRef = push(ref(db, `invoices/${selectedLinkStudent}`));
                 invoiceId = newInvoiceRef.key!;
                  await set(newInvoiceRef, { invoiceId, totalTuition: linkingPayment.amount, dateCreated: new Date().toISOString(), semesterId: selectedLinkSemester });
@@ -410,7 +421,8 @@ export default function PaymentsManagementPage() {
             if(!invoiceId || !studentInfo) throw new Error("Could not find or create an invoice for this selection.");
 
             const newTxId = `LINKED-${linkingPayment.id}`;
-            await push(ref(db, 'transactions'), {
+            const txRef = push(ref(db, 'transactions'));
+            await set(txRef, {
                 transactionId: newTxId, userId: selectedLinkStudent, invoiceId: invoiceId, amount: linkingPayment.amount, currency: 'ZMW', status: 'successful', paymentDate: linkingPayment.date, method: 'Manual (Linked)', comment: `Linked from unverified payment. Original Ref: ${linkingPayment.reference}`,
             });
 
@@ -426,6 +438,20 @@ export default function PaymentsManagementPage() {
             setFormLoading(false);
         }
     };
+    
+    const handleDeleteTransaction = async (txKey: string) => {
+        if(!window.confirm("Are you sure you want to delete this payment? This action cannot be undone.")) return;
+        setActionLoading(txKey);
+        try {
+            await remove(ref(db, `transactions/${txKey}`));
+            toast({ title: "Payment Deleted", description: "The transaction has been removed." });
+            fetchPaymentData();
+        } catch(e: any) {
+            toast({ variant: 'destructive', title: "Delete Failed", description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    }
 
 
     const filteredData = React.useMemo(() => {
@@ -501,7 +527,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                              <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
@@ -560,7 +586,7 @@ export default function PaymentsManagementPage() {
                                                                 placeholder="0.00" 
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={!row.semesterId}
+                                                                disabled={formLoading || (row.totalDue !== undefined && row.totalDue > 0 && !row.isUnlinked)}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
@@ -581,9 +607,10 @@ export default function PaymentsManagementPage() {
                         </div>
                      </div>
                      <Tabs defaultValue="studentPayments">
-                        <TabsList>
+                        <TabsList className="grid w-full grid-cols-3">
                             <TabsTrigger value="studentPayments">Student Payments</TabsTrigger>
                             <TabsTrigger value="unlinkedPayments">Unlinked Payments ({unlinkedPayments.length})</TabsTrigger>
+                            <TabsTrigger value="transactionHistory">Transaction History</TabsTrigger>
                         </TabsList>
                         <TabsContent value="studentPayments">
                             <Table>
@@ -625,6 +652,39 @@ export default function PaymentsManagementPage() {
                                 </TableBody>
                              </Table>
                          </TabsContent>
+                         <TabsContent value="transactionHistory">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Student</TableHead>
+                                        <TableHead>Amount</TableHead>
+                                        <TableHead>Method</TableHead>
+                                        <TableHead>Transaction ID</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {rawTransactions.map(tx => {
+                                        const student = allStudents.find(s => s.uid === tx.userId);
+                                        return (
+                                            <TableRow key={tx.key}>
+                                                <TableCell>{format(parseISO(tx.paymentDate), 'PPP')}</TableCell>
+                                                <TableCell>{student?.name || 'N/A'}</TableCell>
+                                                <TableCell>ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                <TableCell>{tx.method}</TableCell>
+                                                <TableCell className="font-mono text-xs">{tx.transactionId}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteTransaction(tx.key)} disabled={!!actionLoading}>
+                                                        {actionLoading === tx.key ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-destructive"/>}
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                         </TabsContent>
                     </Tabs>
                 </CardContent>
             </Card>
@@ -658,5 +718,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
-    
