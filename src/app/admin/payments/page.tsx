@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -53,6 +53,7 @@ type Semester = {
 
 export default function PaymentsManagementPage() {
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
+    const [allStudents, setAllStudents] = React.useState<{ uid: string, id: string, name: string }[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
@@ -90,11 +91,22 @@ export default function PaymentsManagementPage() {
                 setIsSageEnabled(integrations.sage?.enabled);
             }
 
+            const users = usersSnap.val();
+            const studentList: { uid: string, id: string, name: string }[] = [];
+            if (usersSnap.exists()) {
+                for (const uid in users) {
+                    if (users[uid].role === 'Student') {
+                        studentList.push({ uid: uid, id: users[uid].id, name: users[uid].name });
+                    }
+                }
+            }
+            setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
+
             if (!usersSnap.exists() || !regsSnap.exists()) {
                 setPaymentInfos([]); setLoading(false); return;
             }
 
-            const users = usersSnap.val();
+            
             const registrations = regsSnap.val();
             const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
             
@@ -148,7 +160,6 @@ export default function PaymentsManagementPage() {
             }
             
             const paymentInfoList = Object.values(studentPaymentMap)
-                .filter(p => p.totalDue > 0)
                 .map(p => {
                     const balance = p.totalDue - p.totalPaid;
                     let status: StudentPaymentInfo['status'] = 'Pending';
@@ -183,9 +194,9 @@ export default function PaymentsManagementPage() {
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key === key) {
-                if (field === 'userId') {
-                    const [userId, invoiceId] = value.split('|');
-                    return { ...row, userId, invoiceId };
+                 if (field === 'userId') {
+                    // When student changes, reset the invoice and amount
+                    return { ...row, userId: value, invoiceId: undefined, amount: '', comment: '' };
                 }
                 return { ...row, [field]: value };
             }
@@ -195,7 +206,7 @@ export default function PaymentsManagementPage() {
     
     const handleSaveBulkPayments = async () => {
         setFormLoading(true);
-        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && parseFloat(p.amount) > 0);
+        const paymentsToRecord = bulkPaymentRows.filter(p => p.userId && p.invoiceId && parseFloat(p.amount) > 0);
 
         if(paymentsToRecord.length === 0) {
             toast({ variant: 'destructive', title: 'No valid payments entered.'});
@@ -229,7 +240,7 @@ export default function PaymentsManagementPage() {
                 });
                 
                 // Sync to external services
-                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: `Manual Payment: ${comment || 'N/A'}` };
+                const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: comment || 'N/A' };
                 if (isQuickBooksEnabled) await createQbPayment(syncData);
                 if (isSageEnabled) await syncInvoiceToSage(syncData);
                 
@@ -291,7 +302,7 @@ export default function PaymentsManagementPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
-                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                      <div>
                         <CardTitle className="font-headline text-2xl">Financial Overview</CardTitle>
                         <CardDescription>Monitor student payments, balances, and record transactions.</CardDescription>
@@ -311,7 +322,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
@@ -323,8 +334,8 @@ export default function PaymentsManagementPage() {
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead className="w-[250px]">Student</TableHead>
-                                                    <TableHead>Total Due</TableHead>
-                                                    <TableHead>Opening Balance</TableHead>
+                                                    <TableHead className="w-[250px]">Invoice / Semester</TableHead>
+                                                    <TableHead>Balance</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
                                                     <TableHead className="w-[200px]">Comment</TableHead>
@@ -333,28 +344,38 @@ export default function PaymentsManagementPage() {
                                             </TableHeader>
                                             <TableBody>
                                                 {bulkPaymentRows.map((row) => {
-                                                    const studentInfo = paymentInfos.find(p => p.userId === row.userId && p.invoiceId === row.invoiceId);
+                                                    const studentInvoices = row.userId ? paymentInfos.filter(p => p.userId === row.userId) : [];
+                                                    const selectedInvoiceInfo = row.invoiceId ? paymentInfos.find(p => p.invoiceId === row.invoiceId) : null;
                                                     const amountPaid = parseFloat(row.amount || '0');
-                                                    const newBalance = studentInfo ? studentInfo.balance - amountPaid : 0;
+                                                    const newBalance = selectedInvoiceInfo ? selectedInvoiceInfo.balance - amountPaid : 0;
                                                     return (
                                                     <TableRow key={row.key}>
                                                         <TableCell>
-                                                            <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}>
+                                                            <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)} value={row.userId}>
                                                                 <SelectTrigger><SelectValue placeholder="Select student..."/></SelectTrigger>
-                                                                <SelectContent>
-                                                                    {paymentInfos.map(s => (
-                                                                        <SelectItem key={`${s.userId}-${s.invoiceId}`} value={`${s.userId}|${s.invoiceId}`}>
-                                                                            {s.studentName} ({s.studentId}) - {semesters.find(sem => sem.id === s.semester)?.name}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
+                                                                <SelectContent>{allStudents.map(s => <SelectItem key={s.uid} value={s.uid}>{s.name} ({s.id})</SelectItem>)}</SelectContent>
                                                             </Select>
                                                         </TableCell>
-                                                        <TableCell>ZMW {studentInfo?.totalDue.toFixed(2) || '0.00'}</TableCell>
-                                                        <TableCell>ZMW {studentInfo?.balance.toFixed(2) || '0.00'}</TableCell>
-                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} /></TableCell>
+                                                         <TableCell>
+                                                            {row.userId && (
+                                                                <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'invoiceId', val)} value={row.invoiceId} disabled={studentInvoices.length === 0}>
+                                                                    <SelectTrigger>
+                                                                        <SelectValue placeholder={studentInvoices.length > 0 ? "Select invoice..." : "No invoices"}/>
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {studentInvoices.map(inv => (
+                                                                            <SelectItem key={inv.invoiceId} value={inv.invoiceId}>
+                                                                                {semesters.find(sem => sem.id === inv.semester)?.name} (Bal: {inv.balance.toFixed(2)})
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>ZMW {selectedInvoiceInfo?.balance.toFixed(2) || '0.00'}</TableCell>
+                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.invoiceId} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
-                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} /></TableCell>
+                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} disabled={!row.invoiceId} /></TableCell>
                                                         <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                                     </TableRow>
                                                 )})}
@@ -362,7 +383,7 @@ export default function PaymentsManagementPage() {
                                         </Table>
                                     </div>
                                     <div className="pt-4">
-                                        <Button variant="outline" onClick={handleAddPaymentRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Student Payment</Button>
+                                        <Button variant="outline" onClick={handleAddPaymentRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
                                     </div>
                                     <DialogFooter>
                                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>

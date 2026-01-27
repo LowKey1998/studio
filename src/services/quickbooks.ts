@@ -118,7 +118,7 @@ export async function createQbJournalEntryForPayroll(entryData: any): Promise<an
     }
 }
 
-export async function createQbPayment(paymentData: { studentId: string, studentName: string, amount: number, invoiceId: string }): Promise<any> {
+export async function createQbPayment(paymentData: { studentId: string, studentName: string, amount: number, invoiceId: string, date: string, description?: string }): Promise<any> {
     const qbo = await getQuickBooksClient();
     const createPaymentAsync = promisify(qbo, qbo.createPayment);
     const findInvoicesAsync = promisify(qbo, qbo.findInvoices);
@@ -136,6 +136,8 @@ export async function createQbPayment(paymentData: { studentId: string, studentN
         const paymentPayload = {
             CustomerRef: { value: customer.Id },
             TotalAmt: paymentData.amount,
+            TxnDate: paymentData.date,
+            PrivateNote: paymentData.description,
             Line: [{
                 Amount: paymentData.amount,
                 LinkedTxn: [{

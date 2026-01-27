@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -6,7 +7,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll, voidQbInvoice as voidQbInvoiceService } from '@/services/quickbooks';
+import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll, voidQbInvoice as voidQbInvoiceService, createQbPayment as createQbPaymentService } from '@/services/quickbooks';
 
 // --- Invoice Sync ---
 
@@ -46,6 +47,33 @@ const syncInvoiceFlow = ai.defineFlow(
     });
   }
 );
+
+// --- Payment Sync ---
+const SyncPaymentInputSchema = z.object({
+  studentId: z.string(),
+  studentName: z.string(),
+  amount: z.number(),
+  invoiceId: z.string(),
+  date: z.string(),
+  description: z.string().optional(),
+});
+export type SyncPaymentInput = z.infer<typeof SyncPaymentInputSchema>;
+
+export async function createQbPayment(input: SyncPaymentInput): Promise<void> {
+  await syncPaymentFlow(input);
+}
+
+const syncPaymentFlow = ai.defineFlow(
+  {
+    name: 'syncPaymentFlow',
+    inputSchema: SyncPaymentInputSchema,
+    outputSchema: z.void(),
+  },
+  async (input) => {
+    await createQbPaymentService(input);
+  }
+);
+
 
 // --- Void Invoice ---
 export async function voidQbInvoice(invoiceId: string): Promise<void> {
