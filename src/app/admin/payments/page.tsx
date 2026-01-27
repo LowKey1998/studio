@@ -342,7 +342,7 @@ export default function PaymentsManagementPage() {
                                                             <Select onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)}>
                                                                 <SelectTrigger><SelectValue placeholder="Select student..."/></SelectTrigger>
                                                                 <SelectContent>
-                                                                    {paymentInfos.filter(p => p.balance > 0).map(s => (
+                                                                    {paymentInfos.map(s => (
                                                                         <SelectItem key={`${s.userId}-${s.invoiceId}`} value={`${s.userId}|${s.invoiceId}`}>
                                                                             {s.studentName} ({s.studentId}) - {semesters.find(sem => sem.id === s.semester)?.name}
                                                                         </SelectItem>
