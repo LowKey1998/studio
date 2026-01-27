@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -103,9 +102,9 @@ export default function PaymentsManagementPage() {
             for (const userId in registrations) {
                  if (!users[userId] || users[userId].role !== 'Student') continue;
 
-                 for (const semester in registrations[userId]) {
-                    const reg = registrations[userId][semester];
-                    const key = `${userId}-${semester}`;
+                 for (const semesterId in registrations[userId]) {
+                    const reg = registrations[userId][semesterId];
+                    const key = `${userId}-${semesterId}`;
 
                     if (!studentPaymentMap[key]) {
                         studentPaymentMap[key] = {
@@ -116,7 +115,7 @@ export default function PaymentsManagementPage() {
                             totalPaid: 0,
                             balance: 0,
                             programmeId: reg.programmeId,
-                            semester: semester,
+                            semester: semesterId,
                             invoiceId: reg.invoiceId,
                         };
                     }
@@ -137,7 +136,7 @@ export default function PaymentsManagementPage() {
                 
                 const invoice = allInvoices[tx.userId]?.[tx.invoiceId];
                 if (invoice) {
-                    const key = `${tx.userId}-${invoice.semester}`;
+                    const key = `${tx.userId}-${invoice.semesterId}`;
                      if (studentPaymentMap[key]) {
                         studentPaymentMap[key].totalPaid += tx.amount;
                     }
@@ -295,13 +294,13 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
                                 <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
-                                    <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Enter payment amounts for multiple students below. Only entries with an amount will be saved.</DialogDescription></DialogHeader>
+                                    <DialogHeader><DialogTitle>Record Bulk Manual Payments</DialogTitle><DialogDescription>Enter payment amounts for students matching your current filters. Only entries with an amount will be saved.</DialogDescription></DialogHeader>
                                     <div className="flex-1 overflow-auto">
                                         <Table>
                                             <TableHeader>
@@ -315,7 +314,7 @@ export default function PaymentsManagementPage() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {paymentInfos.filter(p => p.balance > 0).map(student => {
+                                                {filteredData.filter(p => p.balance > 0).map(student => {
                                                     const key = `${student.userId}-${student.invoiceId}`;
                                                     const amountPaid = parseFloat(bulkPayments[key]?.amount || '0');
                                                     const newBalance = student.balance - amountPaid;
@@ -365,5 +364,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
-    
