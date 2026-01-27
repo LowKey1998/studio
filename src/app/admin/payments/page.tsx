@@ -1,4 +1,5 @@
 
+      
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -32,13 +33,14 @@ type StudentPaymentInfo = {
     balance: number;
     status: 'Paid' | 'Pending' | 'Overdue';
     programmeId: string | null;
-    semester: string | null;
+    semester: string | null; // semester ID
     invoiceId: string;
 };
 
 type PaymentRecord = {
     key: number;
     userId?: string;
+    semesterId?: string;
     invoiceId?: string;
     amount: string;
     comment: string;
@@ -167,7 +169,6 @@ export default function PaymentsManagementPage() {
             if (!usersSnap.exists() || !regsSnap.exists()) {
                 setPaymentInfos([]); setLoading(false); return;
             }
-
             
             const registrations = regsSnap.val();
             const transactions = transactionsSnap.exists() ? transactionsSnap.val() : {};
@@ -253,12 +254,15 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string) => {
+    const handleBulkPaymentRowChange = (key: number, field: 'userId' | 'semesterId' | 'amount' | 'comment', value: string) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key === key) {
-                 if (field === 'userId') {
-                    // When student changes, reset the invoice and amount
-                    return { ...row, userId: value, invoiceId: undefined, amount: '', comment: '' };
+                if (field === 'userId') {
+                    return { ...row, userId: value, semesterId: undefined, invoiceId: undefined, amount: '', comment: '' };
+                }
+                if (field === 'semesterId') {
+                    const matchingInfo = paymentInfos.find(p => p.userId === row.userId && p.semester === value);
+                    return { ...row, semesterId: value, invoiceId: matchingInfo?.invoiceId, amount: '', comment: '' };
                 }
                 return { ...row, [field]: value };
             }
@@ -301,10 +305,9 @@ export default function PaymentsManagementPage() {
                     recordedBy: 'Admin/Accountant',
                 });
                 
-                // Sync to external services
                 const syncData = { invoiceId, studentId: studentInfo.studentId, studentName: studentInfo.studentName, amount: paymentAmount, date: new Date().toISOString().split('T')[0], description: comment || 'N/A' };
                 if (isQuickBooksEnabled) await createQbPayment(syncData);
-                if (isSageEnabled) await syncInvoiceToSage(syncData);
+                if (isSageEnabled) await syncInvoiceToSage(syncData as any);
                 
                 await createNotification(userId, `A manual payment of ZMW ${paymentAmount.toFixed(2)} was recorded for your account. Comment: ${comment || 'N/A'}`, '/student/payments');
             }
@@ -396,7 +399,7 @@ export default function PaymentsManagementPage() {
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead className="w-[250px]">Student</TableHead>
-                                                    <TableHead className="w-[250px]">Invoice / Semester</TableHead>
+                                                    <TableHead className="w-[250px]">Semester</TableHead>
                                                     <TableHead>Balance</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
@@ -406,8 +409,7 @@ export default function PaymentsManagementPage() {
                                             </TableHeader>
                                             <TableBody>
                                                 {bulkPaymentRows.map((row) => {
-                                                    const studentInvoices = row.userId ? paymentInfos.filter(p => p.userId === row.userId) : [];
-                                                    const selectedInvoiceInfo = row.invoiceId ? paymentInfos.find(p => p.invoiceId === row.invoiceId) : null;
+                                                    const selectedInvoiceInfo = row.userId && row.semesterId ? paymentInfos.find(p => p.userId === row.userId && p.semester === row.semesterId) : null;
                                                     const amountPaid = parseFloat(row.amount || '0');
                                                     const newBalance = selectedInvoiceInfo ? selectedInvoiceInfo.balance - amountPaid : 0;
                                                     return (
@@ -421,23 +423,18 @@ export default function PaymentsManagementPage() {
                                                             />
                                                         </TableCell>
                                                          <TableCell>
-                                                            {row.userId && (
-                                                                <SearchableSelect
-                                                                    value={row.invoiceId}
-                                                                    onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'invoiceId', val)}
-                                                                    options={studentInvoices.map(inv => ({ 
-                                                                        value: inv.invoiceId, 
-                                                                        label: `${semesters.find(sem => sem.id === inv.semester)?.name} (Bal: ${inv.balance.toFixed(2)})`
-                                                                    }))}
-                                                                    placeholder={studentInvoices.length > 0 ? "Select invoice..." : "No invoices"}
-                                                                    disabled={studentInvoices.length === 0}
-                                                                />
-                                                            )}
+                                                            <SearchableSelect
+                                                                value={row.semesterId}
+                                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)}
+                                                                options={semesters.map(s => ({ value: s.id, label: s.name }))}
+                                                                placeholder="Select semester..."
+                                                                disabled={!row.userId}
+                                                            />
                                                         </TableCell>
                                                         <TableCell>ZMW {selectedInvoiceInfo?.balance.toFixed(2) || '0.00'}</TableCell>
-                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.invoiceId} /></TableCell>
+                                                        <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
-                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} disabled={!row.invoiceId} /></TableCell>
+                                                        <TableCell><Input placeholder="e.g., Cash Deposit" value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} disabled={!row.semesterId} /></TableCell>
                                                         <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
                                                     </TableRow>
                                                 )})}
@@ -490,5 +487,7 @@ export default function PaymentsManagementPage() {
 
         </div>
     );
+
+    
 
     
