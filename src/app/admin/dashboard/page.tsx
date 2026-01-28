@@ -71,14 +71,18 @@ export default function AdminDashboardPage() {
                 for (const userId in allInvoices) {
                     for (const invoiceId in allInvoices[userId]) {
                         const invoice = allInvoices[userId][invoiceId];
-                        const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
+                        const totalDue = 
+                            (Number(invoice.totalTuition) || 0) + 
+                            (Number(invoice.totalMandatoryFees) || 0) + 
+                            (Number(invoice.totalOptionalFees) || 0) - 
+                            (invoice.applyScholarship ? (Number(invoice.totalTuition) || 0) : 0);
                         
                         const totalPaid = Object.values(allTransactions)
                             .filter((tx: any) => tx.userId === userId && tx.invoiceId === invoiceId)
-                            .reduce((acc: number, tx: any) => acc + tx.amount, 0);
+                            .reduce((acc, tx: any) => acc + (Number(tx.amount) || 0), 0);
                             
                         const balance = totalDue - totalPaid;
-                        if (balance > 0) {
+                        if (balance > 0.01) {
                             totalOutstanding += balance;
                         }
                     }
@@ -133,7 +137,7 @@ export default function AdminDashboardPage() {
         { title: "Total Staff", value: loading ? <Skeleton className="h-8 w-16" /> : staffCount, icon: <UserCheck className="h-6 w-6 text-muted-foreground" />},
         { title: "Total Programmes", value: loading ? <Skeleton className="h-8 w-16" /> : programmeCount, icon: <GanttChart className="h-6 w-6 text-muted-foreground" />},
         { title: "Active Courses", value: loading ? <Skeleton className="h-8 w-12" /> : activeCourseCount, icon: <BookOpen className="h-6 w-6 text-muted-foreground" />},
-        { title: "Pending Registrations", value: loading ? <Skeleton className="h-8 w-16" /> : pendingRegistrations, icon: <BookOpenCheck className="h-6 w-6 text-muted-foreground" />},
+        { title: "Pending Registrations", value: loading ? <Skeleton className="h-8 w-16" /> : pendingRegistrations, icon: <BookOpenCheck className="h-6 w-6 text-muted-foreground" />, notificationKey: 'pendingRegistrations' },
         { title: "Outstanding Balance", value: loading ? <Skeleton className="h-8 w-32" /> : `ZMW ${outstandingBalance.toFixed(2)}`, icon: <PiggyBank className="h-6 w-6 text-muted-foreground" />},
     ];
 

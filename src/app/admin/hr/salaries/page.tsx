@@ -83,7 +83,7 @@ export default function SalariesPage() {
     const handleDeductionChange = (index: number, field: 'name' | 'amount', value: string | number) => {
         const newDeductions = [...(salaryComponents.deductions || [])];
         if (field === 'amount') {
-            newDeductions[index] = { ...newDeductions[index], [field]: parseFloat(value as string) };
+            newDeductions[index] = { ...newDeductions[index], [field]: parseFloat(value as string) || 0 };
         } else {
             newDeductions[index] = { ...newDeductions[index], [field]: value };
         }

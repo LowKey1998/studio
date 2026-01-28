@@ -1,4 +1,3 @@
-
 // This page has been moved to /admin/dashboard/financial-kpis
 'use client';
 import { useRouter } from 'next/navigation';

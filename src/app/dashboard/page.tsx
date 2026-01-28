@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -7,6 +6,9 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Loader2 } from 'lucide-react';
+import type { SubRole } from '@/hooks/use-auth';
+
+const desanitizeKey = (key: string) => key.replace(/\|/g, '/');
 
 export default function DashboardRedirectPage() {
   const router = useRouter();
@@ -26,7 +28,39 @@ export default function DashboardRedirectPage() {
                     router.replace('/admin/dashboard');
                     break;
                 case 'staff':
-                    router.replace('/staff/profile');
+                    let hasDashboardAccess = false;
+                    let isLecturer = false;
+
+                    const settingsRef = ref(db, 'settings/subRoles');
+                    const settingsSnapshot = await get(settingsRef);
+                    const allSubRoles = settingsSnapshot.exists() ? settingsSnapshot.val() : {};
+
+                    if (userData.subRoles) {
+                        for (const subRoleId of userData.subRoles) {
+                            const roleData = allSubRoles[subRoleId];
+                            if (roleData) {
+                                if (roleData.name === 'Lecturer') {
+                                    isLecturer = true;
+                                }
+                                if (roleData.permissions) {
+                                    for(const key in roleData.permissions) {
+                                       const desanitizedKey = desanitizeKey(key);
+                                       if (desanitizedKey === '/admin/dashboard' && roleData.permissions[key]) {
+                                           hasDashboardAccess = true;
+                                       }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (hasDashboardAccess) {
+                        router.replace('/admin/dashboard');
+                    } else if (isLecturer) {
+                        router.replace('/staff/courses');
+                    } else {
+                        router.replace('/staff/profile');
+                    }
                     break;
                 case 'student':
                     router.replace('/student/dashboard');
