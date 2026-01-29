@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isBefore } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -305,7 +305,7 @@ export default function PaymentsManagementPage() {
                         isUnlinked: true, 
                         userId: undefined, 
                         invoiceId: undefined, 
-                        totalDue: 0
+                        totalDue: 0 // Keep 0 and disabled
                     };
                 }
                 updatedRow.isUnlinked = false;
@@ -319,7 +319,7 @@ export default function PaymentsManagementPage() {
                  if (studentId && semId) {
                     const info = paymentInfos.find(p => p.userId === studentId && p.semester === semId);
                     updatedRow.invoiceId = info?.invoiceId;
-                    updatedRow.totalDue = info?.balance ?? 0;
+                    updatedRow.totalDue = info?.balance ?? undefined;
                 } else {
                     updatedRow.totalDue = undefined;
                     updatedRow.invoiceId = undefined;
@@ -529,7 +529,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                              <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
@@ -585,10 +585,10 @@ export default function PaymentsManagementPage() {
                                                         <TableCell>
                                                             <Input 
                                                                 type="text" 
-                                                                placeholder="0.00" 
+                                                                placeholder="Enter total amount due" 
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading}
+                                                                disabled={formLoading || row.isUnlinked}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
@@ -720,3 +720,5 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
+
+    
