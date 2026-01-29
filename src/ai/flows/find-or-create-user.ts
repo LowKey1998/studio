@@ -116,7 +116,7 @@ const findOrCreateUserFlow = ai.defineFlow(
 
     // Send welcome email only if a new password was set (i.e., a new auth user was created)
     if (!userExistsInAuth && password) {
-         const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com'; // Fallback to a placeholder
+         const portalUrl = 'https://edutrack36.vercel.app';
          const welcomeEmailBody = `
             <h2>Welcome to the Institution!</h2>
             <p>An account has been created for you. You can now access the portal using the credentials below.</p>

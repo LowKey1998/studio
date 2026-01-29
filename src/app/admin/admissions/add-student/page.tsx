@@ -339,7 +339,7 @@ export default function AddStudentPage() {
                 <h2>Welcome to ${idSettings.name || 'Edutrack360'}!</h2>
                 <p>An account has been created for you. You can now access the student portal using the credentials below.</p>
                 <ul>
-                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app/">https://edutrack36.vercel.app/</a></li>
                     <li><strong>User ID:</strong> ${newId}</li>
                     <li><strong>Password:</strong> ${password}</li>
                 </ul>

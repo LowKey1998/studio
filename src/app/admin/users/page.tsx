@@ -244,7 +244,7 @@ export default function UserManagementPage() {
             const usersList: User[] = Object.keys(usersData).map(uid => {
                 const user = usersData[uid];
                 const userSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.values(user.subRoles)) : [];
-                const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean);
+                const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id) || 'Unknown Role').filter(Boolean);
 
                 return {
                     uid,
@@ -409,11 +409,12 @@ export default function UserManagementPage() {
             const activityRef = push(ref(db, 'recentActivities'));
             await set(activityRef, { user: adminProfile?.name || 'Admin', userId: adminProfile?.id || 'N/A', action: `created a new ${newUser.role} account for '${name}' (**${newId}**).`, timestamp: serverTimestamp() });
             
+            const portalUrl = 'https://edutrack36.vercel.app';
             const welcomeEmailBody = `
                 <h2>Welcome to ${idSettings.name || 'Edutrack360'}!</h2>
                 <p>An account has been created for you. You can now access the portal using the credentials below.</p>
                 <ul>
-                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
+                    <li><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></li>
                     <li><strong>User ID:</strong> ${newId}</li>
                     <li><strong>Password:</strong> ${password}</li>
                 </ul>
@@ -519,7 +520,7 @@ export default function UserManagementPage() {
                  toast({ variant: 'destructive', title: 'No Invoices Found'});
             }
 
-        } catch(e) {
+        } catch(e: any) {
             toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch invoices.'});
         }
     }
@@ -582,7 +583,7 @@ export default function UserManagementPage() {
     };
 
     const handleOpenBulkEmail = () => {
-        const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com';
+        const portalUrl = 'https://edutrack36.vercel.app';
         setBulkEmailSubject(`Portal Access Link - ${idSettings?.name || 'Edutrack360'}`);
         setBulkEmailBody(`
 Hello,
@@ -805,49 +806,54 @@ The Administration
       </CardHeader>
       <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
-            ) : filteredUsers.map((user) => (
-              <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
-                <TableCell className="font-medium">{user.id}</TableCell>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoleNames && user.subRoleNames.length > 0 && `(${user.subRoleNames.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
-                <TableCell>{user.programmeName || 'N/A'}</TableCell>
-                <TableCell>
-                    {user.isOnline ? 
-                        <span className="flex items-center gap-2 text-xs text-green-600 font-semibold"><div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>Online</span> : 
-                        <span className="text-xs text-muted-foreground">{user.lastSeen ? formatDistanceToNow(new Date(user.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
-                </TableCell>
-                <TableCell className="text-right">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
-                             <DropdownMenuItem onSelect={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
-                            {user.role === 'Student' && (
-                                <DropdownMenuItem onSelect={() => handleDownloadInvoice(user.uid)}>
-                                    <Download className="mr-2 h-4 w-4"/>Download Last Invoice
-                                </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {user.status === 'disabled' ? (
-                                <DropdownMenuItem onSelect={() => handleToggleUserStatus(user)}>
-                                    <UserCheck className="mr-2 h-4 w-4"/>Enable User
-                                </DropdownMenuItem>
-                            ) : (
-                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onSelect={() => handleToggleUserStatus(user)}>
-                                    <UserX className="mr-2 h-4 w-4"/>Disable User
-                                </DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))) : (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>
+            {tableLoading ? (
+                 Array.from({ length: 10 }).map((_, i) => (
+                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                ))
+            ) : filteredUsers.length > 0 ? (
+                filteredUsers.map((user) => (
+                <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
+                    <TableCell className="font-medium">{user.id}</TableCell>
+                    <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell><div className='flex gap-2 items-center'><Badge variant={roleVariant[user.role] || 'outline'}>{user.role} {user.subRoleNames && user.subRoleNames.length > 0 && `(${user.subRoleNames.join(', ')})`}</Badge>{user.status === 'disabled' && <Badge variant="destructive">Disabled</Badge>}</div></TableCell>
+                    <TableCell>{user.programmeName || 'N/A'}</TableCell>
+                    <TableCell>
+                        {user.isOnline ? 
+                            <span className="flex items-center gap-2 text-xs text-green-600 font-semibold"><div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"/>Online</span> : 
+                            <span className="text-xs text-muted-foreground">{user.lastSeen ? formatDistanceToNow(new Date(user.lastSeen), { addSuffix: true }) : 'Offline'}</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuItem onSelect={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
+                                 <DropdownMenuItem onSelect={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
+                                {user.role === 'Student' && (
+                                    <DropdownMenuItem onSelect={() => handleDownloadInvoice(user.uid)}>
+                                        <Download className="mr-2 h-4 w-4"/>Download Last Invoice
+                                    </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                {user.status === 'disabled' ? (
+                                    <DropdownMenuItem onSelect={() => handleToggleUserStatus(user)}>
+                                        <UserCheck className="mr-2 h-4 w-4"/>Enable User
+                                    </DropdownMenuItem>
+                                ) : (
+                                    <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onSelect={() => handleToggleUserStatus(user)}>
+                                        <UserX className="mr-2 h-4 w-4"/>Disable User
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
+                </TableRow>
+            ))
+            ) : (
+                <TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>
             )}
           </TableBody>
         </Table></CardContent>
