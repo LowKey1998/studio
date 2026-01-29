@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -53,6 +53,7 @@ import { Switch } from '@/components/ui/switch';
 import { DialogTrigger } from '@radix-ui/react-dialog';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { useAuth } from '@/hooks/use-auth';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type User = {
     uid: string;
@@ -425,7 +426,8 @@ export default function UserManagementPage() {
             console.error("Error creating user:", error);
             toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
         } finally {
-            await deleteApp(tempApp); setLoading(false);
+            await deleteApp(tempApp);
+            setLoading(false);
         }
     };
 
@@ -438,7 +440,6 @@ export default function UserManagementPage() {
         if (Array.isArray(user.subRoles)) {
             roleIds = user.subRoles;
         } else if (typeof user.subRoles === 'object' && user.subRoles !== null) {
-            // Handle Firebase's object-with-numeric-keys-for-arrays issue
             roleIds = Object.values(user.subRoles);
         }
         setEditSubRoleIds(roleIds);
@@ -803,21 +804,21 @@ The Administration
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
                             {user.role === 'Student' && (
-                                <DropdownMenuItem onClick={() => handleDownloadInvoice(user.uid)}>
+                                <DropdownMenuItem onSelect={() => handleDownloadInvoice(user.uid)}>
                                     <Download className="mr-2 h-4 w-4"/>Download Last Invoice
                                 </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             {user.status === 'disabled' ? (
-                                <DropdownMenuItem onClick={() => handleToggleUserStatus(user)}>
+                                <DropdownMenuItem onSelect={() => handleToggleUserStatus(user)}>
                                     <UserCheck className="mr-2 h-4 w-4"/>Enable User
                                 </DropdownMenuItem>
                             ) : (
-                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onClick={() => handleToggleUserStatus(user)}>
+                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onSelect={() => handleToggleUserStatus(user)}>
                                     <UserX className="mr-2 h-4 w-4"/>Disable User
                                 </DropdownMenuItem>
                             )}
@@ -887,6 +888,13 @@ The Administration
                     <DialogTitle>Send Bulk Email</DialogTitle>
                     <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
                 </DialogHeader>
+                <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>How This Works</AlertTitle>
+                    <AlertDescription>
+                        This action sends a standardized email to every user (students, staff, admins) with a link to the main login page. It is useful for general announcements or reminders. It <strong>does not</strong> send individual password reset links.
+                    </AlertDescription>
+                </Alert>
                  <div className="py-4 space-y-4">
                     <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
                     <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
