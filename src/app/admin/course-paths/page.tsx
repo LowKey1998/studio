@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -20,6 +19,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 // --- TYPE DEFINITIONS ---
 type Intake = { id: string; name: string; };
@@ -31,8 +32,11 @@ type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePa
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
 type NewSemesterEntry = { year: number | ''; semesterInYear: number | '' };
 
-// --- MAIN PAGE COMPONENT ---
-export default function CoursePathsPage() {
+function CoursePathBuilderComponent() {
+    const searchParams = useSearchParams();
+    const intakeIdFromUrl = searchParams.get('intakeId');
+    const programmeIdFromUrl = searchParams.get('programmeId');
+
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
@@ -40,7 +44,7 @@ export default function CoursePathsPage() {
     const [coursePaths, setCoursePaths] = React.useState<CoursePath[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const [activeTab, setActiveTab] = React.useState('intakes');
+    const [activeTab, setActiveTab] = React.useState(intakeIdFromUrl ? 'paths' : 'intakes');
     const { toast } = useToast();
 
     // Dialog States
@@ -53,8 +57,8 @@ export default function CoursePathsPage() {
     const [newSemesters, setNewSemesters] = React.useState<NewSemesterEntry[]>([{ year: 1, semesterInYear: 1 }]);
 
     // Course Path State
-    const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [selectedProgramme, setSelectedProgramme] = React.useState('');
+    const [selectedIntake, setSelectedIntake] = React.useState(intakeIdFromUrl || '');
+    const [selectedProgramme, setSelectedProgramme] = React.useState(programmeIdFromUrl || '');
     const [semesterCourses, setSemesterCourses] = React.useState<Record<string, Course[]>>({}); // Key is semesterId
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
@@ -634,4 +638,13 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
             </CardContent>
         </Card>
     )
+}
+
+// --- Main Page Component ---
+export default function CoursePathsPage() {
+    return (
+        <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+            <CoursePathBuilderComponent />
+        </Suspense>
+    );
 }
