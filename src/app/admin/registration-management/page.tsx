@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -455,6 +454,7 @@ export default function RegistrationManagementPage() {
                                                                     <div className="flex justify-between items-center mb-2">
                                                                         <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
                                                                         <div className="flex items-center gap-2">
+                                                                            <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
                                                                             {historyItems.length > 0 && (
                                                                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
                                                                                     <History className="h-4 w-4 text-blue-600"/>
@@ -480,9 +480,9 @@ export default function RegistrationManagementPage() {
                                                                         })}
                                                                     </div>
                                                                 </div>
-                                                                 <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
+                                                                <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
                                                                     <Button variant="outline" size="sm" asChild>
-                                                                        <Link href="/admin/academics/lecturer-allocation"><UserPlus className="mr-2 h-4"/>Lecturers</Link>
+                                                                        <Link href={`/admin/academics/lecturer-allocation?semesterId=${semId}`}><UserPlus className="mr-2 h-4"/>Lecturers</Link>
                                                                     </Button>
                                                                     <Button variant="outline" size="sm" asChild>
                                                                         <Link href={`/admin/timetable?semester=${semId}`}><CalendarIcon className="mr-2 h-4"/>Timetable</Link>
