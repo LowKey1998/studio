@@ -58,6 +58,21 @@ export const allMenuItems = [
         { href: '/admin/academics/policies', label: 'Academic Policies Upload', icon: FileUp },
       ]
     },
+    {
+      label: 'Academic Staff',
+      icon: GraduationCap,
+      roles: ['Admin'],
+      items: [
+        { href: '/admin/programmes', label: 'Programmes', icon: GanttChart, permission: 'Academics' },
+        { href: '/admin/courses', label: 'Courses', icon: BookCopy, permission: 'Academics' },
+        { href: '/admin/course-paths', label: 'Intakes', icon: Route, permission: 'Academics' },
+        { href: '/admin/timetable', label: 'Timetable', icon: Calendar, permission: 'Academics' },
+        { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar, permission: 'Academics' },
+        { href: '/admin/academics/room-scheduling', label: 'Rooms', icon: Building, permission: 'Academics' },
+        { href: '/admin/dashboard/attendance', label: 'Attendance', icon: CheckCircle2, permission: 'Academics' },
+        { href: '/admin/exams/grade-approval', label: 'Results', icon: CheckCircle2, permission: 'Academics' },
+      ]
+    },
      {
       label: 'Exams & Results',
       icon: PenSquare,
