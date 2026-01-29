@@ -2,7 +2,7 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Clock, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
+import { useSearchParams } from 'next/navigation';
 
 type Course = {
     id: string;
@@ -44,12 +45,15 @@ type TimetableEntry = {
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function TimetableManagementPage() {
+    const searchParams = useSearchParams();
+    const semesterFromParams = searchParams.get('semester');
+
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [generating, setGenerating] = React.useState(false);
     
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>('');
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>(semesterFromParams || '');
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = React.useState<string>('');
     const [rooms, setRooms] = React.useState<Room[]>([]);
@@ -288,9 +292,8 @@ export default function TimetableManagementPage() {
                             )}
                         </TableBody>
                     </Table>
-                </div>
-
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+        </div>
     );
 }
