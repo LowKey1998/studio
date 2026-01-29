@@ -35,12 +35,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Checkbox } from '@/components/ui/checkbox';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { app, auth, db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Checkbox } from '@/components/ui/checkbox';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -435,15 +435,8 @@ export default function UserManagementPage() {
         setEditingUser(user); 
         setEditName(user.name); 
         setEditRole(user.role); 
-        
-        let roleIds: string[] = [];
-        if (Array.isArray(user.subRoles)) {
-            roleIds = user.subRoles;
-        } else if (typeof user.subRoles === 'object' && user.subRoles !== null) {
-            roleIds = Object.values(user.subRoles);
-        }
+        const roleIds = Array.isArray(user.subRoles) ? user.subRoles : user.subRoles ? Object.values(user.subRoles) : [];
         setEditSubRoleIds(roleIds);
-
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
         setIsEditOpen(true);
@@ -693,10 +686,33 @@ The Administration
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Button variant="outline" onClick={handleOpenBulkEmail} disabled={sendingBulkEmail}>
-                    {sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mail className="mr-2 h-4 w-4"/>}
-                    Send Link to All
-                </Button>
+                <Dialog open={isBulkEmailOpen} onOpenChange={setIsBulkEmailOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline"><Mail className="mr-2 h-4 w-4"/>Send Bulk Email</Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Send Bulk Email</DialogTitle>
+                            <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
+                        </DialogHeader>
+                        <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>How This Works</AlertTitle>
+                            <AlertDescription>
+                                This action sends a standardized email to every user (students, staff, admins) with a link to the main login page. It is useful for general announcements or reminders. It <strong>does not</strong> send individual password reset links.
+                            </AlertDescription>
+                        </Alert>
+                        <div className="py-4 space-y-4">
+                            <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
+                            <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
+                            <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-4xl">
@@ -881,35 +897,7 @@ The Administration
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-
-        <Dialog open={isBulkEmailOpen} onOpenChange={setIsBulkEmailOpen}>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle>Send Bulk Email</DialogTitle>
-                    <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
-                </DialogHeader>
-                <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>How This Works</AlertTitle>
-                    <AlertDescription>
-                        This action sends a standardized email to every user (students, staff, admins) with a link to the main login page. It is useful for general announcements or reminders. It <strong>does not</strong> send individual password reset links.
-                    </AlertDescription>
-                </Alert>
-                 <div className="py-4 space-y-4">
-                    <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
-                    <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
-                </div>
-                 <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
     </Card>
     </>
   );
 }
-
-    
-
-    
