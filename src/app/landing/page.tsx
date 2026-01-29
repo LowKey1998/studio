@@ -21,7 +21,7 @@ import { Loader2 } from 'lucide-react';
 import { useTheme } from '@/components/theme-provider';
 import { Separator } from '@/components/ui/separator';
 
-type BankDetails = { bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
+type BankDetails = { id: string; bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 type Programme = { id: string; name: string; };
 type LandingPageSettings = {
   heroImageUrl?: string;
@@ -31,7 +31,7 @@ type LandingPageSettings = {
 export default function LandingPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
+  const [bankDetails, setBankDetails] = React.useState<BankDetails[]>([]);
   const [landingSettings, setLandingSettings] = React.useState<LandingPageSettings>({});
   const [programmes, setProgrammes] = React.useState<Programme[]>([]);
   const { institutionName } = useTheme();
@@ -57,7 +57,9 @@ export default function LandingPage() {
     const unsubSettings = onValue(settingsRef, (snapshot) => {
         if (snapshot.exists()) {
             const data = snapshot.val();
-            if(data.bankDetails) setBankDetails(data.bankDetails);
+            if(data.bankDetails) {
+                setBankDetails(Object.keys(data.bankDetails).map(id => ({ id, ...data.bankDetails[id] })));
+            }
             if(data.landingPage) setLandingSettings(data.landingPage);
         }
     });
@@ -198,24 +200,30 @@ export default function LandingPage() {
             </div>
         </section>
 
-        {bankDetails?.bankName && (
+        {bankDetails.length > 0 && (
             <section className="w-full py-12 lg:py-24">
-                <div className="container">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
-                        <CardDescription>Use the following details for bank transfers. Please use student ID as the reference.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                            <div><dt className="font-semibold">Bank Name</dt><dd className="text-muted-foreground">{bankDetails.bankName}</dd></div>
-                            {bankDetails.accountName && <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>}
-                            <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bankDetails.accountNumber}</dd></div>
-                            <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bankDetails.branchCode}</dd></div>
-                             {bankDetails.swiftCode && <div><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bankDetails.swiftCode}</dd></div>}
-                        </dl>
-                    </CardContent>
-                </Card>
+                <div className="container space-y-8">
+                    <div className="mx-auto max-w-2xl text-center">
+                        <h2 className="font-headline text-3xl">Bank Payment Details</h2>
+                        <p className="text-muted-foreground mt-2">Use the following details for bank transfers. Please use the student's ID number as the payment reference.</p>
+                    </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {bankDetails.map(bank => (
+                            <Card key={bank.id}>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2"><Banknote/> {bank.bankName}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <dl className="grid grid-cols-1 gap-x-8 gap-y-4 text-sm">
+                                        {bank.accountName && <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bank.accountName}</dd></div>}
+                                        <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bank.accountNumber}</dd></div>
+                                        <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bank.branchCode}</dd></div>
+                                        {bank.swiftCode && <div><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bank.swiftCode}</dd></div>}
+                                    </dl>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
                 </div>
             </section>
         )}
