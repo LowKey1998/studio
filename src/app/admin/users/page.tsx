@@ -435,7 +435,7 @@ export default function UserManagementPage() {
         setEditingUser(user); 
         setEditName(user.name); 
         setEditRole(user.role); 
-        const roleIds = Array.isArray(user.subRoles) ? user.subRoles : user.subRoles ? Object.values(user.subRoles) : [];
+        const roleIds = user.subRoles || [];
         setEditSubRoleIds(roleIds);
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
@@ -573,7 +573,7 @@ export default function UserManagementPage() {
             setSendingMessage(false);
         }
     };
-    
+
     const handleOpenBulkEmail = () => {
         const portalUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app-url.com';
         setBulkEmailSubject(`Portal Access Link - ${idSettings?.name || 'Edutrack360'}`);
@@ -686,33 +686,7 @@ The Administration
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Create, view, and manage all users in the system.</CardDescription></div>
             <div className='flex gap-2'>
-                <Dialog open={isBulkEmailOpen} onOpenChange={setIsBulkEmailOpen}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline"><Mail className="mr-2 h-4 w-4"/>Send Bulk Email</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Send Bulk Email</DialogTitle>
-                            <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
-                        </DialogHeader>
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>How This Works</AlertTitle>
-                            <AlertDescription>
-                                This action sends a standardized email to every user (students, staff, admins) with a link to the main login page. It is useful for general announcements or reminders. It <strong>does not</strong> send individual password reset links.
-                            </AlertDescription>
-                        </Alert>
-                        <div className="py-4 space-y-4">
-                            <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
-                            <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
+                 <Button variant="outline" onClick={handleOpenBulkEmail}><Mail className="mr-2 h-4 w-4"/>Send Link to All</Button>
                 <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button></DialogTrigger>
                     <DialogContent className="sm:max-w-4xl">
@@ -803,7 +777,8 @@ The Administration
       <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
-            ) : filteredUsers.map((user) => (
+            ) : filteredUsers.length > 0 ? (
+              filteredUsers.map((user) => (
               <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
                 <TableCell className="font-medium">{user.id}</TableCell>
                 <TableCell>{user.name}</TableCell>
@@ -842,8 +817,9 @@ The Administration
                     </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
-             {!tableLoading && filteredUsers.length === 0 && (<TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>)}
+            ))) : (
+              <TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>
+            )}
           </TableBody>
         </Table></CardContent>
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}><DialogContent className="sm:max-w-[425px]">
@@ -894,6 +870,29 @@ The Administration
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setIsMessageOpen(false)}>Cancel</Button>
                     <Button onClick={handleSendMessage} disabled={sendingMessage}>{sendingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+         <Dialog open={isBulkEmailOpen} onOpenChange={setIsBulkEmailOpen}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Send Bulk Email</DialogTitle>
+                    <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
+                </DialogHeader>
+                <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>How This Works</AlertTitle>
+                    <AlertDescription>
+                        This action sends a standardized email to every user (students, staff, admins) with a link to the main login page. It is useful for general announcements or reminders. It <strong>does not</strong> send individual password reset links.
+                    </AlertDescription>
+                </Alert>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-1"><Label>Subject</Label><Input value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Body</Label><Textarea value={bulkEmailBody} onChange={e => setBulkEmailBody(e.target.value)} rows={10} /></div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
