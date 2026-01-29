@@ -62,10 +62,15 @@ export const allMenuItems = [
       label: 'Academic Staff',
       icon: GraduationCap,
       roles: ['Admin', 'Staff'],
+      permission: 'Lecturer',
       items: [
-        { href: '/staff/courses', label: 'My Assigned Classes', icon: GraduationCap },
-        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand },
+        { href: '/staff/courses', label: 'My Courses', icon: GraduationCap },
+        { href: '/staff/student-absences', label: 'Absence Requests', icon: Hand },
         { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
+        { href: '/staff/attendance', label: 'Mark Attendance', icon: ClipboardCheck },
+        { href: '/staff/results', label: 'Enter Results', icon: ClipboardEdit },
+        { href: '/staff/resources', label: 'Manage Resources', icon: Folder },
+        { href: '/admin/e-learning/online-quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
       ]
     },
      {
@@ -363,7 +368,7 @@ export const studentMenuItems = [
 
 export const staffBaseMenuItems = [
     {
-      label: 'Classes',
+      label: 'Academics',
       icon: GraduationCap,
       items: [
         { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },

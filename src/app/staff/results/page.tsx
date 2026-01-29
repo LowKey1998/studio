@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Hand } from "lucide-react";
+import { Info, ClipboardEdit } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -19,7 +19,7 @@ type Course = {
     semester: string;
 };
 
-export default function StaffAttendancePage() {
+export default function StaffResultsPage() {
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
@@ -83,8 +83,8 @@ export default function StaffAttendancePage() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Mark Attendance</CardTitle>
-                    <CardDescription>Select a course to mark attendance for a class session.</CardDescription>
+                    <CardTitle className="font-headline text-2xl">Enter Results</CardTitle>
+                    <CardDescription>Select a course to enter CA and Final Exam results.</CardDescription>
                 </CardHeader>
             </Card>
             {loading ? (
@@ -101,8 +101,8 @@ export default function StaffAttendancePage() {
                             </CardHeader>
                             <CardFooter>
                                 <Button asChild className="w-full">
-                                    <Link href={`/staff/courses/${course.id}/attendance`}>
-                                        <Hand className="mr-2 h-4 w-4" /> Mark Attendance
+                                    <Link href={`/staff/courses/${course.id}/assessment`}>
+                                        <ClipboardEdit className="mr-2 h-4 w-4" /> Enter Results
                                     </Link>
                                 </Button>
                             </CardFooter>
