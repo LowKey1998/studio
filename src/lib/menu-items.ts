@@ -380,24 +380,24 @@ export const staffBaseMenuItems = [
       label: 'Leave & Timetable',
       icon: Calendar,
       items: [
-        { href: '/staff/leave', label: 'My Leave', icon: Calendar },
-        { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
+        { href: '/staff/leave', label: 'My Leave' },
+        { href: '/staff/calendar', label: 'Academic Calendar' },
       ]
     },
      {
       label: 'HR',
       icon: UserCog,
       items: [
-           { href: '/staff/onboarding', label: 'My Onboarding', icon: UserCheckIcon },
-           { href: '/staff/payroll', label: 'Payroll', icon: DollarSign, permission: 'Accountant' },
+           { href: '/staff/onboarding', label: 'My Onboarding' },
+           { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
       ]
   },
     {
       label: 'General',
       icon: Settings,
       items: [
-        { href: '/staff/library', label: 'Library', icon: Library },
-        { href: '/staff/profile', label: 'My Profile', icon: User },
+        { href: '/staff/library', label: 'Library' },
+        { href: '/staff/profile', label: 'My Profile' },
       ]
     }
   ];
