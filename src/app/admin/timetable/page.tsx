@@ -292,8 +292,8 @@ export default function TimetableManagementPage() {
                             )}
                         </TableBody>
                     </Table>
-                </CardContent>
-            </Card>
-        </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
