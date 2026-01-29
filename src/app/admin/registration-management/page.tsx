@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, UserPlus, Home } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, UserPlus, Home, BookCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -450,37 +451,38 @@ export default function RegistrationManagementPage() {
 
                                                             return (
                                                             <div key={semId} className="p-4 border rounded-lg bg-card flex flex-col">
-                                                                <div className="flex-grow">
-                                                                    <div className="flex justify-between items-center mb-2">
-                                                                        <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
-                                                                            {historyItems.length > 0 && (
-                                                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
-                                                                                    <History className="h-4 w-4 text-blue-600"/>
-                                                                                </Button>
-                                                                            )}
-                                                                            <Switch 
-                                                                                id={`${path.id}-${semId}`} 
-                                                                                checked={!!activePathSemesters[path.id]?.[semId]?.active}
-                                                                                onCheckedChange={() => handleToggleSemester(path.id, semId)}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    {historyItems.length > 0 && (
-                                                                        <div className="flex items-center space-x-2 my-2">
-                                                                            <Switch id={`show-reason-${path.id}-${semId}`} checked={!!activePathSemesters[path.id]?.[semId]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semId)}/>
-                                                                            <Label htmlFor={`show-reason-${path.id}-${semId}`} className="text-xs">Show change reason to students</Label>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="text-sm text-muted-foreground space-y-1">
-                                                                        {(semData.courses || []).map(courseId => {
-                                                                            const course = allCourses[courseId];
-                                                                            return course ? <p key={courseId}>{course.code} - {course.name}</p> : null;
-                                                                        })}
+                                                                <div className="flex justify-between items-center mb-2">
+                                                                    <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
+                                                                    <div className="flex items-center gap-2">
+                                                                         <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
+                                                                         {historyItems.length > 0 && (
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
+                                                                                <History className="h-4 w-4 text-blue-600"/>
+                                                                            </Button>
+                                                                        )}
+                                                                        <Switch 
+                                                                            id={`${path.id}-${semId}`} 
+                                                                            checked={!!activePathSemesters[path.id]?.[semId]?.active}
+                                                                            onCheckedChange={() => handleToggleSemester(path.id, semId)}
+                                                                        />
                                                                     </div>
                                                                 </div>
-                                                                <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
+                                                                {historyItems.length > 0 && (
+                                                                     <div className="flex items-center space-x-2 my-2">
+                                                                         <Switch id={`show-reason-${path.id}-${semId}`} checked={!!activePathSemesters[path.id]?.[semId]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semId)}/>
+                                                                         <Label htmlFor={`show-reason-${path.id}-${semId}`} className="text-xs">Show change reason to students</Label>
+                                                                     </div>
+                                                                )}
+                                                                 <div className="text-sm text-muted-foreground space-y-1">
+                                                                    {(semData.courses || []).map(courseId => {
+                                                                        const course = allCourses[courseId];
+                                                                        return course ? <p key={courseId}>{course.code} - {course.name}</p> : null;
+                                                                    })}
+                                                                </div>
+                                                                 <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
+                                                                    <Button variant="outline" size="sm" asChild>
+                                                                        <Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}><BookCopy className="mr-2 h-4"/>Add Courses</Link>
+                                                                    </Button>
                                                                     <Button variant="outline" size="sm" asChild>
                                                                         <Link href={`/admin/academics/lecturer-allocation?semesterId=${semId}`}><UserPlus className="mr-2 h-4"/>Lecturers</Link>
                                                                     </Button>
@@ -578,3 +580,4 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
