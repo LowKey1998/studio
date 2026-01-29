@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -35,7 +34,7 @@ type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<number, CoursePathSemester> };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
@@ -312,33 +311,33 @@ export default function RegistrationManagementPage() {
     const handleSaveChanges = async () => {
         setSaving(true);
         try { 
-            await set(ref(db, `semesterOfferings`), activePathSemesters);
-            toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings have been updated.` });
+            await set(ref(db, 'semesterOfferings'), activePathSemesters);
+            toast({ variant: 'success', title: 'Settings Saved', description: 'Registration settings have been updated.' });
         } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setSaving(false); }
     };
     
-    const handleToggleSemester = (pathId: string, semesterNumber: string) => {
+    const handleToggleSemester = (pathId: string, semesterId: string) => {
       setActivePathSemesters(prev => {
         const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
     
         if (!newPaths[pathId]) {
           newPaths[pathId] = {};
         }
-        if (!newPaths[pathId][semesterNumber]) {
-          newPaths[pathId][semesterNumber] = { active: false, showReason: false };
+        if (!newPaths[pathId][semesterId]) {
+          newPaths[pathId][semesterId] = { active: false, showReason: false };
         }
     
-        newPaths[pathId][semesterNumber].active = !newPaths[pathId][semesterNumber].active;
+        newPaths[pathId][semesterId].active = !newPaths[pathId][semesterId].active;
         return newPaths;
       });
     };
     
-    const handleToggleReasonVisibility = (pathId: string, semesterNumber: string) => {
+    const handleToggleReasonVisibility = (pathId: string, semesterId: string) => {
         setActivePathSemesters(prev => {
             const newPaths = JSON.parse(JSON.stringify(prev)); // Deep copy
-            if (!newPaths[pathId] || !newPaths[pathId][semesterNumber]) return prev;
-            newPaths[pathId][semesterNumber].showReason = !newPaths[pathId][semesterNumber].showReason;
+            if (!newPaths[pathId] || !newPaths[pathId][semesterId]) return prev;
+            newPaths[pathId][semesterId].showReason = !newPaths[pathId][semesterId].showReason;
             return newPaths;
         });
     }
@@ -425,7 +424,18 @@ export default function RegistrationManagementPage() {
                                             const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
                                             if (!path || !path.semesters) return null;
                                             
-                                            const sortedSemesters = Object.entries(path.semesters).sort(([a], [b]) => Number(a) - Number(b));
+                                            const sortedSemesters = Object.entries(path.semesters)
+                                                .map(([semId, semData]) => {
+                                                    const semesterDetails = semesters.find(s => s.id === semId);
+                                                    return { semId, semData, semesterDetails };
+                                                })
+                                                .filter(item => item.semesterDetails)
+                                                .sort((a, b) => {
+                                                    if (a.semesterDetails!.year !== b.semesterDetails!.year) {
+                                                        return a.semesterDetails!.year - b.semesterDetails!.year;
+                                                    }
+                                                    return a.semesterDetails!.semesterInYear - b.semesterDetails!.semesterInYear;
+                                                });
 
                                             return (
                                                 <Card key={programme.id} className="my-2 bg-muted/50">
@@ -433,17 +443,15 @@ export default function RegistrationManagementPage() {
                                                         <CardTitle className="text-base">{programme.name}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent className="space-y-4">
-                                                        {sortedSemesters.map(([semNum, semData]) => {
-                                                            const year = Math.floor((Number(semNum) - 1) / 2) + 1;
-                                                            const semesterInYear = (Number(semNum) - 1) % 2 + 1;
-                                                            const semesterName = `${intake.name} Year ${year} Semester ${semesterInYear}`;
+                                                        {sortedSemesters.map(({ semId, semData, semesterDetails }) => {
+                                                            const { year, semesterInYear, name: semesterName } = semesterDetails!;
                                                             const label = `Year ${year}, Semester ${semesterInYear}`;
                                                             const historyItems = semData.history ? Object.values(semData.history) : [];
 
                                                             return (
-                                                            <div key={semNum} className="p-4 border rounded-lg bg-card">
+                                                            <div key={semId} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
-                                                                    <Label htmlFor={`${path.id}-${semNum}`} className="font-bold text-lg">{label}</Label>
+                                                                    <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
                                                                     <div className="flex items-center gap-2">
                                                                          <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
                                                                          {historyItems.length > 0 && (
@@ -452,16 +460,16 @@ export default function RegistrationManagementPage() {
                                                                             </Button>
                                                                         )}
                                                                         <Switch 
-                                                                            id={`${path.id}-${semNum}`} 
-                                                                            checked={!!activePathSemesters[path.id]?.[semNum]?.active}
-                                                                            onCheckedChange={() => handleToggleSemester(path.id, semNum)}
+                                                                            id={`${path.id}-${semId}`} 
+                                                                            checked={!!activePathSemesters[path.id]?.[semId]?.active}
+                                                                            onCheckedChange={() => handleToggleSemester(path.id, semId)}
                                                                         />
                                                                     </div>
                                                                 </div>
                                                                 {historyItems.length > 0 && (
                                                                      <div className="flex items-center space-x-2 my-2">
-                                                                         <Switch id={`show-reason-${path.id}-${semNum}`} checked={!!activePathSemesters[path.id]?.[semNum]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semNum)}/>
-                                                                         <Label htmlFor={`show-reason-${path.id}-${semNum}`} className="text-xs">Show change reason to students</Label>
+                                                                         <Switch id={`show-reason-${path.id}-${semId}`} checked={!!activePathSemesters[path.id]?.[semId]?.showReason} onCheckedChange={() => handleToggleReasonVisibility(path.id, semId)}/>
+                                                                         <Label htmlFor={`show-reason-${path.id}-${semId}`} className="text-xs">Show change reason to students</Label>
                                                                      </div>
                                                                 )}
                                                                  <div className="text-sm text-muted-foreground space-y-1">
@@ -557,3 +565,5 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
+    
