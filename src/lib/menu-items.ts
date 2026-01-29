@@ -17,16 +17,6 @@ export const allMenuItems = [
       ]
     },
     {
-      label: 'My Classes',
-      icon: BookCopy,
-      roles: ['Admin'],
-      items: [
-        { href: '/staff/courses', label: 'My Assigned Classes', icon: GraduationCap },
-        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand },
-        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
-      ]
-    },
-    {
       label: 'Admissions',
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
@@ -71,16 +61,11 @@ export const allMenuItems = [
     {
       label: 'Academic Staff',
       icon: GraduationCap,
-      roles: ['Admin'],
+      roles: ['Admin', 'Staff'],
       items: [
-        { href: '/admin/programmes', label: 'Programmes', icon: GanttChart, permission: 'Academics' },
-        { href: '/admin/courses', label: 'Courses', icon: BookCopy, permission: 'Academics' },
-        { href: '/admin/course-paths', label: 'Intakes', icon: Route, permission: 'Academics' },
-        { href: '/admin/timetable', label: 'Timetable', icon: Calendar, permission: 'Academics' },
-        { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar, permission: 'Academics' },
-        { href: '/admin/academics/room-scheduling', label: 'Rooms', icon: Building, permission: 'Academics' },
-        { href: '/admin/dashboard/attendance', label: 'Attendance', icon: CheckCircle2, permission: 'Academics' },
-        { href: '/admin/exams/grade-approval', label: 'Results', icon: CheckCircle2, permission: 'Academics' },
+        { href: '/staff/courses', label: 'My Assigned Classes', icon: GraduationCap },
+        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand },
+        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
       ]
     },
      {
@@ -378,6 +363,15 @@ export const studentMenuItems = [
 
 export const staffBaseMenuItems = [
     {
+      label: 'Classes',
+      icon: GraduationCap,
+      items: [
+        { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
+        { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
+        { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
+      ],
+    },
+    {
       label: 'Leave & Timetable',
       icon: Calendar,
       items: [
@@ -402,5 +396,3 @@ export const staffBaseMenuItems = [
       ]
     }
   ];
-
-    
