@@ -368,10 +368,10 @@ export const studentMenuItems = [
 
 export const staffBaseMenuItems = [
     {
-      label: 'Academics',
-      icon: GraduationCap,
+      label: 'Classes',
+      icon: BookCopy,
       items: [
-        { href: '/staff/courses', label: 'My Courses', icon: BookCopy, permission: 'Lecturer' },
+        { href: '/staff/courses', label: 'My Classes', icon: GraduationCap, permission: 'Lecturer' },
         { href: '/staff/student-absences', label: 'Student Absences', icon: Hand, permission: 'Lecturer' },
         { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
       ],
