@@ -3,7 +3,9 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, get } from 'firebase/database';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 type TimetableEntry = {
     day: string;
@@ -19,56 +21,71 @@ const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function RoomSchedulingPage() {
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    const [allRooms, setAllRooms] = React.useState<{id: string, name: string}[]>([]);
+    const [roomFilter, setRoomFilter] = React.useState('all');
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
         const timetablesRef = ref(db, 'timetables');
-        const coursesRef = ref(db, 'courses');
-        const semestersRef = ref(db, 'semesters');
+        const roomsRef = ref(db, 'settings/rooms');
 
-        const fetchData = async () => {
+        const fetchDataAndListen = async () => {
             setLoading(true);
             try {
-                const [timetablesSnap, coursesSnap, semestersSnap] = await Promise.all([
-                    onValue(timetablesRef, () => {}),
-                    get(coursesRef),
-                    get(semestersRef),
+                // Initial fetch for static data
+                const [coursesSnap, semestersSnap] = await Promise.all([
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'semesters')),
                 ]);
 
-                const allEntries: TimetableEntry[] = [];
-                if (timetablesSnap.snapshot.exists() && coursesSnap.exists() && semestersSnap.exists()) {
-                    const allTimetables = timetablesSnap.snapshot.val();
-                    const allCourses = coursesSnap.val();
-                    const allSemesters = semestersSnap.val();
+                const allCourses = coursesSnap.exists() ? coursesSnap.val() : {};
+                const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
 
-                    for (const semesterId in allTimetables) {
-                        for (const courseId in allTimetables[semesterId]) {
-                            const courseCode = allCourses[courseId]?.code || 'N/A';
-                            const courseName = allCourses[courseId]?.name || 'Unknown Course';
-                            const semesterName = allSemesters[semesterId]?.name || 'Unknown Semester';
-                            const entries = allTimetables[semesterId][courseId];
-                            for (const entryId in entries) {
-                                allEntries.push({ ...entries[entryId], courseCode, courseName, semesterName });
+                // Listener for timetables
+                onValue(timetablesRef, (snapshot) => {
+                    const allEntries: TimetableEntry[] = [];
+                    if (snapshot.exists()) {
+                        const allTimetables = snapshot.val();
+                        for (const semesterId in allTimetables) {
+                            for (const courseId in allTimetables[semesterId]) {
+                                const courseCode = allCourses[courseId]?.code || 'N/A';
+                                const courseName = allCourses[courseId]?.name || 'Unknown Course';
+                                const semesterName = allSemesters[semesterId]?.name || 'Unknown Semester';
+                                const entries = allTimetables[semesterId][courseId];
+                                for (const entryId in entries) {
+                                    allEntries.push({ ...entries[entryId], courseCode, courseName, semesterName });
+                                }
                             }
                         }
                     }
-                }
-                setTimetable(allEntries);
+                    setTimetable(allEntries);
+                    setLoading(false);
+                });
+
+                 onValue(roomsRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        setAllRooms(Object.entries(snapshot.val()).map(([id, room]: [string, any]) => ({ id, name: room.name })));
+                    }
+                 });
+
             } catch (error) {
                 console.error(error);
-            } finally {
                 setLoading(false);
             }
         };
 
-        const unsubscribe = onValue(timetablesRef, () => {
-            fetchData();
-        });
-        
-        return () => unsubscribe();
+        fetchDataAndListen();
     }, []);
 
+    const filteredTimetable = React.useMemo(() => {
+        if (roomFilter === 'all') {
+            return timetable;
+        }
+        return timetable.filter(entry => entry.venue === roomFilter);
+    }, [timetable, roomFilter]);
+
     const timeToMinutes = (time: string) => {
+        if (!time) return 0;
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     };
@@ -78,6 +95,20 @@ export default function RoomSchedulingPage() {
             <CardHeader>
                 <CardTitle>Master Room Schedule</CardTitle>
                 <CardDescription>A consolidated view of all scheduled classes across all rooms and semesters.</CardDescription>
+                <div className="pt-4 max-w-xs">
+                    <Label htmlFor="room-filter">Filter by Room</Label>
+                     <Select value={roomFilter} onValueChange={setRoomFilter}>
+                        <SelectTrigger id="room-filter">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Rooms</SelectItem>
+                            {allRooms.map(room => (
+                                <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
@@ -88,7 +119,7 @@ export default function RoomSchedulingPage() {
                                 {loading ? (
                                     <Skeleton className="h-20 w-full" />
                                 ) : (
-                                    timetable
+                                    filteredTimetable
                                         .filter(entry => entry.day === day)
                                         .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                                         .map((entry, index) => (
@@ -100,7 +131,7 @@ export default function RoomSchedulingPage() {
                                             </div>
                                         ))
                                 )}
-                                {timetable.filter(entry => entry.day === day).length === 0 && !loading && <div className="text-center text-xs text-muted-foreground pt-4">No classes</div>}
+                                {filteredTimetable.filter(entry => entry.day === day).length === 0 && !loading && <div className="text-center text-xs text-muted-foreground pt-4">No classes</div>}
                             </div>
                         </div>
                     ))}
