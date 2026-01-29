@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,11 +56,9 @@ export default function TeachingLoadPage() {
                 const lecturers: Record<string, { name: string, courses: any[] }> = {};
                 for (const uid in users) {
                     const user = users[uid];
-                    if (user.role === 'Staff') {
-                        const userHasLecturerRole = user.subRoles?.some((userSubRole: string) => {
-                            const roleEntry = Object.entries(subRolesData).find(([, roleDetails]: [string, any]) => roleDetails.name === userSubRole);
-                            return roleEntry && lecturerRoleIds.has(roleEntry[0]);
-                        });
+                     if (user.role === 'Staff') {
+                        const userSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
+                        const userHasLecturerRole = userSubRoleIds.some((userSubRoleId: string) => lecturerRoleIds.has(userSubRoleId));
 
                         if (userHasLecturerRole) {
                             lecturers[uid] = { name: users[uid].name, courses: [] };
@@ -71,8 +68,12 @@ export default function TeachingLoadPage() {
 
                 for (const courseId in courses) {
                     const course = courses[courseId];
-                    if (course.lecturerId && lecturers[course.lecturerId]) {
-                        lecturers[course.lecturerId].courses.push({ name: course.name, code: course.code });
+                    if (course.lecturerIds && Array.isArray(course.lecturerIds)) {
+                        course.lecturerIds.forEach((lecturerId: string) => {
+                            if (lecturers[lecturerId]) {
+                                lecturers[lecturerId].courses.push({ name: course.name, code: course.code });
+                            }
+                        });
                     }
                 }
 

@@ -1,26 +1,23 @@
-
 'use client';
 import * as React from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '@/lib/firebase';
-import { ref, onValue, update, get } from 'firebase/database';
+import { ref, update, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Search, X } from 'lucide-react';
+import { Search, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import type { CoursePath } from '@/app/admin/course-paths/page';
 
 type Course = {
     id: string;
     name: string;
     code: string;
-    lecturerId?: string;
-    lecturerName?: string;
+    lecturerIds?: string[];
 };
 
 type Lecturer = {
@@ -39,7 +36,6 @@ export default function LecturerAllocationPage() {
     const semesterId = searchParams.get('semesterId');
     const [semesterName, setSemesterName] = React.useState<string | null>(null);
 
-
     React.useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
@@ -56,12 +52,10 @@ export default function LecturerAllocationPage() {
                 const subRolesData = subRolesSnap.val() || {};
                 const coursesData = coursesSnapshot.val() || {};
 
-                // --- Process Lecturers ---
                 const lecturerRoleIds = new Set(
                     Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
                 );
                 const lecturersList: Lecturer[] = [];
-                const lecturerMap = new Map<string, string>();
                 for (const uid in usersData) {
                     const user = usersData[uid];
                     if (user.role === 'Staff') {
@@ -69,15 +63,12 @@ export default function LecturerAllocationPage() {
                         const userHasLecturerRole = userSubRoleIds.some((userSubRoleId: string) => lecturerRoleIds.has(userSubRoleId));
                         if (userHasLecturerRole) {
                            lecturersList.push({ uid, name: user.name });
-                           lecturerMap.set(uid, user.name);
                         }
                     }
                 }
                 setLecturers(lecturersList);
-                // --- End Process Lecturers ---
 
                 let coursesList: Course[] = [];
-
                 if (semesterId && semestersSnap.exists() && coursePathsSnap.exists()) {
                     const allSemesters = semestersSnap.val();
                     const semesterData = allSemesters[semesterId];
@@ -100,20 +91,14 @@ export default function LecturerAllocationPage() {
                                 coursesList.push({
                                     id: courseId,
                                     ...course,
-                                    lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
                                 });
                             }
                         });
                     }
                 } else {
-                    // Fallback to showing all courses if no semesterId
                     for (const id in coursesData) {
                         const course = coursesData[id];
-                        coursesList.push({
-                            id,
-                            ...course,
-                            lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
-                        });
+                        coursesList.push({ id, ...course });
                     }
                 }
                 
@@ -130,20 +115,24 @@ export default function LecturerAllocationPage() {
         fetchData();
     }, [toast, semesterId]);
 
-    const handleAssignLecturer = async (courseId: string, lecturerId: string) => {
-        try {
-            const lecturerUpdate = lecturerId === 'unassign' ? null : lecturerId;
-            await update(ref(db, `courses/${courseId}`), { lecturerId: lecturerUpdate });
-            
-            setCourses(prevCourses => prevCourses.map(course => {
-                if (course.id === courseId) {
-                    const newLecturerName = lecturerId === 'unassign' ? undefined : lecturers.find(l => l.uid === lecturerId)?.name;
-                    return { ...course, lecturerId: lecturerId === 'unassign' ? undefined : lecturerId, lecturerName: newLecturerName };
-                }
-                return course;
-            }));
+    const handleLecturerAssignmentChange = async (courseId: string, lecturerId: string) => {
+        const course = courses.find(c => c.id === courseId);
+        if (!course) return;
 
-            toast({ title: "Lecturer Assignment Updated", description: "The course has been updated." });
+        const currentLecturerIds = course.lecturerIds || [];
+        const isAssigned = currentLecturerIds.includes(lecturerId);
+        const newLecturerIds = isAssigned
+            ? currentLecturerIds.filter(id => id !== lecturerId)
+            : [...currentLecturerIds, lecturerId];
+
+        try {
+            await update(ref(db, `courses/${courseId}`), { lecturerIds: newLecturerIds });
+            
+            setCourses(prevCourses => prevCourses.map(c => 
+                c.id === courseId ? { ...c, lecturerIds: newLecturerIds } : c
+            ));
+
+            toast({ title: "Lecturer Assignment Updated" });
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: "Assignment Failed" });
@@ -168,7 +157,7 @@ export default function LecturerAllocationPage() {
                 ) : (
                     <CardTitle>Lecturer Allocation</CardTitle>
                 )}
-                <CardDescription>Assign lecturers to courses. {semesterName ? '' : 'You can filter by semester from the Registration Management page.'}</CardDescription>
+                <CardDescription>Assign one or more lecturers to courses. {semesterName ? '' : 'You can filter by semester from the Registration Management page.'}</CardDescription>
                 <div className="relative pt-2">
                     <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search courses by name or code..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -180,7 +169,7 @@ export default function LecturerAllocationPage() {
                         <TableRow>
                             <TableHead>Course Code</TableHead>
                             <TableHead>Course Name</TableHead>
-                            <TableHead>Assigned Lecturer</TableHead>
+                            <TableHead>Assigned Lecturers</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -190,28 +179,38 @@ export default function LecturerAllocationPage() {
                                     <TableCell colSpan={3}><Skeleton className="h-8 w-full" /></TableCell>
                                 </TableRow>
                             ))
-                        ) : filteredCourses.map(course => (
+                        ) : filteredCourses.map(course => {
+                            const assignedLecturersText = course.lecturerIds?.map(id => lecturers.find(l => l.uid === id)?.name).filter(Boolean).join(', ') || 'Assign lecturers...';
+
+                            return (
                             <TableRow key={course.id}>
                                 <TableCell>{course.code}</TableCell>
                                 <TableCell>{course.name}</TableCell>
                                 <TableCell>
-                                    <Select
-                                        value={course.lecturerId || 'unassign'}
-                                        onValueChange={(value) => handleAssignLecturer(course.id, value)}
-                                    >
-                                        <SelectTrigger className="w-[280px]">
-                                            <SelectValue placeholder="Assign a lecturer..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                             <SelectItem value="unassign">-- Unassign --</SelectItem>
+                                     <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" className="w-[280px] justify-between">
+                                                <span className="truncate">{assignedLecturersText}</span>
+                                                <ChevronDown className="h-4 w-4 ml-2"/>
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="w-[280px]">
                                             {lecturers.map(lec => (
-                                                <SelectItem key={lec.uid} value={lec.uid}>{lec.name}</SelectItem>
+                                                <DropdownMenuCheckboxItem
+                                                    key={lec.uid}
+                                                    checked={course.lecturerIds?.includes(lec.uid)}
+                                                    onCheckedChange={() => handleLecturerAssignmentChange(course.id, lec.uid)}
+                                                    onSelect={(e) => e.preventDefault()}
+                                                >
+                                                    {lec.name}
+                                                </DropdownMenuCheckboxItem>
                                             ))}
-                                        </SelectContent>
-                                    </Select>
+                                            {lecturers.length === 0 && <TableCell>No lecturers found</TableCell>}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </TableCell>
                             </TableRow>
-                        ))}
+                        )})}
                     </TableBody>
                 </Table>
             </CardContent>
