@@ -17,6 +17,16 @@ export const allMenuItems = [
       ]
     },
     {
+      label: 'My Classes',
+      icon: BookCopy,
+      roles: ['Admin'],
+      items: [
+        { href: '/staff/courses', label: 'My Assigned Classes', icon: GraduationCap },
+        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand },
+        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
+      ]
+    },
+    {
       label: 'Admissions',
       icon: Newspaper,
       roles: ['Admin', 'Registrar'],
@@ -367,15 +377,6 @@ export const studentMenuItems = [
   ];
 
 export const staffBaseMenuItems = [
-    {
-      label: 'Classes',
-      icon: BookCopy,
-      items: [
-        { href: '/staff/courses', label: 'My Classes', icon: GraduationCap, permission: 'Lecturer' },
-        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand, permission: 'Lecturer' },
-        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
-      ],
-    },
     {
       label: 'Leave & Timetable',
       icon: Calendar,

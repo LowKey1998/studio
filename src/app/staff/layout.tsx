@@ -11,12 +11,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && userProfile?.role?.toLowerCase() !== 'staff') {
+    if (!loading && !['staff', 'admin'].includes(userProfile?.role?.toLowerCase() ?? '')) {
       router.replace('/dashboard');
     }
   }, [userProfile, loading, router]);
 
-  if (loading || userProfile?.role?.toLowerCase() !== 'staff') {
+  if (loading || !['staff', 'admin'].includes(userProfile?.role?.toLowerCase() ?? '')) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
