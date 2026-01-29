@@ -22,6 +22,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
+        { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
@@ -352,20 +353,38 @@ export const studentMenuItems = [
 
 export const staffBaseMenuItems = [
     {
-        label: 'My Workspace',
-        icon: Briefcase,
-        items: [
-          { href: '/staff/profile', label: 'My Profile' },
-          { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
-          { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
-          { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
-          { href: '/staff/leave', label: 'My Leave' },
-          { href: '/staff/calendar', label: 'Academic Calendar' },
-          { href: '/staff/onboarding', label: 'My Onboarding' },
-          { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
-          { href: '/staff/payments', label: 'Student Payments', permission: 'Accountant'},
-        ],
+      label: 'Academics',
+      icon: GraduationCap,
+      items: [
+        { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
+        { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
+        { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
+      ],
+    },
+    {
+      label: 'Leave & Timetable',
+      icon: Calendar,
+      items: [
+        { href: '/staff/leave', label: 'My Leave' },
+        { href: '/staff/calendar', label: 'Academic Calendar' },
+      ]
+    },
+     {
+      label: 'HR',
+      icon: UserCog,
+      items: [
+           { href: '/staff/onboarding', label: 'My Onboarding' },
+           { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
+      ]
+  },
+    {
+      label: 'General',
+      icon: Settings,
+      items: [
+        { href: '/staff/library', label: 'Library' },
+        { href: '/staff/profile', label: 'My Profile' },
+      ]
     }
-];
+  ];
 
     
