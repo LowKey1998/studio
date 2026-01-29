@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -452,7 +453,13 @@ export default function RegistrationManagementPage() {
                                                             <div key={semId} className="p-4 border rounded-lg bg-card">
                                                                 <div className="flex justify-between items-center mb-2">
                                                                     <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <Button variant="outline" size="sm" asChild>
+                                                                            <Link href="/admin/academics/lecturer-allocation">Assign Lecturers</Link>
+                                                                        </Button>
+                                                                         <Button variant="outline" size="sm" asChild>
+                                                                            <Link href="/admin/timetable">Timetable</Link>
+                                                                        </Button>
                                                                          <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
                                                                          {historyItems.length > 0 && (
                                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
@@ -565,5 +572,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-    
