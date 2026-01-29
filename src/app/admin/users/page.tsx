@@ -235,7 +235,7 @@ export default function UserManagementPage() {
 
             const usersList: User[] = Object.keys(usersData).map(uid => {
                 const user = usersData[uid];
-                const userSubRoleIds = user.subRoles || [];
+                const userSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.values(user.subRoles)) : [];
                 const subRoleNames = userSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean);
 
                 return {
@@ -243,6 +243,7 @@ export default function UserManagementPage() {
                     ...user,
                     status: user.status || 'active',
                     programmeName: user.programmeId ? programmesData[user.programmeId]?.name : undefined,
+                    subRoles: userSubRoleIds,
                     subRoleNames: subRoleNames
                 };
             });
@@ -432,7 +433,16 @@ export default function UserManagementPage() {
         setEditingUser(user); 
         setEditName(user.name); 
         setEditRole(user.role); 
-        setEditSubRoleIds(user.subRoles || []); 
+        
+        let roleIds: string[] = [];
+        if (Array.isArray(user.subRoles)) {
+            roleIds = user.subRoles;
+        } else if (typeof user.subRoles === 'object' && user.subRoles !== null) {
+            // Handle Firebase's object-with-numeric-keys-for-arrays issue
+            roleIds = Object.values(user.subRoles);
+        }
+        setEditSubRoleIds(roleIds);
+
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
         setIsEditOpen(true);
@@ -891,3 +901,7 @@ The Administration
     </>
   );
 }
+
+    
+
+    
