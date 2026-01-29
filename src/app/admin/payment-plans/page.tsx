@@ -298,7 +298,7 @@ export default function PaymentPlansPage() {
                                             <LinkIcon className="mr-2 h-4 w-4" />
                                             Link to Semesters
                                         </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeletePaymentPlan(plan as any)} disabled={saving || (plan as any).isSystem}>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDeletePaymentPlan(plan)} disabled={saving || (plan as any).isSystem}>
                                             <Trash2 className="h-4 w-4 text-destructive"/>
                                         </Button>
                                     </TableCell>

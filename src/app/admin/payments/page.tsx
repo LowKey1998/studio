@@ -235,8 +235,8 @@ export default function PaymentsManagementPage() {
                     if (reg.invoiceId && allInvoices[userId] && allInvoices[userId][reg.invoiceId]) {
                         const invoice = allInvoices[userId][reg.invoiceId];
                          const totalPayable = invoice.applyScholarship 
-                            ? (parseFloat(String(invoice.totalMandatoryFees || 0)) + parseFloat(String(invoice.totalOptionalFees || 0)))
-                            : (parseFloat(String(invoice.totalTuition || 0)) + parseFloat(String(invoice.totalMandatoryFees || 0)) + parseFloat(String(invoice.totalOptionalFees || 0)));
+                            ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
+                            : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0));
                         studentPaymentMap[key].totalDue += totalPayable;
                     }
                  }
@@ -253,7 +253,7 @@ export default function PaymentsManagementPage() {
                     if (semesterId) {
                         const key = `${tx.userId}-${semesterId}`;
                         if (studentPaymentMap[key]) {
-                            studentPaymentMap[key].totalPaid += parseFloat(String(tx.amount)) || 0;
+                            studentPaymentMap[key].totalPaid += Number(tx.amount) || 0;
                         }
                     }
                 }
@@ -468,9 +468,9 @@ export default function PaymentsManagementPage() {
 
     const summaryStats = React.useMemo(() => {
         return filteredData.reduce((acc, p) => {
-            acc.totalDue += p.totalDue;
-            acc.totalPaid += p.totalPaid;
-            acc.totalBalance += p.balance;
+            acc.totalDue += Number(p.totalDue) || 0;
+            acc.totalPaid += Number(p.totalPaid) || 0;
+            acc.totalBalance += Number(p.balance) || 0;
             return acc;
         }, { totalDue: 0, totalPaid: 0, totalBalance: 0 });
     }, [filteredData]);
@@ -588,7 +588,7 @@ export default function PaymentsManagementPage() {
                                                                 placeholder="0.00" 
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading || !!row.isUnlinked}
+                                                                disabled={formLoading}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
