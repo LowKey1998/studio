@@ -25,7 +25,7 @@ type SubRole = {
 // Firebase keys cannot contain '.', '#', '$', '[', ']', or '/'.
 // We replace '/' with a safe character.
 const sanitizeKey = (key: string) => key.replace(/\//g, '|');
-const desanitizeKey = (key: string) => key.replace(/\|/g, '__');
+const desanitizeKey = (key: string) => key.replace(/\|/g, '/');
 
 
 export default function AccessRulesPage() {
