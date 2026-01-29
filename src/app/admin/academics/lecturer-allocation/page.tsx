@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -12,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import type { CoursePath } from '@/app/admin/course-paths/page';
 
 type Course = {
     id: string;
@@ -42,30 +44,29 @@ export default function LecturerAllocationPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [usersSnapshot, coursesSnapshot, subRolesSnap, regsSnap, semestersSnap] = await Promise.all([
+                const [usersSnapshot, coursesSnapshot, subRolesSnap, semestersSnap, coursePathsSnap] = await Promise.all([
                     get(ref(db, 'users')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'settings/subRoles')),
-                    semesterId ? get(ref(db, 'registrations')) : Promise.resolve(null),
-                    semesterId ? get(ref(db, `semesters/${semesterId}`)) : Promise.resolve(null),
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'coursePaths')),
                 ]);
 
                 const usersData = usersSnapshot.val() || {};
                 const subRolesData = subRolesSnap.val() || {};
+                const coursesData = coursesSnapshot.val() || {};
 
+                // --- Process Lecturers ---
                 const lecturerRoleIds = new Set(
                     Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
                 );
-                
                 const lecturersList: Lecturer[] = [];
                 const lecturerMap = new Map<string, string>();
-
                 for (const uid in usersData) {
                     const user = usersData[uid];
                     if (user.role === 'Staff') {
                         const userSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
                         const userHasLecturerRole = userSubRoleIds.some((userSubRoleId: string) => lecturerRoleIds.has(userSubRoleId));
-                        
                         if (userHasLecturerRole) {
                            lecturersList.push({ uid, name: user.name });
                            lecturerMap.set(uid, user.name);
@@ -73,33 +74,39 @@ export default function LecturerAllocationPage() {
                     }
                 }
                 setLecturers(lecturersList);
+                // --- End Process Lecturers ---
 
-                setSemesterName(semestersSnap?.exists() ? semestersSnap.val().name : null);
-                
-                const coursesData = coursesSnapshot.val() || {};
                 let coursesList: Course[] = [];
 
-                if (semesterId && regsSnap?.exists()) {
-                    const courseIdsInSemester = new Set<string>();
-                    const allRegistrations = regsSnap.val();
-                    for (const userId in allRegistrations) {
-                        const userRegs = allRegistrations[userId];
-                        if (userRegs[semesterId]) {
-                            userRegs[semesterId].courses.forEach((cid: string) => courseIdsInSemester.add(cid));
-                        }
+                if (semesterId && semestersSnap.exists() && coursePathsSnap.exists()) {
+                    const allSemesters = semestersSnap.val();
+                    const semesterData = allSemesters[semesterId];
+                    setSemesterName(semesterData?.name || null);
+    
+                    if (semesterData) {
+                        const allCoursePaths: CoursePath[] = Object.values(coursePathsSnap.val());
+                        const relevantPaths = allCoursePaths.filter(p => p.intakeId === semesterData.intakeId);
+    
+                        const courseIdsInSemester = new Set<string>();
+                        relevantPaths.forEach(path => {
+                            if (path.semesters && path.semesters[semesterId]) {
+                                path.semesters[semesterId].courses.forEach(cid => courseIdsInSemester.add(cid));
+                            }
+                        });
+    
+                        courseIdsInSemester.forEach(courseId => {
+                            if (coursesData[courseId]) {
+                                const course = coursesData[courseId];
+                                coursesList.push({
+                                    id: courseId,
+                                    ...course,
+                                    lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
+                                });
+                            }
+                        });
                     }
-                    
-                    courseIdsInSemester.forEach(courseId => {
-                        if (coursesData[courseId]) {
-                            const course = coursesData[courseId];
-                            coursesList.push({
-                                id: courseId,
-                                ...course,
-                                lecturerName: course.lecturerId ? lecturerMap.get(course.lecturerId) : undefined
-                            });
-                        }
-                    });
                 } else {
+                    // Fallback to showing all courses if no semesterId
                     for (const id in coursesData) {
                         const course = coursesData[id];
                         coursesList.push({
@@ -110,8 +117,8 @@ export default function LecturerAllocationPage() {
                     }
                 }
                 
-                setCourses(coursesList.sort((a,b) => a.code.localeCompare(b.code)));
-                
+                setCourses(coursesList.sort((a, b) => a.code.localeCompare(b.code)));
+
             } catch (error) {
                 console.error("Failed to fetch data:", error);
                 toast({ variant: 'destructive', title: "Data Loading Error" });
