@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from '@/components/ui/checkbox';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, remove, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, set, runTransaction, get, child, push, serverTimestamp, update, onValue, query, orderByChild, equalTo } from 'firebase/database';
 import { app, auth, db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +45,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { onAuthStateChanged } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
+import { setUserPassword } from '@/ai/flows/set-user-password';
 import { cn } from '@/lib/utils';
 import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-items';
 import { Textarea } from '@/components/ui/textarea';
@@ -201,6 +202,12 @@ export default function UserManagementPage() {
     const [bulkEmailSubject, setBulkEmailSubject] = React.useState('');
     const [bulkEmailBody, setBulkEmailBody] = React.useState('');
     const [sendingBulkEmail, setSendingBulkEmail] = React.useState(false);
+    
+    // Set Password dialog
+    const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
+    const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
+    const [newPassword, setNewPassword] = React.useState('');
+    const [settingPassword, setSettingPassword] = React.useState(false);
 
 
     const [loading, setLoading] = React.useState(false);
@@ -435,7 +442,7 @@ export default function UserManagementPage() {
         setEditingUser(user); 
         setEditName(user.name); 
         setEditRole(user.role); 
-        const roleIds = user.subRoles || [];
+        const roleIds = Array.isArray(user.subRoles) ? user.subRoles : user.subRoles ? Object.values(user.subRoles) : [];
         setEditSubRoleIds(roleIds);
         setEditProgramme(user.programmeId || '');
         setEditIntake(user.intakeId || '');
@@ -616,6 +623,28 @@ The Administration
             setSendingBulkEmail(false);
         }
     };
+    
+    const handleSetPassword = async () => {
+        if (!settingPasswordUser || !newPassword) {
+            toast({ variant: 'destructive', title: 'Please enter a new password.' });
+            return;
+        }
+        setSettingPassword(true);
+        try {
+            const result = await setUserPassword({ uid: settingPasswordUser.uid, newPassword });
+            if (result.success) {
+                toast({ title: 'Success', description: result.message });
+                setIsSetPasswordOpen(false);
+                setNewPassword('');
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error: any) {
+             toast({ variant: 'destructive', title: 'Update Failed', description: error.message });
+        } finally {
+            setSettingPassword(false);
+        }
+    }
 
 
     const filteredUsers = React.useMemo(() => {
@@ -777,8 +806,7 @@ The Administration
       <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {tableLoading ? ( Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>))
-            ) : filteredUsers.length > 0 ? (
-              filteredUsers.map((user) => (
+            ) : filteredUsers.map((user) => (
               <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
                 <TableCell className="font-medium">{user.id}</TableCell>
                 <TableCell>{user.name}</TableCell>
@@ -797,6 +825,7 @@ The Administration
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
+                             <DropdownMenuItem onSelect={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
                             {user.role === 'Student' && (
                                 <DropdownMenuItem onSelect={() => handleDownloadInvoice(user.uid)}>
@@ -879,7 +908,7 @@ The Administration
                     <DialogTitle>Send Bulk Email</DialogTitle>
                     <DialogDescription>Review and edit the content before sending an email to all users.</DialogDescription>
                 </DialogHeader>
-                <Alert>
+                 <Alert>
                     <Info className="h-4 w-4" />
                     <AlertTitle>How This Works</AlertTitle>
                     <AlertDescription>
@@ -893,6 +922,24 @@ The Administration
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Cancel</Button>
                     <Button onClick={handleSendBulkEmail} disabled={sendingBulkEmail}>{sendingBulkEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send to All</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        <Dialog open={isSetPasswordOpen} onOpenChange={setIsSetPasswordOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Set Password for {settingPasswordUser?.name}</DialogTitle>
+                    <DialogDescription>Enter a new temporary password for this user. They will be notified via email.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="new-password">New Password</Label>
+                    <Input id="new-password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSetPassword} disabled={settingPassword}>
+                        {settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Set Password'}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

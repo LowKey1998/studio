@@ -12,4 +12,6 @@ import '@/ai/flows/generate-timetable.ts';
 import '@/ai/flows/remove-background-flow.ts';
 import '@/ai/flows/update-user-status.ts';
 import '@/ai/flows/find-or-create-user.ts';
+import '@/ai/flows/set-user-password.ts';
+
 
