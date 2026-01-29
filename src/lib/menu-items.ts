@@ -371,33 +371,33 @@ export const staffBaseMenuItems = [
       label: 'Academics',
       icon: GraduationCap,
       items: [
-        { href: '/staff/courses', label: 'My Courses', permission: 'Lecturer' },
-        { href: '/staff/student-absences', label: 'Student Absences', permission: 'Lecturer' },
-        { href: '/staff/timetable', label: 'My Timetable', permission: 'Lecturer' },
+        { href: '/staff/courses', label: 'My Courses', icon: BookCopy, permission: 'Lecturer' },
+        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand, permission: 'Lecturer' },
+        { href: '/staff/timetable', label: 'My Timetable', icon: Calendar, permission: 'Lecturer' },
       ],
     },
     {
       label: 'Leave & Timetable',
       icon: Calendar,
       items: [
-        { href: '/staff/leave', label: 'My Leave' },
-        { href: '/staff/calendar', label: 'Academic Calendar' },
+        { href: '/staff/leave', label: 'My Leave', icon: Calendar },
+        { href: '/staff/calendar', label: 'Academic Calendar', icon: Calendar },
       ]
     },
      {
       label: 'HR',
       icon: UserCog,
       items: [
-           { href: '/staff/onboarding', label: 'My Onboarding' },
-           { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
+           { href: '/staff/onboarding', label: 'My Onboarding', icon: UserCheckIcon },
+           { href: '/staff/payroll', label: 'Payroll', icon: DollarSign, permission: 'Accountant' },
       ]
   },
     {
       label: 'General',
       icon: Settings,
       items: [
-        { href: '/staff/library', label: 'Library' },
-        { href: '/staff/profile', label: 'My Profile' },
+        { href: '/staff/library', label: 'Library', icon: Library },
+        { href: '/staff/profile', label: 'My Profile', icon: User },
       ]
     }
   ];

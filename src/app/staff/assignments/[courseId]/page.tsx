@@ -1,3 +1,4 @@
+
 // This file is being replaced by /app/staff/courses/[courseId] for a more integrated experience.
 // We will redirect users from here to the new page.
 
@@ -11,7 +12,9 @@ export default function RedirectPage() {
     const courseId = params.courseId as string;
 
     useEffect(() => {
-        router.replace(`/staff/courses/${courseId}`);
+        if (courseId) {
+            router.replace(`/staff/courses/${courseId}`);
+        }
     }, [router, courseId]);
 
     return (

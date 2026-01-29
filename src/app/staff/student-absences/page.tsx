@@ -30,6 +30,7 @@ type LeaveRequest = {
   studentId: string;
   studentName: string;
   studentSystemId: string;
+  lecturerId: string;
 };
 
 type UserData = {

@@ -1,3 +1,4 @@
+
 // This file is being replaced by /app/staff/courses/page.tsx for a more integrated experience.
 // We will redirect users from here to the new page.
 

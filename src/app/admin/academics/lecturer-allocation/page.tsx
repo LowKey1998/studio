@@ -112,8 +112,9 @@ export default function LecturerAllocationPage() {
 
     const handleAssignLecturer = async (courseId: string, lecturerId: string) => {
         try {
-            await update(ref(db, `courses/${courseId}`), { lecturerId });
-            toast({ title: "Lecturer Assigned", description: "The course has been updated." });
+            const lecturerUpdate = lecturerId === 'unassign' ? null : lecturerId;
+            await update(ref(db, `courses/${courseId}`), { lecturerId: lecturerUpdate });
+            toast({ title: "Lecturer Assignment Updated", description: "The course has been updated." });
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: "Assignment Failed" });
@@ -157,13 +158,14 @@ export default function LecturerAllocationPage() {
                                 <TableCell>{course.name}</TableCell>
                                 <TableCell>
                                     <Select
-                                        value={course.lecturerId}
+                                        value={course.lecturerId || 'unassign'}
                                         onValueChange={(value) => handleAssignLecturer(course.id, value)}
                                     >
                                         <SelectTrigger className="w-[280px]">
                                             <SelectValue placeholder="Assign a lecturer..." />
                                         </SelectTrigger>
                                         <SelectContent>
+                                             <SelectItem value="unassign">-- Unassign --</SelectItem>
                                             {lecturers.map(lec => (
                                                 <SelectItem key={lec.uid} value={lec.uid}>{lec.name}</SelectItem>
                                             ))}
