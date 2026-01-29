@@ -3,9 +3,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, Users, Info, Archive } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
@@ -35,7 +35,7 @@ export default function StaffCoursesPage() {
     const [activeCourses, setActiveCourses] = React.useState<Course[]>([]);
     const [archivedCourses, setArchivedCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+    const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
     const { toast } = useToast();
 
@@ -84,8 +84,8 @@ export default function StaffCoursesPage() {
 
             // Pre-calculate student counts
             for(const userId in allRegistrations) {
-                for (const semester in allRegistrations[userId]) {
-                    const reg = allRegistrations[userId][semester];
+                for (const semesterName in allRegistrations[userId]) {
+                    const reg = allRegistrations[userId][semesterName];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         for(const courseId of reg.courses) {
                             studentCounts[courseId] = (studentCounts[courseId] || 0) + 1;
@@ -98,32 +98,35 @@ export default function StaffCoursesPage() {
             const newArchivedCourses: Course[] = [];
             const processedCourses = new Set<string>(); // To avoid duplicate course-semester entries
 
-            for (const userId in allRegistrations) {
-                for (const semesterName in allRegistrations[userId]) {
-                    const registration = allRegistrations[userId][semesterName];
-                    for (const courseId of registration.courses) {
-                        const courseData = coursesData[courseId];
-                        const uniqueKey = `${courseId}-${semesterName}`;
-                        
-                        if (courseData && courseData.lecturerId === currentUser.uid && !processedCourses.has(uniqueKey)) {
-                             const courseEntry: Course = {
-                                id: courseId,
-                                name: courseData.name,
-                                code: courseData.code,
-                                studentCount: studentCounts[courseId] || 0,
-                                semester: semesterName,
-                            };
-
-                            if (activeSemesters.has(semesterName)) {
-                                newActiveCourses.push(courseEntry);
-                            } else {
-                                newArchivedCourses.push(courseEntry);
+            for (const courseId in coursesData) {
+                const courseData = coursesData[courseId];
+                if (courseData.lecturerIds && Array.isArray(courseData.lecturerIds) && courseData.lecturerIds.includes(currentUser.uid)) {
+                     for (const userId in allRegistrations) {
+                        for (const semesterName in allRegistrations[userId]) {
+                            const registration = allRegistrations[userId][semesterName];
+                            if (registration.courses.includes(courseId)) {
+                                 const uniqueKey = `${courseId}-${semesterName}`;
+                                if (!processedCourses.has(uniqueKey)) {
+                                    const courseEntry: Course = {
+                                        id: courseId,
+                                        name: courseData.name,
+                                        code: courseData.code,
+                                        studentCount: studentCounts[courseId] || 0,
+                                        semester: semesterName,
+                                    };
+                                     if (activeSemesters.has(semesterName)) {
+                                        newActiveCourses.push(courseEntry);
+                                    } else {
+                                        newArchivedCourses.push(courseEntry);
+                                    }
+                                    processedCourses.add(uniqueKey);
+                                }
                             }
-                            processedCourses.add(uniqueKey);
                         }
                     }
                 }
             }
+
 
             setActiveCourses(newActiveCourses.filter(c => c.name));
             setArchivedCourses(newArchivedCourses.filter(c => c.name));
@@ -137,13 +140,11 @@ export default function StaffCoursesPage() {
     }, [currentUser, toast]);
 
     React.useEffect(() => {
-        if (currentUser && userData?.role === 'Staff' && userData.subRoles?.includes('Lecturer')) {
+        if (currentUser) {
             fetchLecturerCourses();
-        } else if (userData) {
-            setLoading(false);
         }
-    }, [currentUser, userData, fetchLecturerCourses]);
-
+    }, [currentUser, fetchLecturerCourses]);
+    
     if (loading) {
         return (
             <div className="space-y-6">
@@ -166,21 +167,7 @@ export default function StaffCoursesPage() {
         )
     }
 
-    if (!(userData?.role === 'Staff' && userData.subRoles?.includes('Lecturer'))) {
-        return (
-            <Card>
-                <CardContent className="pt-6">
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Access Denied</AlertTitle>
-                        <AlertDescription>
-                            This page is only available to lecturers.
-                        </AlertDescription>
-                    </Alert>
-                </CardContent>
-            </Card>
-        );
-    }
+    const lecturerHasCourses = activeCourses.length > 0 || archivedCourses.length > 0;
 
     return (
         <div className="space-y-6">
@@ -216,6 +203,7 @@ export default function StaffCoursesPage() {
                     ))}
                 </div>
             ) : (
+                 !lecturerHasCourses &&
                 <Card>
                     <CardContent className="pt-6">
                         <Alert>

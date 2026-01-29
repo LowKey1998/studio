@@ -3,11 +3,11 @@
 
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import { Loader2, Check, X, ClipboardCheck, User, Info, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User as AuthUser } from 'firebase/auth';
 import { auth, db, createNotification } from '@/lib/firebase';
 import { ref, update, onValue, query, orderByChild, equalTo, set } from 'firebase/database';
 import { format } from 'date-fns';
@@ -42,7 +42,7 @@ export default function StudentLeaveApprovalsPage() {
     const [historyRequests, setHistoryRequests] = React.useState<LeaveRequest[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
-    const [currentUser, setCurrentUser] = React.useState<any | null>(null);
+    const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
 
     const { toast } = useToast();
@@ -129,14 +129,14 @@ export default function StudentLeaveApprovalsPage() {
         return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
     }
 
-    if (!userData?.subRoles?.includes('Lecturer')) {
+    if (!userData) {
         return (
              <Card>
                 <CardContent className="pt-6">
                     <Alert variant="destructive">
                         <Info className="h-4 w-4" />
                         <AlertTitle>Access Denied</AlertTitle>
-                        <AlertDescription>This page is only available to lecturers.</AlertDescription>
+                        <AlertDescription>Your user profile could not be loaded.</AlertDescription>
                     </Alert>
                 </CardContent>
             </Card>
