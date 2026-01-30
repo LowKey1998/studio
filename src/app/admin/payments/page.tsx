@@ -303,16 +303,20 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key !== key) return row;
     
-            let updatedRow = { ...row, [field]: value };
+            let updatedRow: PaymentRecord = { ...row, [field]: value as any };
     
             if (field === 'userId') {
                 if (value === '__UNLINKED__') {
                     return { 
-                        ...row, 
+                        key: row.key,
                         isUnlinked: true, 
                         userId: undefined, 
                         invoiceId: undefined, 
-                        totalDue: undefined
+                        totalDue: undefined,
+                        amount: row.amount,
+                        comment: row.comment,
+                        reference: row.reference,
+                        semesterId: row.semesterId
                     };
                 }
                 updatedRow.isUnlinked = false;
@@ -564,12 +568,14 @@ export default function PaymentsManagementPage() {
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     
                                                     let semesterOptions;
-                                                    if (studentForThisRow?.intakeId) {
+                                                    if (row.isUnlinked) {
+                                                        semesterOptions = semesters.map(s => ({value: s.id, label: s.name}));
+                                                    } else if (studentForThisRow?.intakeId) {
                                                         semesterOptions = semesters
                                                             .filter(s => s.intakeId === studentForThisRow.intakeId)
                                                             .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
                                                     } else {
-                                                        semesterOptions = semesters.map(s => ({ value: s.id, label: s.name }));
+                                                        semesterOptions = [];
                                                     }
 
                                                     return (
@@ -602,7 +608,7 @@ export default function PaymentsManagementPage() {
                                                         <TableCell>
                                                             <Input 
                                                                 type="text" 
-                                                                placeholder="Enter total amount due" 
+                                                                placeholder="Auto-filled or enter amount" 
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
                                                                 disabled={formLoading || (!row.isUnlinked && !!row.userId)}
