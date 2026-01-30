@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Users } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -251,7 +251,7 @@ export default function StaffCoursesPage() {
                                     </CardHeader>
                                     <CardContent>
                                         <div className="flex items-center text-sm text-muted-foreground">
-                                            <Users className="mr-2 h-4 w-4" />
+                                            <User className="mr-2 h-4 w-4" />
                                             <span>{course.studentCount} Student(s)</span>
                                         </div>
                                     </CardContent>
