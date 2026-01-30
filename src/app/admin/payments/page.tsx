@@ -563,14 +563,14 @@ export default function PaymentsManagementPage() {
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     
-                                                    const semesterOptions = React.useMemo(() => {
-                                                        if (studentForThisRow?.intakeId) {
-                                                            return semesters
-                                                                .filter(s => s.intakeId === studentForThisRow.intakeId)
-                                                                .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
-                                                        }
-                                                        return semesters.map(s => ({ value: s.id, label: s.name }));
-                                                    }, [studentForThisRow, semesters]);
+                                                    let semesterOptions;
+                                                    if (studentForThisRow?.intakeId) {
+                                                        semesterOptions = semesters
+                                                            .filter(s => s.intakeId === studentForThisRow.intakeId)
+                                                            .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
+                                                    } else {
+                                                        semesterOptions = semesters.map(s => ({ value: s.id, label: s.name }));
+                                                    }
 
                                                     return (
                                                     <TableRow key={row.key}>
