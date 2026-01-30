@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Loader2, Info, UserPlus, FileUp, Check } from 'lucide-react';
+import { Upload, Loader2, Info, UserPlus, FileUp, Check, Mail } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 import { useToast } from '@/hooks/use-toast';
@@ -44,7 +43,7 @@ export default function BulkImportPage() {
 
     React.useEffect(() => {
         const fetchData = async () => {
-            const settingsSnap = await get(ref(db, 'settings/idPrefixes'));
+            const settingsSnap = await get(ref(db, 'settings/institution'));
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
 
             const intakesSnap = await get(ref(db, 'intakes'));
@@ -315,6 +314,26 @@ export default function BulkImportPage() {
                                 </TableBody>
                             </Table>
                         </div>
+                        <Alert>
+                            <Mail className="h-4 w-4" />
+                            <AlertTitle>Welcome Email Preview</AlertTitle>
+                            <AlertDescription>
+                                <p className="mb-2">
+                                    Each newly created student will receive an email with the subject <span className="font-semibold">"Your Account for {idSettings?.name || 'the Institution'}"</span>. The email will look like this:
+                                </p>
+                                <div className="p-4 border rounded-md bg-background text-sm">
+                                    <h2 className="font-bold text-lg mb-2">Welcome to {idSettings?.name || 'the Institution'}!</h2>
+                                    <p>An account has been created for you. You can now access the portal using the credentials below.</p>
+                                    <ul className="list-disc pl-5 my-2">
+                                        <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app/" className="text-primary underline">https://edutrack36.vercel.app/</a></li>
+                                        <li><strong>User ID:</strong> [Student's Generated ID]</li>
+                                        <li><strong>Password:</strong> [Generated Password]</li>
+                                    </ul>
+                                    <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
+                                    <p className="mt-4">Best regards,<br/>The Administration</p>
+                                </div>
+                            </AlertDescription>
+                        </Alert>
                     </div>
                  )}
             </CardContent>

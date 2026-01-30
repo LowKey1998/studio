@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -116,9 +115,11 @@ const findOrCreateUserFlow = ai.defineFlow(
 
     // Send welcome email only if a new password was set (i.e., a new auth user was created)
     if (!userExistsInAuth && password) {
+         const settingsSnap = await get(ref(db, 'settings/institution'));
+         const institutionName = settingsSnap.exists() ? settingsSnap.val().name : 'the Institution';
          const portalUrl = 'https://edutrack36.vercel.app';
          const welcomeEmailBody = `
-            <h2>Welcome to the Institution!</h2>
+            <h2>Welcome to ${institutionName}!</h2>
             <p>An account has been created for you. You can now access the portal using the credentials below.</p>
             <ul>
                 <li><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></li>
@@ -128,7 +129,7 @@ const findOrCreateUserFlow = ai.defineFlow(
             <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
             <p>Best regards,<br/>The Administration</p>
         `;
-        await sendEmail({ to: [input.email], subject: `Your Student Account Details`, body: welcomeEmailBody });
+        await sendEmail({ to: [input.email], subject: `Your Account for ${institutionName}`, body: welcomeEmailBody });
     }
 
     return { uid: authUser.uid, status: userExistsInAuth ? 'updated' : 'created' };
