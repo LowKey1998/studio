@@ -71,6 +71,7 @@ type Transaction = {
 
 
 type Programme = { id: string; name: string; };
+type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
 type StudentInfo = {
     uid: string;
@@ -79,10 +80,12 @@ type StudentInfo = {
     intakeId?: string;
 };
 
-
 // --- Reusable Searchable Select Component ---
+type GroupedOption = { value: string; label: string };
+type OptionGroup = { groupName: string; items: GroupedOption[] };
+
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
-    options: { value: string, label: string }[];
+    options: OptionGroup[];
     value: string | undefined;
     onValueChange: (value: string) => void;
     placeholder: string;
@@ -91,12 +94,34 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
     const [open, setOpen] = React.useState(false);
     const [search, setSearch] = React.useState('');
 
-    const filteredOptions = React.useMemo(() => 
-        options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase())),
-        [options, search]
-    );
+    const filteredOptions = React.useMemo(() => {
+        if (!search) return options;
+        const lowerCaseSearch = search.toLowerCase();
+        
+        const result: OptionGroup[] = [];
+        options.forEach(group => {
+            if (group.groupName.toLowerCase().includes(lowerCaseSearch)) {
+                result.push(group);
+            } else {
+                const filteredItems = group.items.filter(item => 
+                    item.label.toLowerCase().includes(lowerCaseSearch)
+                );
+                if (filteredItems.length > 0) {
+                    result.push({ ...group, items: filteredItems });
+                }
+            }
+        });
+        return result;
+    }, [options, search]);
 
-    const selectedLabel = value ? options.find(o => o.value === value)?.label : placeholder;
+    const selectedLabel = React.useMemo(() => {
+        if (!value) return placeholder;
+        for (const group of options) {
+            const foundItem = group.items.find(item => item.value === value);
+            if (foundItem) return foundItem.label;
+        }
+        return placeholder;
+    }, [value, options, placeholder]);
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -118,25 +143,30 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                 <Separator />
                 <ScrollArea className="h-[200px]">
                     <div className="p-1">
-                    {filteredOptions.length > 0 ? filteredOptions.map(option => (
-                        <Button 
-                            key={option.value}
-                            variant="ghost" 
-                            className="w-full justify-start h-auto py-2 px-2 text-left"
-                            onClick={() => {
-                                onValueChange(option.value);
-                                setOpen(false);
-                                setSearch('');
-                            }}
-                        >
-                            {option.label}
-                        </Button>
+                    {filteredOptions.length > 0 ? filteredOptions.map(group => (
+                        <div key={group.groupName} className="p-1">
+                            {group.groupName !== 'default' && <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.groupName}</div>}
+                            {group.items.map(option => (
+                                <Button 
+                                    key={option.value}
+                                    variant="ghost" 
+                                    className="w-full justify-start h-auto py-2 px-2 text-left"
+                                    onClick={() => {
+                                        onValueChange(option.value);
+                                        setOpen(false);
+                                        setSearch('');
+                                    }}
+                                >
+                                    {option.label}
+                                </Button>
+                            ))}
+                        </div>
                     )) : <p className="p-2 text-center text-sm text-muted-foreground">No results found.</p>}
                     </div>
                 </ScrollArea>
             </PopoverContent>
         </Popover>
-    )
+    );
 }
 
 export default function PaymentsManagementPage() {
@@ -145,6 +175,7 @@ export default function PaymentsManagementPage() {
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
@@ -171,18 +202,20 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'settings/integrations')),
-                get(ref(db, 'unlinkedPayments'))
+                get(ref(db, 'unlinkedPayments')),
+                get(ref(db, 'intakes')),
             ]);
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
+            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id]})));
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
             } else {
@@ -501,8 +534,8 @@ export default function PaymentsManagementPage() {
     };
 
     const studentOptions = React.useMemo(() => [
-        { value: '__UNLINKED__', label: '--- Student Not Found / Unlinked Payment ---' },
-        ...allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))
+        { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
+        { groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }
     ], [allStudents]);
 
     return (
@@ -528,7 +561,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                              <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
@@ -556,16 +589,33 @@ export default function PaymentsManagementPage() {
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
                                                     
-                                                    const semesterOptions = React.useMemo(() => {
+                                                    const semesterOptions: OptionGroup[] = React.useMemo(() => {
                                                         if (row.isUnlinked) {
-                                                            return semesters.map(s => ({ value: s.id, label: s.name }));
+                                                            const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
+                                                                const intakeName = allIntakes.find(i => i.id === sem.intakeId)?.name || 'Uncategorized';
+                                                                if (!acc[intakeName]) acc[intakeName] = [];
+                                                                acc[intakeName].push(sem);
+                                                                return acc;
+                                                            }, {} as Record<string, Semester[]>);
+
+                                                            return Object.entries(groupedByIntake).map(([intakeName, sems]) => ({
+                                                                groupName: intakeName,
+                                                                items: sems.map(s => ({
+                                                                    value: s.id,
+                                                                    label: `Year ${s.year}, Semester ${s.semesterInYear}`
+                                                                }))
+                                                            }));
                                                         } else if (studentForThisRow?.intakeId) {
-                                                            return semesters
-                                                                .filter(s => s.intakeId === studentForThisRow.intakeId)
-                                                                .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
+                                                            const intakeName = allIntakes.find(i => i.id === studentForThisRow.intakeId)?.name || 'Available Semesters';
+                                                            return [{
+                                                                groupName: intakeName,
+                                                                items: semesters
+                                                                    .filter(s => s.intakeId === studentForThisRow.intakeId)
+                                                                    .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }))
+                                                            }];
                                                         }
                                                         return [];
-                                                    }, [row.isUnlinked, studentForThisRow, semesters]);
+                                                    }, [row.isUnlinked, studentForThisRow, semesters, allIntakes]);
 
                                                     return (
                                                     <TableRow key={row.key}>
@@ -718,7 +768,7 @@ export default function PaymentsManagementPage() {
                              <SearchableSelect
                                 value={selectedLinkStudent}
                                 onValueChange={setSelectedLinkStudent}
-                                options={allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }))}
+                                options={[{ groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }]}
                                 placeholder="Select student to link to..."
                             />
                         </div>
