@@ -1,4 +1,3 @@
-
 "use client";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -13,6 +12,7 @@ export function Header() {
       <div className="flex h-14 items-center px-4">
         <SidebarTrigger />
         <div className="flex flex-1 items-center justify-end space-x-2">
+            <NotificationsPopover />
             <UserNav />
         </div>
       </div>

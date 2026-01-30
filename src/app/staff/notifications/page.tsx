@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bell, Check, Trash2, X } from 'lucide-react';
+import { Bell, Check, Trash2, X, Info, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, onValue, update, remove } from 'firebase/database';
@@ -11,90 +11,57 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { useNotifications } from '@/hooks/use-notifications';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import type { Notification } from '@/lib/types';
 
-type Notification = {
-  id: string;
-  message: string;
-  link: string;
-  timestamp: number;
-  read: boolean;
+
+const notificationIcons: Record<Notification['type'], React.ReactNode> = {
+  success: <Check className="h-5 w-5 text-green-500" />,
+  error: <X className="h-5 w-5 text-red-500" />,
+  warning: <AlertTriangle className="h-5 w-5 text-yellow-500" />,
+  info: <Info className="h-5 w-5 text-blue-500" />,
 };
 
+
 export default function NotificationsPage() {
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [loading, setLoading] = React.useState(true);
+  const router = useRouter();
   const { toast } = useToast();
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCurrentUser(user);
-      } else {
-        setLoading(false);
-      }
-    });
-    return () => unsubscribe();
+    // A simple timeout to simulate loading, as the hook handles the actual fetching
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
   }, []);
-
-  React.useEffect(() => {
-    if (!currentUser) return;
-
-    setLoading(true);
-    const notificationsRef = ref(db, `notifications/${currentUser.uid}`);
-    
-    const unsubscribe = onValue(notificationsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const notificationsList: Notification[] = Object.keys(data)
-          .map(key => ({ id: key, ...data[key] }))
-          .sort((a, b) => b.timestamp - a.timestamp);
-        
-        setNotifications(notificationsList);
-      } else {
-        setNotifications([]);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
   
-  const handleUpdateNotification = async (notificationId: string, read: boolean) => {
-    if (!currentUser) return;
-    try {
-      const notificationRef = ref(db, `notifications/${currentUser.uid}/${notificationId}`);
-      await update(notificationRef, { read });
-    } catch (error) {
-      console.error("Failed to update notification", error);
+  const handleNotificationClick = (notification: Notification) => {
+    markAsRead(notification.id);
+    if (notification.link) {
+      router.push(notification.link);
     }
   };
 
   const handleDeleteNotification = async (notificationId: string) => {
-    if (!currentUser) return;
+    const { user } = auth;
+    if (!user) return;
     try {
-      const notificationRef = ref(db, `notifications/${currentUser.uid}/${notificationId}`);
+      const notificationRef = ref(db, `notifications/${user.uid}/${notificationId}`);
       await remove(notificationRef);
       toast({ title: "Notification deleted." });
     } catch (error) {
-       console.error("Failed to delete notification", error);
        toast({ variant: 'destructive', title: "Failed to delete notification." });
     }
   };
   
-  const handleMarkAllAsRead = async () => {
-      if (!currentUser) return;
-      const updates: { [key: string]: boolean } = {};
-      notifications.forEach(n => {
-        if (!n.read) {
-          updates[`notifications/${currentUser.uid}/${n.id}/read`] = true;
-        }
-      });
-      if (Object.keys(updates).length > 0) {
-        await update(ref(db), updates);
-        toast({ title: "All notifications marked as read." });
-      }
-  };
+  const handleUpdateNotification = (id: string, isRead: boolean) => {
+    const { user } = auth;
+    if (!user) return;
+    const notificationRef = ref(db, `notifications/${user.uid}/${id}`);
+    update(notificationRef, { read: !isRead });
+  }
 
   return (
     <div className="space-y-6">
@@ -105,8 +72,8 @@ export default function NotificationsPage() {
                 <CardDescription>A complete log of all your notifications.</CardDescription>
             </div>
             <Button 
-                onClick={handleMarkAllAsRead} 
-                disabled={loading || notifications.every(n => n.read)}
+                onClick={markAllAsRead} 
+                disabled={loading || unreadCount === 0}
             >
                 <Check className="mr-2 h-4 w-4" />
                 Mark all as read
@@ -129,16 +96,17 @@ export default function NotificationsPage() {
                     notifications.map(n => (
                         <li 
                             key={n.id} 
-                            className={`flex flex-col gap-2 rounded-lg border p-4 transition-colors sm:flex-row sm:items-center ${!n.read ? 'bg-accent/50' : 'bg-transparent'}`}
+                            className={`flex flex-col gap-2 rounded-lg border p-4 transition-colors sm:flex-row sm:items-center ${!n.isRead ? 'bg-accent/50' : 'bg-transparent'}`}
                         >
-                            <div className="flex flex-1 items-start gap-4">
+                            <div 
+                              className="flex flex-1 items-start gap-4 cursor-pointer"
+                              onClick={() => handleNotificationClick(n)}
+                            >
                                 <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-                                    <Bell className="h-5 w-5 text-primary" />
+                                    {notificationIcons[n.type] || notificationIcons.info}
                                 </div>
                                 <div className="flex-1">
-                                    <Link href={n.link} passHref>
-                                        <p className="cursor-pointer text-sm font-medium hover:underline">{n.message}</p>
-                                    </Link>
+                                    <p className="text-sm font-medium">{n.message}</p>
                                     <p className="text-xs text-muted-foreground">
                                         {formatDistanceToNow(new Date(n.timestamp), { addSuffix: true })}
                                     </p>
@@ -146,12 +114,12 @@ export default function NotificationsPage() {
                             </div>
                             <div className="flex items-center gap-2 self-end sm:self-center">
                                 <Button 
-                                    variant={n.read ? "secondary" : "outline"} 
+                                    variant={n.isRead ? "secondary" : "outline"} 
                                     size="sm" 
-                                    onClick={() => handleUpdateNotification(n.id, !n.read)}
+                                    onClick={() => handleUpdateNotification(n.id, n.isRead)}
                                 >
-                                    {n.read ? <X className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
-                                    {n.read ? 'Mark Unread' : 'Mark Read'}
+                                    {n.isRead ? <X className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
+                                    {n.isRead ? 'Mark Unread' : 'Mark Read'}
                                 </Button>
                                 <Button 
                                     variant="ghost" 
