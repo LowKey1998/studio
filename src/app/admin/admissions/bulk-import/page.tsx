@@ -14,6 +14,7 @@ import { findOrCreateUser, type FindOrCreateUserInput } from '@/ai/flows/find-or
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 
 type ProcessedStudent = Omit<FindOrCreateUserInput, 'password'> & {
     intakeName?: string;
@@ -38,13 +39,33 @@ export default function BulkImportPage() {
     const [sheetNames, setSheetNames] = React.useState<string[]>([]);
     const [sheetToIntakeMap, setSheetToIntakeMap] = React.useState<Record<string, string>>({});
 
+    const [welcomeEmailSubject, setWelcomeEmailSubject] = React.useState('');
+    const [welcomeEmailBody, setWelcomeEmailBody] = React.useState('');
+
     const { toast } = useToast();
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     React.useEffect(() => {
         const fetchData = async () => {
             const settingsSnap = await get(ref(db, 'settings/institution'));
-            if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
+            if (settingsSnap.exists()) {
+                const settings = settingsSnap.val();
+                setIdSettings(settings);
+                
+                // Set default email content
+                const institutionName = settings.name || 'the Institution';
+                const portalUrl = 'https://edutrack36.vercel.app';
+                setWelcomeEmailSubject(`Your Account for ${institutionName}`);
+                setWelcomeEmailBody(`<h2>Welcome to ${institutionName}!</h2>
+<p>An account has been created for you. You can now access the portal using the credentials below.</p>
+<ul>
+    <li><strong>Portal Link:</strong> <a href="${portalUrl}">${portalUrl}</a></li>
+    <li><strong>User ID:</strong> [Student's Generated ID]</li>
+    <li><strong>Password:</strong> [Generated Password]</li>
+</ul>
+<p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
+<p>Best regards,<br/>The Administration</p>`);
+            }
 
             const intakesSnap = await get(ref(db, 'intakes'));
             if (intakesSnap.exists()) {
@@ -169,9 +190,16 @@ export default function BulkImportPage() {
         const password = Math.random().toString(36).slice(-8);
         const { intakeName, imported, ...studentData } = student;
         
+        // Replace placeholders in the email body before sending
+        const finalBody = welcomeEmailBody
+            .replace(/\[Student's Generated ID\]/g, studentData.id)
+            .replace(/\[Generated Password\]/g, password);
+
         await findOrCreateUser({
             ...studentData,
             password,
+            welcomeSubject: welcomeEmailSubject,
+            welcomeBody: finalBody,
         });
     };
     
@@ -316,21 +344,28 @@ export default function BulkImportPage() {
                         </div>
                         <Alert>
                             <Mail className="h-4 w-4" />
-                            <AlertTitle>Welcome Email Preview</AlertTitle>
+                            <AlertTitle>Welcome Email Preview & Editor</AlertTitle>
                             <AlertDescription>
-                                <p className="mb-2">
-                                    Each newly created student will receive an email with the subject <span className="font-semibold">"Your Account for {idSettings?.name || 'the Institution'}"</span>. The email will look like this:
+                                <p className="mb-4 text-sm">
+                                    Each newly created student will receive an email with the content below. You can edit it before importing. Placeholders <code className="bg-muted px-1 rounded">[Student's Generated ID]</code> and <code className="bg-muted px-1 rounded">[Generated Password]</code> will be filled automatically.
                                 </p>
-                                <div className="p-4 border rounded-md bg-background text-sm">
-                                    <h2 className="font-bold text-lg mb-2">Welcome to {idSettings?.name || 'the Institution'}!</h2>
-                                    <p>An account has been created for you. You can now access the portal using the credentials below.</p>
-                                    <ul className="list-disc pl-5 my-2">
-                                        <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app/" className="text-primary underline">https://edutrack36.vercel.app/</a></li>
-                                        <li><strong>User ID:</strong> [Student's Generated ID]</li>
-                                        <li><strong>Password:</strong> [Generated Password]</li>
-                                    </ul>
-                                    <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
-                                    <p className="mt-4">Best regards,<br/>The Administration</p>
+                                <div className="space-y-2">
+                                    <Label htmlFor="email-subject">Email Subject</Label>
+                                    <Input 
+                                        id="email-subject"
+                                        value={welcomeEmailSubject}
+                                        onChange={(e) => setWelcomeEmailSubject(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-2 mt-4">
+                                    <Label htmlFor="email-body">Email Body (HTML supported)</Label>
+                                    <Textarea
+                                        id="email-body"
+                                        value={welcomeEmailBody}
+                                        onChange={(e) => setWelcomeEmailBody(e.target.value)}
+                                        rows={15}
+                                        className="font-mono text-xs"
+                                    />
                                 </div>
                             </AlertDescription>
                         </Alert>
