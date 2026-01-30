@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -561,7 +562,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                              <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
@@ -589,33 +590,31 @@ export default function PaymentsManagementPage() {
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
                                                     
-                                                    const semesterOptions: OptionGroup[] = React.useMemo(() => {
-                                                        if (row.isUnlinked) {
-                                                            const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
-                                                                const intakeName = allIntakes.find(i => i.id === sem.intakeId)?.name || 'Uncategorized';
-                                                                if (!acc[intakeName]) acc[intakeName] = [];
-                                                                acc[intakeName].push(sem);
-                                                                return acc;
-                                                            }, {} as Record<string, Semester[]>);
+                                                    let semesterOptions: OptionGroup[] = [];
+                                                    if (row.isUnlinked) {
+                                                        const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
+                                                            const intakeName = allIntakes.find(i => i.id === sem.intakeId)?.name || 'Uncategorized';
+                                                            if (!acc[intakeName]) acc[intakeName] = [];
+                                                            acc[intakeName].push(sem);
+                                                            return acc;
+                                                        }, {} as Record<string, Semester[]>);
 
-                                                            return Object.entries(groupedByIntake).map(([intakeName, sems]) => ({
-                                                                groupName: intakeName,
-                                                                items: sems.map(s => ({
-                                                                    value: s.id,
-                                                                    label: `Year ${s.year}, Semester ${s.semesterInYear}`
-                                                                }))
-                                                            }));
-                                                        } else if (studentForThisRow?.intakeId) {
-                                                            const intakeName = allIntakes.find(i => i.id === studentForThisRow.intakeId)?.name || 'Available Semesters';
-                                                            return [{
-                                                                groupName: intakeName,
-                                                                items: semesters
-                                                                    .filter(s => s.intakeId === studentForThisRow.intakeId)
-                                                                    .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }))
-                                                            }];
-                                                        }
-                                                        return [];
-                                                    }, [row.isUnlinked, studentForThisRow, semesters, allIntakes]);
+                                                        semesterOptions = Object.entries(groupedByIntake).map(([intakeName, sems]) => ({
+                                                            groupName: intakeName,
+                                                            items: sems.map(s => ({
+                                                                value: s.id,
+                                                                label: `Year ${s.year}, Semester ${s.semesterInYear}`
+                                                            }))
+                                                        }));
+                                                    } else if (studentForThisRow?.intakeId) {
+                                                        const intakeName = allIntakes.find(i => i.id === studentForThisRow.intakeId)?.name || 'Available Semesters';
+                                                        semesterOptions = [{
+                                                            groupName: intakeName,
+                                                            items: semesters
+                                                                .filter(s => s.intakeId === studentForThisRow.intakeId)
+                                                                .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }))
+                                                        }];
+                                                    }
 
                                                     return (
                                                     <TableRow key={row.key}>
