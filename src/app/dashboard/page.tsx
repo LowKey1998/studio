@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
@@ -29,16 +28,10 @@ export default function DashboardRedirectPage() {
         router.replace('/student/dashboard');
         break;
       case 'staff':
-        // Check for dashboard access first
+        // Check for dashboard access first, otherwise go to profile
         if (userProfile.permissions?.['/admin/dashboard']) {
           router.replace('/admin/dashboard');
-        } 
-        // Then check if they are a lecturer
-        else if (userProfile.permissions?.['canBeAssignedClass']) {
-            router.replace('/staff/courses');
-        }
-        // Fallback for other staff roles (e.g., Accountant, HR)
-        else {
+        } else {
           router.replace('/staff/profile');
         }
         break;

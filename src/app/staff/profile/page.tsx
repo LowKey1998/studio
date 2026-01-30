@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +47,7 @@ export default function StaffProfilePage() {
                 <CardContent>
                     <h3 className="font-semibold mb-2">My Roles</h3>
                     <div className="flex flex-wrap gap-2">
-                        {userProfile?.subRoles?.map(role => (
+                        {userProfile?.subRoleNames?.map(role => (
                             <Badge key={role} variant="secondary">{role}</Badge>
                         )) || <p className="text-sm text-muted-foreground">No specific sub-roles assigned.</p>}
                     </div>
