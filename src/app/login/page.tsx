@@ -13,6 +13,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState('');
@@ -202,13 +204,23 @@ export default function LoginPage() {
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Log in'}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm">
-              Having trouble?{" "}
-              <Link href="/contact" className="underline">
-                Contact administration
-              </Link>
-            </div>
+             <Separator className="my-6" />
+             <div className="space-y-4 text-center">
+                <p className="text-sm text-muted-foreground">Are you a parent or guardian?</p>
+                 <Button asChild variant="outline" className="w-full">
+                    <Link href="/parent/dashboard">
+                        Parent Portal Login
+                    </Link>
+                </Button>
+             </div>
           </CardContent>
+           <CardFooter className="justify-center mt-4">
+             <Button variant="link" asChild>
+                <Link href="/contact">
+                    Contact Administration
+                </Link>
+             </Button>
+          </CardFooter>
         </Card>
       </div>
     </div>

@@ -22,13 +22,14 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/admissions/add-student', label: 'Add Student', icon: UserPlus },
-        { href: '/admin/admissions/students', label: 'Student List', icon: Users },
         { href: '/admin/approve-registrations', label: 'Approve Registrations', icon: BookOpenCheck, notificationKey: 'pendingRegistrations' },
         { href: '/admin/admissions/document-uploads', label: 'Document Uploads', icon: FileUp },
         { href: '/admin/admissions/interview-scheduling', label: 'Interview Scheduling', icon: Calendar },
         { href: '/admin/admissions/scoring', label: 'Scoring & Results', icon: BarChart2 },
         { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
         { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
+        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
+        { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
         { href: '/admin/admissions/campaigns', label: 'Campaign Tracking', icon: Target },
@@ -163,7 +164,13 @@ export const allMenuItems = [
         label: 'Parents',
         icon: Users,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/parents/accounts', label: 'Parent Accounts', icon: Users },
+            { href: '/admin/parents/fee-reminders', label: 'Fee Reminders', icon: Mail },
+            { href: '/admin/parents/emergency-alerts', label: 'Emergency Alerts', icon: ShieldAlert },
+            { href: '/admin/parents/communication-logs', label: 'Communication Logs', icon: History },
+            { href: '/admin/parents/portal-settings', label: 'Portal Settings', icon: Settings },
+        ]
     },
     {
       label: 'HR',
