@@ -80,6 +80,7 @@ export const allMenuItems = [
       items: [
         { href: '/admin/exams/ca-entry', label: 'CA Entry', icon: ClipboardEdit },
         { href: '/admin/exams/final-exam-entry', label: 'Final Exam Entry', icon: PenSquare },
+        { href: '/admin/exams/gradebook', label: 'Gradebook', icon: BookCheck },
         { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
         { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
         { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
