@@ -303,41 +303,33 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key !== key) return row;
     
-            let updatedRow: PaymentRecord = { ...row, [field]: value as any };
+            const newRow = { ...row, [field]: value };
     
+            // Handle main toggle between linked/unlinked
             if (field === 'userId') {
                 if (value === '__UNLINKED__') {
-                    return { 
-                        key: row.key,
-                        isUnlinked: true, 
-                        userId: undefined, 
-                        invoiceId: undefined, 
-                        totalDue: undefined,
-                        amount: row.amount,
-                        comment: row.comment,
-                        reference: row.reference,
-                        semesterId: row.semesterId
-                    };
+                    newRow.isUnlinked = true;
+                    newRow.userId = undefined;
+                    newRow.invoiceId = undefined;
+                    newRow.totalDue = undefined; // Clear any previous auto-filled value
+                } else {
+                    newRow.isUnlinked = false;
                 }
-                updatedRow.isUnlinked = false;
-                updatedRow.reference = undefined;
             }
     
-            const studentId = updatedRow.userId;
-            const semId = updatedRow.semesterId;
-            
-            if (!updatedRow.isUnlinked && (field === 'userId' || field === 'semesterId')) {
-                 if (studentId && semId) {
-                    const info = paymentInfos.find(p => p.userId === studentId && p.semester === semId);
-                    updatedRow.invoiceId = info?.invoiceId;
-                    updatedRow.totalDue = info?.balance ?? undefined;
-                } else {
-                    updatedRow.totalDue = undefined;
-                    updatedRow.invoiceId = undefined;
-                }
+            // Check if we can auto-fill the 'Total Due'
+            if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
+                const info = paymentInfos.find(p => p.userId === newRow.userId && p.semester === newRow.semesterId);
+                newRow.totalDue = info?.balance;
+                newRow.invoiceId = info?.invoiceId;
+            } 
+            // If we are switching user or semester for a linked payment, clear the old due amount until both are selected again
+            else if (!newRow.isUnlinked && (field === 'userId' || field === 'semesterId')) {
+                newRow.totalDue = undefined;
+                newRow.invoiceId = undefined;
             }
-            
-            return updatedRow;
+    
+            return newRow;
         }));
     };
     
@@ -566,6 +558,7 @@ export default function PaymentsManagementPage() {
                                                     const totalDueForCalc = row.totalDue ?? 0;
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
+                                                    const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
                                                     
                                                     let semesterOptions;
                                                     if (row.isUnlinked) {
@@ -607,11 +600,11 @@ export default function PaymentsManagementPage() {
                                                         </TableCell>
                                                         <TableCell>
                                                             <Input 
-                                                                type="text" 
-                                                                placeholder="Auto-filled or enter amount" 
+                                                                type="number" 
+                                                                placeholder={isDueEditable ? "Enter amount" : "Auto-filled"}
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading || (!row.isUnlinked && !!row.userId)}
+                                                                disabled={formLoading || !isDueEditable}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
