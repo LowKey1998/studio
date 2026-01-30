@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { allMenuItems } from '@/lib/menu-items';
 import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/hooks/use-auth';
 
 type SubRole = {
     id: string;
@@ -27,8 +28,10 @@ type SubRole = {
 const sanitizeKey = (key: string) => key.replace(/\//g, '|');
 const desanitizeKey = (key: string) => key.replace(/\|/g, '/');
 
+const categoryToPermKey = (label: string) => `canManage_${label.replace(/\s+/g, '_').replace(/&/g, 'and')}`;
 
 export default function AccessRulesPage() {
+    const { userProfile } = useAuth();
     const [subRoles, setSubRoles] = React.useState<SubRole[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -41,6 +44,24 @@ export default function AccessRulesPage() {
 
     const { toast } = useToast();
     
+    const canManageAll = React.useMemo(() => userProfile?.role === 'Admin', [userProfile]);
+
+    const manageableCategories = React.useMemo(() => {
+        if (canManageAll) {
+            return allMenuItems.map(item => item.label);
+        }
+        if (!userProfile?.permissions) return [];
+        
+        return Object.keys(userProfile.permissions)
+            .filter(key => key.startsWith('canManage_'))
+            .map(key => key.replace('canManage_', '').replace(/_/g, ' ').replace(/and/g, '&'));
+    }, [userProfile, canManageAll]);
+
+    const displayableMenuItems = React.useMemo(() => 
+        canManageAll ? allMenuItems : allMenuItems.filter(item => manageableCategories.includes(item.label)),
+        [canManageAll, manageableCategories]
+    );
+
     React.useEffect(() => {
         const subRolesRef = ref(db, 'settings/subRoles');
         const unsubscribe = onValue(subRolesRef, (snapshot) => {
@@ -87,6 +108,14 @@ export default function AccessRulesPage() {
                 newPermissions[permissionKey] = true;
             } else {
                 delete newPermissions[permissionKey];
+                // Also remove managed categories if access rules permission is revoked
+                if(permissionKey === '/admin/access-rules') {
+                    for (const key in newPermissions) {
+                        if (key.startsWith('canManage_')) {
+                            delete newPermissions[key];
+                        }
+                    }
+                }
             }
             return newPermissions;
         });
@@ -201,8 +230,8 @@ export default function AccessRulesPage() {
                                 <Separator className="my-4"/>
 
                                  <h4 className="text-sm font-medium mb-2">Page & Menu Access</h4>
-                                <Accordion type="multiple" defaultValue={allMenuItems.map(item => item.label)} className="w-full">
-                                {allMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
+                                <Accordion type="multiple" defaultValue={displayableMenuItems.map(item => item.label)} className="w-full">
+                                {displayableMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
                                     <AccordionItem value={item.label} key={item.label}>
                                         <AccordionTrigger>{item.label}</AccordionTrigger>
                                         <AccordionContent className="space-y-2 max-h-60 overflow-y-auto pr-4">
@@ -220,6 +249,31 @@ export default function AccessRulesPage() {
                                     </AccordionItem>
                                 ))}
                                 </Accordion>
+                                
+                                {permissions['/admin/access-rules'] && (
+                                    <>
+                                        <Separator className="my-4"/>
+                                        <h4 className="text-sm font-medium mb-2">Role Management Permissions</h4>
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                            Since this role can access Access Rules, select which permission categories they are allowed to manage for other roles.
+                                        </p>
+                                        <div className="space-y-2 p-3 border rounded-md max-h-40 overflow-y-auto">
+                                            {displayableMenuItems
+                                                .filter(item => item.items && item.items.length > 0)
+                                                .map(item => (
+                                                <div key={`manage-${item.label}`} className="flex items-center gap-2">
+                                                    <Checkbox 
+                                                        id={`manage-${item.label}`} 
+                                                        checked={!!permissions[categoryToPermKey(item.label)]} 
+                                                        onCheckedChange={(checked) => handlePermissionChange(categoryToPermKey(item.label), !!checked)}
+                                                    />
+                                                    <Label htmlFor={`manage-${item.label}`} className="font-normal">{item.label}</Label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
                             </div>
                         </div>
                         <DialogFooter>

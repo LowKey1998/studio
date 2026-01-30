@@ -52,7 +52,8 @@ export function useAuth() {
                     const settingsSnapshot = await get(settingsRef);
                     if (settingsSnapshot.exists()) {
                         const allSubRoles: Record<string, SubRole> = settingsSnapshot.val();
-                        const userSubRoleIds = profileData.subRoles || [];
+                        // Handle both array and object format for subRoles
+                        const userSubRoleIds = Array.isArray(profileData.subRoles) ? profileData.subRoles : Object.keys(profileData.subRoles);
                         
                         userSubRoleIds.forEach((userSubRoleId: string) => {
                             const matchingRole = allSubRoles[userSubRoleId];
