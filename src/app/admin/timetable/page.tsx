@@ -26,13 +26,13 @@ type Semester = {
     id: string;
     name: string;
     status: 'Open' | 'Closed' | 'Archived';
-}
+};
 
 type Room = {
     id: string;
     name: string;
     capacity: number;
-}
+};
 
 type TimetableEntry = {
     id: string;
@@ -40,7 +40,14 @@ type TimetableEntry = {
     startTime: string;
     endTime: string;
     venue: string;
-}
+};
+
+type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
+    semesters: Record<string, { courses: string[] }>;
+};
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -55,7 +62,7 @@ export default function TimetableManagementPage() {
     // Raw data state
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Omit<Course, 'id'>>>({});
-    const [allRegistrations, setAllRegistrations] = React.useState<any>({});
+    const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [rooms, setRooms] = React.useState<Room[]>([]);
 
     // Filtered/selected state
@@ -79,11 +86,11 @@ export default function TimetableManagementPage() {
         setLoading(true);
         const fetchData = async () => {
             try {
-                 const [semestersSnap, roomsSnap, coursesSnap, registrationsSnap] = await Promise.all([
+                 const [semestersSnap, roomsSnap, coursesSnap, coursePathsSnap] = await Promise.all([
                     get(ref(db, 'semesters')),
                     get(ref(db, 'settings/rooms')),
                     get(ref(db, 'courses')),
-                    get(ref(db, 'registrations'))
+                    get(ref(db, 'coursePaths'))
                 ]);
 
                 if (semestersSnap.exists()) {
@@ -97,7 +104,8 @@ export default function TimetableManagementPage() {
 
                 setRooms(roomsSnap.exists() ? Object.values(roomsSnap.val()) : []);
                 setAllCourses(coursesSnap.exists() ? coursesSnap.val() : {});
-                setAllRegistrations(registrationsSnap.exists() ? registrationsSnap.val() : {});
+                setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
+
             } catch (error) {
                 toast({ variant: 'destructive', title: "Failed to load initial data."})
             } finally {
@@ -113,15 +121,15 @@ export default function TimetableManagementPage() {
 
     // Filter courses when semester or raw data changes
     React.useEffect(() => {
-        if (!selectedSemesterId || Object.keys(allRegistrations).length === 0 || Object.keys(allCourses).length === 0) {
+        if (!selectedSemesterId || allCoursePaths.length === 0 || Object.keys(allCourses).length === 0) {
             setCoursesForSemester([]);
             return;
         }
 
         const courseIdsInSemester = new Set<string>();
-        Object.values(allRegistrations).forEach((userRegs: any) => {
-            if (userRegs[selectedSemesterId]) {
-                userRegs[selectedSemesterId].courses.forEach((cid: string) => courseIdsInSemester.add(cid));
+        allCoursePaths.forEach(path => {
+            if(path.semesters && path.semesters[selectedSemesterId]) {
+                 path.semesters[selectedSemesterId].courses.forEach(cid => courseIdsInSemester.add(cid));
             }
         });
 
@@ -129,9 +137,9 @@ export default function TimetableManagementPage() {
             .map(cid => allCourses[cid] ? { id: cid, ...allCourses[cid] } : null)
             .filter((c): c is Course => c !== null)
             .sort((a, b) => a.name.localeCompare(b.name));
-
+            
         setCoursesForSemester(filtered);
-    }, [selectedSemesterId, allRegistrations, allCourses]);
+    }, [selectedSemesterId, allCoursePaths, allCourses]);
 
 
      // Fetch timetable entries for the selected course
@@ -298,4 +306,3 @@ export default function TimetableManagementPage() {
     );
 }
 
-    
