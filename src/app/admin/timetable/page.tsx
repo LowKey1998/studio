@@ -52,13 +52,18 @@ export default function TimetableManagementPage() {
     const [saving, setSaving] = React.useState(false);
     const [generating, setGenerating] = React.useState(false);
     
+    // Raw data state
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>(semesterFromParams || '');
-    const [courses, setCourses] = React.useState<Course[]>([]);
-    const [selectedCourse, setSelectedCourse] = React.useState<string>('');
+    const [allCourses, setAllCourses] = React.useState<Record<string, Omit<Course, 'id'>>>({});
+    const [allRegistrations, setAllRegistrations] = React.useState<any>({});
     const [rooms, setRooms] = React.useState<Room[]>([]);
-    
+
+    // Filtered/selected state
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState<string>(semesterFromParams || '');
+    const [coursesForSemester, setCoursesForSemester] = React.useState<Course[]>([]);
+    const [selectedCourse, setSelectedCourse] = React.useState<string>('');
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
 
     // Form state
@@ -69,72 +74,67 @@ export default function TimetableManagementPage() {
 
     const { toast } = useToast();
 
+    // Fetch all data on mount
     React.useEffect(() => {
-        const semestersRef = ref(db, 'semesters');
-        const unsubSemesters = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
-                if (!selectedSemesterId && list.length > 0) {
-                    setSelectedSemesterId(list[0].id);
-                }
-            }
-        });
-        
-        const roomsRef = ref(db, 'settings/rooms');
-        const unsubRooms = onValue(roomsRef, (snapshot) => {
-            setRooms(snapshot.exists() ? Object.values(snapshot.val()) : []);
-        });
-
-        const coursesRef = ref(db, 'courses');
-        const unsubCourses = onValue(coursesRef, (snapshot) => {
-            setCourses(snapshot.exists() ? Object.values(snapshot.val()) : []);
-            setLoading(false);
-        });
-
-        return () => {
-             unsubSemesters();
-             unsubRooms();
-             unsubCourses();
-        };
-    }, [selectedSemesterId]);
-
-    const fetchCoursesForSemester = React.useCallback(async () => {
-        if (!selectedSemesterId) return;
         setLoading(true);
-        try {
-            const regsSnap = await get(ref(db, `registrations`));
-            if (!regsSnap.exists()) {
-                setCourses([]); return;
-            }
-            const allRegistrations = regsSnap.val();
-            const courseIdsInSemester = new Set<string>();
+        const fetchData = async () => {
+            try {
+                 const [semestersSnap, roomsSnap, coursesSnap, registrationsSnap] = await Promise.all([
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'settings/rooms')),
+                    get(ref(db, 'courses')),
+                    get(ref(db, 'registrations'))
+                ]);
 
-            for (const userId in allRegistrations) {
-                const userRegs = allRegistrations[userId];
-                if (userRegs[selectedSemesterId]) {
-                    userRegs[selectedSemesterId].courses.forEach((cid: string) => courseIdsInSemester.add(cid));
+                if (semestersSnap.exists()) {
+                    const data = semestersSnap.val();
+                    const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+                    setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
+                    if (!semesterFromParams && list.length > 0) {
+                        setSelectedSemesterId(list[0].id);
+                    }
                 }
-            }
 
-            const coursesSnap = await get(ref(db, 'courses'));
-            if(coursesSnap.exists()) {
-                const allCourses = coursesSnap.val();
-                setCourses(Array.from(courseIdsInSemester).map(id => ({ id, ...allCourses[id] })));
+                setRooms(roomsSnap.exists() ? Object.values(roomsSnap.val()) : []);
+                setAllCourses(coursesSnap.exists() ? coursesSnap.val() : {});
+                setAllRegistrations(registrationsSnap.exists() ? registrationsSnap.val() : {});
+            } catch (error) {
+                toast({ variant: 'destructive', title: "Failed to load initial data."})
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error(error);
-            toast({ variant: 'destructive', title: 'Failed to load courses' });
-        } finally {
-            setLoading(false);
+        };
+
+        if (semesterFromParams) {
+            setSelectedSemesterId(semesterFromParams);
         }
-    }, [selectedSemesterId, toast]);
+        fetchData();
+    }, [semesterFromParams, toast]);
 
+    // Filter courses when semester or raw data changes
     React.useEffect(() => {
-        fetchCoursesForSemester();
-    }, [selectedSemesterId, fetchCoursesForSemester]);
+        if (!selectedSemesterId || Object.keys(allRegistrations).length === 0 || Object.keys(allCourses).length === 0) {
+            setCoursesForSemester([]);
+            return;
+        }
 
+        const courseIdsInSemester = new Set<string>();
+        Object.values(allRegistrations).forEach((userRegs: any) => {
+            if (userRegs[selectedSemesterId]) {
+                userRegs[selectedSemesterId].courses.forEach((cid: string) => courseIdsInSemester.add(cid));
+            }
+        });
+
+        const filtered = Array.from(courseIdsInSemester)
+            .map(cid => allCourses[cid] ? { id: cid, ...allCourses[cid] } : null)
+            .filter((c): c is Course => c !== null)
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        setCoursesForSemester(filtered);
+    }, [selectedSemesterId, allRegistrations, allCourses]);
+
+
+     // Fetch timetable entries for the selected course
      React.useEffect(() => {
         if (!selectedCourse || !selectedSemesterId) {
             setTimetable([]);
@@ -226,16 +226,16 @@ export default function TimetableManagementPage() {
                     </div>
                      <div className="space-y-1">
                         <Label htmlFor="course-select">Select Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={courses.length === 0}>
+                        <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={coursesForSemester.length === 0}>
                             <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
-                            <SelectContent>{courses.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>))}</SelectContent>
+                            <SelectContent>{coursesForSemester.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
                 </div>
 
                 <div className="border rounded-lg p-4 space-y-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-semibold">Schedule for {courses.find(c => c.id === selectedCourse)?.code}</h3>
+                        <h3 className="font-semibold">Schedule for {coursesForSemester.find(c => c.id === selectedCourse)?.code || '...'}</h3>
                         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                             <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Schedule</Button></DialogTrigger>
                             <DialogContent>
@@ -286,7 +286,7 @@ export default function TimetableManagementPage() {
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={4} className="h-24 text-center">
-                                        {selectedCourse ? "No schedule set for this course." : "Select a course to view its schedule."}
+                                        {loading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : selectedCourse ? "No schedule set for this course." : "Select a course to view its schedule."}
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -297,3 +297,5 @@ export default function TimetableManagementPage() {
         </Card>
     );
 }
+
+    
