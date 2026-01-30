@@ -299,19 +299,20 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number | undefined) => {
+     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number | undefined) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key !== key) return row;
     
             const newRow = { ...row, [field]: value };
-    
-            // Handle main toggle between linked/unlinked
+            
+            // If the user changes, we need to reset the semester and related fields.
             if (field === 'userId') {
+                newRow.semesterId = undefined; // Reset semester
+                newRow.totalDue = undefined;
+                newRow.invoiceId = undefined;
                 if (value === '__UNLINKED__') {
                     newRow.isUnlinked = true;
                     newRow.userId = undefined;
-                    newRow.invoiceId = undefined;
-                    newRow.totalDue = undefined; // Clear any previous auto-filled value
                 } else {
                     newRow.isUnlinked = false;
                 }
@@ -323,11 +324,6 @@ export default function PaymentsManagementPage() {
                 newRow.totalDue = info?.balance;
                 newRow.invoiceId = info?.invoiceId;
             } 
-            // If we are switching user or semester for a linked payment, clear the old due amount until both are selected again
-            else if (!newRow.isUnlinked && (field === 'userId' || field === 'semesterId')) {
-                newRow.totalDue = undefined;
-                newRow.invoiceId = undefined;
-            }
     
             return newRow;
         }));
@@ -560,16 +556,16 @@ export default function PaymentsManagementPage() {
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
                                                     
-                                                    let semesterOptions;
-                                                    if (row.isUnlinked) {
-                                                        semesterOptions = semesters.map(s => ({value: s.id, label: s.name}));
-                                                    } else if (studentForThisRow?.intakeId) {
-                                                        semesterOptions = semesters
-                                                            .filter(s => s.intakeId === studentForThisRow.intakeId)
-                                                            .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
-                                                    } else {
-                                                        semesterOptions = [];
-                                                    }
+                                                    const semesterOptions = React.useMemo(() => {
+                                                        if (row.isUnlinked) {
+                                                            return semesters.map(s => ({ value: s.id, label: s.name }));
+                                                        } else if (studentForThisRow?.intakeId) {
+                                                            return semesters
+                                                                .filter(s => s.intakeId === studentForThisRow.intakeId)
+                                                                .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
+                                                        }
+                                                        return [];
+                                                    }, [row.isUnlinked, studentForThisRow, semesters]);
 
                                                     return (
                                                     <TableRow key={row.key}>
