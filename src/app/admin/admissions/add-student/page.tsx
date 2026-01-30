@@ -11,18 +11,10 @@ import {
   CardFooter
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Copy } from 'lucide-react';
+import { PlusCircle, Loader2, Copy, Search } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo } from 'firebase/database';
 import { app, db, auth } from '@/lib/firebase';
@@ -36,6 +28,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
 import { sendEmail } from '@/ai/flows/send-email-flow';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 type User = {
@@ -149,6 +143,10 @@ export default function AddStudentPage() {
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
     
+    // Student list state
+    const [students, setStudents] = React.useState<User[]>([]);
+    const [listSearchTerm, setListSearchTerm] = React.useState('');
+    
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
@@ -170,16 +168,18 @@ export default function AddStudentPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap, coursePathsSnap] = await Promise.all([
+            const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap, coursePathsSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'programmes')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/idPrefixes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'coursePaths')),
+                get(ref(db, 'users')),
             ]);
 
-            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] }))); else setAllProgrammes([]);
+            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
+            if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] }))); else setAllProgrammes([]);
             if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] }))); else setAllCourses([]);
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] }))); else setAllIntakes([]);
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val()); else setIdSettings({ student: 'STU', staff: 'STF', admin: 'ADM' });
@@ -189,6 +189,22 @@ export default function AddStudentPage() {
                 setAllCoursePaths(Object.keys(pathsData).map(id => ({ id, ...pathsData[id] })));
             } else {
                 setAllCoursePaths([]);
+            }
+            if (usersSnap.exists()) {
+                const usersData = usersSnap.val();
+                const studentList: User[] = [];
+                 for (const uid in usersData) {
+                    if (usersData[uid].role === 'Student') {
+                        studentList.push({
+                            uid,
+                            ...usersData[uid],
+                            programmeName: programmesData[usersData[uid].programmeId]?.name || 'N/A'
+                        });
+                    }
+                }
+                setStudents(studentList.sort((a,b) => b.id.localeCompare(a.id, undefined, { numeric: true })));
+            } else {
+                setStudents([]);
             }
 
         } catch (error) {
@@ -355,6 +371,7 @@ export default function AddStudentPage() {
 
             toast({ variant: 'success', title: 'User Created Successfully', description: `${name} has been created with User ID: ${newId} and an email has been sent.` });
             resetForm(); 
+            fetchInitialData();
         } catch (error: any) {
             console.error("Error creating user:", error);
             toast({ variant: 'destructive', title: 'User Creation Failed', description: error.message || 'An unexpected error occurred.' });
@@ -388,6 +405,17 @@ export default function AddStudentPage() {
         if(idSettings.includeMonth) datePart += format(now, 'MM');
         setManualId(`${basePrefix}${datePart}`);
     };
+
+    const filteredStudents = React.useMemo(() => {
+        return students.filter(student => {
+            const lowerCaseSearch = listSearchTerm.toLowerCase();
+            return !listSearchTerm ||
+                student.name.toLowerCase().includes(lowerCaseSearch) ||
+                student.id.toLowerCase().includes(lowerCaseSearch) ||
+                student.email.toLowerCase().includes(lowerCaseSearch) ||
+                student.programmeName?.toLowerCase().includes(lowerCaseSearch);
+        });
+    }, [students, listSearchTerm]);
 
     return (
         <>
@@ -462,6 +490,56 @@ export default function AddStudentPage() {
                     </CardFooter>
                 </form>
             </Card>
+
+            <Card className="max-w-4xl mx-auto mt-8">
+                <CardHeader>
+                    <CardTitle>Student List</CardTitle>
+                    <CardDescription>A list of all students currently in the system.</CardDescription>
+                    <div className="relative pt-2">
+                        <Search className="absolute left-2.5 top-4 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            id="search-students"
+                            placeholder="Search students by name, ID, or email..."
+                            className="pl-8"
+                            value={listSearchTerm}
+                            onChange={(e) => setListSearchTerm(e.target.value)}
+                        />
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Student ID</TableHead>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Email</TableHead>
+                                <TableHead>Programme</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {tableLoading ? (
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                ))
+                            ) : filteredStudents.length > 0 ? (
+                                filteredStudents.map(student => (
+                                <TableRow key={student.uid}>
+                                    <TableCell>{student.id}</TableCell>
+                                    <TableCell className="font-medium">{student.name}</TableCell>
+                                    <TableCell>{student.email}</TableCell>
+                                    <TableCell>{student.programmeName}</TableCell>
+                                </TableRow>
+                            ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="h-24 text-center">No students found.</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
         </>
     );
 }
+
