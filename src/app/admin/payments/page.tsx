@@ -71,7 +71,7 @@ type Transaction = {
 
 
 type Programme = { id: string; name: string; };
-type Semester = { id: string; name: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
 type StudentInfo = {
     uid: string;
     id: string;
@@ -536,7 +536,7 @@ export default function PaymentsManagementPage() {
                             <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex gap-2">
                              <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
@@ -562,10 +562,15 @@ export default function PaymentsManagementPage() {
                                                     const totalDueForCalc = row.totalDue ?? 0;
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
-                                                    const semesterOptions = (studentForThisRow?.intakeId
-                                                        ? semesters.filter(s => s.intakeId === studentForThisRow.intakeId)
-                                                        : semesters
-                                                    ).map(s => ({ value: s.id, label: s.name }));
+                                                    
+                                                    const semesterOptions = React.useMemo(() => {
+                                                        if (studentForThisRow?.intakeId) {
+                                                            return semesters
+                                                                .filter(s => s.intakeId === studentForThisRow.intakeId)
+                                                                .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }));
+                                                        }
+                                                        return semesters.map(s => ({ value: s.id, label: s.name }));
+                                                    }, [studentForThisRow, semesters]);
 
                                                     return (
                                                     <TableRow key={row.key}>
@@ -600,7 +605,7 @@ export default function PaymentsManagementPage() {
                                                                 placeholder="Enter total amount due" 
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading || (!!row.userId && !row.isUnlinked)}
+                                                                disabled={formLoading || (!row.isUnlinked && !!row.userId)}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
