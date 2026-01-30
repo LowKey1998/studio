@@ -21,6 +21,13 @@ type Course = {
     semester: string;
 };
 
+type CoursePath = {
+    id: string;
+    intakeId: string;
+    programmeId: string;
+    semesters: Record<string, { courses: string[] }>;
+};
+
 type Semester = {
     name: string;
     status: 'Open' | 'Closed' | 'Archived';
@@ -58,78 +65,86 @@ export default function StaffCoursesPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [coursesSnap, regsSnapshot, semestersSnap] = await Promise.all([
+            const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
-                get(ref(db, 'registrations')),
-                get(ref(db, 'semesters'))
+                get(ref(db, 'coursePaths')),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'registrations'))
             ]);
 
-            if (!coursesSnap.exists()) {
+            if (!coursesSnap.exists() || !coursePathsSnap.exists() || !semestersSnap.exists()) {
                 setActiveCourses([]);
                 setArchivedCourses([]);
                 setLoading(false);
                 return;
             }
 
-            const activeSemesters = new Set<string>();
-            if(semestersSnap.exists()){
-                Object.values(semestersSnap.val() as Record<string, Semester>).forEach(s => {
-                    if (s.status !== 'Archived') activeSemesters.add(s.name);
-                });
-            }
+            const allCourses = coursesSnap.val();
+            const allCoursePaths: CoursePath[] = Object.values(coursePathsSnap.val());
+            const allSemesters = semestersSnap.val();
+            const allRegistrations = regsSnap.val() || {};
 
-            const coursesData = coursesSnap.val();
-            const allRegistrations = regsSnapshot.exists() ? regsSnapshot.val() : {};
-            const studentCounts: {[courseId: string]: number} = {};
-
-            // Pre-calculate student counts
-            for(const userId in allRegistrations) {
-                for (const semesterName in allRegistrations[userId]) {
-                    const reg = allRegistrations[userId][semesterName];
+            // 1. Get student counts for all courses
+            const studentCounts: { [courseId: string]: number } = {};
+            for (const userId in allRegistrations) {
+                for (const semesterId in allRegistrations[userId]) {
+                    const reg = allRegistrations[userId][semesterId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                        for(const courseId of reg.courses) {
+                        for (const courseId of reg.courses) {
                             studentCounts[courseId] = (studentCounts[courseId] || 0) + 1;
                         }
                     }
                 }
             }
-            
+
+            // 2. Find all courses taught by the current lecturer
+            const myCourseIds = new Set<string>();
+            for (const courseId in allCourses) {
+                const courseData = allCourses[courseId];
+                if (courseData.lecturerIds && Array.isArray(courseData.lecturerIds) && courseData.lecturerIds.includes(currentUser.uid)) {
+                    myCourseIds.add(courseId);
+                }
+            }
+
+            // 3. Find which semesters these courses are in, via course paths
             const newActiveCourses: Course[] = [];
             const newArchivedCourses: Course[] = [];
-            const processedCourses = new Set<string>(); // To avoid duplicate course-semester entries
+            const processedEntries = new Set<string>(); // To avoid duplicates like "course1-semester1"
 
-            for (const courseId in coursesData) {
-                const courseData = coursesData[courseId];
-                if (courseData.lecturerIds && Array.isArray(courseData.lecturerIds) && courseData.lecturerIds.includes(currentUser.uid)) {
-                     for (const userId in allRegistrations) {
-                        for (const semesterName in allRegistrations[userId]) {
-                            const registration = allRegistrations[userId][semesterName];
-                            if (registration.courses.includes(courseId)) {
-                                 const uniqueKey = `${courseId}-${semesterName}`;
-                                if (!processedCourses.has(uniqueKey)) {
+            allCoursePaths.forEach(path => {
+                if (path.semesters) {
+                    Object.entries(path.semesters).forEach(([semesterId, semesterData]) => {
+                        const semesterInfo = allSemesters[semesterId];
+                        if (!semesterInfo) return; // Skip if semester details not found
+
+                        semesterData.courses.forEach(courseId => {
+                            if (myCourseIds.has(courseId)) {
+                                const uniqueKey = `${courseId}-${semesterId}`;
+                                if (!processedEntries.has(uniqueKey)) {
                                     const courseEntry: Course = {
                                         id: courseId,
-                                        name: courseData.name,
-                                        code: courseData.code,
+                                        name: allCourses[courseId].name,
+                                        code: allCourses[courseId].code,
                                         studentCount: studentCounts[courseId] || 0,
-                                        semester: semesterName,
+                                        semester: semesterInfo.name,
                                     };
-                                     if (activeSemesters.has(semesterName)) {
+
+                                    if (semesterInfo.status !== 'Archived') {
                                         newActiveCourses.push(courseEntry);
                                     } else {
                                         newArchivedCourses.push(courseEntry);
                                     }
-                                    processedCourses.add(uniqueKey);
+                                    processedEntries.add(uniqueKey);
                                 }
                             }
-                        }
-                    }
+                        });
+                    });
                 }
-            }
+            });
 
+            setActiveCourses(newActiveCourses.sort((a,b) => a.name.localeCompare(b.name)));
+            setArchivedCourses(newArchivedCourses.sort((a,b) => a.name.localeCompare(b.name)));
 
-            setActiveCourses(newActiveCourses.filter(c => c.name));
-            setArchivedCourses(newArchivedCourses.filter(c => c.name));
 
         } catch (error) {
             console.error("Error fetching assigned courses:", error);
