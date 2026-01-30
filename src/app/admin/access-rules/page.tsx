@@ -164,7 +164,7 @@ export default function AccessRulesPage() {
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                    <CardTitle className="flex items-center gap-2"><KeyRound /> Access Rules & Permissions</CardTitle>
+                    <CardTitle className="flex items-center gap-2"><KeyRound /> Access Rules &amp; Permissions</CardTitle>
                     <CardDescription>Create and manage staff sub-roles to grant specific permissions across the system.</CardDescription>
                 </div>
                  <Button onClick={() => openRoleDialog(null)}><PlusCircle className="mr-2 h-4"/>New Sub-Role</Button>
@@ -229,7 +229,7 @@ export default function AccessRulesPage() {
 
                                 <Separator className="my-4"/>
 
-                                 <h4 className="text-sm font-medium mb-2">Page & Menu Access</h4>
+                                 <h4 className="text-sm font-medium mb-2">Page &amp; Menu Access</h4>
                                 <Accordion type="multiple" defaultValue={displayableMenuItems.map(item => item.label)} className="w-full">
                                 {displayableMenuItems.filter(item => item.items && item.items.length > 0).map(item => (
                                     <AccordionItem value={item.label} key={item.label}>
