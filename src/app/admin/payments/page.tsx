@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
-import { format, parseISO, isBefore } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,9 +19,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-
 
 type StudentPaymentInfo = {
     userId: string;
@@ -32,7 +33,7 @@ type StudentPaymentInfo = {
     balance: number;
     status: 'Paid' | 'Pending' | 'Overdue';
     programmeId: string | null;
-    semester: string | null; // semester ID
+    semester: string | null;
     invoiceId: string;
 };
 
@@ -67,7 +68,6 @@ type Transaction = {
     status: 'successful' | 'failed';
     method?: string;
 };
-
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
@@ -192,6 +192,9 @@ export default function PaymentsManagementPage() {
     const [linkingPayment, setLinkingPayment] = React.useState<UnlinkedPayment | null>(null);
     const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
 
+    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+    const [userData, setUserData] = React.useState<any>(null);
+
     const { toast } = useToast();
 
     const fetchPaymentData = React.useCallback(async () => {
@@ -310,7 +313,17 @@ export default function PaymentsManagementPage() {
     }, [toast]);
     
     React.useEffect(() => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                setCurrentUser(user);
+                const userRef = ref(db, `users/${user.uid}`);
+                onValue(userRef, (snapshot) => {
+                    if (snapshot.exists()) setUserData(snapshot.val());
+                });
+            }
+        });
         fetchPaymentData();
+        return () => unsubscribeAuth();
     }, [fetchPaymentData]);
     
     const handleAddPaymentRow = () => {
@@ -341,8 +354,10 @@ export default function PaymentsManagementPage() {
     
             if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
                 const info = paymentInfos.find(p => p.userId === newRow.userId && p.semester === newRow.semesterId);
-                newRow.totalDue = info?.balance.toFixed(2);
-                newRow.invoiceId = info?.invoiceId;
+                if (info) {
+                    newRow.totalDue = info.balance.toFixed(2);
+                    newRow.invoiceId = info.invoiceId;
+                }
             } 
     
             return newRow;
@@ -474,7 +489,6 @@ export default function PaymentsManagementPage() {
             setActionLoading(null);
         }
     }
-
 
     const filteredData = React.useMemo(() => {
         return paymentInfos.filter(p => {
