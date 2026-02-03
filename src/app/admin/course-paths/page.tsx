@@ -283,6 +283,35 @@ function CoursePathBuilderComponent() {
             setSavingIntake(false);
         }
     };
+
+    const handleDeleteSemester = async (semesterId: string) => {
+        if (!window.confirm("Are you sure you want to delete this semester? This will also remove it from any existing course paths and timetables.")) return;
+        
+        setSavingIntake(true);
+        try {
+            const updates: Record<string, any> = {};
+            
+            // 1. Remove the semester record
+            updates[`/semesters/${semesterId}`] = null;
+            
+            // 2. Remove references from all course paths
+            coursePaths.forEach(path => {
+                if (path.semesters && path.semesters[semesterId]) {
+                    updates[`/coursePaths/${path.id}/semesters/${semesterId}`] = null;
+                }
+            });
+            
+            // 3. Remove timetables
+            updates[`/timetables/${semesterId}`] = null;
+            
+            await update(ref(db), updates);
+            toast({ title: "Semester Deleted" });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Delete Failed", description: e.message });
+        } finally {
+            setSavingIntake(false);
+        }
+    };
     
     const handleNewSemesterChange = (index: number, field: 'year' | 'semesterInYear', value: string) => {
         const updated = [...newSemesters];
@@ -486,6 +515,7 @@ function CoursePathBuilderComponent() {
                                                                 courses={semesterCourses[sem.id] || []} 
                                                                 currentPath={currentPath} 
                                                                 onHistoryClick={openHistoryDialog} 
+                                                                onDeleteSemester={() => handleDeleteSemester(sem.id)}
                                                             />
                                                         ))}
                                                     </div>
@@ -569,7 +599,7 @@ function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Cours
 }
 
 // --- Semester Column Component ---
-function SemesterColumn({ semester, courses, currentPath, onHistoryClick }: { semester: Semester, courses: Course[], currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void }) {
+function SemesterColumn({ semester, courses, currentPath, onHistoryClick, onDeleteSemester }: { semester: Semester, courses: Course[], currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void, onDeleteSemester: () => void }) {
     const { setNodeRef } = useSortable({ id: semester.id, data: { type: 'container', id: semester.id } });
     const history = currentPath?.semesters?.[semester.id]?.history;
     const historyItems = history ? Object.values(history) : [];
@@ -578,11 +608,16 @@ function SemesterColumn({ semester, courses, currentPath, onHistoryClick }: { se
         <div ref={setNodeRef} className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
              <div className="flex justify-between items-center">
                 <h3 className="font-bold text-center">{semester.name.split(' ').slice(-2).join(' ')}</h3>
-                {historyItems.length > 0 && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryClick(historyItems)}>
-                        <History className="h-4 w-4 text-blue-600"/>
+                <div className="flex items-center gap-1">
+                    {historyItems.length > 0 && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryClick(historyItems)}>
+                            <History className="h-4 w-4 text-blue-600"/>
+                        </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); onDeleteSemester(); }}>
+                        <Trash2 className="h-4 w-4"/>
                     </Button>
-                )}
+                </div>
             </div>
             <SortableContext id={semester.id} items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-2">

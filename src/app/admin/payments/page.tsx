@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -17,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -559,7 +558,7 @@ export default function PaymentsManagementPage() {
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
                         <div className="flex-1 min-w-[200px]">
                             <Label htmlFor="search">Search Student</Label>
-                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
@@ -588,8 +587,8 @@ export default function PaymentsManagementPage() {
                                                     const totalDueForCalc = row.totalDue ?? 0;
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
-                                                    const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
                                                     
+                                                    // Calculate options without using a hook inside the loop
                                                     let semesterOptions: OptionGroup[] = [];
                                                     if (row.isUnlinked) {
                                                         const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
@@ -615,6 +614,8 @@ export default function PaymentsManagementPage() {
                                                                 .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }))
                                                         }];
                                                     }
+
+                                                    const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
 
                                                     return (
                                                     <TableRow key={row.key}>

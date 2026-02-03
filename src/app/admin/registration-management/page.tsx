@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -310,10 +309,15 @@ export default function RegistrationManagementPage() {
     
 
     const handleSaveChanges = async () => {
+        const currentSemesterObj = semesters.find(s => s.id === selectedSemester);
+        if (!currentSemesterObj) return;
         setSaving(true);
         try { 
-            await set(ref(db, 'semesterOfferings'), activePathSemesters);
-            toast({ variant: 'success', title: 'Settings Saved', description: 'Registration settings have been updated.' });
+            await set(ref(db, `semesterOfferings/${currentSemesterObj.name}`), {
+                courseIds: availableForSemester,
+                isOpen: true,
+            });
+            toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings for ${currentSemesterObj.name} have been updated.` });
         } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setSaving(false); }
     };
@@ -580,4 +584,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
