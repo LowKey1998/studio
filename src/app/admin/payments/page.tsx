@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -22,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -34,7 +34,7 @@ type StudentPaymentInfo = {
     balance: number;
     status: 'Paid' | 'Pending' | 'Overdue';
     programmeId: string | null;
-    semester: string | null;
+    semester: string | null; // semesterId
     invoiceId: string;
 };
 
@@ -73,12 +73,28 @@ type Transaction = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
 type StudentInfo = {
     uid: string;
     id: string;
     name: string;
+    email: string;
     intakeId?: string;
+};
+
+type Invoice = {
+    invoiceId: string;
+    totalTuition: number;
+    totalMandatoryFees: number;
+    totalOptionalFees: number;
+    lateFee?: number;
+    paymentPlan: string;
+    dateCreated: string;
+    semester: string;
+    semesterId: string;
+    courses: string[];
+    optionalFees: string[];
+    applyScholarship?: boolean;
 };
 
 type GroupedOption = { value: string; label: string };
@@ -184,6 +200,9 @@ export default function PaymentsManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
+    
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
 
@@ -209,7 +228,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap, coursesSnap, institutionSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -218,11 +237,16 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'settings/integrations')),
                 get(ref(db, 'unlinkedPayments')),
                 get(ref(db, 'intakes')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'settings/institution')),
             ]);
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
+            if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
+            if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
+
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
             } else {
@@ -238,7 +262,7 @@ export default function PaymentsManagementPage() {
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
                 if (users[uid].role === 'Student') {
-                    studentList.push({ uid: uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId });
+                    studentList.push({ uid: uid, id: users[uid].id, name: users[uid].name, email: users[uid].email, intakeId: users[uid].intakeId });
                 }
             }
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
@@ -548,6 +572,101 @@ export default function PaymentsManagementPage() {
         doc.save(`payments_report_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
+    const generateInvoicePDF = async (p: StudentPaymentInfo): Promise<jsPDF | null> => {
+        const invoiceRef = ref(db, `invoices/${p.userId}/${p.invoiceId}`);
+        const snapshot = await get(invoiceRef);
+        if (!snapshot.exists()) return null;
+        
+        const invoice: Invoice = snapshot.val();
+        const semester = semesters.find(s => s.id === invoice.semesterId);
+        if (!semester) return null;
+
+        const doc = new jsPDF();
+        if (institutionSettings.logoUrl) {
+            try {
+                doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+            } catch (e) {
+                console.warn("Logo failed to load for PDF:", e);
+            }
+        }
+        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Student: ${p.studentName} (${p.studentId})`, 14, 40);
+        doc.text(`Invoice ID: ${invoice.invoiceId}`, 190, 40, { align: 'right' });
+        doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
+        doc.text(`Semester: ${semester.name}`, 14, 45);
+
+        const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
+
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
+        const totalAmount = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
+        
+        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${totalAmount.toFixed(2)}`]];
+        if(invoice.applyScholarship) {
+            foot.push(['', 'Scholarship Waived', `(ZMW ${(invoice.totalTuition || 0).toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${(totalAmount - (invoice.totalTuition || 0)).toFixed(2)}`]);
+        } else {
+            foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
+        }
+        
+        (doc as any).autoTable({ startY: 55, head: [['Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        return doc;
+    };
+
+    const handleDownloadInvoice = async (p: StudentPaymentInfo) => {
+        setActionLoading(`dl-${p.userId}`);
+        try {
+            const doc = await generateInvoicePDF(p);
+            if (doc) {
+                doc.save(`invoice-${p.invoiceId}.pdf`);
+                toast({ title: 'Invoice Downloaded' });
+            } else {
+                toast({ variant: 'destructive', title: 'Invoice Not Found' });
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Download Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleEmailInvoice = async (p: StudentPaymentInfo) => {
+        const student = allStudents.find(s => s.uid === p.userId);
+        if (!student?.email) {
+            toast({ variant: 'destructive', title: 'No Email Found', description: 'This student does not have a registered email address.' });
+            return;
+        }
+
+        setActionLoading(`mail-${p.userId}`);
+        try {
+            const doc = await generateInvoicePDF(p);
+            if (!doc) throw new Error("Invoice not found.");
+
+            const pdfBase64 = doc.output('datauristring').split(',')[1];
+            
+            await sendEmail({
+                to: [student.email],
+                subject: `Your Invoice for ${p.studentName}`,
+                body: `<p>Dear ${p.studentName},</p><p>Please find attached your invoice for the current semester. Your total outstanding balance is <strong>ZMW ${p.balance.toFixed(2)}</strong>.</p><p>Best regards,<br/>The Finance Department</p>`,
+                attachments: [{
+                    filename: `Invoice_${p.invoiceId}.pdf`,
+                    content: pdfBase64,
+                    contentType: 'application/pdf'
+                }]
+            });
+
+            toast({ title: 'Email Sent!', description: `Invoice has been sent to ${student.email}.` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Email Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {
         Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
@@ -741,9 +860,9 @@ export default function PaymentsManagementPage() {
                         </TabsList>
                         <TabsContent value="studentPayments">
                             <Table>
-                                <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead></TableRow></TableHeader>
+                                <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead><TableHead className="text-right">Invoice</TableHead></TableRow></TableHeader>
                                 <TableBody>
-                                    {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
+                                    {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
                                     ) : filteredData.length > 0 ? (
                                         filteredData.map((p, index) => (
                                             <TableRow key={`${p.userId}-${index}`}>
@@ -753,10 +872,32 @@ export default function PaymentsManagementPage() {
                                                 <TableCell className="text-right text-green-600">{p.totalPaid.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right font-bold">{p.balance.toFixed(2)}</TableCell>
                                                 <TableCell className="text-center"><Badge variant={statusVariant[p.status]}>{p.status}</Badge></TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            onClick={() => handleEmailInvoice(p)}
+                                                            disabled={actionLoading === `mail-${p.userId}`}
+                                                            title="Email Invoice"
+                                                        >
+                                                            {actionLoading === `mail-${p.userId}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Mail className="h-4 w-4"/>}
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            onClick={() => handleDownloadInvoice(p)}
+                                                            disabled={actionLoading === `dl-${p.userId}`}
+                                                            title="Download PDF"
+                                                        >
+                                                            {actionLoading === `dl-${p.userId}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="h-4 w-4"/>}
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
                                             </TableRow>
                                         ))
                                     ) : (
-                                        <TableRow><TableCell colSpan={6} className="h-24 text-center">No payment data found for the selected filters.</TableCell></TableRow>
+                                        <TableRow><TableCell colSpan={7} className="h-24 text-center">No payment data found for the selected filters.</TableCell></TableRow>
                                     )}
                                 </TableBody>
                             </Table>
