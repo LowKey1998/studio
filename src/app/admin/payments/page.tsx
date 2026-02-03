@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -46,6 +46,7 @@ type PaymentRecord = {
     semesterId?: string;
     invoiceId?: string;
     totalDue?: string; 
+    totalPaid?: number;
     amount: string;
     comment: string;
 };
@@ -221,7 +222,7 @@ export default function PaymentsManagementPage() {
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id]})));
+            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
             } else {
@@ -354,6 +355,7 @@ export default function PaymentsManagementPage() {
                 newRow.semesterId = undefined;
                 newRow.totalDue = undefined;
                 newRow.invoiceId = undefined;
+                newRow.totalPaid = undefined;
                 if (value === '__UNLINKED__') {
                     newRow.isUnlinked = true;
                     newRow.userId = undefined;
@@ -365,8 +367,13 @@ export default function PaymentsManagementPage() {
             if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
                 const info = paymentInfos.find(p => p.userId === newRow.userId && p.semester === newRow.semesterId);
                 if (info) {
-                    newRow.totalDue = info.balance.toFixed(2);
+                    newRow.totalDue = info.totalDue.toFixed(2);
+                    newRow.totalPaid = info.totalPaid;
                     newRow.invoiceId = info.invoiceId;
+                } else {
+                    newRow.totalDue = '';
+                    newRow.totalPaid = 0;
+                    newRow.invoiceId = undefined;
                 }
             } 
     
@@ -591,7 +598,7 @@ export default function PaymentsManagementPage() {
                                                 <TableRow>
                                                     <TableHead className="w-[250px]">Student / Reference</TableHead>
                                                     <TableHead className="w-[250px]">Payment for Semester</TableHead>
-                                                    <TableHead>Total Due</TableHead>
+                                                    <TableHead className="w-[180px]">Total Due</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
                                                     <TableHead className="w-[200px]">Comment</TableHead>
@@ -602,7 +609,8 @@ export default function PaymentsManagementPage() {
                                                 {bulkPaymentRows.map((row) => {
                                                     const amountPaid = parseFloat(row.amount || '0');
                                                     const totalDueForCalc = parseFloat(row.totalDue || '0');
-                                                    const newBalance = totalDueForCalc - amountPaid;
+                                                    const totalPaidSoFar = row.totalPaid || 0;
+                                                    const newBalance = totalDueForCalc - totalPaidSoFar - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     
                                                     const semesterOptions: OptionGroup[] = [];
@@ -661,13 +669,52 @@ export default function PaymentsManagementPage() {
                                                             />
                                                         </TableCell>
                                                         <TableCell>
-                                                            <Input 
-                                                                type="number" 
-                                                                placeholder="0.00"
-                                                                value={row.totalDue ?? ''} 
-                                                                onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading}
-                                                            />
+                                                            <div className="flex items-center gap-2">
+                                                                <Input 
+                                                                    type="number" 
+                                                                    placeholder="0.00"
+                                                                    value={row.totalDue ?? ''} 
+                                                                    onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
+                                                                    disabled={formLoading || (row.totalPaid !== undefined && row.totalPaid > 0)}
+                                                                />
+                                                                {!row.isUnlinked && row.userId && row.semesterId && (
+                                                                    <Popover>
+                                                                        <PopoverTrigger asChild>
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                                                                                <History className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </PopoverTrigger>
+                                                                        <PopoverContent className="w-80">
+                                                                            <div className="space-y-2">
+                                                                                <h4 className="font-medium leading-none text-sm">Payment History</h4>
+                                                                                <p className="text-xs text-muted-foreground">Previous payments for this semester.</p>
+                                                                                <Separator />
+                                                                                <ScrollArea className="h-32">
+                                                                                    {rawTransactions.filter(t => t.userId === row.userId && t.invoiceId === row.invoiceId && t.status === 'successful').length > 0 ? (
+                                                                                        <div className="space-y-2">
+                                                                                            {rawTransactions
+                                                                                                .filter(t => t.userId === row.userId && t.invoiceId === row.invoiceId && t.status === 'successful')
+                                                                                                .map(t => (
+                                                                                                    <div key={t.key} className="flex justify-between text-xs">
+                                                                                                        <span>{format(parseISO(t.paymentDate), 'dd MMM yyyy')}</span>
+                                                                                                        <span className="font-mono">ZMW {t.amount.toFixed(2)}</span>
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <p className="text-xs text-center py-4 text-muted-foreground">No payments yet.</p>
+                                                                                    )}
+                                                                                </ScrollArea>
+                                                                                <Separator />
+                                                                                <div className="flex justify-between text-xs font-bold pt-1">
+                                                                                    <span>Total Paid So Far:</span>
+                                                                                    <span>ZMW {(row.totalPaid || 0).toFixed(2)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </PopoverContent>
+                                                                    </Popover>
+                                                                )}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>
                                                         <TableCell className="font-semibold">ZMW {newBalance.toFixed(2)}</TableCell>
