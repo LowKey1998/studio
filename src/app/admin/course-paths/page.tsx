@@ -212,6 +212,8 @@ function CoursePathBuilderComponent() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
         } finally {
+            // Force a re-fetch of courses to clear the assigned ones from the list
+            fetchData();
             setSaving(false);
         }
     };
@@ -315,6 +317,37 @@ function CoursePathBuilderComponent() {
     const addNewSemesterField = () => setNewSemesters(prev => [...prev, { year: '', semesterInYear: '' }]);
     const removeNewSemesterField = (index: number) => setNewSemesters(prev => prev.filter((_, i) => i !== index));
 
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semestersSnap] = await Promise.all([
+                get(ref(db, 'intakes')),
+                get(ref(db, 'programmes')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'coursePaths')),
+                get(ref(db, 'semesters')),
+            ]);
+
+            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
+            setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
+            
+            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
+            setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
+            
+            const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
+            setCourses(Object.keys(coursesData).map(id => ({ id, ...coursesData[id] })));
+
+            const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
+            setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
+
+            const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
+            setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
+        } catch (error) {
+            console.error("Failed to fetch initial data:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
     
     // --- DnD and UI Logic ---
     const findContainer = (id: string) => {
@@ -490,8 +523,14 @@ function CoursePathBuilderComponent() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
-                                    <Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue placeholder="Select an Intake..."/></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
-                                    <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                                    <div className="space-y-1">
+                                        <Label>Intake</Label>
+                                        <Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue placeholder="Select an Intake..."/></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label>Programme</Label>
+                                        <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                                    </div>
                                 </div>
                                 {selectedIntake && selectedProgramme ? (
                                     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>

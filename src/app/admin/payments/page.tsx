@@ -143,7 +143,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                     <div className="p-1">
                     {filteredOptions.length > 0 ? filteredOptions.map(group => (
                         <div key={group.groupName} className="p-1">
-                            {group.groupName !== 'default' && <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.groupName}</div>}
+                            {group.groupName !== 'default' && group.groupName !== 'System Actions' && <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.groupName}</div>}
                             {group.items.map(option => (
                                 <Button 
                                     key={option.value}
@@ -334,7 +334,7 @@ export default function PaymentsManagementPage() {
         setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
     };
 
-     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: string | number | undefined) => {
+     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
             if (row.key !== key) return row;
     
