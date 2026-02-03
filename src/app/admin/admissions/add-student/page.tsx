@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -28,6 +29,7 @@ import { Switch } from '@/components/ui/switch';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { updateUserAccount } from '@/ai/flows/update-user-account';
 
 
 type User = {
@@ -270,7 +272,13 @@ export default function AddStudentPage() {
             if(isTransfer && Object.keys(exemptedCourses).length > 0) userDataPayload.exemptedCourses = exemptedCourses;
 
             if (editingUid) {
-                await update(ref(db, `users/${editingUid}`), userDataPayload);
+                await updateUserAccount({
+                    uid: editingUid,
+                    name,
+                    email,
+                    phoneNumber,
+                    dbData: userDataPayload
+                });
                 toast({ title: 'Student Updated' });
                 resetForm();
                 fetchInitialData();
