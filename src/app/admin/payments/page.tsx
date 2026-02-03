@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,7 +15,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
-import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -44,7 +43,7 @@ type PaymentRecord = {
     userId?: string;
     semesterId?: string;
     invoiceId?: string;
-    totalDue?: number;
+    totalDue?: string; 
     amount: string;
     comment: string;
 };
@@ -59,7 +58,7 @@ type UnlinkedPayment = {
 };
 
 type Transaction = {
-    key: string; // Firebase key
+    key: string;
     transactionId: string;
     invoiceId?: string;
     userId: string;
@@ -80,7 +79,6 @@ type StudentInfo = {
     intakeId?: string;
 };
 
-// --- Reusable Searchable Select Component ---
 type GroupedOption = { value: string; label: string };
 type OptionGroup = { groupName: string; items: GroupedOption[] };
 
@@ -185,17 +183,14 @@ export default function PaymentsManagementPage() {
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
 
-    // Dialog states
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [formLoading, setFormLoading] = React.useState(false);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
 
-    // Linking Dialog state
     const [isLinkingOpen, setIsLinkingOpen] = React.useState(false);
     const [linkingPayment, setLinkingPayment] = React.useState<UnlinkedPayment | null>(null);
     const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
-
 
     const { toast } = useToast();
 
@@ -227,13 +222,11 @@ export default function PaymentsManagementPage() {
                 setIsSageEnabled(integrations.sage?.enabled);
             }
 
-            const users = usersSnap.val();
+            const users = usersSnap.val() || {};
             const studentList: StudentInfo[] = [];
-            if (usersSnap.exists()) {
-                for (const uid in users) {
-                    if (users[uid].role === 'Student') {
-                        studentList.push({ uid: uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId });
-                    }
+            for (const uid in users) {
+                if (users[uid].role === 'Student') {
+                    studentList.push({ uid: uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId });
                 }
             }
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
@@ -282,25 +275,21 @@ export default function PaymentsManagementPage() {
                  }
             }
 
-            // Calculate total paid from transactions
             for (const txId in transactionsData) {
                 const tx = transactionsData[txId];
                 if(tx.status !== 'successful') continue;
                 
-                const invoice = Object.values(allInvoices[tx.userId] || {}).find((inv: any) => inv.invoiceId === tx.invoiceId) as any;
-                if (invoice) {
-                    const semesterId = Object.keys(registrations[tx.userId] || {}).find(semId => registrations[tx.userId][semId].invoiceId === tx.invoiceId);
-                    if (semesterId) {
-                        const key = `${tx.userId}-${semesterId}`;
-                        if (studentPaymentMap[key]) {
-                            studentPaymentMap[key].totalPaid += Number(tx.amount) || 0;
-                        }
+                const semesterId = Object.keys(registrations[tx.userId] || {}).find(semId => registrations[tx.userId][semId].invoiceId === tx.invoiceId);
+                if (semesterId) {
+                    const key = `${tx.userId}-${semesterId}`;
+                    if (studentPaymentMap[key]) {
+                        studentPaymentMap[key].totalPaid += Number(tx.amount) || 0;
                     }
                 }
             }
             
             const paymentInfoList = Object.values(studentPaymentMap)
-                .filter(p => p.totalDue > 0) // Only show students with invoices
+                .filter(p => p.totalDue > 0)
                 .map(p => {
                     const balance = p.totalDue - p.totalPaid;
                     let status: StudentPaymentInfo['status'] = 'Pending';
@@ -338,9 +327,8 @@ export default function PaymentsManagementPage() {
     
             const newRow = { ...row, [field]: value };
             
-            // If the user changes, we need to reset the semester and related fields.
             if (field === 'userId') {
-                newRow.semesterId = undefined; // Reset semester
+                newRow.semesterId = undefined;
                 newRow.totalDue = undefined;
                 newRow.invoiceId = undefined;
                 if (value === '__UNLINKED__') {
@@ -351,10 +339,9 @@ export default function PaymentsManagementPage() {
                 }
             }
     
-            // Check if we can auto-fill the 'Total Due'
             if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
                 const info = paymentInfos.find(p => p.userId === newRow.userId && p.semester === newRow.semesterId);
-                newRow.totalDue = info?.balance;
+                newRow.totalDue = info?.balance.toFixed(2);
                 newRow.invoiceId = info?.invoiceId;
             } 
     
@@ -539,6 +526,11 @@ export default function PaymentsManagementPage() {
         { groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }
     ], [allStudents]);
 
+    const semesterMap = React.useMemo(() => semesters.reduce((acc, sem) => {
+        acc[sem.id] = sem.name;
+        return acc;
+    }, {} as Record<string, string>), [semesters]);
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -585,11 +577,11 @@ export default function PaymentsManagementPage() {
                                             <TableBody>
                                                 {bulkPaymentRows.map((row) => {
                                                     const amountPaid = parseFloat(row.amount || '0');
-                                                    const totalDueForCalc = row.totalDue ?? 0;
+                                                    const totalDueForCalc = parseFloat(row.totalDue || '0');
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     
-                                                    let semesterOptions: OptionGroup[] = [];
+                                                    const semesterOptions: OptionGroup[] = [];
                                                     if (row.isUnlinked) {
                                                         const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
                                                             const intakeName = allIntakes.find(i => i.id === sem.intakeId)?.name || 'Uncategorized';
@@ -598,21 +590,23 @@ export default function PaymentsManagementPage() {
                                                             return acc;
                                                         }, {} as Record<string, Semester[]>);
 
-                                                        semesterOptions = Object.entries(groupedByIntake).map(([intakeName, sems]) => ({
-                                                            groupName: intakeName,
-                                                            items: sems.map(s => ({
-                                                                value: s.id,
-                                                                label: `Year ${s.year}, Semester ${s.semesterInYear}`
-                                                            }))
-                                                        }));
+                                                        Object.entries(groupedByIntake).forEach(([intakeName, sems]) => {
+                                                            semesterOptions.push({
+                                                                groupName: intakeName,
+                                                                items: sems.map(s => ({
+                                                                    value: s.id,
+                                                                    label: `Year ${s.year}, Semester ${s.semesterInYear}`
+                                                                }))
+                                                            });
+                                                        });
                                                     } else if (studentForThisRow?.intakeId) {
                                                         const intakeName = allIntakes.find(i => i.id === studentForThisRow.intakeId)?.name || 'Available Semesters';
-                                                        semesterOptions = [{
+                                                        semesterOptions.push({
                                                             groupName: intakeName,
                                                             items: semesters
                                                                 .filter(s => s.intakeId === studentForThisRow.intakeId)
                                                                 .map(s => ({ value: s.id, label: `Year ${s.year}, Semester ${s.semesterInYear}` }))
-                                                        }];
+                                                        });
                                                     }
 
                                                     return (
@@ -645,7 +639,7 @@ export default function PaymentsManagementPage() {
                                                         <TableCell>
                                                             <Input 
                                                                 type="number" 
-                                                                placeholder="Enter amount"
+                                                                placeholder="0.00"
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
                                                                 disabled={formLoading}

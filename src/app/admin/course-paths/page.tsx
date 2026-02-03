@@ -290,20 +290,13 @@ function CoursePathBuilderComponent() {
         setSavingIntake(true);
         try {
             const updates: Record<string, any> = {};
-            
-            // 1. Remove the semester record
             updates[`/semesters/${semesterId}`] = null;
-            
-            // 2. Remove references from all course paths
             coursePaths.forEach(path => {
                 if (path.semesters && path.semesters[semesterId]) {
                     updates[`/coursePaths/${path.id}/semesters/${semesterId}`] = null;
                 }
             });
-            
-            // 3. Remove timetables
             updates[`/timetables/${semesterId}`] = null;
-            
             await update(ref(db), updates);
             toast({ title: "Semester Deleted" });
         } catch (e: any) {
@@ -577,7 +570,6 @@ function CoursePathBuilderComponent() {
     );
 }
 
-// --- Draggable Course Item Component ---
 function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Course | null, onAdd?: () => void}) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     const style = { transform: CSS.Transform.toString(transform), transition };
@@ -598,7 +590,6 @@ function DraggableCourseItem({ id, course, onAdd }: { id: string, course?: Cours
     )
 }
 
-// --- Semester Column Component ---
 function SemesterColumn({ semester, courses, currentPath, onHistoryClick, onDeleteSemester }: { semester: Semester, courses: Course[], currentPath: CoursePath | undefined, onHistoryClick: (history: CoursePathHistoryItem[]) => void, onDeleteSemester: () => void }) {
     const { setNodeRef } = useSortable({ id: semester.id, data: { type: 'container', id: semester.id } });
     const history = currentPath?.semesters?.[semester.id]?.history;
@@ -628,7 +619,6 @@ function SemesterColumn({ semester, courses, currentPath, onHistoryClick, onDele
     );
 }
 
-// --- Available Courses Column Component ---
 function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCoursesToLoad, targetSemester, setTargetSemester, onAddCourse, onLoadCourses, semestersForPath }: {
     courses: Course[];
     allProgrammes: Programme[];
@@ -675,7 +665,6 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
     )
 }
 
-// --- Main Page Component ---
 export default function CoursePathsPage() {
     return (
         <Suspense fallback={<Skeleton className="h-screen w-full" />}>
