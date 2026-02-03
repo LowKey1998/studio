@@ -543,7 +543,7 @@ function CoursePathBuilderComponent() {
                 </Tabs>
                  <Dialog open={isIntakeDialogOpen} onOpenChange={(open) => { if (!open) setEditingIntake(null); setIsIntakeDialogOpen(open);}}>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create New'} Intake</DialogTitle></DialogHeader>
+                        <DialogHeader><DialogTitle>{editingIntake ? 'Edit' : 'Create'} Intake</DialogTitle></DialogHeader>
                         <div className="py-4"><Input placeholder="e.g., 2024JAN" value={intakeName} onChange={e => setIntakeName(e.target.value.toUpperCase())} /></div>
                         <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveIntake} disabled={savingIntake}>{savingIntake && <Loader2 className="animate-spin mr-2 h-4"/>}Save Intake</Button></DialogFooter>
                     </DialogContent>
