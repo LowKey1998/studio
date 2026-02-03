@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { ref, get, query, orderByChild, equalTo, update, serverTimestamp } from "firebase/database";
 
@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { sendCustomPasswordReset } from "@/ai/flows/forgot-password-flow";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState('');
@@ -125,8 +126,10 @@ export default function LoginPage() {
             throw new Error("User email not found in records.");
         }
 
-        await sendPasswordResetEmail(auth, userEmail);
-        toast({ title: 'Password Reset Email Sent', description: 'Please check your email inbox for instructions.' });
+        // Call the custom Genkit flow to send the branded email
+        await sendCustomPasswordReset({ email: userEmail });
+        
+        toast({ title: 'Branded Reset Email Sent', description: 'Please check your email inbox for instructions.' });
         setIsResetOpen(false);
         setResetUserId('');
 
@@ -174,7 +177,7 @@ export default function LoginPage() {
                         <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>Reset Password</DialogTitle>
-                                <DialogDescription>Enter your User ID to receive a password reset link at your registered email address.</DialogDescription>
+                                <DialogDescription>Enter your User ID to receive a branded password reset link at your registered email address.</DialogDescription>
                             </DialogHeader>
                             <div className="py-4 space-y-2">
                                 <Label htmlFor="reset-user-id">User ID</Label>
@@ -184,7 +187,7 @@ export default function LoginPage() {
                                 <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
                                 <Button onClick={handlePasswordReset} disabled={resetLoading}>
                                     {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                    Send Reset Link
+                                    Send Branded Link
                                 </Button>
                             </DialogFooter>
                         </DialogContent>
