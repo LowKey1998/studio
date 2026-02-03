@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent for generating a conflict-free weekly timetable.
@@ -102,12 +103,13 @@ const generateTimetableFlow = ai.defineFlow(
 export async function generateFullTimetable(): Promise<{ message: string }> {
   try {
     // 1. Fetch all necessary data from Firebase
-    const [semestersSnap, coursesSnap, usersSnap, roomsSnap, regsSnap] = await Promise.all([
+    const [semestersSnap, coursesSnap, usersSnap, roomsSnap, regsSnap, settingsSnap] = await Promise.all([
       get(ref(db, 'semesters')),
       get(ref(db, 'courses')),
       get(ref(db, 'users')),
       get(ref(db, 'settings/rooms')),
       get(ref(db, 'registrations')),
+      get(ref(db, 'settings/teachingTimes'))
     ]);
 
     // Detailed missing data checks
@@ -121,6 +123,14 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
     const allCourses = coursesSnap.val();
     const allRooms = roomsSnap.val();
     const allRegistrations = regsSnap.val();
+    
+    // Get institutional constraints
+    const teachingTimes = settingsSnap.exists() ? settingsSnap.val() : {
+        startTime: "08:00",
+        endTime: "17:00",
+        days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        sessionDuration: 120
+    };
 
     if (Object.keys(allRooms).length === 0) {
         throw new Error("No rooms are currently defined. Please add at least one room in Facilities > Room Management.");
@@ -169,10 +179,10 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
         courses: coursesInSemester,
         rooms: Object.entries(allRooms).map(([id, room]: [string, any]) => ({ id, ...room })),
         constraints: {
-          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-          startTime: "08:00",
-          endTime: "17:00",
-          sessionDuration: 120, // 2 hours
+          days: teachingTimes.days,
+          startTime: teachingTimes.startTime,
+          endTime: teachingTimes.endTime,
+          sessionDuration: Number(teachingTimes.sessionDuration),
         },
       };
 

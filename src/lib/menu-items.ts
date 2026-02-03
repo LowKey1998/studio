@@ -52,6 +52,7 @@ export const allMenuItems = [
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
         { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
         { href: '/admin/academics/lecturer-allocation', label: 'Lecturer Allocation', icon: UserPlus },
+        { href: '/admin/academics/teaching-times', label: 'Teaching Times Setup', icon: Clock },
         { href: '/admin/academics/teaching-load', label: 'Teaching Load Balance', icon: Scale },
         { href: '/admin/academics/assessment-setup', label: 'Continous Assessment Setup', icon: ClipboardEdit },
         { href: '/admin/academics/final-exam-setup', label: 'Final Exam Setup', icon: PenSquare },
@@ -86,7 +87,7 @@ export const allMenuItems = [
         { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
         { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
         { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
-        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: Newspaper },
+        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: GraduationCap },
         { href: '/admin/exams/result-publishing', label: 'Result Publishing', icon: Upload },
         { href: '/admin/exams/student-appeals', label: 'Student Appeals Tracking', icon: Search },
       ]
