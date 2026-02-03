@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification } from '@/lib/firebase';
@@ -81,6 +82,13 @@ type StudentInfo = {
 
 type GroupedOption = { value: string; label: string };
 type OptionGroup = { groupName: string; items: GroupedOption[] };
+
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+};
 
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
@@ -311,21 +319,23 @@ export default function PaymentsManagementPage() {
             setLoading(false);
         }
     }, [toast]);
-    
+
     React.useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setCurrentUser(user);
                 const userRef = ref(db, `users/${user.uid}`);
                 onValue(userRef, (snapshot) => {
-                    if (snapshot.exists()) setUserData(snapshot.val());
+                    if (snapshot.exists()) {
+                        setUserData(snapshot.val());
+                    }
                 });
             }
         });
         fetchPaymentData();
-        return () => unsubscribeAuth();
+        return () => unsubscribe();
     }, [fetchPaymentData]);
-    
+
     const handleAddPaymentRow = () => {
         setBulkPaymentRows(prev => [...prev, { key: Date.now(), amount: '', comment: '' }]);
     };
@@ -535,15 +545,15 @@ export default function PaymentsManagementPage() {
         Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
 
-    const studentOptions = React.useMemo(() => [
+    const studentOptions = [
         { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
         { groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }
-    ], [allStudents]);
+    ];
 
-    const semesterMap = React.useMemo(() => semesters.reduce((acc, sem) => {
+    const semesterMap = semesters.reduce((acc, sem) => {
         acc[sem.id] = sem.name;
         return acc;
-    }, {} as Record<string, string>), [semesters]);
+    }, {} as Record<string, string>);
 
     return (
         <div className="space-y-6">
@@ -559,7 +569,7 @@ export default function PaymentsManagementPage() {
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Due</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">ZMW {summaryStats.totalDue.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Paid</CardTitle><PiggyBank className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">ZMW {summaryStats.totalPaid.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Balance</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">ZMW {summaryStats.totalBalance.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent>
+                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent></Card>
                     </div>
 
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
@@ -718,7 +728,7 @@ export default function PaymentsManagementPage() {
                                                 <Button size="sm" variant="outline" onClick={() => { setLinkingPayment(p); setIsLinkingOpen(true); }}><LinkIcon className="mr-2 h-4 w-4" />Link to Student</Button>
                                             </TableCell>
                                         </TableRow>
-                                    )) : <TableRow><TableCell colSpan={5} className="h-24 text-center">No unlinked payments.</TableCell></TableRow>}
+                                    )) : <TableRow><TableCell colSpan={5} className="text-center h-24">No unlinked payments.</TableCell></TableRow>}
                                 </TableBody>
                              </Table>
                          </TabsContent>
