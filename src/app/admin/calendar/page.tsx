@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { add, format, isSameDay, parseISO } from 'date-fns';
@@ -263,6 +262,16 @@ export default function AdminCalendarPage() {
     }
   }
 
+  const handleDeleteEvent = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this event?")) return;
+    try {
+      await remove(dbRef(db, `calendarEvents/${id}`));
+      toast({ title: "Event deleted" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Deletion failed", description: e.message });
+    }
+  }
+
   const handleDateSelect = (day: Date | undefined) => {
     if (!day) return;
     const eventsOnDay = events.filter(event => isSameDay(parseISO(event.date), day));
@@ -356,8 +365,7 @@ export default function AdminCalendarPage() {
                     ))}
                     <Button type="button" variant="outline" onClick={handleAddEventField} disabled={formLoading}><Plus className="mr-2 h-4 w-4" /> Add Another</Button>
                   </div>
-                  <DialogFooter className="pt-4"><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add Events'}</Button></DialogFooter>
-                </form>
+                  <DialogFooter className="pt-4"><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add Events'}</Button></form>
               </DialogContent>
             </Dialog>
           </div>
@@ -373,7 +381,19 @@ export default function AdminCalendarPage() {
                 <Input placeholder="Search events..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <div className="max-h-[200px] space-y-3 overflow-y-auto pr-2">
-              {loading ? Array.from({ length: 4 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-md border p-3"><Skeleton className="h-5 w-24" /><Skeleton className="h-4 w-full" /></div>)) : filteredEvents.length > 0 ? [...filteredEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(event => (<div key={event.id} className="flex items-center gap-4 rounded-md border p-3"><div className={cn("w-24 font-medium", event.isPublicHoliday && "text-destructive")}>{format(parseISO(event.date), 'MMM dd, yyyy')}</div><div className={cn("flex-1", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</div>{event.attachmentUrl && (<Button asChild size="sm" variant="outline"><a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4"/></a></Button>)}</div>)) : (<div className="text-center text-sm text-muted-foreground py-10"><Info className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2">No events found for the current filters.</p></div>)}
+              {loading ? Array.from({ length: 4 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-md border p-3"><Skeleton className="h-5 w-24" /><Skeleton className="h-4 w-full" /></div>)) : filteredEvents.length > 0 ? [...filteredEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(event => (
+                <div key={event.id} className="flex items-center gap-4 rounded-md border p-3">
+                  <div className={cn("w-24 font-medium", event.isPublicHoliday && "text-destructive")}>{format(parseISO(event.date), 'MMM dd, yyyy')}</div>
+                  <div className={cn("flex-1", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</div>
+                  <div className="flex gap-1">
+                    {event.attachmentUrl && (<Button asChild size="sm" variant="outline" className="h-8 w-8 p-0"><a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4"/></a></Button>)}
+                    {!event.isPublicHoliday && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteEvent(event.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>)) : (<div className="text-center text-sm text-muted-foreground py-10"><Info className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2">No events found for the current filters.</p></div>)}
             </div>
           </div>
         </CardContent>
