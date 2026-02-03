@@ -1,37 +1,82 @@
 
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Search, Download } from 'lucide-react';
+import { Search, Download, FileText, Loader2, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { format } from 'date-fns';
+
+type Evaluation = { id: string; studentName: string; studentId: string; rotation: string; preceptor: string; score: number; date: string; };
 
 export default function EvaluationReportsPage() {
+    const [evaluations, setEvaluations] = React.useState<Evaluation[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [searchTerm, setSearchTerm] = React.useState('');
+
+    React.useEffect(() => {
+        const fetchEvals = async () => {
+            const snap = await get(ref(db, 'clinicals/evaluations'));
+            setEvaluations(snap.exists() ? Object.keys(snap.val()).map(id => ({ id, ...snap.val()[id] })) : []);
+            setLoading(false);
+        };
+        fetchEvals();
+    }, []);
+
+    const handleDownloadReport = (evalData: Evaluation) => {
+        const doc = new jsPDF();
+        doc.setFontSize(20); doc.text("Clinical Evaluation Report", 14, 22);
+        doc.setFontSize(12);
+        doc.text(`Student: ${evalData.studentName} (${evalData.studentId})`, 14, 35);
+        doc.text(`Rotation: ${evalData.rotation}`, 14, 42);
+        doc.text(`Preceptor: ${evalData.preceptor}`, 14, 49);
+        doc.text(`Score: ${evalData.score}/100`, 14, 56);
+        doc.text(`Date: ${format(new Date(evalData.date), 'PPP')}`, 14, 63);
+        doc.save(`Evaluation_${evalData.studentId}_${evalData.rotation}.pdf`);
+    };
+
+    const filtered = evaluations.filter(e => e.studentName.toLowerCase().includes(searchTerm.toLowerCase()));
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Evaluation Reports</CardTitle>
-                <CardDescription>Generate and view summarized evaluation reports for students based on preceptor feedback and logbook entries.</CardDescription>
+                <CardTitle>Clinical Evaluation Reports</CardTitle>
+                <CardDescription>Summarized clinical performance data based on preceptor feedback.</CardDescription>
+                <div className="pt-4 relative">
+                    <Search className="absolute left-2.5 top-6.5 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search by student name..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/>
+                </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-                 <div className="flex gap-4">
-                    <Input placeholder="Search student name or ID..."/>
-                    <Select>
-                        <SelectTrigger className="w-[280px]">
-                            <SelectValue placeholder="Select Rotation..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="peds">Pediatrics Q4 2023</SelectItem>
-                            <SelectItem value="surgery">Surgery Q4 2023</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button><Search className="mr-2 h-4 w-4"/>Search</Button>
-                </div>
-                <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold mb-2">Generated Reports</h3>
-                    <p className="text-sm text-muted-foreground">Search for a student to see available reports.</p>
-                </div>
+            <CardContent>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Student</TableHead>
+                            <TableHead>Rotation</TableHead>
+                            <TableHead className="text-center">Score</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-24"/></TableCell></TableRow> :
+                         filtered.map(e => (
+                            <TableRow key={e.id}>
+                                <TableCell className="font-bold">{e.studentName}</TableCell>
+                                <TableCell>{e.rotation}</TableCell>
+                                <TableCell className="text-center">{e.score}%</TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="outline" size="sm" onClick={() => handleDownloadReport(e)}><Download className="mr-2 h-4 w-4"/> PDF</Button>
+                                </TableCell>
+                            </TableRow>
+                         ))}
+                    </TableBody>
+                </Table>
             </CardContent>
         </Card>
     );

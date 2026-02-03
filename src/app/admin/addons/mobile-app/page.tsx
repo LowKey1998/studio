@@ -1,42 +1,66 @@
+
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Smartphone, Bell, MessageSquare, BookOpen } from 'lucide-react';
-import Image from 'next/image';
+import { Smartphone, Bell, MessageSquare, BookOpen, Send, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
+import { createNotification } from '@/lib/firebase';
 
 export default function MobileAppPage() {
+    const [title, setTitle] = React.useState('');
+    const [message, setMessage] = React.useState('');
+    const [sending, setSending] = React.useState(false);
+    const { toast } = useToast();
+
+    const handleBroadcastPush = async () => {
+        if (!title || !message) return;
+        setSending(true);
+        try {
+            const usersSnap = await get(ref(db, 'users'));
+            if(usersSnap.exists()) {
+                const uids = Object.keys(usersSnap.val());
+                const promises = uids.map(uid => createNotification(uid, `${title}: ${message}`, '/student/dashboard', 'info'));
+                await Promise.all(promises);
+                toast({ title: 'Push Notification Broadcasted' });
+                setTitle(''); setMessage('');
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Broadcast Failed' });
+        } finally {
+            setSending(false);
+        }
+    };
+
     return (
-        <Card>
-            <CardHeader className="text-center">
-                <CardTitle className="font-headline text-3xl">Edutrack360 Mobile App</CardTitle>
-                <CardDescription className="max-w-2xl mx-auto">Engage your students and staff on the go with a dedicated mobile application for iOS and Android.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-8">
-                <div className="flex justify-center">
-                    <Image src="https://placehold.co/600x400.png" width={600} height={400} alt="Mobile App Showcase" className="rounded-lg shadow-lg" data-ai-hint="mobile app"/>
-                </div>
-                 <div className="grid md:grid-cols-3 gap-8 text-center">
-                    <div className="space-y-2">
-                        <div className="flex justify-center mb-2"><div className="bg-primary/10 rounded-full p-3"><Bell className="h-8 w-8 text-primary"/></div></div>
-                        <h4 className="font-semibold">Push Notifications</h4>
-                        <p className="text-sm text-muted-foreground">Keep everyone informed with instant notifications for announcements, grades, and deadlines.</p>
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Mobile App Push Notifications</CardTitle>
+                    <CardDescription>Broadcast important updates directly to students' and staff members' mobile devices.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                        <Label>Notification Title</Label>
+                        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Campus Closed Due to Weather"/>
                     </div>
-                     <div className="space-y-2">
-                         <div className="flex justify-center mb-2"><div className="bg-primary/10 rounded-full p-3"><MessageSquare className="h-8 w-8 text-primary"/></div></div>
-                        <h4 className="font-semibold">Mobile-First Communication</h4>
-                        <p className="text-sm text-muted-foreground">Facilitate easy communication between students and lecturers through in-app messaging.</p>
+                    <div className="space-y-1">
+                        <Label>Message Body</Label>
+                        <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Enter details here..."/>
                     </div>
-                     <div className="space-y-2">
-                        <div className="flex justify-center mb-2"><div className="bg-primary/10 rounded-full p-3"><BookOpen className="h-8 w-8 text-primary"/></div></div>
-                        <h4 className="font-semibold">Access Anywhere</h4>
-                        <p className="text-sm text-muted-foreground">Provide access to course materials, grades, timetables, and payments from anywhere, at any time.</p>
-                    </div>
-                </div>
-                <div className="text-center pt-6">
-                    <Button disabled>Inquire About Mobile App</Button>
-                </div>
-            </CardContent>
-        </Card>
+                </CardContent>
+                <CardFooter>
+                    <Button onClick={handleBroadcastPush} disabled={sending}>
+                        {sending ? <Loader2 className="mr-2 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
+                        Broadcast Push Notification
+                    </Button>
+                </CardFooter>
+            </Card>
+        </div>
     );
 }

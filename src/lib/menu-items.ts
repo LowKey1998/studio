@@ -66,11 +66,12 @@ export const allMenuItems = [
       permission: 'Lecturer',
       items: [
         { href: '/staff/courses', label: 'My Courses', icon: GraduationCap },
+        { href: '/staff/student-absences', label: 'Student Absences', icon: Hand },
         { href: '/staff/timetable', label: 'My Timetable', icon: Calendar },
         { href: '/staff/attendance', label: 'Mark Attendance', icon: ClipboardCheck },
         { href: '/staff/results', label: 'Enter Results', icon: ClipboardEdit },
         { href: '/staff/resources', label: 'Manage Resources', icon: Folder },
-        { href: '/staff/student-absences', label: 'Absence Requests', icon: Hand },
+        { href: '/staff/leave', label: 'My Leave', icon: Calendar },
         { href: '/staff/quizzes', label: 'Quizzes & Exams', icon: FileQuestion },
       ]
     },
@@ -94,7 +95,15 @@ export const allMenuItems = [
         label: 'Clinicals',
         icon: Stethoscope,
         roles: ['Admin'],
-        isComingSoon: true,
+        items: [
+            { href: '/admin/clinicals/rotation-planning', label: 'Rotation Planning', icon: Calendar },
+            { href: '/admin/clinicals/community-placement', label: 'Community Placement', icon: MapPin },
+            { href: '/admin/clinicals/ward-logbooks', label: 'Ward Logbooks', icon: Book },
+            { href: '/admin/clinicals/preceptor-login', label: 'Preceptor Management', icon: UserCog },
+            { href: '/admin/clinicals/evaluation-reports', label: 'Evaluation Reports', icon: FileText },
+            { href: '/admin/clinicals/feedback-forms', label: 'Feedback Forms', icon: ClipboardList },
+            { href: '/admin/clinicals/clinical-assessment', label: 'Final Assessments', icon: ClipboardCheck },
+        ]
     },
      {
       label: 'E-Learning',
@@ -124,7 +133,9 @@ export const allMenuItems = [
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
         { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
-        { href: '/admin/fees', label: 'Fees & Invoicing', icon: HandCoins },
+        { href: '/admin/fees', label: 'Fee Templates', icon: HandCoins },
+        { href: '/admin/finance/fees/hostels', label: 'Hostel Fees', icon: Home },
+        { href: '/admin/finance/fees/meals', label: 'Meal Fees', icon: Utensils },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
         { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
@@ -228,40 +239,38 @@ export const allMenuItems = [
         ]
     },
     {
-        label: 'Community Engagement',
-        icon: Handshake,
-        roles: ['Admin'],
-        isComingSoon: true,
-    },
-    {
       label: 'Quality Assurance',
       icon: Check,
       roles: ['Admin'],
-      isComingSoon: true,
+      items: [
+          { href: '/admin/qa/accreditation', label: 'Accreditation Tracker', icon: Shield },
+          { href: '/admin/qa/audit-reports', label: 'Audit Reports', icon: FileText },
+          { href: '/admin/qa/course-eval', label: 'Course Evaluations', icon: BarChart2 },
+          { href: '/admin/qa/kpi-dashboard', label: 'KPI Dashboard', icon: LineChart },
+      ]
     },
     {
       label: 'Legal & Compliance',
       icon: GitBranch,
       roles: ['Admin'],
-      isComingSoon: true,
+      items: [
+          { href: '/admin/legal/case-management', label: 'Case Management', icon: Briefcase },
+          { href: '/admin/legal/contract-repository', label: 'Contract Repository', icon: Library },
+          { href: '/admin/legal/disciplinary-logs', label: 'Disciplinary Logs', icon: ShieldAlert },
+          { href: '/admin/legal/policy-uploads', label: 'Policy Uploads', icon: Upload },
+      ]
     },
     {
       label: 'Facilities & Estates',
       icon: Building,
       roles: ['Admin'],
-      isComingSoon: true,
-    },
-    {
-        label: 'Transport',
-        icon: Truck,
-        roles: ['Admin'],
-        isComingSoon: true,
-    },
-     {
-        label: 'Partnerships',
-        icon: Handshake,
-        roles: ['Admin'],
-        isComingSoon: true,
+      items: [
+          { href: '/admin/facilities/room-management', label: 'Room Management', icon: Home },
+          { href: '/admin/facilities/maintenance', label: 'Maintenance Requests', icon: Wrench },
+          { href: '/admin/facilities/cleaning', label: 'Cleaning Logs', icon: CheckCircle2 },
+          { href: '/admin/facilities/assets', label: 'Classroom Assets', icon: Monitor },
+          { href: '/admin/facilities/utilities', label: 'Utility Reports', icon: Zap },
+      ]
     },
      {
         label: 'Mentorship & Advising',
@@ -272,12 +281,6 @@ export const allMenuItems = [
             { href: '/admin/mentorship/logs', label: 'Mentorship Logs', icon: Book },
             { href: '/admin/mentorship/reports', label: 'Advisory Reports', icon: FileText },
         ]
-    },
-    {
-        label: 'Media & PR',
-        icon: Newspaper,
-        roles: ['Admin'],
-        isComingSoon: true,
     },
     {
         label: 'Chaplaincy & Spiritual Life',
@@ -300,6 +303,7 @@ export const allMenuItems = [
             { href: '/admin/addons/quickbooks', label: 'QuickBooks Integration', icon: Link },
             { href: '/admin/addons/sage', label: 'Sage Integration', icon: Link },
             { href: '/admin/addons/mobile-app', label: 'Edutrack360 Mobile App', icon: Smartphone },
+            { href: '/admin/addons/autocad', label: 'AutoCAD Management', icon: Construction },
         ]
     },
      {
