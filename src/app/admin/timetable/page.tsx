@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -15,6 +15,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 import { useSearchParams } from 'next/navigation';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type Course = {
     id: string;
@@ -50,6 +54,73 @@ type CoursePath = {
 };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+function SearchableSemesterSelect({ 
+    options, 
+    value, 
+    onValueChange, 
+    placeholder, 
+    disabled = false 
+}: {
+    options: Semester[];
+    value: string | undefined;
+    onValueChange: (value: string) => void;
+    placeholder: string;
+    disabled?: boolean;
+}) {
+    const [open, setOpen] = React.useState(false);
+    const [search, setSearch] = React.useState('');
+
+    const filteredOptions = React.useMemo(() => {
+        if (!search) return options;
+        return options.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+    }, [options, search]);
+
+    const selectedLabel = React.useMemo(() => {
+        if (!value) return placeholder;
+        return options.find(s => s.id === value)?.name || placeholder;
+    }, [value, options, placeholder]);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between" disabled={disabled}>
+                    <span className="truncate">{selectedLabel}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" side="bottom" align="start">
+                <div className="p-2">
+                    <Input 
+                        placeholder="Search semesters..."
+                        className="h-9"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                </div>
+                <Separator />
+                <ScrollArea className="h-[200px]">
+                    <div className="p-1">
+                    {filteredOptions.length > 0 ? filteredOptions.map(option => (
+                        <Button 
+                            key={option.id}
+                            variant="ghost" 
+                            className="w-full justify-start h-auto py-2 px-2 text-left"
+                            onClick={() => {
+                                onValueChange(option.id);
+                                setOpen(false);
+                                setSearch('');
+                            }}
+                        >
+                            {option.name}
+                        </Button>
+                    )) : <p className="p-2 text-center text-sm text-muted-foreground">No results found.</p>}
+                    </div>
+                </ScrollArea>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 export default function TimetableManagementPage() {
     const searchParams = useSearchParams();
@@ -93,18 +164,22 @@ export default function TimetableManagementPage() {
                     get(ref(db, 'coursePaths'))
                 ]);
 
+                const list: Semester[] = [];
                 if (semestersSnap.exists()) {
                     const data = semestersSnap.val();
-                    const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+                    Object.keys(data).forEach(key => list.push({ id: key, ...data[key] }));
                     setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
-                    if (!semesterFromParams && list.length > 0) {
-                        setSelectedSemesterId(list[0].id);
-                    }
                 }
 
                 setRooms(roomsSnap.exists() ? Object.values(roomsSnap.val()) : []);
                 setAllCourses(coursesSnap.exists() ? coursesSnap.val() : {});
                 setAllCoursePaths(coursePathsSnap.exists() ? Object.values(coursePathsSnap.val()) : []);
+
+                if (semesterFromParams) {
+                    setSelectedSemesterId(semesterFromParams);
+                } else if (list.length > 0) {
+                    // We'll set the initial selected semester in the useEffect that filters semesters
+                }
 
             } catch (error) {
                 toast({ variant: 'destructive', title: "Failed to load initial data."})
@@ -113,11 +188,27 @@ export default function TimetableManagementPage() {
             }
         };
 
-        if (semesterFromParams) {
-            setSelectedSemesterId(semesterFromParams);
-        }
         fetchData();
     }, [semesterFromParams, toast]);
+
+    // Calculate semesters that actually have courses
+    const semestersWithCourses = React.useMemo(() => {
+        return semesters.filter(sem => {
+            return allCoursePaths.some(path => 
+                path.semesters && 
+                path.semesters[sem.id] && 
+                path.semesters[sem.id].courses && 
+                path.semesters[sem.id].courses.length > 0
+            );
+        });
+    }, [semesters, allCoursePaths]);
+
+    // Set default selected semester if none set
+    React.useEffect(() => {
+        if (!selectedSemesterId && semestersWithCourses.length > 0) {
+            setSelectedSemesterId(semestersWithCourses[0].id);
+        }
+    }, [selectedSemesterId, semestersWithCourses]);
 
     // Filter courses when semester or raw data changes
     React.useEffect(() => {
@@ -139,7 +230,10 @@ export default function TimetableManagementPage() {
             .sort((a, b) => a.name.localeCompare(b.name));
             
         setCoursesForSemester(filtered);
-    }, [selectedSemesterId, allCoursePaths, allCourses]);
+        if (filtered.length > 0 && !selectedCourse) {
+            setSelectedCourse(filtered[0].id);
+        }
+    }, [selectedSemesterId, allCoursePaths, allCourses, selectedCourse]);
 
 
      // Fetch timetable entries for the selected course
@@ -212,97 +306,114 @@ export default function TimetableManagementPage() {
 
 
     return (
-        <Card className="shadow-lg">
-            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between">
-                <div>
-                    <CardTitle className="font-headline text-2xl">Course Timetable Management</CardTitle>
-                    <CardDescription>Create and manage class schedules for each course per semester.</CardDescription>
-                </div>
-                 <Button onClick={handleAutoGenerate} disabled={generating}>
-                    {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>}
-                    Auto-Generate Timetable
-                </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-1">
-                        <Label htmlFor="semester-select">Select Semester</Label>
-                        <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
-                            <SelectTrigger id="semester-select"><SelectValue placeholder="Select a semester..." /></SelectTrigger>
-                            <SelectContent>{semesters.map(s => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
-                        </Select>
+        <div className="space-y-6">
+            <Card className="shadow-lg">
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                        <CardTitle className="font-headline text-2xl">Course Timetable Management</CardTitle>
+                        <CardDescription>Create and manage class schedules for each course per semester.</CardDescription>
                     </div>
-                     <div className="space-y-1">
-                        <Label htmlFor="course-select">Select Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={coursesForSemester.length === 0}>
-                            <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
-                            <SelectContent>{coursesForSemester.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>))}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-
-                <div className="border rounded-lg p-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="font-semibold">Schedule for {coursesForSemester.find(c => c.id === selectedCourse)?.code || '...'}</h3>
-                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                            <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Schedule</Button></DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader><DialogTitle>New Schedule Entry</DialogTitle></DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <Label>Day of Week</Label>
-                                            <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger><SelectContent>{daysOfWeek.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label>Venue</Label>
-                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Select Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                         <div className="space-y-1">
-                                            <Label>Start Time</Label>
-                                            <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
-                                        </div>
-                                         <div className="space-y-1">
-                                            <Label>End Time</Label>
-                                            <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-                                        </div>
-                                    </div>
-                                </div>
-                                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Add Entry</Button></DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                    <Button onClick={handleAutoGenerate} disabled={generating} className="w-full md:w-auto">
+                        {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>}
+                        Auto-Generate Timetable
+                    </Button>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="semester-select">Select Semester</Label>
+                            <SearchableSemesterSelect 
+                                value={selectedSemesterId}
+                                onValueChange={setSelectedSemesterId}
+                                options={semestersWithCourses}
+                                placeholder="Search semesters..."
+                                disabled={loading}
+                            />
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                                <Info className="h-3 w-3" />
+                                <span>Only semesters with courses defined in "Intakes / Course Paths" are shown.</span>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="course-select">Select Course</Label>
+                            <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={coursesForSemester.length === 0}>
+                                <SelectTrigger id="course-select"><SelectValue placeholder="Select a course..." /></SelectTrigger>
+                                <SelectContent>{coursesForSemester.map(c => (<SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>))}</SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
-                    <Table>
-                        <TableHeader><TableRow><TableHead>Day</TableHead><TableHead>Time</TableHead><TableHead>Venue</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            {timetable.length > 0 ? (
-                                timetable.map(entry => (
-                                    <TableRow key={entry.id}>
-                                        <TableCell>{entry.day}</TableCell>
-                                        <TableCell>{entry.startTime} - {entry.endTime}</TableCell>
-                                        <TableCell>{entry.venue}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteEntry(entry.id)}>
-                                                <Trash2 className="h-4 w-4 text-destructive"/>
-                                            </Button>
-                                        </TableCell>
+                    <div className="border rounded-lg p-4 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <h3 className="font-semibold text-lg">Schedule for {coursesForSemester.find(c => c.id === selectedCourse)?.code || '...'}</h3>
+                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Entry</Button></DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader><DialogTitle>New Schedule Entry</DialogTitle></DialogHeader>
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <Label>Day of Week</Label>
+                                                <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger><SelectContent>{daysOfWeek.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label>Venue</Label>
+                                                <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Select Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <Label>Start Time</Label>
+                                                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label>End Time</Label>
+                                                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Add Entry</Button></DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Day</TableHead>
+                                        <TableHead>Time</TableHead>
+                                        <TableHead>Venue</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
                                     </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={4} className="h-24 text-center">
-                                        {loading ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : selectedCourse ? "No schedule set for this course." : "Select a course to view its schedule."}
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-            </CardContent>
-        </Card>
+                                </TableHeader>
+                                <TableBody>
+                                    {timetable.length > 0 ? (
+                                        timetable.map(entry => (
+                                            <TableRow key={entry.id}>
+                                                <TableCell>{entry.day}</TableCell>
+                                                <TableCell>{entry.startTime} - {entry.endTime}</TableCell>
+                                                <TableCell>{entry.venue}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteEntry(entry.id)}>
+                                                        <Trash2 className="h-4 w-4 text-destructive"/>
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-24 text-center">
+                                                {loading ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /> : selectedCourse ? <span className="text-muted-foreground">No manual schedule set for this course.</span> : <span className="text-muted-foreground">Select a course to view its schedule.</span>}
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
     );
 }
-
