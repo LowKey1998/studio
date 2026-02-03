@@ -5,7 +5,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { db } from '@/lib/firebase';
-import { ref, get, set } from 'firebase/database';
+import { ref, get, set, push } from 'firebase/database';
 
 // Define schemas for the inputs and outputs of the AI flow.
 
@@ -91,7 +91,7 @@ const generateTimetableFlow = ai.defineFlow(
   async (input) => {
     const { output } = await generateTimetablePrompt(input);
     if (!output) {
-      throw new Error('Failed to generate timetable from the AI model.');
+      throw new Error('The AI model failed to produce a valid timetable structure. This usually happens if the constraints are too tight or input data is malformed.');
     }
     return output;
   }
@@ -110,19 +110,26 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
       get(ref(db, 'registrations')),
     ]);
 
-    if (!semestersSnap.exists() || !coursesSnap.exists() || !usersSnap.exists() || !roomsSnap.exists() || !regsSnap.exists()) {
-      throw new Error("Missing essential data (semesters, courses, users, rooms, or registrations).");
-    }
+    // Detailed missing data checks
+    if (!semestersSnap.exists()) throw new Error("No semesters found in the database.");
+    if (!coursesSnap.exists()) throw new Error("No courses found in the database. Please add courses first.");
+    if (!usersSnap.exists()) throw new Error("No users found in the database.");
+    if (!roomsSnap.exists()) throw new Error("No rooms found in 'Facilities > Room Management'. You must define venues for classes to be scheduled.");
+    if (!regsSnap.exists()) throw new Error("No student registrations found. The AI requires enrollment data to check for student schedule clashes.");
 
     const allSemesters = semestersSnap.val();
     const allCourses = coursesSnap.val();
     const allRooms = roomsSnap.val();
     const allRegistrations = regsSnap.val();
 
+    if (Object.keys(allRooms).length === 0) {
+        throw new Error("No rooms are currently defined. Please add at least one room in Facilities > Room Management.");
+    }
+
     const activeSemesters = Object.entries(allSemesters).filter(([, sem]: [string, any]) => sem.status === 'Open');
     
     if (activeSemesters.length === 0) {
-        return { message: "No active semesters to generate timetables for." };
+        throw new Error("No active semesters found. Ensure at least one semester has its status set to 'Open' in Registration Management.");
     }
     
     // 2. Prepare input for the AI flow for each active semester
@@ -151,6 +158,10 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
               });
           }
       });
+
+      if (coursesInSemester.length === 0) {
+          throw new Error(`Semester '${semesterData.name}' has no students registered for any courses. Registration must be complete before generating a timetable.`);
+      }
 
       const flowInput: TimetableInput = {
         semesterId,
@@ -187,9 +198,10 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
       await set(timetableRef, newTimetable);
     }
 
-    return { message: `Successfully generated timetables for ${results.length} active semester(s).` };
+    return { message: `Successfully generated conflict-free timetables for ${results.length} active semester(s).` };
   } catch (error: any) {
     console.error("Error in generateFullTimetable:", error);
-    throw new Error(`Failed to generate timetables: ${error.message}`);
+    // Return the specific error message to be displayed in the UI
+    throw new Error(error.message || "An unexpected error occurred during timetable generation.");
   }
 }
