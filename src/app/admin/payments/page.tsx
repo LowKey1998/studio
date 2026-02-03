@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO, isBefore } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -379,13 +379,14 @@ export default function PaymentsManagementPage() {
         try {
             for (const paymentRecord of paymentsToRecord) {
                 if (paymentRecord.isUnlinked) {
-                    const { reference, semesterId, amount, comment } = paymentRecord;
+                    const { reference, semesterId, amount, comment, totalDue } = paymentRecord;
                     const newUnlinkedRef = push(ref(db, 'unlinkedPayments'));
                     await set(newUnlinkedRef, {
                         reference,
                         semesterId,
                         amount: parseFloat(amount),
                         comment,
+                        totalDue: parseFloat(String(totalDue)) || 0,
                         date: new Date().toISOString()
                     });
                 } else {
@@ -449,7 +450,7 @@ export default function PaymentsManagementPage() {
             if (!invoiceId && studentInfo) {
                 const newInvoiceRef = push(ref(db, `invoices/${selectedLinkStudent}`));
                 invoiceId = newInvoiceRef.key!;
-                 await set(newInvoiceRef, { invoiceId, totalTuition: linkingPayment.amount, dateCreated: new Date().toISOString(), semesterId: selectedLinkSemester });
+                 await set(newInvoiceRef, { invoiceId, totalTuition: (linkingPayment as any).totalDue || linkingPayment.amount, dateCreated: new Date().toISOString(), semesterId: selectedLinkSemester });
                  await update(ref(db, `registrations/${selectedLinkStudent}/${selectedLinkSemester}`), { invoiceId });
             }
             if(!invoiceId || !studentInfo) throw new Error("Could not find or create an invoice for this selection.");
@@ -552,13 +553,13 @@ export default function PaymentsManagementPage() {
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Due</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">ZMW {summaryStats.totalDue.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Paid</CardTitle><PiggyBank className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">ZMW {summaryStats.totalPaid.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Balance</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">ZMW {summaryStats.totalBalance.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent></Card>
+                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent>
                     </div>
 
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
                         <div className="flex-1 min-w-[200px]">
                             <Label htmlFor="search">Search Student</Label>
-                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input id="search" placeholder="Search by name or student ID..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
                         </div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="programme-filter">Filter by Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger id="programme-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="flex-1 min-w-[200px]"><Label htmlFor="semester-filter">Filter by Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger id="semester-filter"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
@@ -573,7 +574,7 @@ export default function PaymentsManagementPage() {
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead className="w-[250px]">Student / Reference</TableHead>
-                                                    <TableHead className="w-[250px]">For Semester</TableHead>
+                                                    <TableHead className="w-[250px]">Payment for Semester</TableHead>
                                                     <TableHead>Total Due</TableHead>
                                                     <TableHead className="w-[150px]">Amount Paid</TableHead>
                                                     <TableHead>New Balance</TableHead>
@@ -588,7 +589,6 @@ export default function PaymentsManagementPage() {
                                                     const newBalance = totalDueForCalc - amountPaid;
                                                     const studentForThisRow = allStudents.find(s => s.uid === row.userId);
                                                     
-                                                    // Calculate options without using a hook inside the loop
                                                     let semesterOptions: OptionGroup[] = [];
                                                     if (row.isUnlinked) {
                                                         const groupedByIntake: Record<string, Semester[]> = semesters.reduce((acc, sem) => {
@@ -615,8 +615,6 @@ export default function PaymentsManagementPage() {
                                                         }];
                                                     }
 
-                                                    const isDueEditable = row.isUnlinked || !row.userId || !row.semesterId;
-
                                                     return (
                                                     <TableRow key={row.key}>
                                                         <TableCell>
@@ -628,7 +626,7 @@ export default function PaymentsManagementPage() {
                                                             />
                                                             {row.isUnlinked && (
                                                                 <Input
-                                                                    placeholder="Enter Reference for unlinked payment"
+                                                                    placeholder="Enter Reference"
                                                                     value={row.reference || ''}
                                                                     onChange={(e) => handleBulkPaymentRowChange(row.key, 'reference', e.target.value)}
                                                                     className="mt-2"
@@ -647,10 +645,10 @@ export default function PaymentsManagementPage() {
                                                         <TableCell>
                                                             <Input 
                                                                 type="number" 
-                                                                placeholder={isDueEditable ? "Enter amount" : "Auto-filled"}
+                                                                placeholder="Enter amount"
                                                                 value={row.totalDue ?? ''} 
                                                                 onChange={(e) => handleBulkPaymentRowChange(row.key, 'totalDue', e.target.value)} 
-                                                                disabled={formLoading || !isDueEditable}
+                                                                disabled={formLoading}
                                                             />
                                                         </TableCell>
                                                         <TableCell><Input type="number" placeholder="0.00" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} disabled={!row.semesterId} /></TableCell>

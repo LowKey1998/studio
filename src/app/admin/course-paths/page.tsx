@@ -657,7 +657,7 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
                         <Label htmlFor="target-semester">Target Semester</Label>
                         <Select value={targetSemester} onValueChange={setTargetSemester}>
                             <SelectTrigger id="target-semester"><SelectValue placeholder="Select semester to add to..." /></SelectTrigger>
-                            <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name}</SelectItem>))}</SelectContent>
+                            <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name.split(' ').slice(-2).join(' ')}</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
                      <Button onClick={onLoadCourses} size="sm" className="w-full">Load Courses</Button>
