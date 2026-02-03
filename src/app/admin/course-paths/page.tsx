@@ -597,8 +597,8 @@ function SemesterColumn({ semester, courses, currentPath, onHistoryClick, onDele
 
     return (
         <div ref={setNodeRef} className="space-y-2 p-2 border rounded-lg min-h-[150px] bg-muted/50">
-             <div className="flex justify-between items-center">
-                <h3 className="font-bold text-center">{semester.name.split(' ').slice(-2).join(' ')}</h3>
+             <div className="flex justify-between items-center px-1">
+                <h3 className="font-bold text-sm truncate">{semester.name.split(' ').slice(-2).join(' ')}</h3>
                 <div className="flex items-center gap-1">
                     {historyItems.length > 0 && (
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryClick(historyItems)}>
