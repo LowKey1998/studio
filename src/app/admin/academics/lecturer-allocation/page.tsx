@@ -8,9 +8,9 @@ import { ref, update, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Search, X, ChevronDown } from 'lucide-react';
+import { Search, X, ChevronDown, UserMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import type { CoursePath } from '@/app/admin/course-paths/page';
 
 type Course = {
@@ -139,6 +139,19 @@ export default function LecturerAllocationPage() {
         }
     };
 
+    const handleClearAssignments = async (courseId: string) => {
+        try {
+            await update(ref(db, `courses/${courseId}`), { lecturerIds: null });
+            setCourses(prevCourses => prevCourses.map(c => 
+                c.id === courseId ? { ...c, lecturerIds: [] } : c
+            ));
+            toast({ title: "Assignments Cleared" });
+        } catch (error) {
+            console.error(error);
+            toast({ variant: 'destructive', title: "Clear Failed" });
+        }
+    };
+
     const filteredCourses = courses.filter(course =>
         course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         course.code.toLowerCase().includes(searchTerm.toLowerCase())
@@ -195,7 +208,22 @@ export default function LecturerAllocationPage() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent className="w-[280px]">
-                                            {lecturers.map(lec => (
+                                            {course.lecturerIds && course.lecturerIds.length > 0 && (
+                                                <>
+                                                    <DropdownMenuItem 
+                                                        className="text-destructive focus:text-destructive font-medium"
+                                                        onSelect={(e) => {
+                                                            e.preventDefault();
+                                                            handleClearAssignments(course.id);
+                                                        }}
+                                                    >
+                                                        <UserMinus className="mr-2 h-4 w-4" />
+                                                        Unassign All
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                </>
+                                            )}
+                                            {lecturers.length > 0 ? lecturers.map(lec => (
                                                 <DropdownMenuCheckboxItem
                                                     key={lec.uid}
                                                     checked={course.lecturerIds?.includes(lec.uid)}
@@ -204,8 +232,9 @@ export default function LecturerAllocationPage() {
                                                 >
                                                     {lec.name}
                                                 </DropdownMenuCheckboxItem>
-                                            ))}
-                                            {lecturers.length === 0 && <TableCell>No lecturers found</TableCell>}
+                                            )) : (
+                                                <div className="p-2 text-sm text-muted-foreground text-center">No lecturers found</div>
+                                            )}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </TableCell>
