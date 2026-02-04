@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -171,13 +171,15 @@ export default function SettingsPage() {
             <Card id="integrations" className="shadow-lg">
                 <CardHeader><CardTitle className="font-headline text-2xl">API Integrations</CardTitle><CardDescription>Manage third-party software integrations.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
-                    <Alert variant="default">
-                        <AlertCircle className="h-4 w-4"/>
-                        <AlertTitle>Developer Note</AlertTitle>
-                        <AlertDescription>
-                            The integration flows are currently simulators. The credentials below are stored but not yet used for live API calls.
-                        </AlertDescription>
-                    </Alert>
+                    <div className="bg-yellow-50 border-2 border-orange-500 rounded-lg p-4 flex gap-3 items-start">
+                        <Info className="h-5 w-5 text-orange-600 mt-0.5" />
+                        <div>
+                            <h4 className="font-bold text-orange-800">Developer Note: Simulation Mode</h4>
+                            <p className="text-orange-700 text-sm">
+                                The integration flows are currently simulators. The credentials below are stored in your database but are not yet used for live API calls.
+                            </p>
+                        </div>
+                    </div>
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
                         <Label className="pt-2">QuickBooks</Label>
                         <div className="sm:col-span-2 space-y-2">
@@ -235,7 +237,7 @@ export default function SettingsPage() {
 
             <div className="flex justify-end">
                 <Button type="submit" disabled={saving || loading}>
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2"/>} Save All Changes
+                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save All Changes
                 </Button>
             </div>
             
