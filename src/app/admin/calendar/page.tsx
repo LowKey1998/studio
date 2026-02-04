@@ -167,7 +167,7 @@ export default function AdminCalendarPage() {
          for (let i = 1; i <= plan.installments; i++) {
             required.push(`${plan.name} (${getOrdinalSuffix(i)} Installment) Deadline - ${deadlineSemester}`);
         }
-    })
+    });
     
     const requiredWithStatus = required.map(title => {
         const existing = events.find(e => e.title.trim() === title.trim()) || null;
@@ -290,7 +290,7 @@ export default function AdminCalendarPage() {
     const doc = new jsPDF();
     doc.setFontSize(18); doc.text('Academic Calendar', 14, 22);
     const tableColumn = ["Date", "Event"];
-    const tableRows = filteredEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(event => [format(parseISO(event.date), 'MMM dd, yyyy'), event.title]);
+    const tableRows = [...filteredEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(event => [format(parseISO(event.date), 'MMM dd, yyyy'), event.title]);
     (doc as any).autoTable({ head: [tableColumn], body: tableRows, startY: 30 });
     doc.save('academic-calendar.pdf');
   };
@@ -344,7 +344,20 @@ export default function AdminCalendarPage() {
                                 <Input id={`title-${index}`} placeholder="e.g., Final Tuition Due" value={event.title} onChange={e => handleEventChange(index, 'title', e.target.value)} disabled={formLoading} />
                             </div>
                             <div className='w-full grid grid-cols-2 gap-2'>
-                                <div className="space-y-1"><Label htmlFor={`date-${index}`} className="text-xs">Date</Label><Popover><PopoverTrigger asChild><Button id={`date-${index}`} variant={'outline'} className={cn('w-full justify-start text-left font-normal', !event.date && 'text-muted-foreground')} disabled={formLoading}><CalendarIcon className="mr-2 h-4 w-4" />{event.date ? format(event.date, 'PPP') : <span>Pick a date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={event.date} onSelect={(date) => handleEventChange(index, 'date', date)} initialFocus /></PopoverContent></Popover></div>
+                                <div className="space-y-1">
+                                    <Label htmlFor={`date-${index}`} className="text-xs">Date</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button id={`date-${index}`} variant={'outline'} className={cn('w-full justify-start text-left font-normal', !event.date && 'text-muted-foreground')} disabled={formLoading}>
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {event.date ? format(event.date, 'PPP') : <span>Pick a date</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                            <Calendar mode="single" selected={event.date} onSelect={(date) => handleEventChange(index, 'date', date)} initialFocus />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                                 <div className="space-y-1">
                                     <Label htmlFor={`semester-${index}`} className="text-xs">Semester (Optional)</Label>
                                     <Select value={event.semester} onValueChange={value => handleEventChange(index, 'semester', value)}>
@@ -365,17 +378,63 @@ export default function AdminCalendarPage() {
                     ))}
                     <Button type="button" variant="outline" onClick={handleAddEventField} disabled={formLoading}><Plus className="mr-2 h-4 w-4" /> Add Another</Button>
                   </div>
-                  <DialogFooter className="pt-4"><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add Events'}</Button></form>
+                  <DialogFooter className="pt-4">
+                    <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                    <Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add Events'}</Button>
+                  </DialogFooter>
+                </form>
               </DialogContent>
             </Dialog>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-6 md:flex-row">
           <div className="flex justify-center rounded-md border p-4">
-            {loading ? <Skeleton className="h-[250px] w-[280px]" /> : (<Popover open={popoverOpen} onOpenChange={setPopoverOpen}><PopoverTrigger asChild><div><Calendar mode="single" selected={selectedDay} onSelect={handleDateSelect} modifiers={{ highlighted: eventDates, holiday: holidayDates }} modifiersClassNames={{highlighted: 'bg-primary/20 text-primary rounded-full', holiday: 'bg-destructive/20 text-destructive rounded-full'}} className="p-0"/></div></PopoverTrigger>{selectedDay && (<PopoverContent className="w-80"><div className="grid gap-4"><div className="space-y-2"><h4 className="font-medium leading-none">Events on {format(selectedDay, 'PPP')}</h4><div className="space-y-1">{eventsOnSelectedDay.length > 0 ? (eventsOnSelectedDay.map(event => (<p key={event.id} className={cn("text-sm", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</p>))) : (<p className="text-sm text-muted-foreground">No events for this day.</p>)}</div></div><Button onClick={() => handleAddFromPopover(selectedDay)}><Plus className="mr-2 h-4 w-4" /> Add Another Event</Button></div></PopoverContent>)}</Popover>)}
+            {loading ? <Skeleton className="h-[250px] w-[280px]" /> : (
+                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                    <PopoverTrigger asChild>
+                        <div>
+                            <Calendar 
+                                mode="single" 
+                                selected={selectedDay} 
+                                onSelect={handleDateSelect} 
+                                modifiers={{ highlighted: eventDates, holiday: holidayDates }} 
+                                modifiersClassNames={{highlighted: 'bg-primary/20 text-primary rounded-full', holiday: 'bg-destructive/20 text-destructive rounded-full'}} 
+                                className="p-0"
+                            />
+                        </div>
+                    </PopoverTrigger>
+                    {selectedDay && (
+                        <PopoverContent className="w-80">
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Events on {format(selectedDay, 'PPP')}</h4>
+                                    <div className="space-y-1">
+                                        {eventsOnSelectedDay.length > 0 ? (
+                                            eventsOnSelectedDay.map(event => (
+                                                <p key={event.id} className={cn("text-sm", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</p>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No events for this day.</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <Button onClick={() => handleAddFromPopover(selectedDay)}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add Another Event
+                                </Button>
+                            </div>
+                        </PopoverContent>
+                    )}
+                </Popover>
+            )}
           </div>
           <div className="flex-1 space-y-4">
-             <div className="flex items-center justify-between"><h3 className="font-headline text-lg font-semibold">{showAllEvents ? 'All Events' : `Events for ${deadlineSemester}`}</h3><div className="flex items-center space-x-2"><Switch id="show-all" checked={showAllEvents} onCheckedChange={setShowAllEvents} /><Label htmlFor="show-all">{showAllEvents ? <Eye className="h-4 w-4"/> : <EyeOff className="h-4 w-4"/>}</Label></div></div>
+             <div className="flex items-center justify-between">
+                <h3 className="font-headline text-lg font-semibold">{showAllEvents ? 'All Events' : `Events for ${deadlineSemester}`}</h3>
+                <div className="flex items-center space-x-2">
+                    <Switch id="show-all" checked={showAllEvents} onCheckedChange={setShowAllEvents} />
+                    <Label htmlFor="show-all">{showAllEvents ? <Eye className="h-4 w-4"/> : <EyeOff className="h-4 w-4"/>}</Label>
+                </div>
+            </div>
             <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search events..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -450,7 +509,7 @@ export default function AdminCalendarPage() {
                                     )
                                 ) : (
                                      <Button onClick={() => handleSaveDeadline(title)} disabled={formLoading || !deadlineDates[title]}>
-                                        {formLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : "Add"}
+                                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Add"}
                                     </Button>
                                 )}
                             </div>
