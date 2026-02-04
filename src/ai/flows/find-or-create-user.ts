@@ -20,6 +20,8 @@ const FindOrCreateUserInputSchema = z.object({
   password: z.string().optional().describe("The user's initial password. Required if the user doesn't exist."),
   phoneNumber: z.string().optional().describe("The user's phone number."),
   role: z.enum(['Student', 'Staff', 'Admin']).describe("The user's primary role."),
+  subRoles: z.array(z.string()).optional().describe("Optional sub-roles for staff members."),
+  department: z.string().optional().describe("The department assigned to the user."),
   intakeId: z.string().optional().describe("The ID of the intake for students."),
   programmeId: z.string().optional().describe("The ID of the programme for students."),
   year: z.number().optional().describe("The year of study for students."),
@@ -100,6 +102,8 @@ const findOrCreateUserFlow = ai.defineFlow(
         email: userData.email,
         phoneNumber: userData.phoneNumber || '',
         role: userData.role,
+        subRoles: userData.subRoles || [],
+        department: userData.department || null,
         intakeId: userData.intakeId || null,
         programmeId: userData.programmeId || null,
         year: userData.year || null,
@@ -114,6 +118,9 @@ const findOrCreateUserFlow = ai.defineFlow(
         guardian: userData.guardian || {},
         status: 'active',
     });
+
+    // Save mapping for dashboard RBAC
+    await set(ref(db, `userRoles/${authUser.uid}`), { role: userData.role.toLowerCase() });
 
     // Send welcome email only if a new auth user was created
     if (!userExistsInAuth && password) {

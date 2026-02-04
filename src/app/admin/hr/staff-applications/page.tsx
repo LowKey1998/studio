@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -17,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type StaffApplication = {
     id: string;
@@ -36,16 +37,23 @@ type StaffApplication = {
     status: 'Pending' | 'Approved' | 'Rejected';
 };
 
+type SubRole = {
+    id: string;
+    name: string;
+};
+
 export default function StaffApplicationsPage() {
     const [applications, setApplications] = React.useState<StaffApplication[]>([]);
+    const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchTerm, setSearchTerm] = React.useState('');
     const { toast } = useToast();
 
-    // Dialog State
+    // Dialog States
     const [viewingApp, setViewingApp] = React.useState<StaffApplication | null>(null);
     const [editingApp, setEditingApp] = React.useState<StaffApplication | null>(null);
+    const [approvingApp, setApprovingApp] = React.useState<StaffApplication | null>(null);
     
     // Edit Form State
     const [editName, setEditName] = React.useState('');
@@ -53,8 +61,13 @@ export default function StaffApplicationsPage() {
     const [editPhone, setEditPhone] = React.useState('');
     const [editDept, setEditDept] = React.useState('');
 
+    // Approval State
+    const [selectedSubRoleIds, setSelectedSubRoleIds] = React.useState<string[]>([]);
+
     React.useEffect(() => {
         const appsRef = ref(db, 'staffApplications');
+        const subRolesRef = ref(db, 'settings/subRoles');
+
         const unsub = onValue(appsRef, (snapshot) => {
             if (snapshot.exists()) {
                 setApplications(Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.appliedAt.localeCompare(a.appliedAt)));
@@ -63,7 +76,14 @@ export default function StaffApplicationsPage() {
             }
             setLoading(false);
         });
-        return () => unsub();
+
+        const unsubRoles = onValue(subRolesRef, (snapshot) => {
+            if (snapshot.exists()) {
+                setAvailableSubRoles(Object.entries(snapshot.val()).map(([id, data]: [string, any]) => ({ id, name: data.name })));
+            }
+        });
+
+        return () => { unsub(); unsubRoles(); };
     }, []);
 
     const handleCopyLink = () => {
@@ -72,32 +92,36 @@ export default function StaffApplicationsPage() {
         toast({ title: 'Link Copied!', description: 'You can now share this registration link with potential staff.' });
     };
 
-    const handleApprove = async (app: StaffApplication) => {
-        if (!window.confirm(`Approve ${app.name}? This will create a staff account and send credentials.`)) return;
+    const handleConfirmApproval = async () => {
+        if (!approvingApp) return;
+        
+        const app = approvingApp;
         setActionLoading(app.id);
         try {
             const password = Math.random().toString(36).slice(-10);
             
-            // Logic for converting application to user record
             await findOrCreateUser({
-                id: `STF-AUTO-${Date.now().toString().slice(-4)}`,
+                id: `STF-${Date.now().toString().slice(-6)}`,
                 name: app.name,
                 email: app.email,
                 password: password,
                 phoneNumber: app.phone,
                 role: 'Staff',
                 department: app.department,
+                subRoles: selectedSubRoleIds,
                 dob: app.dob,
                 gender: app.gender,
                 nationalId: app.nationalId,
                 passport: app.passport,
                 address: app.address,
-                nationality: '', // placeholder
-                guardian: {}, // placeholder for staff consistency
+                nationality: '', 
+                guardian: {}, 
             });
 
             await remove(ref(db, `staffApplications/${app.id}`));
             toast({ title: 'Application Approved!', description: 'Staff account created and email sent.' });
+            setApprovingApp(null);
+            setSelectedSubRoleIds([]);
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Approval Failed', description: error.message });
         } finally {
@@ -109,6 +133,12 @@ export default function StaffApplicationsPage() {
         if (!window.confirm("Reject this application?")) return;
         await remove(ref(db, `staffApplications/${appId}`));
         toast({ title: 'Application Rejected' });
+    };
+
+    const handleSubRoleToggle = (roleId: string) => {
+        setSelectedSubRoleIds(prev => 
+            prev.includes(roleId) ? prev.filter(id => id !== roleId) : [...prev, roleId]
+        );
     };
 
     const filteredApps = applications.filter(a => 
@@ -154,17 +184,17 @@ export default function StaffApplicationsPage() {
                                     <TableCell>{app.department}</TableCell>
                                     <TableCell>{format(new Date(app.appliedAt), 'PPP')}</TableCell>
                                     <TableCell className="text-right space-x-2">
-                                        <Button variant="ghost" size="icon" onClick={() => setViewingApp(app)}><Eye className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" onClick={() => setViewingApp(app)} title="View Full Details"><Eye className="h-4 w-4"/></Button>
                                         <Button variant="ghost" size="icon" onClick={() => {
                                             setEditingApp(app);
                                             setEditName(app.name);
                                             setEditEmail(app.email);
                                             setEditPhone(app.phone);
                                             setEditDept(app.department);
-                                        }}><Pencil className="h-4 w-4"/></Button>
-                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleReject(app.id)}><X className="h-4 w-4"/></Button>
-                                        <Button size="sm" onClick={() => handleApprove(app)} disabled={!!actionLoading}>
-                                            {actionLoading === app.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserCheck className="mr-2 h-4 w-4" />}
+                                        }} title="Edit Application"><Pencil className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleReject(app.id)} title="Reject Application"><X className="h-4 w-4"/></Button>
+                                        <Button size="sm" onClick={() => setApprovingApp(app)}>
+                                            <UserCheck className="mr-2 h-4 w-4" />
                                             Approve
                                         </Button>
                                     </TableCell>
@@ -199,7 +229,48 @@ export default function StaffApplicationsPage() {
                     )}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setViewingApp(null)}>Close</Button>
-                        <Button onClick={() => { if(viewingApp) handleApprove(viewingApp); setViewingApp(null); }}>Approve Application</Button>
+                        <Button onClick={() => { if(viewingApp) setApprovingApp(viewingApp); setViewingApp(null); }}>Proceed to Approval</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!approvingApp} onOpenChange={() => setApprovingApp(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Approve {approvingApp?.name}</DialogTitle>
+                        <DialogDescription>Select the sub-roles this staff member should have before creating their account.</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-bold">Assigned Department</Label>
+                            <p className="text-sm">{approvingApp?.department}</p>
+                        </div>
+                        <Separator />
+                        <div className="space-y-2">
+                            <Label className="text-sm font-bold">Assign Sub-Roles</Label>
+                            <ScrollArea className="h-48 rounded-md border p-2 bg-muted/20">
+                                <div className="space-y-2">
+                                    {availableSubRoles.map(role => (
+                                        <div key={role.id} className="flex items-center space-x-2 p-1 hover:bg-muted rounded transition-colors">
+                                            <Checkbox 
+                                                id={`role-${role.id}`} 
+                                                checked={selectedSubRoleIds.includes(role.id)} 
+                                                onCheckedChange={() => handleSubRoleToggle(role.id)}
+                                            />
+                                            <Label htmlFor={`role-${role.id}`} className="flex-1 cursor-pointer text-sm">{role.name}</Label>
+                                        </div>
+                                    ))}
+                                    {availableSubRoles.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No sub-roles defined in Access Rules.</p>}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setApprovingApp(null)}>Cancel</Button>
+                        <Button onClick={handleConfirmApproval} disabled={!!actionLoading}>
+                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserCheck className="mr-2 h-4 w-4" />}
+                            Confirm & Create Account
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
