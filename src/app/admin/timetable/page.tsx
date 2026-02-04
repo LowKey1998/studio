@@ -329,9 +329,15 @@ export default function TimetableManagementPage() {
                                 placeholder="Search semesters..."
                                 disabled={loading}
                             />
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                                <Info className="h-3 w-3" />
-                                <span>Only semesters with courses defined in "Intakes / Course Paths" are shown.</span>
+                            
+                            <div className="bg-yellow-50 border-2 border-orange-500 rounded-lg p-4 flex gap-3 items-start mt-4">
+                                <Info className="h-5 w-5 text-orange-600 mt-0.5" />
+                                <div>
+                                    <h4 className="font-bold text-orange-800">Semester Filtering</h4>
+                                    <p className="text-orange-700 text-sm">
+                                        Only semesters with courses defined in <strong>Intakes / Course Paths</strong> are shown. If a semester is missing, ensure it has courses mapped to it first.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -346,7 +352,7 @@ export default function TimetableManagementPage() {
                     <div className="border rounded-lg p-4 space-y-4">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <h3 className="font-semibold text-lg">Schedule for {coursesForSemester.find(c => c.id === selectedCourse)?.code || '...'}</h3>
-                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
                                 <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Entry</Button></DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader><DialogTitle>New Schedule Entry</DialogTitle></DialogHeader>
