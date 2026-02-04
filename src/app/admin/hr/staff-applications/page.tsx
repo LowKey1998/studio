@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Check, X, Pencil, Search, Copy, UserCheck } from "lucide-react";
+import { Loader2, Check, X, Pencil, Search, Copy, UserCheck, Eye, Info } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, onValue, remove, get, update } from 'firebase/database';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
@@ -15,6 +15,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 type StaffApplication = {
     id: string;
@@ -23,6 +25,13 @@ type StaffApplication = {
     phone: string;
     department: string;
     bio: string;
+    dob?: string;
+    gender?: string;
+    nationalId?: string;
+    passport?: string;
+    address?: string;
+    previousEmployer?: string;
+    qualifications?: string;
     appliedAt: string;
     status: 'Pending' | 'Approved' | 'Rejected';
 };
@@ -34,8 +43,11 @@ export default function StaffApplicationsPage() {
     const [searchTerm, setSearchTerm] = React.useState('');
     const { toast } = useToast();
 
-    // Edit Dialog State
+    // Dialog State
+    const [viewingApp, setViewingApp] = React.useState<StaffApplication | null>(null);
     const [editingApp, setEditingApp] = React.useState<StaffApplication | null>(null);
+    
+    // Edit Form State
     const [editName, setEditName] = React.useState('');
     const [editEmail, setEditEmail] = React.useState('');
     const [editPhone, setEditPhone] = React.useState('');
@@ -61,21 +73,27 @@ export default function StaffApplicationsPage() {
     };
 
     const handleApprove = async (app: StaffApplication) => {
-        if (!window.confirm(`Approve ${app.name}? This will create a staff account and send them login credentials.`)) return;
+        if (!window.confirm(`Approve ${app.name}? This will create a staff account and send credentials.`)) return;
         setActionLoading(app.id);
         try {
             const password = Math.random().toString(36).slice(-10);
             
-            // Generate Staff ID (Simplified here, usually flows handle this)
-            const staffId = `STF-AUTO-${Date.now().toString().slice(-4)}`;
-
+            // Logic for converting application to user record
             await findOrCreateUser({
-                id: staffId,
+                id: `STF-AUTO-${Date.now().toString().slice(-4)}`,
                 name: app.name,
                 email: app.email,
                 password: password,
                 phoneNumber: app.phone,
                 role: 'Staff',
+                department: app.department,
+                dob: app.dob,
+                gender: app.gender,
+                nationalId: app.nationalId,
+                passport: app.passport,
+                address: app.address,
+                nationality: '', // placeholder
+                guardian: {}, // placeholder for staff consistency
             });
 
             await remove(ref(db, `staffApplications/${app.id}`));
@@ -88,7 +106,7 @@ export default function StaffApplicationsPage() {
     };
 
     const handleReject = async (appId: string) => {
-        if (!window.confirm("Reject this application? It will be permanently removed.")) return;
+        if (!window.confirm("Reject this application?")) return;
         await remove(ref(db, `staffApplications/${appId}`));
         toast({ title: 'Application Rejected' });
     };
@@ -104,8 +122,8 @@ export default function StaffApplicationsPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle className="text-2xl font-headline">Staff Registration Links & Applications</CardTitle>
-                        <CardDescription>Manage the staff self-registration process. Verify and approve applicants before creating their accounts.</CardDescription>
+                        <CardTitle className="text-2xl font-headline">Pending Staff Applications</CardTitle>
+                        <CardDescription>Verify and approve applicants who self-registered via the public portal.</CardDescription>
                     </div>
                     <Button onClick={handleCopyLink} variant="outline"><Copy className="mr-2 h-4 w-4" /> Copy Registration Link</Button>
                 </CardHeader>
@@ -136,6 +154,7 @@ export default function StaffApplicationsPage() {
                                     <TableCell>{app.department}</TableCell>
                                     <TableCell>{format(new Date(app.appliedAt), 'PPP')}</TableCell>
                                     <TableCell className="text-right space-x-2">
+                                        <Button variant="ghost" size="icon" onClick={() => setViewingApp(app)}><Eye className="h-4 w-4"/></Button>
                                         <Button variant="ghost" size="icon" onClick={() => {
                                             setEditingApp(app);
                                             setEditName(app.name);
@@ -150,15 +169,44 @@ export default function StaffApplicationsPage() {
                                         </Button>
                                     </TableCell>
                                 </TableRow>
-                             )) : <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No pending staff applications found.</TableCell></TableRow>}
+                             )) : <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No pending applications.</TableCell></TableRow>}
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
 
+            <Dialog open={!!viewingApp} onOpenChange={() => setViewingApp(null)}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader><DialogTitle>Application Details</DialogTitle></DialogHeader>
+                    {viewingApp && (
+                        <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div><Label className="text-xs text-muted-foreground">Full Name</Label><p className="font-medium">{viewingApp.name}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">Department</Label><p className="font-medium">{viewingApp.department}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">Email</Label><p className="font-medium">{viewingApp.email}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">Phone</Label><p className="font-medium">{viewingApp.phone}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">DOB</Label><p className="font-medium">{viewingApp.dob || 'N/A'}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">Gender</Label><p className="font-medium capitalize">{viewingApp.gender || 'N/A'}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">National ID</Label><p className="font-medium">{viewingApp.nationalId || 'N/A'}</p></div>
+                                <div><Label className="text-xs text-muted-foreground">Passport</Label><p className="font-medium">{viewingApp.passport || 'N/A'}</p></div>
+                            </div>
+                            <Separator/>
+                            <div><Label className="text-xs text-muted-foreground">Residential Address</Label><p className="text-sm">{viewingApp.address || 'N/A'}</p></div>
+                            <div><Label className="text-xs text-muted-foreground">Previous Employer / School</Label><p className="text-sm font-medium">{viewingApp.previousEmployer || 'N/A'}</p></div>
+                            <div><Label className="text-xs text-muted-foreground">Qualifications</Label><p className="text-sm whitespace-pre-wrap">{viewingApp.qualifications || 'N/A'}</p></div>
+                            <div><Label className="text-xs text-muted-foreground">Professional Summary</Label><p className="text-sm bg-muted p-3 rounded-md italic">{viewingApp.bio || 'No bio provided.'}</p></div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setViewingApp(null)}>Close</Button>
+                        <Button onClick={() => { if(viewingApp) handleApprove(viewingApp); setViewingApp(null); }}>Approve Application</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={!!editingApp} onOpenChange={() => setEditingApp(null)}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Edit Applicant Details</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Edit Applicant Basics</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1"><Label>Name</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
                         <div className="space-y-1"><Label>Email</Label><Input value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
@@ -170,10 +218,7 @@ export default function StaffApplicationsPage() {
                         <Button onClick={async () => {
                             if(!editingApp) return;
                             await update(ref(db, `staffApplications/${editingApp.id}`), {
-                                name: editName,
-                                email: editEmail,
-                                phone: editPhone,
-                                department: editDept
+                                name: editName, email: editEmail, phone: editPhone, department: editDept
                             });
                             toast({ title: 'Application Updated' });
                             setEditingApp(null);
