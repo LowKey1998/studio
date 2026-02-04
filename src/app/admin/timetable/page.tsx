@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -177,8 +176,6 @@ export default function TimetableManagementPage() {
 
                 if (semesterFromParams) {
                     setSelectedSemesterId(semesterFromParams);
-                } else if (list.length > 0) {
-                    // We'll set the initial selected semester in the useEffect that filters semesters
                 }
 
             } catch (error) {
@@ -230,10 +227,12 @@ export default function TimetableManagementPage() {
             .sort((a, b) => a.name.localeCompare(b.name));
             
         setCoursesForSemester(filtered);
-        if (filtered.length > 0 && !selectedCourse) {
+        if (filtered.length > 0) {
             setSelectedCourse(filtered[0].id);
+        } else {
+            setSelectedCourse('');
         }
-    }, [selectedSemesterId, allCoursePaths, allCourses, selectedCourse]);
+    }, [selectedSemesterId, allCoursePaths, allCourses]);
 
 
      // Fetch timetable entries for the selected course
@@ -352,7 +351,7 @@ export default function TimetableManagementPage() {
                     <div className="border rounded-lg p-4 space-y-4">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <h3 className="font-semibold text-lg">Schedule for {coursesForSemester.find(c => c.id === selectedCourse)?.code || '...'}</h3>
-                            <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
+                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                                 <DialogTrigger asChild><Button disabled={!selectedCourse}><PlusCircle className="mr-2 h-4 w-4"/> Add Entry</Button></DialogTrigger>
                                 <DialogContent>
                                     <DialogHeader><DialogTitle>New Schedule Entry</DialogTitle></DialogHeader>
