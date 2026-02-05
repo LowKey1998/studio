@@ -23,10 +23,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield, CheckSquare, Square } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/tabs';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -190,6 +190,9 @@ export default function UserManagementPage() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
     
+    // Selection state
+    const [selectedUids, setSelectedUids] = React.useState<Set<string>>(new Set());
+
     // Messaging dialog
     const [isMessageOpen, setIsMessageOpen] = React.useState(false);
     const [messagingUser, setMessagingUser] = React.useState<User | null>(null);
@@ -208,6 +211,7 @@ export default function UserManagementPage() {
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [settingPassword, setSettingPassword] = React.useState(false);
+    const [isBulkPasswordMode, setIsBulkPasswordMode] = React.useState(false);
 
 
     const [loading, setLoading] = React.useState(false);
@@ -575,8 +579,8 @@ export default function UserManagementPage() {
             setIsMessageOpen(false);
             setMessageBody('');
             setMessageSubject('');
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Failed to Send', description: error.message });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Failed to Send', description: error instanceof Error ? error.message : 'Unknown error' });
         } finally {
             setSendingMessage(false);
         }
@@ -626,26 +630,58 @@ The Administration
     };
     
     const handleSetPassword = async () => {
-        if (!settingPasswordUser || !newPassword) {
+        if ((!isBulkPasswordMode && !settingPasswordUser) || !newPassword) {
             toast({ variant: 'destructive', title: 'Please enter a new password.' });
             return;
         }
         setSettingPassword(true);
         try {
-            const result = await setUserPassword({ uid: settingPasswordUser.uid, newPassword });
-            if (result.success) {
-                toast({ title: 'Success', description: result.message });
-                setIsSetPasswordOpen(false);
-                setNewPassword('');
-            } else {
-                throw new Error(result.message);
+            if (isBulkPasswordMode) {
+                const uids = Array.from(selectedUids);
+                let success = 0;
+                for (const uid of uids) {
+                    try {
+                        await setUserPassword({ uid, newPassword });
+                        success++;
+                    } catch (e) {
+                        console.error(`Failed to set password for ${uid}:`, e);
+                    }
+                }
+                toast({ title: 'Bulk Password Reset Complete', description: `Successfully updated ${success} of ${uids.length} users.` });
+                setSelectedUids(new Set());
+            } else if (settingPasswordUser) {
+                const result = await setUserPassword({ uid: settingPasswordUser.uid, newPassword });
+                if (result.success) {
+                    toast({ title: 'Success', description: result.message });
+                } else {
+                    throw new Error(result.message);
+                }
             }
+            setIsSetPasswordOpen(false);
+            setNewPassword('');
         } catch (error: any) {
              toast({ variant: 'destructive', title: 'Update Failed', description: error.message });
         } finally {
             setSettingPassword(false);
         }
     }
+
+    const toggleSelectUser = (uid: string) => {
+        setSelectedUids(prev => {
+            const next = new Set(prev);
+            if (next.has(uid)) next.delete(uid);
+            else next.add(uid);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedUids.size === filteredUsers.length) {
+            setSelectedUids(new Set());
+        } else {
+            setSelectedUids(new Set(filteredUsers.map(u => u.uid)));
+        }
+    };
 
 
     const filteredUsers = React.useMemo(() => {
@@ -788,7 +824,7 @@ The Administration
                                                 <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
                                             </div>
                                             <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
-                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
+                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMessageBody(e.target.value)} /></div>
                                         </AccordionContent>
                                     </AccordionItem>)}
                                 </Accordion>
@@ -804,15 +840,47 @@ The Administration
             <Tabs value={roleFilter} onValueChange={setRoleFilter}><TabsList><TabsTrigger value="All">All</TabsTrigger><TabsTrigger value="Admin">Admin</TabsTrigger><TabsTrigger value="Staff">Staff</TabsTrigger><TabsTrigger value="Student">Student</TabsTrigger></TabsList></Tabs>
         </div>
       </CardHeader>
-      <CardContent><Table><TableHeader><TableRow><TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+      <CardContent>
+        {selectedUids.size > 0 && (
+            <div className="mb-4 flex items-center justify-between p-2 rounded-lg bg-primary/5 border border-primary/20 animate-in fade-in slide-in-from-top-2">
+                <p className="text-sm font-medium">{selectedUids.size} user(s) selected</p>
+                <div className="flex gap-2">
+                    <Button 
+                        size="sm" 
+                        variant="secondary"
+                        onClick={() => {
+                            setIsBulkPasswordMode(true);
+                            setIsSetPasswordOpen(true);
+                        }}
+                    >
+                        <Shield className="mr-2 h-4 w-4"/> Set Password
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedUids(new Set())}>Cancel</Button>
+                </div>
+            </div>
+        )}
+        <Table><TableHeader><TableRow>
+            <TableHead className="w-[50px]">
+                <Checkbox 
+                    checked={selectedUids.size === filteredUsers.length && filteredUsers.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                />
+            </TableHead>
+            <TableHead>User ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Programme</TableHead><TableHead>Online Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {tableLoading ? (
                  Array.from({ length: 10 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                 ))
             ) : filteredUsers.length > 0 ? (
                 filteredUsers.map((user) => (
-                <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60')}>
+                <TableRow key={user.uid} className={cn(user.status === 'disabled' && 'bg-muted/50 opacity-60', selectedUids.has(user.uid) && 'bg-muted')}>
+                    <TableCell>
+                        <Checkbox 
+                            checked={selectedUids.has(user.uid)}
+                            onCheckedChange={() => toggleSelectUser(user.uid)}
+                        />
+                    </TableCell>
                     <TableCell className="font-medium">{user.id}</TableCell>
                     <TableCell>{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
@@ -830,7 +898,7 @@ The Administration
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                 <DropdownMenuItem onSelect={() => { setMessagingUser(user); setIsMessageOpen(true); }}><Send className="mr-2 h-4 w-4"/>Send Message</DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => handleOpenEditDialog(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
-                                 <DropdownMenuItem onSelect={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
+                                 <DropdownMenuItem onSelect={() => { setIsBulkPasswordMode(false); setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Password Reset</DropdownMenuItem>
                                 {user.role === 'Student' && (
                                     <DropdownMenuItem onSelect={() => handleDownloadInvoice(user.uid)}>
@@ -853,7 +921,7 @@ The Administration
                 </TableRow>
             ))
             ) : (
-                <TableRow><TableCell colSpan={7} className="h-24 text-center">No users found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="h-24 text-center">No users found.</TableCell></TableRow>
             )}
           </TableBody>
         </Table></CardContent>
@@ -934,15 +1002,15 @@ The Administration
         <Dialog open={isSetPasswordOpen} onOpenChange={setIsSetPasswordOpen}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Set Password for {settingPasswordUser?.name}</DialogTitle>
-                    <DialogDescription>Enter a new temporary password for this user. They will be notified via email.</DialogDescription>
+                    <DialogTitle>{isBulkPasswordMode ? `Set Password for ${selectedUids.size} users` : `Set Password for ${settingPasswordUser?.name}`}</DialogTitle>
+                    <DialogDescription>Enter a new temporary password. {isBulkPasswordMode ? "All selected users" : "The user"} will be notified via email.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Label htmlFor="new-password">New Password</Label>
                     <Input id="new-password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <DialogClose asChild><Button variant="outline" onClick={() => setIsSetPasswordOpen(false)}>Cancel</Button></DialogClose>
                     <Button onClick={handleSetPassword} disabled={settingPassword}>
                         {settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Set Password'}
                     </Button>
