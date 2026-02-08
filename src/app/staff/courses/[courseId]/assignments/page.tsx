@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { useParams } from 'next/navigation';
@@ -11,12 +10,14 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/hooks/use-auth';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Assignment = { id: string; title: string; description: string; dueDate: string; submissions?: Record<string, Submission> };
 type Submission = { studentId: string; studentName: string; submissionUrl: string; submittedAt: string; };
