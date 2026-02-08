@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -15,7 +14,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { useTheme } from '@/components/theme-provider';
 import placeholderImages from '@/app/lib/placeholder-images.json';
@@ -121,78 +119,107 @@ export default function CertificatePrintingPage() {
         setGenerating(activeStudent.uid);
         
         try {
+            const bgUrl = placeholderImages.certificateBackground.url;
+            
+            // 1. Create a canvas and draw the image
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = bgUrl;
+
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+
+            if (!ctx) throw new Error("Could not initialize canvas context.");
+
+            // Draw Background
+            ctx.drawImage(img, 0, 0);
+
+            // Set Global Font Settings
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'black';
+
+            // Institution Name
+            ctx.font = 'bold 40px sans-serif';
+            ctx.fillText(institutionName.toUpperCase(), canvas.width / 2, 220);
+
+            // Main Heading
+            ctx.font = 'bold 64px sans-serif';
+            ctx.fillText('CERTIFICATE OF ACHIEVEMENT', canvas.width / 2, 350);
+
+            // certify text
+            ctx.font = 'italic 32px serif';
+            ctx.fillText('This is to certify that', canvas.width / 2, 450);
+
+            // Student Name
+            ctx.font = 'bold italic 80px serif';
+            ctx.fillStyle = '#2980b9';
+            ctx.fillText(activeStudent.name, canvas.width / 2, 550);
+
+            // Achievement Text
+            ctx.fillStyle = 'black';
+            ctx.font = '32px sans-serif';
+            ctx.fillText('has successfully completed the requirements for', canvas.width / 2, 650);
+
+            // Training Title
+            ctx.font = 'bold 48px sans-serif';
+            ctx.fillText(metaInfo.trainingTitle.toUpperCase(), canvas.width / 2, 730);
+
+            // Meta Details
+            ctx.font = '28px sans-serif';
+            ctx.textAlign = 'left';
+            const leftX = 150;
+            const rightX = canvas.width - 150;
+            const startY = 880;
+
+            ctx.fillText(`Duration: ${metaInfo.duration}`, leftX, startY);
+            ctx.fillText(`CPD Hours: ${metaInfo.cpdHours}`, leftX, startY + 50);
+            ctx.fillText(`Venue: ${metaInfo.venue}`, leftX, startY + 100);
+
+            ctx.textAlign = 'right';
+            ctx.fillText(`Date Issued: ${format(new Date(), 'PPP')}`, rightX, startY);
+            ctx.fillText(`Certificate No: SM-${activeStudent.id}-${Date.now().toString().slice(-4)}`, rightX, startY + 50);
+
+            // Signatures
+            ctx.textAlign = 'center';
+            ctx.font = '24px sans-serif';
+            const sigY = 1250;
+            const sigLX = 350;
+            const sigRX = canvas.width - 350;
+
+            ctx.fillText('__________________________', sigLX, sigY);
+            ctx.fillText(metaInfo.facilitator, sigLX, sigY + 40);
+            ctx.fillText('Trainer / Facilitator', sigLX, sigY + 80);
+
+            ctx.fillText('__________________________', sigRX, sigY);
+            ctx.fillText(metaInfo.representative, sigRX, sigY + 40);
+            ctx.fillText('Institution Representative', sigRX, sigY + 80);
+
+            // 2. Convert Canvas to PDF
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const doc = new jsPDF({
                 orientation: 'portrait',
                 unit: 'mm',
                 format: 'a4'
             });
 
-            const width = doc.internal.pageSize.getWidth();
-            const height = doc.internal.pageSize.getHeight();
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = doc.internal.pageSize.getHeight();
 
-            // 1. Add Background Image
-            const bgUrl = placeholderImages.certificateBackground.url;
-            doc.addImage(bgUrl, 'JPEG', 0, 0, width, height);
-
-            // 2. Header / Institution Name Overlay
-            doc.setTextColor(0, 0, 0);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(16);
-            doc.text(institutionName.toUpperCase(), width / 2, 45, { align: 'center' });
-            
-            doc.setFontSize(22);
-            doc.text('CERTIFICATE OF ACHIEVEMENT', width / 2, 65, { align: 'center' });
-
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(14);
-            doc.text('This is to certify that', width / 2, 85, { align: 'center' });
-
-            // 3. Student Name (Centered)
-            doc.setFont('times', 'bolditalic');
-            doc.setFontSize(36);
-            doc.setTextColor(41, 128, 185); 
-            doc.text(activeStudent.name, width / 2, 105, { align: 'center' });
-            
-            // 4. Achievement Description
-            doc.setTextColor(0, 0, 0);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(14);
-            doc.text('has successfully completed the requirements for', width / 2, 125, { align: 'center' });
-
-            // 5. Training Title
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(18);
-            doc.text(metaInfo.trainingTitle.toUpperCase(), width / 2, 140, { align: 'center' });
-
-            // 6. Details Section
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(11);
-            const startY = 170;
-            
-            doc.text(`Duration: ${metaInfo.duration}`, 30, startY);
-            doc.text(`CPD Hours: ${metaInfo.cpdHours}`, 30, startY + 8);
-            doc.text(`Venue: ${metaInfo.venue}`, 30, startY + 16);
-
-            doc.text(`Date Issued: ${format(new Date(), 'PPP')}`, width - 30, startY, { align: 'right' });
-            doc.text(`Certificate No: SM-${activeStudent.id}-${Date.now().toString().slice(-4)}`, width - 30, startY + 8, { align: 'right' });
-
-            // 7. Signature Section
-            const sigY = 245;
-            doc.setFontSize(10);
-            doc.text('__________________________', 55, sigY, { align: 'center' });
-            doc.text(metaInfo.facilitator, 55, sigY + 5, { align: 'center' });
-            doc.text('Trainer / Facilitator', 55, sigY + 10, { align: 'center' });
-
-            doc.text('__________________________', width - 55, sigY, { align: 'center' });
-            doc.text(metaInfo.representative, width - 55, sigY + 5, { align: 'center' });
-            doc.text('Institution Representative', width - 55, sigY + 10, { align: 'center' });
-
+            doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             doc.save(`Certificate_${activeStudent.id}.pdf`);
+
             toast({ title: 'Certificate Generated', description: `Download started for ${activeStudent.name}` });
             setIsMetaOpen(false);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            toast({ variant: 'destructive', title: 'Generation Failed', description: "Check that the background image is accessible." });
+            toast({ variant: 'destructive', title: 'Generation Failed', description: e.message || "Error using canvas to render certificate." });
         } finally {
             setGenerating(null);
         }
