@@ -10,7 +10,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'kit';
+import { z } from 'genkit';
 import { google } from 'googleapis';
 import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
