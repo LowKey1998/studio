@@ -18,6 +18,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { useTheme } from '@/components/theme-provider';
+import placeholderImages from '@/app/lib/placeholder-images.json';
 
 type Student = {
     uid: string;
@@ -129,98 +130,69 @@ export default function CertificatePrintingPage() {
             const width = doc.internal.pageSize.getWidth();
             const height = doc.internal.pageSize.getHeight();
 
-            // 1. Draw Ornamental Border (Golden Rectangle Style)
-            doc.setDrawColor(184, 134, 11); // Dark Golden Rod
-            doc.setLineWidth(1.5);
-            doc.rect(5, 5, width - 10, height - 10);
-            doc.setLineWidth(0.5);
-            doc.rect(7, 7, width - 14, height - 14);
+            // 1. Add Background Image
+            const bgUrl = placeholderImages.certificateBackground.url;
+            doc.addImage(bgUrl, 'JPEG', 0, 0, width, height);
 
-            // 2. Header Content
+            // 2. Header / Institution Name Overlay
             doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(14);
-            doc.text(institutionName.toUpperCase(), width / 2, 35, { align: 'center' });
+            doc.setFontSize(16);
+            doc.text(institutionName.toUpperCase(), width / 2, 45, { align: 'center' });
             
-            doc.setFontSize(18);
-            doc.text('CERTIFICATE OF CONTINUING', width / 2, 50, { align: 'center' });
-            doc.text('PROFESSIONAL DEVELOPMENT (CPD)', width / 2, 58, { align: 'center' });
+            doc.setFontSize(22);
+            doc.text('CERTIFICATE OF ACHIEVEMENT', width / 2, 65, { align: 'center' });
 
             doc.setFont('helvetica', 'italic');
-            doc.setFontSize(12);
-            doc.text('This is to certify that', width / 2, 75, { align: 'center' });
+            doc.setFontSize(14);
+            doc.text('This is to certify that', width / 2, 85, { align: 'center' });
 
-            // 3. Student Name
+            // 3. Student Name (Centered)
             doc.setFont('times', 'bolditalic');
-            doc.setFontSize(32);
-            doc.setTextColor(41, 128, 185); // Nice Blue
-            doc.text(activeStudent.name, width / 2, 95, { align: 'center' });
+            doc.setFontSize(36);
+            doc.setTextColor(41, 128, 185); 
+            doc.text(activeStudent.name, width / 2, 105, { align: 'center' });
             
-            // Underline name
-            doc.setDrawColor(200, 200, 200);
-            doc.line(40, 98, width - 40, 98);
-
-            // 4. Achievement Text
+            // 4. Achievement Description
             doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(12);
-            doc.text('has successfully completed the training in', width / 2, 115, { align: 'center' });
-
-            // 5. Training Title Banner
-            doc.setFillColor(34, 34, 34);
-            doc.rect(20, 122, width - 40, 12, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
             doc.setFontSize(14);
-            doc.text(metaInfo.trainingTitle.toUpperCase(), width / 2, 130, { align: 'center' });
+            doc.text('has successfully completed the requirements for', width / 2, 125, { align: 'center' });
 
-            // 6. Conducting Institution
-            doc.setTextColor(0, 0, 0);
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(11);
-            doc.text('conducted by', width / 2, 145, { align: 'center' });
+            // 5. Training Title
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(13);
-            doc.text(institutionName, width / 2, 153, { align: 'center' });
+            doc.setFontSize(18);
+            doc.text(metaInfo.trainingTitle.toUpperCase(), width / 2, 140, { align: 'center' });
 
-            // 7. Details Section (2 Columns)
+            // 6. Details Section
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            const mid = width / 2;
-            const startY = 175;
+            doc.setFontSize(11);
+            const startY = 170;
             
-            doc.text(`Duration: ${metaInfo.duration}`, 25, startY);
-            doc.text(`CPD Hours: ${metaInfo.cpdHours}`, mid - 20, startY);
-            doc.text(`Venue: ${metaInfo.venue}`, width - 60, startY);
+            doc.text(`Duration: ${metaInfo.duration}`, 30, startY);
+            doc.text(`CPD Hours: ${metaInfo.cpdHours}`, 30, startY + 8);
+            doc.text(`Venue: ${metaInfo.venue}`, 30, startY + 16);
 
-            doc.text(`Date: ${format(new Date(), 'PPP')}`, 25, startY + 10);
-            doc.text(`Certificate No: SM-${activeStudent.id}-${Date.now().toString().slice(-4)}`, 25, startY + 20);
+            doc.text(`Date Issued: ${format(new Date(), 'PPP')}`, width - 30, startY, { align: 'right' });
+            doc.text(`Certificate No: SM-${activeStudent.id}-${Date.now().toString().slice(-4)}`, width - 30, startY + 8, { align: 'right' });
 
-            // 8. Signature Section
-            const sigY = 240;
-            doc.line(25, sigY, 85, sigY);
-            doc.line(width - 85, sigY, width - 25, sigY);
+            // 7. Signature Section
+            const sigY = 245;
+            doc.setFontSize(10);
+            doc.text('__________________________', 55, sigY, { align: 'center' });
+            doc.text(metaInfo.facilitator, 55, sigY + 5, { align: 'center' });
+            doc.text('Trainer / Facilitator', 55, sigY + 10, { align: 'center' });
 
-            doc.setFontSize(9);
-            doc.text('Trainer / Facilitator', 55, sigY + 5, { align: 'center' });
-            doc.text(metaInfo.facilitator, 55, sigY + 10, { align: 'center' });
-
-            doc.text('Institution Representative', width - 55, sigY + 5, { align: 'center' });
-            doc.text(metaInfo.representative, width - 55, sigY + 10, { align: 'center' });
-
-            // 9. Seal Placeholder
-            doc.setDrawColor(184, 134, 11);
-            doc.setLineWidth(0.2);
-            doc.circle(mid, sigY - 5, 15);
-            doc.setFontSize(6);
-            doc.text('OFFICIAL SEAL', mid, sigY - 5, { align: 'center' });
+            doc.text('__________________________', width - 55, sigY, { align: 'center' });
+            doc.text(metaInfo.representative, width - 55, sigY + 5, { align: 'center' });
+            doc.text('Institution Representative', width - 55, sigY + 10, { align: 'center' });
 
             doc.save(`Certificate_${activeStudent.id}.pdf`);
             toast({ title: 'Certificate Generated', description: `Download started for ${activeStudent.name}` });
             setIsMetaOpen(false);
         } catch (e) {
             console.error(e);
-            toast({ variant: 'destructive', title: 'Generation Failed' });
+            toast({ variant: 'destructive', title: 'Generation Failed', description: "Check that the background image is accessible." });
         } finally {
             setGenerating(null);
         }
@@ -239,7 +211,7 @@ export default function CertificatePrintingPage() {
                         <FileCheck className="h-6 w-6 text-primary" />
                         <CardTitle>Certificate Printing</CardTitle>
                     </div>
-                    <CardDescription>Select a student and a course to generate an official completion certificate.</CardDescription>
+                    <CardDescription>Select a student and a course to generate an official completion certificate using the institutional background template.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid md:grid-cols-3 gap-4">
