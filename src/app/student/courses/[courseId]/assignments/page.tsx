@@ -1,13 +1,12 @@
-
 'use client';
 import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink, GraduationCap } from "lucide-react";
+import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink, GraduationCap, RotateCcw } from "lucide-react";
 import { db, auth, storage } from '@/lib/firebase';
-import { ref as dbRef, onValue, set, update, get } from 'firebase/database';
+import { ref as dbRef, onValue, set, update, get, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,7 +28,7 @@ type Assignment = {
     title: string;
     description: string;
     dueDate: string;
-    status: string; // This will be calculated on the client side for students
+    status: string; // Calculated client-side
     score?: string;
     submissions?: Record<string, Submission>;
 };
@@ -127,6 +126,9 @@ export default function StudentCourseAssignmentsPage() {
                 title: 'Document Created!',
                 description: 'Your Google Doc has been created and linked to this assignment.',
             });
+            
+            // Try to open it, though pop-up blockers might stop this. 
+            // The record is already saved so they can click "View Submission" later.
             window.open(documentUrl, '_blank');
         } catch (error: any) {
             console.error(error);
@@ -176,6 +178,22 @@ export default function StudentCourseAssignmentsPage() {
         }
     }
 
+    const handleUnsubmit = async (assignment: Assignment) => {
+        if (!currentUser) return;
+        if (!window.confirm("Are you sure you want to unsubmit this assignment? This will remove your current submission record.")) return;
+
+        setActionLoading(assignment.id);
+        try {
+            const submissionRef = dbRef(db, `assignments/${courseId}/${assignment.id}/submissions/${currentUser.uid}`);
+            await remove(submissionRef);
+            toast({ title: 'Submission Removed', description: 'You can now upload a new file or create a new document.' });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Unsubmit Failed', description: error.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     if(loading) {
         return (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -213,11 +231,22 @@ export default function StudentCourseAssignmentsPage() {
                                 </CardContent>
                                 <CardFooter className="flex flex-col items-end gap-2">
                                 {submission ? (
-                                    <Button asChild className="w-full">
-                                        <a href={submission.submissionUrl} target="_blank" rel="noopener noreferrer">
-                                            <ExternalLink className="mr-2 h-4 w-4" /> View Submission
-                                        </a>
-                                    </Button>
+                                    <div className="flex w-full gap-2">
+                                        <Button asChild className="flex-1" variant="outline">
+                                            <a href={submission.submissionUrl} target="_blank" rel="noopener noreferrer">
+                                                <ExternalLink className="mr-2 h-4 w-4" /> View Submission
+                                            </a>
+                                        </Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleUnsubmit(assignment)}
+                                            disabled={!!actionLoading}
+                                        >
+                                            {actionLoading === assignment.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <RotateCcw className="h-4 w-4 mr-2" />}
+                                            Unsubmit
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <div className="w-full space-y-2">
                                         <div className="flex w-full gap-2">
@@ -227,7 +256,8 @@ export default function StudentCourseAssignmentsPage() {
                                                 disabled={!!actionLoading}
                                                 className="flex-1"
                                             >
-                                                <GraduationCap className="mr-2 h-4 w-4" /> Start with Google Docs
+                                                {actionLoading === assignment.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <GraduationCap className="mr-2 h-4 w-4" />}
+                                                Start with Google Docs
                                             </Button>
                                             <input 
                                                 type="file" 
@@ -239,6 +269,7 @@ export default function StudentCourseAssignmentsPage() {
                                                 variant="outline" 
                                                 className="flex-1"
                                                 onClick={() => fileInputRefs.current[assignment.id]?.click()}
+                                                disabled={!!actionLoading}
                                             >
                                                 <FileUp className="mr-2 h-4 w-4" /> Upload File
                                             </Button>
