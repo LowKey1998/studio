@@ -47,6 +47,7 @@
     "firebase-admin": "^12.2.0",
     "flutterwave-react-v3": "^1.1.0",
     "genkit": "^1.14.1",
+    "googleapis": "^144.0.0",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2",
