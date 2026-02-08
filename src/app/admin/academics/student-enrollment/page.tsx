@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, ChevronsUpDown, Info, AlertCircle, Users, Copy } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, ChevronsUpDown, Info, AlertCircle, Users, Copy, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue } from 'firebase/database';
@@ -18,6 +17,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 
 type Semester = { id: string; name: string; status: string; intakeId: string; };
 type Course = { id: string; name: string; code: string; };
