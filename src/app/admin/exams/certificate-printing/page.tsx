@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as ImageIcon, Users, Info } from 'lucide-react';
+import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as LucideImage, Users, Info } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,11 +14,12 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { useTheme } from '@/components/theme-provider';
 import placeholderImages from '@/app/lib/placeholder-images.json';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Student = {
     uid: string;
@@ -48,8 +49,8 @@ export default function CertificatePrintingPage() {
     
     // Filters
     const [searchTerm, setSearchTerm] = React.useState('');
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
-    const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState('all');
+    const [selectedCourseId, setSelectedCourseId] = React.useState('all');
 
     // Certificate Meta Info (Modal)
     const [isMetaOpen, setIsMetaOpen] = React.useState(false);
@@ -70,9 +71,8 @@ export default function CertificatePrintingPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [usersSnap, regsSnap, programmesSnap, coursesSnap, semestersSnap] = await Promise.all([
+                const [usersSnap, programmesSnap, coursesSnap, semestersSnap] = await Promise.all([
                     get(ref(db, 'users')),
-                    get(ref(db, 'registrations')),
                     get(ref(db, 'programmes')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'semesters'))
@@ -208,7 +208,7 @@ export default function CertificatePrintingPage() {
             setIsMetaOpen(false);
         } catch (e: any) {
             console.error(e);
-            toast({ variant: 'destructive', title: 'Generation Failed', description: e.message || "Error using canvas to render certificate." });
+            toast({ variant: 'destructive', title: 'Generation Failed', description: e.message || "Error rendering certificate." });
         } finally {
             setGenerating(null);
         }
@@ -272,44 +272,46 @@ export default function CertificatePrintingPage() {
                                 </div>
                             </div>
 
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Student ID</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Programme</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {loading ? (
-                                        Array.from({ length: 5 }).map((_, i) => (
-                                            <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
-                                        ))
-                                    ) : filteredStudents.length > 0 ? (
-                                        filteredStudents.map(student => (
-                                            <TableRow key={student.uid}>
-                                                <TableCell className="font-mono text-xs">{student.id}</TableCell>
-                                                <TableCell className="font-medium">{student.name}</TableCell>
-                                                <TableCell className="text-sm">{student.programmeName}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm"
-                                                        onClick={() => handleOpenMeta(student)}
-                                                        disabled={generating === student.uid}
-                                                    >
-                                                        {generating === student.uid ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
-                                                        Generate
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No students found matching your search.</TableCell></TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Student ID</TableHead>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>Programme</TableHead>
+                                            <TableHead className="text-right">Action</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {loading ? (
+                                            Array.from({ length: 5 }).map((_, i) => (
+                                                <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
+                                            ))
+                                        ) : filteredStudents.length > 0 ? (
+                                            filteredStudents.map(student => (
+                                                <TableRow key={student.uid}>
+                                                    <TableCell className="font-mono text-xs">{student.id}</TableCell>
+                                                    <TableCell className="font-medium">{student.name}</TableCell>
+                                                    <TableCell className="text-sm">{student.programmeName}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="sm"
+                                                            onClick={() => handleOpenMeta(student)}
+                                                            disabled={generating === student.uid}
+                                                        >
+                                                            {generating === student.uid ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
+                                                            Generate
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No students found matching your search.</TableCell></TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </TabsContent>
 
                         <TabsContent value="template" className="space-y-6 pt-4">
@@ -322,7 +324,7 @@ export default function CertificatePrintingPage() {
                             </Alert>
                             <Card className="bg-muted/20">
                                 <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2"><ImageIcon className="h-4 w-4"/>Current Background Preview</CardTitle>
+                                    <CardTitle className="text-base flex items-center gap-2"><LucideImage className="h-4 w-4"/>Current Background Preview</CardTitle>
                                 </CardHeader>
                                 <CardContent className="flex justify-center">
                                     <img 
