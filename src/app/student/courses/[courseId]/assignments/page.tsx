@@ -11,7 +11,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { format } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { createGoogleDoc } from '@/ai/flows/create-google-doc';
 
@@ -30,10 +30,11 @@ type Assignment = {
     dueDate: string;
     status: string; // Calculated client-side
     score?: string;
+    daysLate: number;
     submissions?: Record<string, Submission>;
 };
 
-const statusConfig: { [key: string]: { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: React.ReactNode } } = {
+const statusConfig: { [key in string]: { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: React.ReactNode } } = {
   "Submitted": { variant: 'default', icon: <CheckCircle2 className="h-4 w-4" /> },
   "Pending": { variant: 'secondary', icon: <Clock className="h-4 w-4" /> },
   "Graded": { variant: 'default', icon: <CheckCircle2 className="h-4 w-4" /> },
@@ -81,7 +82,17 @@ export default function StudentCourseAssignmentsPage() {
                 const assignmentsList: Assignment[] = Object.keys(assignmentsData).map(key => {
                     const assignment = assignmentsData[key];
                     const submission = assignment.submissions?.[currentUser.uid];
-                    let status = new Date(assignment.dueDate) < new Date() && !submission ? 'Late' : 'Pending';
+                    const dueDate = parseISO(assignment.dueDate);
+                    const today = new Date();
+                    
+                    let daysLate = 0;
+                    if (submission) {
+                        daysLate = differenceInCalendarDays(parseISO(submission.submittedAt), dueDate);
+                    } else {
+                        daysLate = differenceInCalendarDays(today, dueDate);
+                    }
+
+                    let status = isBefore(dueDate, today) && !submission ? 'Late' : 'Pending';
                     if (submission) {
                         status = 'Submitted';
                     }
@@ -89,6 +100,7 @@ export default function StudentCourseAssignmentsPage() {
                         id: key,
                         ...assignment,
                         status,
+                        daysLate: daysLate > 0 ? daysLate : 0
                     };
                 }).sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
                 setAssignments(assignmentsList);
@@ -127,8 +139,6 @@ export default function StudentCourseAssignmentsPage() {
                 description: 'Your Google Doc has been created and linked to this assignment.',
             });
             
-            // Try to open it, though pop-up blockers might stop this. 
-            // The record is already saved so they can click "View Submission" later.
             window.open(documentUrl, '_blank');
         } catch (error: any) {
             console.error(error);
@@ -217,10 +227,17 @@ export default function StudentCourseAssignmentsPage() {
                                 <CardHeader>
                                 <div className="flex items-center justify-between">
                                     <FileText className="h-6 w-6 text-muted-foreground" />
-                                    <Badge variant={statusConfig[assignment.status]?.variant as any ?? 'secondary'} className="flex items-center gap-1">
-                                    {statusConfig[assignment.status]?.icon}
-                                    {assignment.status}
-                                    </Badge>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <Badge variant={statusConfig[assignment.status]?.variant as any ?? 'secondary'} className="flex items-center gap-1">
+                                            {statusConfig[assignment.status]?.icon}
+                                            {assignment.status}
+                                        </Badge>
+                                        {assignment.daysLate > 0 && (
+                                            <span className="text-[10px] font-bold text-destructive animate-pulse uppercase">
+                                                {assignment.status === 'Submitted' ? 'Submitted ' : ''}{assignment.daysLate} day{assignment.daysLate > 1 ? 's' : ''} late
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <CardTitle className="pt-4 font-headline text-lg">{assignment.title}</CardTitle>
                                 <CardDescription>Due: {format(new Date(assignment.dueDate), 'PPP')}</CardDescription>
