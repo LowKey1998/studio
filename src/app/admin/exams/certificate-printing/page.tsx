@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -120,7 +121,7 @@ export default function CertificatePrintingPage() {
         setGenerating(activeStudent.uid);
         
         try {
-            const bgUrl = placeholderImages.certificateBackground.url;
+            const bgUrl = placeholderImages.certificates.background.url;
             
             const img = new Image();
             img.crossOrigin = "anonymous";
@@ -316,7 +317,7 @@ export default function CertificatePrintingPage() {
                                 <Info className="h-4 w-4" />
                                 <AlertTitle>Template Management</AlertTitle>
                                 <AlertDescription>
-                                    To update the certificate background, please edit the URL in <code className="bg-muted px-1 rounded">src/app/lib/placeholder-images.json</code> under the <code className="bg-muted px-1 rounded">certificateBackground</code> key.
+                                    To update the certificate background, please edit the URL in <code className="bg-muted px-1 rounded">src/app/lib/placeholder-images.json</code> under the <code className="bg-muted px-1 rounded">certificates.background</code> key.
                                 </AlertDescription>
                             </Alert>
                             <Card className="bg-muted/20">
@@ -325,7 +326,7 @@ export default function CertificatePrintingPage() {
                                 </CardHeader>
                                 <CardContent className="flex justify-center">
                                     <img 
-                                        src={placeholderImages.certificateBackground.url} 
+                                        src={placeholderImages.certificates.background.url} 
                                         alt="Certificate Background" 
                                         className="max-w-md w-full border shadow-sm rounded-lg"
                                     />

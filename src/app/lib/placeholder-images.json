@@ -1,9 +1,19 @@
 
 {
-  "certificateBackground": {
-    "url": "https://picsum.photos/seed/certbackground/1000/1414",
-    "width": 1000,
-    "height": 1414,
-    "hint": "certificate background template"
+  "certificates": {
+    "background": {
+      "url": "https://picsum.photos/seed/certbackground/1000/1414",
+      "width": 1000,
+      "height": 1414,
+      "hint": "certificate background template"
+    }
+  },
+  "branding": {
+    "logo": {
+      "url": "https://placehold.co/400x400/png?text=Logo",
+      "width": 400,
+      "height": 400,
+      "hint": "institution logo"
+    }
   }
 }
