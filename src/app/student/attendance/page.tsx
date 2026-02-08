@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -58,7 +57,7 @@ export default function StudentAttendancePage() {
             
             const allCourseIds = new Set<string>();
             Object.values(registrationsSnapshot.val()).forEach((reg: any) => {
-                if (reg.status === 'Completed') {
+                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                      reg.courses.forEach((id: string) => allCourseIds.add(id));
                 }
             });

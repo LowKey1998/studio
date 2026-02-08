@@ -22,12 +22,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; };
-type Course = { id: string; name: string; code: string; };
-type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; };
+type Course = { id: string; name: string; code: string; cost: number; };
+type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
 
 export default function StudentEnrollmentPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [courses, setCourses] = React.useState<Course[]>([]);
+    const [programmes, setProgrammes] = React.useState<Record<string, any>>({});
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
     const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -46,10 +47,11 @@ export default function StudentEnrollmentPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [semSnap, coursesSnap, usersSnap] = await Promise.all([
+                const [semSnap, coursesSnap, usersSnap, progsSnap] = await Promise.all([
                     get(ref(db, 'semesters')),
                     get(ref(db, 'courses')),
-                    get(ref(db, 'users'))
+                    get(ref(db, 'users')),
+                    get(ref(db, 'programmes'))
                 ]);
 
                 if (semSnap.exists()) {
@@ -61,6 +63,9 @@ export default function StudentEnrollmentPage() {
                 if (usersSnap.exists()) {
                     const data = usersSnap.val();
                     setAllStudents(Object.keys(data).filter(uid => data[uid].role === 'Student').map(uid => ({ uid, ...data[uid] })));
+                }
+                if (progsSnap.exists()) {
+                    setProgrammes(progsSnap.val());
                 }
             } catch (e) {
                 toast({ variant: 'destructive', title: 'Data Loading Error' });
@@ -99,8 +104,43 @@ export default function StudentEnrollmentPage() {
     }, [selectedSemester, selectedCourse, allStudents]);
 
     React.useEffect(() => {
-        fetchEnrolledStudents();
-    }, [fetchEnrolledStudents]);
+        fetchEnrolledCourses();
+    }, [selectedSemester, selectedCourse]);
+
+    // Keep function name consistent with call in useEffect
+    const fetchEnrolledCourses = fetchEnrolledStudents;
+
+    const updateInvoiceForEnrollment = async (uid: string, semesterId: string, updatedCourseIds: string[]) => {
+        const regRef = ref(db, `registrations/${uid}/${semesterId}`);
+        const regSnap = await get(regRef);
+        if (!regSnap.exists()) return;
+
+        const regData = regSnap.val();
+        const invoiceId = regData.invoiceId;
+        if (!invoiceId) return;
+
+        const invoiceRef = ref(db, `invoices/${uid}/${invoiceId}`);
+        const invoiceSnap = await get(invoiceRef);
+        if (!invoiceSnap.exists()) return;
+
+        const student = allStudents.find(s => s.uid === uid);
+        const programme = student?.programmeId ? programmes[student.programmeId] : null;
+        
+        let newTuition = 0;
+        if (programme?.tuitionFee) {
+            newTuition = programme.tuitionFee;
+        } else {
+            newTuition = updatedCourseIds.reduce((sum, cid) => {
+                const course = courses.find(c => c.id === cid);
+                return sum + (course?.cost || 0);
+            }, 0);
+        }
+
+        await update(invoiceRef, {
+            courses: updatedCourseIds,
+            totalTuition: newTuition
+        });
+    };
 
     const handleEnrollStudent = async (uid: string) => {
         if (!selectedSemester || !selectedCourse) return;
@@ -110,21 +150,31 @@ export default function StudentEnrollmentPage() {
             const regSnap = await get(regRef);
             
             let currentCourses = [];
+            let isNewRegistration = false;
             if (regSnap.exists()) {
                 currentCourses = regSnap.val().courses || [];
+            } else {
+                isNewRegistration = true;
             }
 
             if (currentCourses.includes(selectedCourse)) {
                 toast({ title: 'Already enrolled' });
+                setActionLoading(null);
                 return;
             }
 
             const updatedCourses = [...currentCourses, selectedCourse];
+            const student = allStudents.find(s => s.uid === uid);
+
             await update(regRef, { 
                 courses: updatedCourses,
+                programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString()
             });
+
+            // Sync with invoice
+            await updateInvoiceForEnrollment(uid, selectedSemester, updatedCourses);
 
             toast({ title: 'Student Enrolled Successfully' });
             fetchEnrolledStudents();
@@ -150,12 +200,16 @@ export default function StudentEnrollmentPage() {
                         const regRef = ref(db, `registrations/${student.uid}/${selectedSemester}`);
                         const regSnap = await get(regRef);
                         let currentCourses = regSnap.exists() ? regSnap.val().courses || [] : [];
+                        
                         if (!currentCourses.includes(selectedCourse)) {
+                            const updatedCourses = [...currentCourses, selectedCourse];
                             await update(regRef, { 
-                                courses: [...currentCourses, selectedCourse],
+                                courses: updatedCourses,
+                                programmeId: student.programmeId || '',
                                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
                                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString()
                             });
+                            await updateInvoiceForEnrollment(student.uid, selectedSemester, updatedCourses);
                         }
                         success++;
                     } catch (e) { fail++; }
@@ -181,6 +235,7 @@ export default function StudentEnrollmentPage() {
                 const currentCourses = regSnap.val().courses || [];
                 const updatedCourses = currentCourses.filter((id: string) => id !== selectedCourse);
                 await update(regRef, { courses: updatedCourses });
+                await updateInvoiceForEnrollment(uid, selectedSemester, updatedCourses);
                 toast({ title: 'Student Removed' });
                 fetchEnrolledStudents();
             }
@@ -311,14 +366,16 @@ export default function StudentEnrollmentPage() {
                                 </TabsContent>
                                 <TabsContent value="bulk" className="space-y-4 pt-4">
                                     <Label>Paste Student IDs</Label>
-                                    <Textarea 
-                                        placeholder="STU-001&#10;STU-002&#10;STU-003" 
-                                        rows={8} 
-                                        value={bulkIds}
-                                        onChange={e => setBulkIds(e.target.value)}
-                                    />
-                                    <p className="text-xs text-muted-foreground">One ID per line or separated by commas.</p>
-                                    <Button className="w-full" onClick={handleBulkEnrollByIds} disabled={actionLoading === 'bulk'}>
+                                    <div className="space-y-2">
+                                        <Textarea 
+                                            placeholder="STU-001&#10;STU-002&#10;STU-003" 
+                                            rows={8} 
+                                            value={bulkIds}
+                                            onChange={e => setBulkIds(e.target.value)}
+                                        />
+                                        <p className="text-xs text-muted-foreground">One ID per line or separated by commas.</p>
+                                    </div>
+                                    <Button className="w-full mt-2" onClick={handleBulkEnrollByIds} disabled={actionLoading === 'bulk'}>
                                         {actionLoading === 'bulk' ? <Loader2 className="mr-2 animate-spin h-4 w-4"/> : <UserPlus className="mr-2 h-4 w-4"/>}
                                         Enroll All
                                     </Button>
