@@ -23,7 +23,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -71,6 +71,13 @@ type Transaction = {
     method?: string;
 };
 
+type Course = {
+    id: string;
+    name: string;
+    code: string;
+    cost: number;
+};
+
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
@@ -95,6 +102,11 @@ type Invoice = {
     courses: string[];
     optionalFees: string[];
     applyScholarship?: boolean;
+};
+
+type Fee = {
+    name: string;
+    amount: number;
 };
 
 type GroupedOption = { value: string; label: string };
@@ -564,7 +576,7 @@ export default function PaymentsManagementPage() {
 
         doc.setFontSize(18);
         doc.text("Payments Report", 14, 22);
-        (doc as any).autoTable({
+        autoTable(doc, {
             head: [tableColumn],
             body: tableRows,
             startY: 30
@@ -613,7 +625,7 @@ export default function PaymentsManagementPage() {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
         
-        (doc as any).autoTable({ startY: 55, head: [['Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
         return doc;
     };
 

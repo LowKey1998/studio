@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -23,7 +22,7 @@ import { ref, get, update, push, set, remove, onValue } from 'firebase/database'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -191,7 +190,6 @@ function PayNowSection({
         }
         
         const cumulativeTuitionPaid = tuitionPaidSoFar + remainingPaymentForTuition;
-        const tuitionPerInstallment = paymentPlan.installments > 0 ? (payment.invoice.totalTuition / paymentPlan.installments) : payment.invoice.totalTuition;
         
         // 3. Determine unlocked courses
         if (payment.registration.coursePriority) {
@@ -310,7 +308,7 @@ export default function PaymentsPage() {
 
     // Component state
     const [loading, setLoading] = React.useState(true);
-    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+    const [actionLoading, setActionLoading] = React.useState<boolean>(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
 
@@ -351,8 +349,6 @@ export default function PaymentsPage() {
             const semesterTransactions = rawTransactions.filter(t => t.invoiceId === invoice.invoiceId);
             let totalPaidForInvoice = semesterTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
             
-            let tuitionPaidSoFar = Math.max(0, totalPaidForInvoice - totalFees);
-
             for (let i = 0; i < plan.installments; i++) {
                 const installmentName = plan.installments > 1 ? `${getOrdinalSuffix(i + 1)} Installment` : 'Full Payment';
                 const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${invoice.semester}`;
@@ -496,13 +492,13 @@ export default function PaymentsPage() {
                 studentName: userData!.name,
                 amount: amount,
                 invoiceId: payment.invoice.invoiceId,
+                date: new Date().toISOString().split('T')[0],
             };
 
             if (isQuickBooksEnabled) {
                 await createQbPayment(qbSyncData);
                 toast({ title: 'Payment Synced', description: 'Your payment was synced to QuickBooks.' });
             }
-             // No Sage payment sync equivalent for now
 
              await fetchDataForUser(currentUser);
 
@@ -552,7 +548,13 @@ export default function PaymentsPage() {
         if (!semester) return;
     
         const doc = new jsPDF();
-        if (institutionSettings.logoUrl) doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+        if (institutionSettings.logoUrl) {
+            try {
+                doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+            } catch (e) {
+                console.warn("Logo failed to load for PDF:", e);
+            }
+        }
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
         doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
         doc.setFontSize(10);
@@ -577,7 +579,7 @@ export default function PaymentsPage() {
             foot.push(['', 'Total Due', `ZMW ${totalAmount.toFixed(2)}`]);
         }
         
-        (doc as any).autoTable({ startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        autoTable(doc, { startY: 55, head: [['Course Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
         
         doc.save(`invoice-${invoice.invoiceId}.pdf`);
     };
