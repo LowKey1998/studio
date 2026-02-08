@@ -19,8 +19,9 @@ import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
-type Semester = { id: string; name: string; status: string; intakeId: string; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; };
 type Course = { id: string; name: string; code: string; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; };
 
@@ -37,6 +38,7 @@ export default function StudentEnrollmentPage() {
     const [selectedCourse, setSelectedCourse] = React.useState('');
     const [searchStudent, setSearchStudent] = React.useState('');
     const [bulkIds, setBulkIds] = React.useState('');
+    const [showAllSemesters, setShowAllSemesters] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -194,6 +196,10 @@ export default function StudentEnrollmentPage() {
         (s.name.toLowerCase().includes(searchStudent.toLowerCase()) || s.id.toLowerCase().includes(searchStudent.toLowerCase()))
     );
 
+    const filteredSemesters = React.useMemo(() => {
+        return showAllSemesters ? semesters : semesters.filter(s => s.status === 'Open');
+    }, [semesters, showAllSemesters]);
+
     return (
         <div className="space-y-6">
             <Card>
@@ -201,16 +207,39 @@ export default function StudentEnrollmentPage() {
                     <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
                     <CardDescription>Manually enroll or remove students from courses.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                        <Label>Semester</Label>
+                <CardContent className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <Label className="font-semibold">Semester</Label>
+                            <div className="flex items-center space-x-2">
+                                <Switch 
+                                    id="show-all-semesters" 
+                                    checked={showAllSemesters} 
+                                    onCheckedChange={setShowAllSemesters} 
+                                />
+                                <Label htmlFor="show-all-semesters" className="text-xs cursor-pointer">Show All Terms</Label>
+                            </div>
+                        </div>
                         <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-                            <SelectTrigger><SelectValue placeholder="Select semester..." /></SelectTrigger>
-                            <SelectContent>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                            <SelectTrigger><SelectValue placeholder={showAllSemesters ? "Select any semester..." : "Select active semester..."} /></SelectTrigger>
+                            <SelectContent>
+                                {filteredSemesters.length > 0 ? (
+                                    filteredSemesters.map(s => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                            {s.name} {s.status !== 'Open' && `(${s.status})`}
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="none" disabled>No active semesters. Toggle "Show All" to see more.</SelectItem>
+                                )}
+                            </SelectContent>
                         </Select>
+                        {!showAllSemesters && (
+                            <p className="text-[10px] text-muted-foreground italic">Only semesters currently 'Open' for registration are shown by default.</p>
+                        )}
                     </div>
-                    <div className="space-y-1">
-                        <Label>Course</Label>
+                    <div className="space-y-4">
+                        <Label className="font-semibold">Course</Label>
                         <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={!selectedSemester}>
                             <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
                             <SelectContent>{courses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}</SelectContent>
