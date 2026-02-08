@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as ImageIcon } from 'lucide-react';
+import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as ImageIcon, Users, Info } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,7 +18,6 @@ import { format } from 'date-fns';
 import { useTheme } from '@/components/theme-provider';
 import placeholderImages from '@/app/lib/placeholder-images.json';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Info } from 'lucide-react';
 
 type Student = {
     uid: string;
