@@ -5,25 +5,26 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, Trash2, Route } from "lucide-react";
-import { db, auth } from '@/lib/firebase';
-import { ref, get, set, push, remove, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { db } from '@/lib/firebase';
+import { ref, get, set, push, remove } from 'firebase/database';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { useAuth } from '@/hooks/use-auth';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
 
 type LessonPlanItem = { id: string; title: string; description: string; week: number; };
-type UserData = { role: 'Student' | 'Staff'; subRoles?: string[]; };
 
 export default function LessonPlansPage() {
     const params = useParams();
     const courseId = params.courseId as string;
     const [lessonPlan, setLessonPlan] = React.useState<LessonPlanItem[]>([]);
+    const [courseData, setCourseData] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [userData, setUserData] = React.useState<UserData | null>(null);
+    const { user, userProfile } = useAuth();
 
     const [isPathDialogOpen, setIsPathDialogOpen] = React.useState(false);
     const [formLoading, setFormLoading] = React.useState(false);
@@ -34,50 +35,58 @@ export default function LessonPlansPage() {
     
     const { toast } = useToast();
 
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            setCurrentUser(user);
-            const userRef = ref(db, `users/${user.uid}`);
-            onValue(userRef, (snapshot) => {
-                if (snapshot.exists()) setUserData(snapshot.val());
-            });
-          }
-        });
-        return () => unsubscribe();
-    }, []);
-    
     const fetchData = React.useCallback(async () => {
+        if (!courseId) return;
         setLoading(true);
         try {
-            const pathRef = ref(db, `lessonPlans/${courseId}`);
-            const pathSnapshot = await get(pathRef);
-            const pathItems = pathSnapshot.exists() ? Object.entries(pathSnapshot.val()).map(([id, data]) => ({ id, ...(data as any) })) : [];
+            const [pathSnap, courseSnap] = await Promise.all([
+                get(ref(db, `lessonPlans/${courseId}`)),
+                get(ref(db, `courses/${courseId}`))
+            ]);
+            
+            if (courseSnap.exists()) {
+                setCourseData(courseSnap.val());
+            }
+            
+            const pathItems = pathSnap.exists() ? Object.entries(pathSnap.val()).map(([id, data]) => ({ id, ...(data as any) })) : [];
             setLessonPlan(pathItems);
             setPathWeek(pathItems.length + 1);
-        } catch (error) { console.error("Error fetching lesson plan:", error); } 
-        finally { setLoading(false); }
+        } catch (error) { 
+            console.error("Error fetching lesson plan:", error); 
+        } finally { 
+            setLoading(false); 
+        }
     }, [courseId]);
 
     React.useEffect(() => {
-        if(currentUser) fetchData();
-    }, [currentUser, fetchData]);
+        if(user) fetchData();
+    }, [user, fetchData]);
     
     const resetForms = () => {
-        setTitle(''); setDescription(''); setPathWeek(lessonPlan.length + 1);
+        setTitle(''); 
+        setDescription(''); 
+        setPathWeek(lessonPlan.length + 1);
     };
     
     const handleAddPathItem = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title || !pathWeek) { toast({ variant: 'destructive', title: 'Missing Fields' }); return; }
+        if (!title || !pathWeek) { 
+            toast({ variant: 'destructive', title: 'Missing Fields' }); 
+            return; 
+        }
         setFormLoading(true);
         try {
             const newRef = push(ref(db, `lessonPlans/${courseId}`));
             await set(newRef, { title, description, week: pathWeek });
             toast({ title: 'Lesson Plan Module Added' });
-            fetchData(); resetForms(); setIsPathDialogOpen(false);
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Failed to add', description: error.message }); } 
-        finally { setFormLoading(false); }
+            fetchData(); 
+            resetForms(); 
+            setIsPathDialogOpen(false);
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Failed to add', description: error.message }); 
+        } finally { 
+            setFormLoading(false); 
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -91,26 +100,47 @@ export default function LessonPlansPage() {
         }
     };
     
-    const canEdit = userData?.subRoles?.includes('Lecturer');
+    const isAuthorized = React.useMemo(() => {
+        if (!user || !courseData) return false;
+        if (userProfile?.role === 'Admin') return true;
+        const assignedLecturers = courseData.lecturerIds || [];
+        return Array.isArray(assignedLecturers) && assignedLecturers.includes(user.uid);
+    }, [user, userProfile, courseData]);
+
+    if (loading) return <div className="space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-32 w-full" /></div>;
 
     return (
         <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
-                    <CardTitle>Lesson Plans</CardTitle>
+                    <CardTitle>Lesson Plan</CardTitle>
                     <CardDescription>Structure the course content and activities by week.</CardDescription>
                 </div>
-                 {canEdit && (
+                 {isAuthorized && (
                     <Dialog open={isPathDialogOpen} onOpenChange={(o) => { setIsPathDialogOpen(o); if(!o) resetForms(); }}>
                         <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Module</Button></DialogTrigger>
                         <DialogContent><form onSubmit={handleAddPathItem}>
                             <DialogHeader><DialogTitle>New Lesson Module</DialogTitle></DialogHeader>
                             <div className="grid gap-4 py-4">
-                                <Input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} required />
-                                <Input type="number" placeholder="Week Number" value={pathWeek} onChange={e => setPathWeek(Number(e.target.value))} required />
-                                <Textarea placeholder="Topics, activities, readings..." value={description} onChange={e => setDescription(e.target.value)} />
+                                <div className="space-y-1">
+                                    <Label>Title</Label>
+                                    <Input placeholder="Module Title" value={title} onChange={e => setTitle(e.target.value)} required />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Week Number</Label>
+                                    <Input type="number" placeholder="Week Number" value={pathWeek} onChange={e => setPathWeek(Number(e.target.value))} required />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Description</Label>
+                                    <Textarea placeholder="Topics, activities, readings..." value={description} onChange={e => setDescription(e.target.value)} />
+                                </div>
                             </div>
-                            <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add'}</Button></DialogFooter>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                                <Button type="submit" disabled={formLoading}>
+                                    {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Add Module'}
+                                </Button>
+                            </DialogFooter>
                         </form></DialogContent>
                     </Dialog>
                 )}
@@ -118,20 +148,28 @@ export default function LessonPlansPage() {
             <CardContent>
                {lessonPlan.length > 0 ? [...lessonPlan].sort((a,b) => a.week - b.week).map(p => (
                    <Card key={p.id} className="mb-4">
-                       <CardHeader>
-                           <CardTitle>Week {p.week}: {p.title}</CardTitle>
+                       <CardHeader className="flex flex-row items-center justify-between">
+                           <CardTitle className="text-lg">Week {p.week}: {p.title}</CardTitle>
+                           {isAuthorized && (
+                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(p.id)}>
+                                    <Trash2 className="h-4 w-4"/>
+                                </Button>
+                           )}
                        </CardHeader>
-                       {p.description && <CardContent><p className="whitespace-pre-wrap text-muted-foreground">{p.description}</p></CardContent>}
-                       {canEdit && (
-                            <CardFooter className="justify-end">
-                                <Button variant="destructive" size="icon" onClick={() => handleDelete(p.id)}><Trash2 className="h-4 w-4"/></Button>
-                            </CardFooter>
+                       {p.description && (
+                           <CardContent>
+                               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{p.description}</p>
+                           </CardContent>
                        )}
                    </Card>
-               )) : <Alert><Route className="h-4 w-4" /><AlertTitle>No Lesson Plan Defined</AlertTitle><AlertDescription>The lesson plan has not been set up for this course yet.</AlertDescription></Alert>}
+               )) : (
+                    <Alert>
+                        <Route className="h-4 w-4" />
+                        <AlertTitle>No Lesson Plan Defined</AlertTitle>
+                        <AlertDescription>The lesson plan has not been set up for this course yet.</AlertDescription>
+                    </Alert>
+               )}
             </CardContent>
         </Card>
     );
 }
-
-    
