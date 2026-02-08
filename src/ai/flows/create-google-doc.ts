@@ -52,11 +52,11 @@ const createGoogleDocFlow = ai.defineFlow(
     }
 
     // 2. Authenticate with Google using Service Account
-    const authEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const authKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const authEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const authKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
     if (!authEmail || !authKey) {
-      console.warn("GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_PRIVATE_KEY not found in .env. Falling back to dummy URL for preview.");
+      console.warn("FIREBASE_CLIENT_EMAIL or FIREBASE_PRIVATE_KEY not found in .env. Falling back to dummy URL for preview.");
       return { documentUrl: `https://docs.google.com/document/d/1a2b3c4d5e6f7g8h9i0j/edit` };
     }
 
