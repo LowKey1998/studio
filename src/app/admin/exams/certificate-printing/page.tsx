@@ -1,22 +1,25 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Download, GraduationCap, FileCheck, Loader2 } from 'lucide-react';
+import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as ImageIcon } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 import { useTheme } from '@/components/theme-provider';
 import placeholderImages from '@/app/lib/placeholder-images.json';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Info } from 'lucide-react';
 
 type Student = {
     uid: string;
@@ -121,7 +124,6 @@ export default function CertificatePrintingPage() {
         try {
             const bgUrl = placeholderImages.certificateBackground.url;
             
-            // 1. Create a canvas and draw the image
             const img = new Image();
             img.crossOrigin = "anonymous";
             img.src = bgUrl;
@@ -138,40 +140,30 @@ export default function CertificatePrintingPage() {
 
             if (!ctx) throw new Error("Could not initialize canvas context.");
 
-            // Draw Background
             ctx.drawImage(img, 0, 0);
-
-            // Set Global Font Settings
             ctx.textAlign = 'center';
             ctx.fillStyle = 'black';
 
-            // Institution Name
             ctx.font = 'bold 40px sans-serif';
             ctx.fillText(institutionName.toUpperCase(), canvas.width / 2, 220);
 
-            // Main Heading
             ctx.font = 'bold 64px sans-serif';
             ctx.fillText('CERTIFICATE OF ACHIEVEMENT', canvas.width / 2, 350);
 
-            // certify text
             ctx.font = 'italic 32px serif';
             ctx.fillText('This is to certify that', canvas.width / 2, 450);
 
-            // Student Name
             ctx.font = 'bold italic 80px serif';
             ctx.fillStyle = '#2980b9';
             ctx.fillText(activeStudent.name, canvas.width / 2, 550);
 
-            // Achievement Text
             ctx.fillStyle = 'black';
             ctx.font = '32px sans-serif';
             ctx.fillText('has successfully completed the requirements for', canvas.width / 2, 650);
 
-            // Training Title
             ctx.font = 'bold 48px sans-serif';
             ctx.fillText(metaInfo.trainingTitle.toUpperCase(), canvas.width / 2, 730);
 
-            // Meta Details
             ctx.font = '28px sans-serif';
             ctx.textAlign = 'left';
             const leftX = 150;
@@ -186,7 +178,6 @@ export default function CertificatePrintingPage() {
             ctx.fillText(`Date Issued: ${format(new Date(), 'PPP')}`, rightX, startY);
             ctx.fillText(`Certificate No: SM-${activeStudent.id}-${Date.now().toString().slice(-4)}`, rightX, startY + 50);
 
-            // Signatures
             ctx.textAlign = 'center';
             ctx.font = '24px sans-serif';
             const sigY = 1250;
@@ -201,7 +192,6 @@ export default function CertificatePrintingPage() {
             ctx.fillText(metaInfo.representative, sigRX, sigY + 40);
             ctx.fillText('Institution Representative', sigRX, sigY + 80);
 
-            // 2. Convert Canvas to PDF
             const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const doc = new jsPDF({
                 orientation: 'portrait',
@@ -240,79 +230,111 @@ export default function CertificatePrintingPage() {
                     </div>
                     <CardDescription>Select a student and a course to generate an official completion certificate using the institutional background template.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid md:grid-cols-3 gap-4">
-                        <div className="space-y-1">
-                            <Label>Search Student</Label>
-                            <div className="relative">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input 
-                                    placeholder="Name or ID..." 
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-8"
-                                />
+                <CardContent>
+                    <Tabs defaultValue="students">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="students"><Users className="h-4 w-4 mr-2"/> Student List</TabsTrigger>
+                            <TabsTrigger value="template"><Settings2 className="h-4 w-4 mr-2"/> Template Configuration</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="students" className="space-y-4 pt-4">
+                            <div className="grid md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                    <Label>Search Student</Label>
+                                    <div className="relative">
+                                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input 
+                                            placeholder="Name or ID..." 
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-8"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Filter Semester (Optional)</Label>
+                                    <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
+                                        <SelectTrigger><SelectValue placeholder="Select semester..." /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Semesters</SelectItem>
+                                            {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label>Filter Course (Required for specific title)</Label>
+                                    <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                                        <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Use Programme Name</SelectItem>
+                                            {courses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Filter Semester (Optional)</Label>
-                            <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
-                                <SelectTrigger><SelectValue placeholder="Select semester..." /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Semesters</SelectItem>
-                                    {semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Filter Course (Required for specific title)</Label>
-                            <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                                <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
-                                <SelectContent>
-                                    {courses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
 
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Student ID</TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Programme</TableHead>
-                                <TableHead className="text-right">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
-                                ))
-                            ) : filteredStudents.length > 0 ? (
-                                filteredStudents.map(student => (
-                                    <TableRow key={student.uid}>
-                                        <TableCell className="font-mono text-xs">{student.id}</TableCell>
-                                        <TableCell className="font-medium">{student.name}</TableCell>
-                                        <TableCell className="text-sm">{student.programmeName}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm"
-                                                onClick={() => handleOpenMeta(student)}
-                                                disabled={generating === student.uid}
-                                            >
-                                                {generating === student.uid ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
-                                                Generate
-                                            </Button>
-                                        </TableCell>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Student ID</TableHead>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Programme</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
                                     </TableRow>
-                                ))
-                            ) : (
-                                <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No students found matching your search.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {loading ? (
+                                        Array.from({ length: 5 }).map((_, i) => (
+                                            <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
+                                        ))
+                                    ) : filteredStudents.length > 0 ? (
+                                        filteredStudents.map(student => (
+                                            <TableRow key={student.uid}>
+                                                <TableCell className="font-mono text-xs">{student.id}</TableCell>
+                                                <TableCell className="font-medium">{student.name}</TableCell>
+                                                <TableCell className="text-sm">{student.programmeName}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm"
+                                                        onClick={() => handleOpenMeta(student)}
+                                                        disabled={generating === student.uid}
+                                                    >
+                                                        {generating === student.uid ? <Loader2 className="animate-spin h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
+                                                        Generate
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No students found matching your search.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </TabsContent>
+
+                        <TabsContent value="template" className="space-y-6 pt-4">
+                            <Alert>
+                                <Info className="h-4 w-4" />
+                                <AlertTitle>Template Management</AlertTitle>
+                                <AlertDescription>
+                                    To update the certificate background, please edit the URL in <code className="bg-muted px-1 rounded">src/app/lib/placeholder-images.json</code> under the <code className="bg-muted px-1 rounded">certificateBackground</code> key.
+                                </AlertDescription>
+                            </Alert>
+                            <Card className="bg-muted/20">
+                                <CardHeader>
+                                    <CardTitle className="text-base flex items-center gap-2"><ImageIcon className="h-4 w-4"/>Current Background Preview</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex justify-center">
+                                    <img 
+                                        src={placeholderImages.certificateBackground.url} 
+                                        alt="Certificate Background" 
+                                        className="max-w-md w-full border shadow-sm rounded-lg"
+                                    />
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
                 </CardContent>
             </Card>
 
