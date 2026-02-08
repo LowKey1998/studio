@@ -48,6 +48,7 @@ export const allMenuItems = [
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
         { href: '/admin/course-paths', label: 'Intakes / Course Paths', icon: Route },
+        { href: '/admin/academics/student-enrollment', label: 'Student to Class', icon: UserPlus },
         { href: '/admin/timetable', label: 'Timetable', icon: Calendar },
         { href: '/admin/calendar', label: 'Academic Calendar', icon: Calendar },
         { href: '/admin/academics/room-scheduling', label: 'Room Scheduling', icon: Building },
