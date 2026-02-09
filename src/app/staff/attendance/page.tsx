@@ -52,16 +52,21 @@ export default function StaffAttendancePage() {
                     const registration = allRegistrations[userId][semesterId];
                     const semesterInfo = allSemesters[semesterId];
 
-                    if (semesterInfo?.status !== 'Archived') {
+                    if (semesterInfo?.status !== 'Archived' && registration.courses) {
                         for (const courseId of registration.courses) {
                             const courseData = coursesData[courseId];
-                            if (courseData && courseData.lecturerId === currentUser.uid && !lecturerCourses.has(courseId)) {
-                                lecturerCourses.set(courseId, {
-                                    id: courseId,
-                                    name: courseData.name,
-                                    code: courseData.code,
-                                    semester: semesterInfo.name || 'Active Semester',
-                                });
+                            if (courseData) {
+                                const lecturerIds = courseData.lecturerIds || [];
+                                const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
+                                
+                                if (isAssigned && !lecturerCourses.has(courseId)) {
+                                    lecturerCourses.set(courseId, {
+                                        id: courseId,
+                                        name: courseData.name,
+                                        code: courseData.code,
+                                        semester: semesterInfo.name || 'Active Semester',
+                                    });
+                                }
                             }
                         }
                     }

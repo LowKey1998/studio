@@ -120,7 +120,7 @@ export default function StudentRegistrationPage() {
             }
             
             const semesterOfferings = semesterOfferingsSnap.exists() ? semesterOfferingsSnap.val() : {};
-            const userRegistrations = registrationsSnap.exists() ? Object.keys(registrationsSnap.val()) : [];
+            const userRegistrations = registrationsSnap.exists() ? registrationsSnap.val() : {};
             
             const semesterList: SemesterWithStatus[] = [];
             
@@ -129,8 +129,12 @@ export default function StudentRegistrationPage() {
                     const semesterDetails = allSemestersData[semId];
                     if (!semesterDetails || semesterDetails.status === 'Archived') continue;
 
-                    const isOpenForRegistration = !!semesterOfferings[semId]?.isOpen;
-                    const isRegistered = userRegistrations.includes(semId);
+                    // New path-based opening logic: semesterOfferings[pathId][semesterId].active
+                    const isOpenForRegistration = !!semesterOfferings[userPathEntry.id]?.[semId]?.active;
+                    
+                    // A semester is registered if the entry exists AND has courses
+                    const registrationEntry = userRegistrations[semId];
+                    const isRegistered = !!(registrationEntry && registrationEntry.courses && registrationEntry.courses.length > 0);
                     
                     if (!isOpenForRegistration && !isRegistered) {
                         continue;
@@ -209,7 +213,7 @@ export default function StudentRegistrationPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>My Academic Path</CardTitle>
-                    <CardDescription>Below are the semesters for your programme. Semesters open for registration will have a "Register" button.</CardDescription>
+                    <CardDescription>Below are the semesters for your programme. Semesters open for registration will have a "Register Now" button.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {semestersForPath.length > 0 ? (
@@ -222,7 +226,7 @@ export default function StudentRegistrationPage() {
                                             <CardDescription>Year {semester.year}, Semester {semester.semesterInYear}</CardDescription>
                                         </div>
                                         {semester.isRegistered ? (
-                                             <Button disabled variant="secondary">
+                                             <Button disabled variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 opacity-100">
                                                 <CheckCircle2 className="h-4 w-4 mr-2"/> Registered
                                             </Button>
                                         ) : semester.isOpen ? (

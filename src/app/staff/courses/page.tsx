@@ -34,7 +34,7 @@ type Semester = {
 };
 
 type UserData = {
-    role: 'Staff';
+    role: 'Student' | 'Staff' | 'Admin';
     subRoles?: string[];
 };
 
@@ -90,18 +90,25 @@ export default function StaffCoursesPage() {
                 for (const semesterId in allRegistrations[userId]) {
                     const reg = allRegistrations[userId][semesterId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                        for (const courseId of reg.courses) {
-                            studentCounts[courseId] = (studentCounts[courseId] || 0) + 1;
+                        if (reg.courses) {
+                            for (const courseId of reg.courses) {
+                                studentCounts[courseId] = (studentCounts[courseId] || 0) + 1;
+                            }
                         }
                     }
                 }
             }
 
-            // 2. Find all courses taught by the current lecturer
+            // 2. Find all courses taught by the current lecturer (plural lecturerIds check)
             const myCourseIds = new Set<string>();
             for (const courseId in allCourses) {
                 const courseData = allCourses[courseId];
-                if (courseData.lecturerIds && Array.isArray(courseData.lecturerIds) && courseData.lecturerIds.includes(currentUser.uid)) {
+                const lecturerIds = courseData.lecturerIds || [];
+                // Support both new plural array and legacy singular field
+                if (
+                    (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
+                    (courseData.lecturerId === currentUser.uid)
+                ) {
                     myCourseIds.add(courseId);
                 }
             }
@@ -109,35 +116,37 @@ export default function StaffCoursesPage() {
             // 3. Find which semesters these courses are in, via course paths
             const newActiveCourses: Course[] = [];
             const newArchivedCourses: Course[] = [];
-            const processedEntries = new Set<string>(); // To avoid duplicates like "course1-semester1"
+            const processedEntries = new Set<string>();
 
             allCoursePaths.forEach(path => {
                 if (path.semesters) {
                     Object.entries(path.semesters).forEach(([semesterId, semesterData]) => {
                         const semesterInfo = allSemesters[semesterId];
-                        if (!semesterInfo) return; // Skip if semester details not found
+                        if (!semesterInfo) return;
 
-                        semesterData.courses.forEach(courseId => {
-                            if (myCourseIds.has(courseId)) {
-                                const uniqueKey = `${courseId}-${semesterId}`;
-                                if (!processedEntries.has(uniqueKey)) {
-                                    const courseEntry: Course = {
-                                        id: courseId,
-                                        name: allCourses[courseId].name,
-                                        code: allCourses[courseId].code,
-                                        studentCount: studentCounts[courseId] || 0,
-                                        semester: semesterInfo.name,
-                                    };
+                        if (semesterData.courses) {
+                            semesterData.courses.forEach(courseId => {
+                                if (myCourseIds.has(courseId)) {
+                                    const uniqueKey = `${courseId}-${semesterId}`;
+                                    if (!processedEntries.has(uniqueKey)) {
+                                        const courseEntry: Course = {
+                                            id: courseId,
+                                            name: allCourses[courseId].name,
+                                            code: allCourses[courseId].code,
+                                            studentCount: studentCounts[courseId] || 0,
+                                            semester: semesterInfo.name,
+                                        };
 
-                                    if (semesterInfo.status !== 'Archived') {
-                                        newActiveCourses.push(courseEntry);
-                                    } else {
-                                        newArchivedCourses.push(courseEntry);
+                                        if (semesterInfo.status !== 'Archived') {
+                                            newActiveCourses.push(courseEntry);
+                                        } else {
+                                            newArchivedCourses.push(courseEntry);
+                                        }
+                                        processedEntries.add(uniqueKey);
                                     }
-                                    processedEntries.add(uniqueKey);
                                 }
-                            }
-                        });
+                            });
+                        }
                     });
                 }
             });

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -298,26 +299,11 @@ export default function RegistrationManagementPage() {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
-    const refreshData = async () => {
-        const semestersSnap = await get(ref(db, 'semesters'));
-         if (semestersSnap.exists()) {
-            const data = semestersSnap.val();
-            const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-            setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
-        }
-    };
-    
-
     const handleSaveChanges = async () => {
-        const currentSemesterObj = semesters.find(s => s.id === selectedSemester);
-        if (!currentSemesterObj) return;
         setSaving(true);
         try { 
-            await set(ref(db, `semesterOfferings/${currentSemesterObj.name}`), {
-                courseIds: availableForSemester,
-                isOpen: true,
-            });
-            toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings for ${currentSemesterObj.name} have been updated.` });
+            await set(ref(db, `semesterOfferings`), activePathSemesters);
+            toast({ variant: 'success', title: 'Settings Saved', description: `Registration paths and statuses have been updated.` });
         } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setSaving(false); }
     };
@@ -413,9 +399,15 @@ export default function RegistrationManagementPage() {
         </Card>
         
         <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="text-xl">Course Registration Paths</CardTitle>
-                <CardDescription>Toggle the switch for each semester you want to make available for student registration.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div className="space-y-1">
+                    <CardTitle className="text-xl">Course Registration Paths</CardTitle>
+                    <CardDescription>Toggle the switch for each semester you want to make available for student registration.</CardDescription>
+                </div>
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogTrigger asChild><Button variant="outline"><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button></DialogTrigger>
+                    <DialogContent className="sm:max-w-xl"><CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => {setIsCreateDialogOpen(false);}} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} /></DialogContent>
+                </Dialog>
             </CardHeader>
             <CardContent>
                  {loading ? (<div className="space-y-4 pt-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
