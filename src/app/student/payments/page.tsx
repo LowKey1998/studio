@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Receipt, History, DollarSign, ChevronDown, CheckCircle2, GraduationCap, Loader2 } from 'lucide-react';
+import { Receipt, History, DollarSign, ChevronDown, CheckCircle2, GraduationCap, Loader2, Download, Mail } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,9 @@ import { auth, db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 type Invoice = { 
     invoiceId: string; 
@@ -69,7 +72,9 @@ export default function StudentPaymentsPage() {
     const [payments, setPayments] = React.useState<PaymentSummary[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allSemesters, setAllSemesters] = React.useState<Record<string, Semester>>({});
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
     const [loading, setLoading] = React.useState(true);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const { toast } = useToast();
 
@@ -85,17 +90,19 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [invoicesSnap, transactionsSnap, semestersSnap, coursesSnap] = await Promise.all([
+            const [invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap] = await Promise.all([
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'courses'))
+                get(ref(db, 'courses')),
+                get(ref(db, 'settings/institution')),
             ]);
 
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
             setAllCourses(coursesData);
             setAllSemesters(semestersData);
+            if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
 
             if (!invoicesSnap.exists()) {
                 setPayments([]);
@@ -138,6 +145,63 @@ export default function StudentPaymentsPage() {
     React.useEffect(() => {
         if (currentUser) fetchData();
     }, [currentUser, fetchData]);
+
+    const generateInvoicePDF = async (p: PaymentSummary): Promise<jsPDF | null> => {
+        const semester = allSemesters[p.semesterId];
+        if (!semester) return null;
+
+        const doc = new jsPDF();
+        if (institutionSettings.logoUrl) {
+            try {
+                doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
+            } catch (e) {
+                console.warn("Logo failed to load for PDF:", e);
+            }
+        }
+        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+        doc.setFontSize(12); doc.text('Student Invoice', 190, 25, { align: 'right' });
+        doc.setFontSize(10);
+        doc.text(`Student: ${currentUser?.displayName || 'Student'}`, 14, 40);
+        doc.text(`Invoice ID: ${p.invoice.invoiceId}`, 190, 40, { align: 'right' });
+        doc.text(`Date Issued: ${format(new Date(p.invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
+        doc.text(`Semester: ${semester.name}`, 14, 45);
+
+        const courseItems = (p.invoice.courses || []).map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && p.invoice.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        const lateFeeItem = p.invoice.lateFee && p.invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${p.invoice.lateFee.toFixed(2)}`]] : [];
+
+        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
+        const subtotal = (p.invoice.totalTuition || 0) + (p.invoice.totalMandatoryFees || 0) + (p.invoice.totalOptionalFees || 0) + (p.invoice.lateFee || 0);
+        
+        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${subtotal.toFixed(2)}`]];
+        if(p.invoice.applyScholarship) {
+            foot.push(['', 'Scholarship Waived', `(ZMW ${(p.invoice.totalTuition || 0).toFixed(2)})`]);
+            foot.push(['', 'Total Due', `ZMW ${p.totalDue.toFixed(2)}`]);
+        } else {
+            foot.push(['', 'Total Due', `ZMW ${p.totalDue.toFixed(2)}`]);
+        }
+        
+        autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body, foot, theme: 'striped', headStyles: { fillColor: [34, 34, 34] } });
+        return doc;
+    };
+
+    const handleDownloadInvoice = async (p: PaymentSummary) => {
+        setActionLoading(`dl-${p.invoice.invoiceId}`);
+        try {
+            const doc = await generateInvoicePDF(p);
+            if (doc) {
+                doc.save(`invoice-${p.invoice.invoiceId}.pdf`);
+                toast({ title: 'Invoice Downloaded' });
+            } else {
+                toast({ variant: 'destructive', title: 'Invoice Not Found' });
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Download Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     if (loading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
 
@@ -258,9 +322,20 @@ export default function StudentPaymentsPage() {
                                 <div className="text-xs">
                                     <span className="text-muted-foreground">Payment Plan:</span> <span className="font-semibold">{payment.invoice.paymentPlan}</span>
                                 </div>
-                                <Button variant="outline" size="sm" asChild>
-                                    <Link href="/student/dashboard"><DollarSign className="mr-2 h-4 w-4"/>Make a Payment</Link>
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        onClick={() => handleDownloadInvoice(payment)}
+                                        disabled={actionLoading === `dl-${payment.invoice.invoiceId}`}
+                                    >
+                                        {actionLoading === `dl-${payment.invoice.invoiceId}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}
+                                        Download PDF
+                                    </Button>
+                                    <Button variant="outline" size="sm" asChild>
+                                        <Link href="/student/dashboard"><DollarSign className="mr-2 h-4 w-4"/>Make a Payment</Link>
+                                    </Button>
+                                </div>
                             </CardFooter>
                         </Card>
                     ))}

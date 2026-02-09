@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview An AI agent for generating a conflict-free weekly timetable.
@@ -63,14 +62,18 @@ const generateTimetablePrompt = ai.definePrompt({
 You must adhere to the following constraints:
 1.  **No Conflicts:** A lecturer cannot teach two different classes at the same time.
 2.  **No Student Clashes:** A student cannot be scheduled for two different classes at the same time.
-3.  **Room Capacity:** The number of students in a class must not exceed the capacity of the assigned room.
+3.  **Room Capacity:** If rooms are provided, the number of students in a class must not exceed the capacity of the assigned room.
 4.  **Operating Hours:** All classes must be scheduled between {{{constraints.startTime}}} and {{{constraints.endTime}}} on the specified days: {{{constraints.days}}}.
 5.  **Session Duration:** Each class session must last for {{{constraints.sessionDuration}}} minutes.
 
 **Available Rooms:**
+{{#if rooms}}
 {{#each rooms}}
 - Room: {{name}}, Capacity: {{capacity}}
 {{/each}}
+{{else}}
+- No physical rooms currently defined. Please use "TBA" or "Online" as the venue for all entries.
+{{/if}}
 
 **Courses to Schedule:**
 {{#each courses}}
@@ -116,12 +119,11 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
     if (!semestersSnap.exists()) throw new Error("No semesters found in the database.");
     if (!coursesSnap.exists()) throw new Error("No courses found in the database. Please add courses first.");
     if (!usersSnap.exists()) throw new Error("No users found in the database.");
-    if (!roomsSnap.exists()) throw new Error("No rooms found in 'Facilities > Room Management'. You must define venues for classes to be scheduled.");
     if (!regsSnap.exists()) throw new Error("No student registrations found. The AI requires enrollment data to check for student schedule clashes.");
 
     const allSemesters = semestersSnap.val();
     const allCourses = coursesSnap.val();
-    const allRooms = roomsSnap.val();
+    const allRooms = roomsSnap.exists() ? roomsSnap.val() : {};
     const allRegistrations = regsSnap.val();
     
     // Get institutional constraints
@@ -131,10 +133,6 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
         days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         sessionDuration: 120
     };
-
-    if (Object.keys(allRooms).length === 0) {
-        throw new Error("No rooms are currently defined. Please add at least one room in Facilities > Room Management.");
-    }
 
     const activeSemesters = Object.entries(allSemesters).filter(([, sem]: [string, any]) => sem.status === 'Open');
     
