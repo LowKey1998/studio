@@ -31,7 +31,7 @@ type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> };
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
@@ -105,90 +105,90 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     };
 
     return (
-        <>
-        <DialogHeader>
-            <DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle>
-        </DialogHeader>
-        <Tabs defaultValue="details" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="details">Details & Plans</TabsTrigger>
-                <TabsTrigger value="fees">Fees</TabsTrigger>
-            </TabsList>
-            <TabsContent value="details" className="space-y-4 py-4">
-                <div className="space-y-1">
-                    <Label>Semester Name</Label>
-                    <Input value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                    <Label>Dates</Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick dates</span>}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} />
-                        </PopoverContent>
-                    </Popover>
-                </div>
-                <div className="space-y-2">
-                    <Label>Payment Plans</Label>
-                    <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
-                        {allPaymentPlans.filter(p => !p.archived).map(plan => (
-                            <div key={plan.id} className="flex items-center gap-2">
-                                <Checkbox id={`p-${plan.id}`} checked={!!selectedPaymentPlans[plan.id]} onCheckedChange={() => setSelectedPaymentPlans(prev => ({...prev, [plan.id]: !prev[plan.id]}))}/>
-                                <Label htmlFor={`p-${plan.id}`}>{plan.name}</Label>
-                            </div>
-                        ))}
+        <div className="space-y-4">
+            <DialogHeader>
+                <DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle>
+            </DialogHeader>
+            <Tabs defaultValue="details" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="details">Details & Plans</TabsTrigger>
+                    <TabsTrigger value="fees">Fees</TabsTrigger>
+                </TabsList>
+                <TabsContent value="details" className="space-y-4 py-4">
+                    <div className="space-y-1">
+                        <Label>Semester Name</Label>
+                        <Input value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} />
                     </div>
-                </div>
-            </TabsContent>
-            <TabsContent value="fees" className="space-y-4 py-4">
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <Label>Mandatory Fees</Label>
-                        <Button size="sm" variant="outline" onClick={() => setIsMandatoryFeeDialogOpen(true)}>Add Mandatory</Button>
+                    <div className="space-y-1">
+                        <Label>Dates</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-start">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick dates</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} />
+                            </PopoverContent>
+                        </Popover>
                     </div>
-                    <div className="flex justify-between items-center">
-                        <Label>Optional Fees</Label>
-                        <Button size="sm" variant="outline" onClick={() => setIsOptionalFeeDialogOpen(true)}>Add Optional</Button>
+                    <div className="space-y-2">
+                        <Label>Payment Plans</Label>
+                        <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
+                            {allPaymentPlans.filter(p => !p.archived).map(plan => (
+                                <div key={plan.id} className="flex items-center gap-2">
+                                    <Checkbox id={`p-${plan.id}`} checked={!!selectedPaymentPlans[plan.id]} onCheckedChange={() => setSelectedPaymentPlans(prev => ({...prev, [plan.id]: !prev[plan.id]}))}/>
+                                    <Label htmlFor={`p-${plan.id}`}>{plan.name}</Label>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            </TabsContent>
-        </Tabs>
-        <DialogFooter>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save</Button>
-        </DialogFooter>
-        <Dialog open={isMandatoryFeeDialogOpen} onOpenChange={setIsMandatoryFeeDialogOpen}>
-            <DialogContent>
-                <DialogHeader><DialogTitle>Add Mandatory Fee</DialogTitle></DialogHeader>
-                <div className="space-y-4">
-                    <Select value={selectedFeeTemplate} onValueChange={v => {setSelectedFeeTemplate(v); setFeeAmount(String(feeTemplates.find(t=>t.id===v)?.amount || ''))}}>
-                        <SelectTrigger><SelectValue/></SelectTrigger>
-                        <SelectContent>{feeTemplates.filter(t => t.type === 'Mandatory').map(t=><SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)} />
-                </div>
-                <DialogFooter><Button onClick={() => handleImportFee(true)}>Add</Button></DialogFooter>
-            </DialogContent>
-        </Dialog>
-        <Dialog open={isOptionalFeeDialogOpen} onOpenChange={setIsOptionalFeeDialogOpen}>
-            <DialogContent>
-                <DialogHeader><DialogTitle>Add Optional Fee</DialogTitle></DialogHeader>
-                <div className="space-y-4">
-                    <Select value={selectedFeeTemplate} onValueChange={v => {setSelectedFeeTemplate(v); setFeeAmount(String(feeTemplates.find(t=>t.id===v)?.amount || ''))}}>
-                        <SelectTrigger><SelectValue/></SelectTrigger>
-                        <SelectContent>{feeTemplates.filter(t => t.type === 'Optional').map(t=><SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input type="number" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)} />
-                </div>
-                <DialogFooter><Button onClick={() => handleImportFee(false)}>Add</Button></DialogFooter>
-            </DialogContent>
-        </Dialog>
-        </>
+                </TabsContent>
+                <TabsContent value="fees" className="space-y-4 py-4">
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <Label>Mandatory Fees</Label>
+                            <Button size="sm" variant="outline" onClick={() => setIsMandatoryFeeDialogOpen(true)}>Add Mandatory</Button>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <Label>Optional Fees</Label>
+                            <Button size="sm" variant="outline" onClick={() => setIsOptionalFeeDialogOpen(true)}>Add Optional</Button>
+                        </div>
+                    </div>
+                </TabsContent>
+            </Tabs>
+            <DialogFooter>
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save</Button>
+            </DialogFooter>
+            <Dialog open={isMandatoryFeeDialogOpen} onOpenChange={setIsMandatoryFeeDialogOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Add Mandatory Fee</DialogTitle></DialogHeader>
+                    <div className="space-y-4">
+                        <Select value={selectedFeeTemplate} onValueChange={v => {setSelectedFeeTemplate(v); setFeeAmount(String(feeTemplates.find(t=>t.id===v)?.amount || ''))}}>
+                            <SelectTrigger><SelectValue/></SelectTrigger>
+                            <SelectContent>{feeTemplates.filter(t => t.type === 'Mandatory').map(t=><SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Input type="number" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)} />
+                    </div>
+                    <DialogFooter><Button onClick={() => handleImportFee(true)}>Add</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={isOptionalFeeDialogOpen} onOpenChange={setIsOptionalFeeDialogOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Add Optional Fee</DialogTitle></DialogHeader>
+                    <div className="space-y-4">
+                        <Select value={selectedFeeTemplate} onValueChange={v => {setSelectedFeeTemplate(v); setFeeAmount(String(feeTemplates.find(t=>t.id===v)?.amount || ''))}}>
+                            <SelectTrigger><SelectValue/></SelectTrigger>
+                            <SelectContent>{feeTemplates.filter(t => t.type === 'Optional').map(t=><SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Input type="number" value={feeAmount} onChange={e=>setFeeAmount(e.target.value)} />
+                    </div>
+                    <DialogFooter><Button onClick={() => handleImportFee(false)}>Add</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
     );
 }
 

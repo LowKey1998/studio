@@ -1,4 +1,4 @@
-'use client';
+'use server';
 /**
  * @fileOverview An AI agent for setting a user's password and notifying them.
  */
