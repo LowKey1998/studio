@@ -211,6 +211,8 @@ export default function UserManagementPage() {
     const [newPassword, setNewPassword] = React.useState('');
     const [settingPassword, setSettingPassword] = React.useState(false);
     const [isBulkPasswordMode, setIsBulkPasswordMode] = React.useState(false);
+    const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('');
+    const [passwordEmailBody, setPasswordEmailBody] = React.useState('');
 
 
     const [loading, setLoading] = React.useState(false);
@@ -421,7 +423,7 @@ export default function UserManagementPage() {
                     <li><strong>User ID:</strong> ${newId}</li>
                     <li><strong>Password:</strong> ${password}</li>
                 </ul>
-                <p>We recommend you log in and change your password at your earliest convenience.</p>
+                <p>We recommend you log in and change your password at your earliest convenience. If you did not register for an account, please contact us immediately.</p>
                 <p>Best regards,<br/>The Administration</p>
             `;
 
@@ -640,7 +642,12 @@ The Administration
                 let success = 0;
                 for (const uid of uids) {
                     try {
-                        await setUserPassword({ uid, newPassword });
+                        await setUserPassword({ 
+                            uid, 
+                            newPassword,
+                            welcomeSubject: passwordEmailSubject,
+                            welcomeBody: passwordEmailBody
+                        });
                         success++;
                     } catch (e) {
                         console.error(`Failed to set password for ${uid}:`, e);
@@ -649,7 +656,12 @@ The Administration
                 toast({ title: 'Bulk Password Reset Complete', description: `Successfully updated ${success} of ${uids.length} users.` });
                 setSelectedUids(new Set());
             } else if (settingPasswordUser) {
-                const result = await setUserPassword({ uid: settingPasswordUser.uid, newPassword });
+                const result = await setUserPassword({ 
+                    uid: settingPasswordUser.uid, 
+                    newPassword,
+                    welcomeSubject: passwordEmailSubject,
+                    welcomeBody: passwordEmailBody
+                });
                 if (result.success) {
                     toast({ title: 'Success', description: result.message });
                 } else {
@@ -743,6 +755,24 @@ The Administration
         setManualId(`${basePrefix}${datePart}`);
     };
 
+    // Prepare default password reset email content
+    React.useEffect(() => {
+        if (isSetPasswordOpen) {
+            setPasswordEmailSubject(`Your Password Has Been Reset - ${idSettings?.name || 'Edutrack360'}`);
+            setPasswordEmailBody(`
+<h2>Password Change Notification</h2>
+<p>Hello [Name],</p>
+<p>An administrator has reset your password for the portal. Your new login details are:</p>
+<ul>
+  <li><strong>User ID:</strong> [UserID]</li>
+  <li><strong>New Password:</strong> [Password]</li>
+</ul>
+<p>We strongly recommend you log in and change this password to something only you know.</p>
+<p>Best regards,<br/>The Administration</p>
+            `.trim());
+        }
+    }, [isSetPasswordOpen, idSettings]);
+
 
   return (
     <>
@@ -823,7 +853,7 @@ The Administration
                                                 <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
                                             </div>
                                             <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
-                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMessageBody(e.target.value)} /></div>
+                                            <div className="space-y-2 rounded-md border p-3"><Label>Medical History &amp; Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
                                         </AccordionContent>
                                     </AccordionItem>)}
                                 </Accordion>
@@ -999,19 +1029,40 @@ The Administration
             </DialogContent>
         </Dialog>
         <Dialog open={isSetPasswordOpen} onOpenChange={setIsSetPasswordOpen}>
-            <DialogContent>
+            <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{isBulkPasswordMode ? `Set Password for ${selectedUids.size} users` : `Set Password for ${settingPasswordUser?.name}`}</DialogTitle>
-                    <DialogDescription>Enter a new temporary password. {isBulkPasswordMode ? "All selected users" : "The user"} will be notified via email.</DialogDescription>
+                    <DialogDescription>Enter a temporary password and review the notification email content.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="new-password">New Password</Label>
-                    <Input id="new-password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <div className="flex-1 overflow-auto py-4 space-y-6 pr-2">
+                    <div className="space-y-2">
+                        <Label htmlFor="new-password">New Temporary Password</Label>
+                        <Input id="new-password" type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Minimum 6 characters" />
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div className="space-y-4">
+                        <h4 className="font-bold text-sm uppercase text-muted-foreground flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            Notification Email Preview
+                        </h4>
+                        <div className="space-y-2">
+                            <Label htmlFor="pass-subject">Email Subject</Label>
+                            <Input id="pass-subject" value={passwordEmailSubject} onChange={e => setPasswordEmailSubject(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="pass-body">Email Body (HTML supported)</Label>
+                            <Textarea id="pass-body" value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" />
+                            <p className="text-[10px] text-muted-foreground italic">Use [Name], [UserID], and [Password] as dynamic placeholders.</p>
+                        </div>
+                    </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="pt-4 border-t">
                     <DialogClose asChild><Button variant="outline" onClick={() => setIsSetPasswordOpen(false)}>Cancel</Button></DialogClose>
-                    <Button onClick={handleSetPassword} disabled={settingPassword}>
-                        {settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Set Password'}
+                    <Button onClick={handleSetPassword} disabled={settingPassword || newPassword.length < 6}>
+                        {settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shield className="mr-2 h-4 w-4" />}
+                        Set Password & Notify
                     </Button>
                 </DialogFooter>
             </DialogContent>

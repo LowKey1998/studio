@@ -4,15 +4,19 @@
  * @fileOverview An AI agent for setting a user's password and notifying them.
  */
 
-import { z } from 'genkit';
+import { z } from 'kit';
 import { ai } from '@/ai/genkit';
 import { getAuth } from 'firebase-admin/auth';
 import { adminApp } from '@/lib/firebase-admin';
 import { sendEmail } from './send-email-flow';
+import { ref, get } from 'firebase/database';
+import { db } from '@/lib/firebase';
 
 const SetUserPasswordInputSchema = z.object({
   uid: z.string().describe('The Firebase UID of the user.'),
   newPassword: z.string().min(6).describe('The new password for the user (must be at least 6 characters).'),
+  welcomeSubject: z.string().optional().describe('Custom subject for the notification email.'),
+  welcomeBody: z.string().optional().describe('Custom HTML body for the notification email.'),
 });
 
 export type SetUserPasswordInput = z.infer<typeof SetUserPasswordInputSchema>;
@@ -34,7 +38,7 @@ const setUserPasswordFlow = ai.defineFlow(
     inputSchema: SetUserPasswordInputSchema,
     outputSchema: SetUserPasswordOutputSchema,
   },
-  async ({ uid, newPassword }) => {
+  async ({ uid, newPassword, welcomeSubject, welcomeBody }) => {
     const auth = getAuth(adminApp);
     try {
       // First, get the user's data to retrieve their email and name
@@ -46,28 +50,38 @@ const setUserPasswordFlow = ai.defineFlow(
         throw new Error('User does not have an email address.');
       }
 
+      // Fetch additional data from DB for the ID
+      const dbUserSnap = await get(ref(db, `users/${uid}`));
+      const dbUser = dbUserSnap.val() || {};
+      const systemId = dbUser.id || 'N/A';
+
       // Update the user's password
       await auth.updateUser(uid, {
         password: newPassword,
       });
 
-      // Send a notification email
-      const emailBody = `
+      // Prepare the notification email
+      let subject = welcomeSubject || 'Your Password Has Been Reset';
+      let body = welcomeBody || `
         <h2>Password Change Notification</h2>
-        <p>Hello ${userName},</p>
+        <p>Hello [Name],</p>
         <p>An administrator has reset your password for the portal. Your new login details are:</p>
         <ul>
-          <li><strong>User ID:</strong> ${userRecord.customClaims?.systemId || 'Your registered ID'}</li>
-          <li><strong>New Password:</strong> ${newPassword}</li>
+          <li><strong>User ID:</strong> [UserID]</li>
+          <li><strong>New Password:</strong> [Password]</li>
         </ul>
         <p>We strongly recommend you log in and change this password to something only you know.</p>
         <p>Best regards,<br/>The Administration</p>
       `;
 
+      // Replace placeholders
+      subject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+      body = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+
       await sendEmail({
         to: [userEmail],
-        subject: 'Your Password Has Been Reset',
-        body: emailBody,
+        subject: subject,
+        body: body,
       });
 
       return {
