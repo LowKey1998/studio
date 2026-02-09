@@ -85,10 +85,12 @@ export default function StudentRegistrationPage() {
                     const details = sData[semId];
                     if (!details || details.status === 'Archived') continue;
                     
-                    const isOpen = !!offerings[userPath.id]?.[semId]?.active;
+                    const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
                     const isRegistered = !!(regs[semId]?.courses?.length > 0);
                     
-                    if (!isOpen && !isRegistered) continue;
+                    // Allow access if the admin has explicitly opened it OR if they haven't registered yet and it's not archived
+                    const canView = isOfferingActive || !isRegistered;
+                    if (!canView) continue;
 
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
@@ -117,7 +119,7 @@ export default function StudentRegistrationPage() {
                         ...details, 
                         id: semId, 
                         isRegistered, 
-                        isOpen: isOpen || !isRegistered, // Allow access if open OR if not registered yet
+                        isOpen: isOfferingActive, 
                         courses,
                         deadlines,
                         isMissingDeadlines

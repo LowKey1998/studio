@@ -143,7 +143,7 @@ export default function StudentPaymentsPage() {
 
     return (
         <div className="space-y-6">
-            <Card>
+            <Card className="shadow-lg border-0">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
                     <CardDescription>View your detailed billing history, current balances, and payment records.</CardDescription>
@@ -153,7 +153,7 @@ export default function StudentPaymentsPage() {
             {payments.length > 0 ? (
                 <div className="space-y-4">
                     {payments.map((payment) => (
-                        <Card key={payment.invoice.invoiceId} className="overflow-hidden">
+                        <Card key={payment.invoice.invoiceId} className="overflow-hidden border-0 shadow-lg">
                             <CardHeader className="bg-muted/30 pb-4">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
@@ -175,18 +175,18 @@ export default function StudentPaymentsPage() {
                                         <h4 className="font-bold flex items-center gap-2"><Receipt className="h-4 w-4 text-primary"/> Invoice Breakdown</h4>
                                         <div className="rounded-md border p-4 bg-card shadow-sm space-y-3">
                                             <div className="space-y-2">
-                                                <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Academic Fees</p>
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Academic Fees</p>
                                                 {(payment.invoice.courses || []).map(id => {
                                                     const course = allCourses[id];
                                                     return course ? (
-                                                        <div key={id} className="flex justify-between text-sm">
+                                                        <div key={id} className="flex justify-between text-xs">
                                                             <span>Tuition: {course.name}</span>
                                                             <span className="font-mono">ZMW {course.cost.toFixed(2)}</span>
                                                         </div>
                                                     ) : null;
                                                 })}
                                                 {payment.invoice.applyScholarship && (
-                                                    <div className="flex justify-between text-sm text-green-600 font-medium italic">
+                                                    <div className="flex justify-between text-xs text-green-600 font-medium italic">
                                                         <span className="flex items-center gap-1"><GraduationCap className="h-3 w-3"/> Scholarship Applied</span>
                                                         <span className="font-mono">-(ZMW {payment.invoice.totalTuition?.toFixed(2)})</span>
                                                     </div>
@@ -194,9 +194,9 @@ export default function StudentPaymentsPage() {
                                             </div>
                                             <Separator />
                                             <div className="space-y-2">
-                                                <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Institutional Fees</p>
+                                                <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Institutional Fees</p>
                                                 {Object.values(allSemesters[payment.semesterId]?.mandatoryFees || {}).map((fee, i) => (
-                                                    <div key={i} className="flex justify-between text-sm">
+                                                    <div key={i} className="flex justify-between text-xs">
                                                         <span>{fee.name} (Mandatory)</span>
                                                         <span className="font-mono">ZMW {fee.amount.toFixed(2)}</span>
                                                     </div>
@@ -204,14 +204,14 @@ export default function StudentPaymentsPage() {
                                                 {(payment.invoice.optionalFees || []).map(id => {
                                                     const fee = allSemesters[payment.semesterId]?.optionalFees?.[id];
                                                     return fee ? (
-                                                        <div key={id} className="flex justify-between text-sm">
+                                                        <div key={id} className="flex justify-between text-xs">
                                                             <span>{fee.name} (Optional)</span>
                                                             <span className="font-mono">ZMW {fee.amount.toFixed(2)}</span>
                                                         </div>
                                                     ) : null;
                                                 })}
                                                 {(payment.invoice.lateFee || 0) > 0 && (
-                                                    <div className="flex justify-between text-sm text-destructive">
+                                                    <div className="flex justify-between text-xs text-destructive">
                                                         <span>Late Registration Fee</span>
                                                         <span className="font-mono">ZMW {payment.invoice.lateFee?.toFixed(2)}</span>
                                                     </div>
@@ -231,21 +231,21 @@ export default function StudentPaymentsPage() {
                                             <Table>
                                                 <TableHeader>
                                                     <TableRow className="hover:bg-transparent">
-                                                        <TableHead className="h-10">Date</TableHead>
-                                                        <TableHead className="h-10">Method</TableHead>
-                                                        <TableHead className="h-10 text-right">Amount</TableHead>
+                                                        <TableHead className="h-10 text-[10px] uppercase">Date</TableHead>
+                                                        <TableHead className="h-10 text-[10px] uppercase">Method</TableHead>
+                                                        <TableHead className="h-10 text-right text-[10px] uppercase">Amount</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {payment.transactions.length > 0 ? payment.transactions.map((tx) => (
-                                                        <TableRow key={tx.key}>
-                                                            <TableCell className="py-2">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                            <TableCell className="py-2">{tx.method || 'Online'}</TableCell>
-                                                            <TableCell className="py-2 text-right font-mono font-medium">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                        <TableRow key={tx.key} className="hover:bg-transparent">
+                                                            <TableCell className="py-2 text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                            <TableCell className="py-2 text-xs">{tx.method || 'Online'}</TableCell>
+                                                            <TableCell className="py-2 text-right font-mono font-medium text-xs">ZMW {tx.amount.toFixed(2)}</TableCell>
                                                         </TableRow>
                                                     )) : (
                                                         <TableRow>
-                                                            <TableCell colSpan={3} className="h-24 text-center text-muted-foreground italic">No payments recorded yet.</TableCell>
+                                                            <TableCell colSpan={3} className="h-24 text-center text-xs text-muted-foreground italic">No payments recorded yet.</TableCell>
                                                         </TableRow>
                                                     )}
                                                 </TableBody>
@@ -255,7 +255,7 @@ export default function StudentPaymentsPage() {
                                 </div>
                             </CardContent>
                             <CardFooter className="bg-muted/10 border-t justify-between p-4">
-                                <div className="text-sm">
+                                <div className="text-xs">
                                     <span className="text-muted-foreground">Payment Plan:</span> <span className="font-semibold">{payment.invoice.paymentPlan}</span>
                                 </div>
                                 <Button variant="outline" size="sm" asChild>

@@ -274,7 +274,7 @@ export default function StudentSemesterOverviewPage() {
                     <Card key={semester.semesterId} className="shadow-lg">
                         <AccordionItem value={semester.semesterId} className="border-b-0">
                             <AccordionTrigger className="p-6 hover:no-underline">
-                                <div className="w-full">
+                                <div className="w-full text-left">
                                     <div className="flex justify-between items-center">
                                         <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
                                         <div className="flex items-center text-sm text-muted-foreground">
@@ -282,7 +282,7 @@ export default function StudentSemesterOverviewPage() {
                                             <span>{semester.courses.length} Course(s)</span>
                                         </div>
                                     </div>
-                                    <div className="space-y-1 mt-4 text-left">
+                                    <div className="space-y-1 mt-4">
                                         <div className="flex justify-between items-center text-sm">
                                             <div className="flex items-center text-muted-foreground"><Hand className="mr-2 h-4 w-4" /> <span>Overall Attendance</span></div>
                                             <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
@@ -304,7 +304,7 @@ export default function StudentSemesterOverviewPage() {
                                                             .filter(entry => entry.day === day)
                                                             .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                                                             .map((entry, index) => (
-                                                                <div key={index} className="p-2 text-xs rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
+                                                                <div key={index} className="p-2 text-[10px] rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
                                                                     <p className="font-bold text-primary">{entry.courseCode}</p>
                                                                     <p className="text-primary/80">{entry.startTime} - {entry.endTime}</p>
                                                                     <p className="text-primary/80">Venue: {entry.venue}</p>
@@ -364,10 +364,10 @@ export default function StudentSemesterOverviewPage() {
                         <div key={bank.id} className={idx > 0 ? "pt-6 border-t" : ""}>
                             <h4 className="font-bold mb-3 flex items-center gap-2 text-primary"><Library className="h-4 w-4"/> {bank.bankName}</h4>
                             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                                {bank.accountName && <div className="flex flex-col"><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bank.accountName}</dd></div>}
-                                <div className="flex flex-col"><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bank.accountNumber}</dd></div>
-                                <div className="flex flex-col"><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bank.branchCode}</dd></div>
-                                {bank.swiftCode && <div className="flex flex-col"><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bank.swiftCode}</dd></div>}
+                                {bank.accountName && <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Account Name</dt><dd className="font-medium">{bank.accountName}</dd></div>}
+                                <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Account Number</dt><dd className="font-medium font-mono">{bank.accountNumber}</dd></div>
+                                <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Branch Code</dt><dd className="font-medium">{bank.branchCode}</dd></div>
+                                {bank.swiftCode && <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">SWIFT Code</dt><dd className="font-medium font-mono">{bank.swiftCode}</dd></div>}
                             </dl>
                         </div>
                     ))}

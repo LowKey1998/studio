@@ -215,8 +215,6 @@ export default function RegistrationManagementPage() {
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
-    const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
-    const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
