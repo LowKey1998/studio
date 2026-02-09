@@ -74,7 +74,7 @@ export default function StudentRegistrationPage() {
             const sData = sSnap.val() || {};
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
-            const eventsData = eventsSnapshot.val() || {};
+            const eventsData = eventsSnap.val() || {};
             const timetablesData = timetablesSnap.val() || {};
             const plansData = plansSnap.val() || {};
 

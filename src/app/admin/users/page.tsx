@@ -22,9 +22,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield, CheckSquare, Square, UserPlus, CheckCircle2, Flag } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Mail, Shield, CheckCircle2, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     DropdownMenu,
@@ -35,21 +35,22 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from '@/components/ui/checkbox';
-import { ref, get, push, update, onValue, remove } from 'firebase/database';
-import { auth, db, createNotification } from '@/lib/firebase';
+import { ref, get, update, onValue, push } from 'firebase/database';
+import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { setUserPassword } from '@/ai/flows/set-user-password';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/use-auth';
 import { Separator } from '@/components/ui/separator';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 type User = {
     uid: string;
@@ -155,7 +156,6 @@ export default function UserManagementPage() {
             users: ref(db, 'users'),
             programmes: ref(db, 'programmes'),
             subRoles: ref(db, 'settings/subRoles'),
-            idPrefixes: ref(db, 'settings/idPrefixes'),
             semesters: ref(db, 'semesters'),
             intakes: ref(db, 'intakes')
         };

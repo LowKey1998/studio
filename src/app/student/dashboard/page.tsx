@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { format, parseISO, differenceInDays } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 type Course = {
     id: string;

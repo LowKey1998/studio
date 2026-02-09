@@ -66,10 +66,10 @@ const setUserPasswordFlow = ai.defineFlow(
       `;
 
       // Replace placeholders
-      subject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
-      body = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+      const finalSubject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+      const finalBody = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
 
-      await sendEmail({ to: [userEmail], subject, body });
+      await sendEmail({ to: [userEmail], subject: finalSubject, body: finalBody });
 
       return {
         success: true,
