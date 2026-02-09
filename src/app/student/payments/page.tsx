@@ -163,7 +163,7 @@ function PayNowSection({
         
         const allFees = [
             ...(Object.values(semester?.mandatoryFees || {})),
-            ...(payment.invoice.optionalFees.map(feeId => semester?.optionalFees?.[feeId]).filter(Boolean) as Fee[])
+            ...((payment.invoice.optionalFees || []).map(feeId => semester?.optionalFees?.[feeId]).filter(Boolean) as Fee[])
         ];
         const totalFees = allFees.reduce((sum, fee) => sum + fee.amount, 0);
         
@@ -504,7 +504,7 @@ export default function PaymentsPage() {
 
             // Check if full invoice balance is now paid
             const updatedTotalPaid = totalPaidForInvoice(payment.invoice.invoiceId) + amount;
-            const totalDue = payment.invoice.totalTuition + payment.invoice.totalMandatoryFees + payment.invoice.totalOptionalFees + (payment.invoice.lateFee || 0);
+            const totalDue = (payment.invoice.totalTuition || 0) + (payment.invoice.totalMandatoryFees || 0) + (payment.invoice.totalOptionalFees || 0) + (payment.invoice.lateFee || 0);
 
             if(updatedTotalPaid >= totalDue) {
                 const regRef = ref(db, `registrations/${currentUser.uid}/${payment.invoice.semesterId}`);
@@ -563,9 +563,9 @@ export default function PaymentsPage() {
         doc.text(`Date Issued: ${format(new Date(invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
         doc.text(`Semester: ${invoice.semester}`, 14, 45);
     
-        const courseItems = invoice.courses.map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+        const courseItems = (invoice.courses || []).map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
         const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = semester?.optionalFees && invoice.optionalFees ? invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
+        const optionalFeeItems = semester?.optionalFees && (invoice.optionalFees || []) ? (invoice.optionalFees || []).map(feeId => ['', `Optional Fee: ${semester.optionalFees![feeId]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![feeId]?.amount || 0).toFixed(2)}`]) : [];
         const lateFeeItem = invoice.lateFee && invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${invoice.lateFee.toFixed(2)}`]] : [];
 
         const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
@@ -629,7 +629,7 @@ export default function PaymentsPage() {
                                 <CardContent className="text-sm">
                                     <Table>
                                         <TableBody>
-                                             {invoice.courses.map(id => allCourses[id]).filter(Boolean).map(course => (
+                                             {(invoice.courses || []).map(id => allCourses[id]).filter(Boolean).map(course => (
                                                 <TableRow key={course.id}><TableCell className="pl-0">Tuition: {course.name} ({course.code})</TableCell><TableCell className="text-right">ZMW {course.cost.toFixed(2)}</TableCell></TableRow>
                                             ))}
                                             {semester?.mandatoryFees && Object.values(semester.mandatoryFees).map((fee, i) => (
@@ -673,7 +673,7 @@ export default function PaymentsPage() {
                             </Card>
                         )}
                         <Table>
-                        <TableHeader><TableRow><TableHead>Installment</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount Due (ZMW)</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Installment</TableHead><TableHead>Due Date</TableHead>><TableHead>Status</TableHead><TableHead className="text-right">Amount Due (ZMW)</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {payments.map((payment, index) => (
                                 <Collapsible asChild key={index}>
