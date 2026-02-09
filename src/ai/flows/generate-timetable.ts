@@ -78,7 +78,7 @@ You must adhere to the following constraints:
 **Courses to Schedule:**
 {{#each courses}}
 - Course ID: {{id}}, Name: "{{name}}", Lecturer ID: {{lecturerId}}, Enrolled Students: {{studentIds.length}}
-  - Student IDs: {{#join studentIds ", "}}{{this}}{{/join}}
+  - Student IDs: {{#each studentIds}}{{{this}}} {{/each}}
 {{/each}}
 
 Based on all this information, generate the complete, conflict-free timetable. The output must be a JSON object matching the specified output schema.
