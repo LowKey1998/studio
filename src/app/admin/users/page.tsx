@@ -51,6 +51,7 @@ import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useToast } from '@/hooks/use-toast';
 
 type UserProfile = {
     uid: string;

@@ -73,6 +73,10 @@ export default function TimetableManagementPage() {
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
     const [venue, setVenue] = React.useState('');
+    
+    // Searchable Course Select state
+    const [courseSearch, setCourseSearch] = React.useState('');
+    const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -158,7 +162,6 @@ export default function TimetableManagementPage() {
         setSaving(true);
         try {
             const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
-            // Save manual entries under a dedicated "master" semester key to keep the admin view consolidated
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
             await set(entryRef, { day, startTime, endTime, venue, intakeName });
             toast({ title: "Entry Added" });
@@ -188,6 +191,7 @@ export default function TimetableManagementPage() {
         setStartTime('');
         setEndTime('');
         setVenue('');
+        setCourseSearch('');
     };
 
     const filteredTimetable = React.useMemo(() => {
@@ -198,6 +202,12 @@ export default function TimetableManagementPage() {
             return roomMatch && intakeMatch && searchMatch;
         });
     }, [masterTimetable, roomFilter, intakeFilter, searchTerm]);
+
+    const searchedCourses = React.useMemo(() => {
+        if (!courseSearch) return allCourses;
+        const lower = courseSearch.toLowerCase();
+        return allCourses.filter(c => c.name.toLowerCase().includes(lower) || c.code.toLowerCase().includes(lower));
+    }, [allCourses, courseSearch]);
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -214,7 +224,7 @@ export default function TimetableManagementPage() {
                             {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>}
                             Auto-Generate
                         </Button>
-                        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                        <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
                             <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
                             <DialogContent className="sm:max-w-lg">
                                 <DialogHeader><DialogTitle>Manual Schedule Entry</DialogTitle></DialogHeader>
@@ -224,18 +234,57 @@ export default function TimetableManagementPage() {
                                         <Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}>
                                             <SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger>
                                             <SelectContent>
-                                                {intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                                {intakes.map((i) => <SelectItem key={i.id || i.name} value={i.id}>{i.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Select Course</Label>
-                                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                                            <SelectTrigger><SelectValue placeholder="Search courses..."/></SelectTrigger>
-                                            <SelectContent>
-                                                {allCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
+                                        <Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button variant="outline" className="w-full justify-between font-normal">
+                                                    {selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                                <div className="flex flex-col">
+                                                    <div className="p-2 border-b">
+                                                        <div className="relative">
+                                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                            <Input 
+                                                                placeholder="Search code or name..." 
+                                                                className="pl-8 h-9" 
+                                                                value={courseSearch}
+                                                                onChange={(e) => setCourseSearch(e.target.value)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <ScrollArea className="h-64">
+                                                        <div className="p-1">
+                                                            {searchedCourses.length > 0 ? searchedCourses.map((c) => (
+                                                                <Button
+                                                                    key={c.id}
+                                                                    variant="ghost"
+                                                                    className="w-full justify-start text-xs h-auto py-2"
+                                                                    onClick={() => {
+                                                                        setSelectedCourseId(c.id);
+                                                                        setIsCoursePopoverOpen(false);
+                                                                    }}
+                                                                >
+                                                                    <div className="text-left">
+                                                                        <div className="font-bold">{c.code}</div>
+                                                                        <div className="text-muted-foreground">{c.name}</div>
+                                                                    </div>
+                                                                </Button>
+                                                            )) : (
+                                                                <div className="p-4 text-center text-xs text-muted-foreground">No courses found</div>
+                                                            )}
+                                                        </div>
+                                                    </ScrollArea>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
