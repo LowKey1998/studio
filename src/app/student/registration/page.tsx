@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from 'date-fns';
 import { Label } from '@/components/ui/label';
 

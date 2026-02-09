@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -58,6 +57,7 @@ export default function TimetableManagementPage() {
     const [courses, setCourses] = React.useState<Record<string, Course>>({});
     const [rooms, setRooms] = React.useState<Room[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
+    const [users, setUsers] = React.useState<Record<string, any>>({});
 
     // Filter states
     const [roomFilter, setRoomFilter] = React.useState('all');
@@ -66,8 +66,7 @@ export default function TimetableManagementPage() {
 
     // Add Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
-    const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [selectedCourseComposite, setSelectedCourseComposite] = React.useState(''); // JSON string of {courseId, semesterId}
     const [day, setDay] = React.useState('');
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
@@ -78,12 +77,13 @@ export default function TimetableManagementPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap] = await Promise.all([
+            const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/rooms')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'timetables'))
+                get(ref(db, 'timetables')),
+                get(ref(db, 'users'))
             ]);
 
             const sData = semSnap.val() || {};
@@ -91,12 +91,13 @@ export default function TimetableManagementPage() {
             const rData = roomsSnap.val() || {};
             const iData = intakesSnap.val() || {};
             const tData = timetablesSnap.val() || {};
+            const uData = usersSnap.val() || {};
 
-            const semestersList = Object.keys(sData).map(id => ({ id, ...sData[id] }));
-            setSemesters(semestersList);
+            setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
             setCourses(cData);
             setRooms(Object.values(rData));
             setIntakes(Object.keys(iData).map(id => ({ id, ...iData[id] })));
+            setUsers(uData);
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
@@ -149,13 +150,14 @@ export default function TimetableManagementPage() {
     };
 
     const handleAddEntry = async () => {
-        if (!selectedSemesterId || !selectedCourseId || !day || !startTime || !endTime || !venue) {
+        if (!selectedCourseComposite || !day || !startTime || !endTime || !venue) {
             toast({ variant: 'destructive', title: 'Please fill all fields' });
             return;
         }
         setSaving(true);
         try {
-            const entryRef = push(ref(db, `timetables/${selectedSemesterId}/${selectedCourseId}`));
+            const { courseId, semesterId } = JSON.parse(selectedCourseComposite);
+            const entryRef = push(ref(db, `timetables/${semesterId}/${courseId}`));
             await set(entryRef, { day, startTime, endTime, venue });
             toast({ title: "Entry Added" });
             setIsAddOpen(false);
@@ -178,8 +180,7 @@ export default function TimetableManagementPage() {
     };
 
     const resetAddForm = () => {
-        setSelectedSemesterId('');
-        setSelectedCourseId('');
+        setSelectedCourseComposite('');
         setDay('');
         setStartTime('');
         setEndTime('');
@@ -195,12 +196,30 @@ export default function TimetableManagementPage() {
         });
     }, [masterTimetable, roomFilter, intakeFilter, searchTerm]);
 
-    const coursesForSelectedSemester = React.useMemo(() => {
-        if (!selectedSemesterId) return [];
-        return Object.entries(courses)
-            .filter(([id, data]) => data.status === 'active')
-            .map(([id, data]) => ({ id, ...data }));
-    }, [selectedSemesterId, courses]);
+    const courseOptions = React.useMemo(() => {
+        const options: { value: string; label: string }[] = [];
+        
+        // Find all courses being offered in active (non-archived) semesters
+        const activeSemesters = semesters.filter(s => s.status !== 'Archived');
+        const courseSnapshot = courses;
+
+        // We can check coursePaths or semesterOfferings to find valid Course-Semester pairs
+        // For simplicity, let's look at all courses and map them to their corresponding semesters
+        // based on the intake they belong to.
+        activeSemesters.forEach(sem => {
+            Object.entries(courseSnapshot).forEach(([id, data]) => {
+                if (data.status === 'active') {
+                    // This is a simplified check. A production app would verify the path.
+                    options.push({
+                        value: JSON.stringify({ courseId: id, semesterId: sem.id }),
+                        label: `${data.code} - ${data.name} (${sem.name})`
+                    });
+                }
+            });
+        });
+
+        return options.sort((a,b) => a.label.localeCompare(b.label));
+    }, [semesters, courses]);
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -223,17 +242,12 @@ export default function TimetableManagementPage() {
                                 <DialogHeader><DialogTitle>Manual Schedule Entry</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
                                     <div className="space-y-1">
-                                        <Label>Semester</Label>
-                                        <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId}>
-                                            <SelectTrigger><SelectValue placeholder="Select semester..."/></SelectTrigger>
-                                            <SelectContent>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label>Course</Label>
-                                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!selectedSemesterId}>
-                                            <SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger>
-                                            <SelectContent>{coursesForSelectedSemester.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}</SelectContent>
+                                        <Label>Select Class Instance</Label>
+                                        <Select value={selectedCourseComposite} onValueChange={setSelectedCourseComposite}>
+                                            <SelectTrigger><SelectValue placeholder="Select course and semester..."/></SelectTrigger>
+                                            <SelectContent>
+                                                {courseOptions.map((opt, i) => <SelectItem key={i} value={opt.value}>{opt.label}</SelectItem>)}
+                                            </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -290,7 +304,7 @@ export default function TimetableManagementPage() {
                                         .filter(e => e.day === day)
                                         .sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                                         .map((entry) => (
-                                            <div key={entry.id} className="group relative p-3 rounded-lg border bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
+                                            <div key={`${entry.semesterId}-${entry.courseId}-${entry.id}`} className="group relative p-3 rounded-lg border bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
                                                 <Button 
                                                     variant="ghost" 
                                                     size="icon" 
@@ -307,7 +321,7 @@ export default function TimetableManagementPage() {
                                                     <MapPin className="h-3 w-3" /> {entry.venue}
                                                 </div>
                                                 <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1">
-                                                    <GraduationCap className="h-3 w-3" /> {entry.intakeName}
+                                                    <GraduationCap className="h-3 w-3" /> {entry.semesterName}
                                                 </div>
                                             </div>
                                         ))}

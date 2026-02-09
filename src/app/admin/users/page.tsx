@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -269,6 +268,32 @@ export default function UserManagementPage() {
             setLoading(false);
         }
     };
+
+    const resetForm = () => {
+        setEditingUser(null);
+        setName('');
+        setEmail('');
+        setPhoneNumber('');
+        setRole('');
+        setSubRoleIds([]);
+        setProgrammeId('');
+        setIntakeId('');
+        setYear('');
+        setSemesterId('');
+        setDob('');
+        setGender('');
+        setNationalId('');
+        setPassport('');
+        setAddress('');
+        setBio('');
+        setSchool('');
+        setQualifications('');
+        setMedicalHistory('');
+        setGuardianName('');
+        setGuardianEmail('');
+        setGuardianContact('');
+        setGuardianRelationship('');
+    }
 
     const handleToggleSelection = (uid: string) => {
         setSelectedUids(prev => ({ ...prev, [uid]: !prev[uid] }));
