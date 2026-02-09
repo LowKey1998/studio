@@ -449,7 +449,7 @@ export default function UserManagementPage() {
                                     <AccordionContent className="space-y-4 pt-2">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-1"><Label>Full Name</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-                                            <div className="space-y-1"><Label>Email</Label><Input value={email} onChange={e => setEmail(e.target.value)} /></div>
+                                            <div className="space-y-1"><Label>Email</Label><Input value={email} onChange={e => setEmail(user.email)} readOnly disabled /></div>
                                             <div className="space-y-1"><Label>Phone</Label><Input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} /></div>
                                             <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} /></div>
                                             <div className="space-y-1"><Label>Gender</Label>

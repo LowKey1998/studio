@@ -57,13 +57,16 @@ const generateTimetablePrompt = ai.definePrompt({
     name: 'generateTimetablePrompt',
     input: { schema: TimetableInputSchema },
     output: { schema: TimetableOutputSchema },
+    config: {
+      responseMimeType: 'application/json',
+    },
     prompt: `You are a master scheduler for a university. Your task is to generate a weekly class timetable for a given semester.
 
 You must adhere to the following constraints:
 1.  **No Conflicts:** A lecturer cannot teach two different classes at the same time.
 2.  **No Student Clashes:** A student cannot be scheduled for two different classes at the same time.
 3.  **Room Capacity:** If rooms are provided, the number of students in a class must not exceed the capacity of the assigned room.
-4.  **Operating Hours:** All classes must be scheduled between {{{constraints.startTime}}} and {{{constraints.endTime}}} on the specified days: {{{constraints.days}}}.
+4.  **Operating Hours:** All classes must be scheduled between {{{constraints.startTime}}} and {{{constraints.endTime}}} on the specified days: {{#each constraints.days}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}.
 5.  **Session Duration:** Each class session must last for {{{constraints.sessionDuration}}} minutes.
 
 **Available Rooms:**
@@ -147,7 +150,7 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
 
       Object.entries(allRegistrations).forEach(([userId, userRegs]: [string, any]) => {
         if (userRegs[semesterId]) {
-          userRegs[semesterId].courses.forEach((courseId: string) => {
+          (userRegs[semesterId].courses || []).forEach((courseId: string) => {
             if (!studentsByCourse[courseId]) {
               studentsByCourse[courseId] = [];
             }

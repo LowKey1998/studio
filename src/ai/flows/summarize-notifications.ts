@@ -36,6 +36,9 @@ const summarizeNotificationsPrompt = ai.definePrompt({
   name: 'summarizeNotificationsPrompt',
   input: {schema: SummarizeNotificationsInputSchema},
   output: {schema: SummarizeNotificationsOutputSchema},
+  config: {
+    responseMimeType: 'application/json',
+  },
   prompt: `You are a helpful assistant that summarizes a list of notifications into a concise summary.
 
   Here are the notifications:

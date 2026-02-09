@@ -29,6 +29,9 @@ const externalPostPrompt = ai.definePrompt({
     name: 'externalPostPrompt',
     input: { schema: PostJobVacancyInputSchema },
     output: { schema: ExternalPostSchema },
+    config: {
+      responseMimeType: 'application/json',
+    },
     prompt: `Based on the following job details, write a compelling and concise summary for an external job board.
 
 Job Title: {{{title}}}
