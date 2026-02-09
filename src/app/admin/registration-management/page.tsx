@@ -2,11 +2,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, History, Info, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, Trash2, BookCopy, UserPlus } from 'lucide-react';
+import { Loader2, BookOpen, Route, Info, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, Trash2, BookCopy, UserPlus, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push, remove } from 'firebase/database';
+import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -239,7 +239,7 @@ export default function RegistrationManagementPage() {
                                                                         <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)}><Trash2 className="h-4 w-4"/></Button>
                                                                     </div>
                                                                 </div>
-                                                                <div className="text-xs text-muted-foreground">{(semData.courses || []).map(cid => allCourses[cid]?.code).join(', ')}</div>
+                                                                <div className="text-sm text-muted-foreground">{(semData.courses || []).map(cid => allCourses[cid]?.code).join(', ')}</div>
                                                                 <div className="flex gap-2 pt-2 border-t">
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}><BookCopy className="mr-2 h-4"/>Edit Path</Link></Button>
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/academics/lecturer-allocation?semesterId=${semId}`}><UserPlus className="mr-2 h-4"/>Lecturers</Link></Button>

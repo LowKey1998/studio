@@ -66,6 +66,7 @@ const setUserPasswordFlow = ai.defineFlow(
         <p>Best regards,<br/>The Administration</p>
       `;
 
+      // Replace placeholders
       subject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
       body = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
 
