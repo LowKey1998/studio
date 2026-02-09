@@ -364,10 +364,10 @@ export default function StudentSemesterOverviewPage() {
                         <div key={bank.id} className={idx > 0 ? "pt-6 border-t" : ""}>
                             <h4 className="font-bold mb-3 flex items-center gap-2 text-primary"><Library className="h-4 w-4"/> {bank.bankName}</h4>
                             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                                {bank.accountName && <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bank.accountName}</dd></div>}
-                                <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bank.accountNumber}</dd></div>
-                                <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bank.branchCode}</dd></div>
-                                {bank.swiftCode && <div><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bank.swiftCode}</dd></div>}
+                                {bank.accountName && <div className="flex flex-col"><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bank.accountName}</dd></div>}
+                                <div className="flex flex-col"><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bank.accountNumber}</dd></div>
+                                <div className="flex flex-col"><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bank.branchCode}</dd></div>
+                                {bank.swiftCode && <div className="flex flex-col"><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bank.swiftCode}</dd></div>}
                             </dl>
                         </div>
                     ))}

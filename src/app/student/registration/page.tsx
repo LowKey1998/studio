@@ -161,17 +161,11 @@ export default function StudentRegistrationPage() {
                                             <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                         </Badge>
                                     ) : sem.isOpen ? (
-                                        sem.isMissingDeadlines ? (
-                                            <Button disabled variant="secondary" className="cursor-not-allowed opacity-50">
-                                                <AlertCircle className="mr-2 h-4 w-4"/> Awaiting Configuration
-                                            </Button>
-                                        ) : (
-                                            <Button asChild>
-                                                <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                    Register Now <ChevronRight className="ml-2 h-4 w-4"/>
-                                                </Link>
-                                            </Button>
-                                        )
+                                        <Button asChild>
+                                            <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                Register Now <ChevronRight className="ml-2 h-4 w-4"/>
+                                            </Link>
+                                        </Button>
                                     ) : (
                                         <Badge variant="secondary" className="px-4 py-1">Registration Closed</Badge>
                                     )}
@@ -221,10 +215,10 @@ export default function StudentRegistrationPage() {
                                                 <p className="text-xs text-muted-foreground italic">No specific deadlines have been published for this semester.</p>
                                             )}
                                             {sem.isMissingDeadlines && sem.isOpen && (
-                                                <Alert variant="destructive" className="py-2">
+                                                <Alert variant="warning" className="py-2">
                                                     <Info className="h-3 w-3" />
                                                     <AlertDescription className="text-[10px]">
-                                                        Administration is still finalizing some dates. Registration will be fully enabled once complete.
+                                                        Administration is still finalizing some dates. You can still proceed with registration.
                                                     </AlertDescription>
                                                 </Alert>
                                             )}
