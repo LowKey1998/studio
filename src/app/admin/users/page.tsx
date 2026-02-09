@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -22,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Mail, Shield, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Mail, Shield, CheckCircle2, Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,7 +38,6 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ref, get, update, onValue, push } from 'firebase/database';
 import { auth, db } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { setUserPassword } from '@/ai/flows/set-user-password';

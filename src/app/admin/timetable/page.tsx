@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 type TimetableEntry = {
@@ -67,6 +68,7 @@ export default function TimetableManagementPage() {
     // Add Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [day, setDay] = React.useState('');
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
@@ -101,7 +103,7 @@ export default function TimetableManagementPage() {
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
-                const semInfo = sData[semId] || { name: 'Manual/Global' };
+                const semInfo = sData[semId] || { name: 'Manual Entry' };
                 const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
 
                 for (const cId in tData[semId]) {
@@ -116,7 +118,7 @@ export default function TimetableManagementPage() {
                             courseCode: courseInfo.code,
                             courseName: courseInfo.name,
                             semesterName: semInfo.name,
-                            intakeName: intakeInfo?.name || 'N/A',
+                            intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
                             ...entry
                         });
                     });
@@ -149,14 +151,16 @@ export default function TimetableManagementPage() {
     };
 
     const handleAddEntry = async () => {
-        if (!selectedCourseId || !day || !startTime || !endTime || !venue) {
+        if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime || !venue) {
             toast({ variant: 'destructive', title: 'Please fill all fields' });
             return;
         }
         setSaving(true);
         try {
+            const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
+            // Save manual entries under a dedicated "master" semester key to keep the admin view consolidated
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
-            await set(entryRef, { day, startTime, endTime, venue });
+            await set(entryRef, { day, startTime, endTime, venue, intakeName });
             toast({ title: "Entry Added" });
             setIsAddOpen(false);
             resetAddForm();
@@ -179,6 +183,7 @@ export default function TimetableManagementPage() {
 
     const resetAddForm = () => {
         setSelectedCourseId('');
+        setSelectedIntakeId('');
         setDay('');
         setStartTime('');
         setEndTime('');
@@ -214,6 +219,15 @@ export default function TimetableManagementPage() {
                             <DialogContent className="sm:max-w-lg">
                                 <DialogHeader><DialogTitle>Manual Schedule Entry</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
+                                    <div className="space-y-1">
+                                        <Label>Target Intake</Label>
+                                        <Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}>
+                                            <SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger>
+                                            <SelectContent>
+                                                {intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     <div className="space-y-1">
                                         <Label>Select Course</Label>
                                         <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
@@ -295,6 +309,9 @@ export default function TimetableManagementPage() {
                                                 </div>
                                                 <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1">
                                                     <GraduationCap className="h-3 w-3" /> {entry.semesterName}
+                                                </div>
+                                                <div className="mt-2">
+                                                    <Badge variant="secondary" className="text-[8px] h-4 py-0 px-1">{entry.intakeName}</Badge>
                                                 </div>
                                             </div>
                                         ))}
