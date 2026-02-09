@@ -15,32 +15,8 @@ import { format, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { createGoogleDoc } from '@/ai/flows/create-google-doc';
 
-type Submission = {
-    studentId: string;
-    studentName: string;
-    submissionUrl: string;
-    submittedAt: string;
-    isGoogleDoc: boolean;
-};
-
-type Assignment = {
-    id: string;
-    title: string;
-    description: string;
-    dueDate: string;
-    status: string; // Calculated client-side
-    score?: string;
-    daysLate: number;
-    submissions?: Record<string, Submission>;
-};
-
-const statusConfig: { [key in string]: { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: React.ReactNode } } = {
-  "Submitted": { variant: 'default', icon: <CheckCircle2 className="h-4 w-4" /> },
-  "Pending": { variant: 'secondary', icon: <Clock className="h-4 w-4" /> },
-  "Graded": { variant: 'default', icon: <CheckCircle2 className="h-4 w-4" /> },
-  "Late": { variant: 'destructive', icon: <Clock className="h-4 w-4" /> },
-};
-
+type Submission = { studentId: string; studentName: string; submissionUrl: string; submittedAt: string; isGoogleDoc: boolean; };
+type Assignment = { id: string; title: string; description: string; dueDate: string; status: string; daysLate: number; submissions?: Record<string, Submission>; };
 
 export default function StudentCourseAssignmentsPage() {
     const params = useParams();
@@ -53,272 +29,89 @@ export default function StudentCourseAssignmentsPage() {
     const [userData, setUserData] = React.useState<any>(null);
     const [courseData, setCourseData] = React.useState<any>(null);
     const { toast } = useToast();
-
     const fileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            setCurrentUser(user);
-            const userRef = dbRef(db, `users/${user.uid}`);
-            onValue(userRef, (snapshot) => setUserData(snapshot.val()));
-          } else {
-            setLoading(false);
-          }
-        });
-        return () => unsubscribe();
-      }, []);
+        onAuthStateChanged(auth, user => { if(user) { setCurrentUser(user); onValue(dbRef(db, `users/${user.uid}`), s => setUserData(s.val())); } else setLoading(false); });
+    }, []);
     
     React.useEffect(() => {
         if (!currentUser || !courseId) return;
-
-        const courseRef = dbRef(db, `courses/${courseId}`);
-        get(courseRef).then(snap => { if(snap.exists()) setCourseData(snap.val()) });
-        
-        const assignmentsRef = dbRef(db, `assignments/${courseId}`);
-        const unsubscribe = onValue(assignmentsRef, (snapshot) => {
+        get(dbRef(db, `courses/${courseId}`)).then(s => setCourseData(s.val()));
+        const unsub = onValue(dbRef(db, `assignments/${courseId}`), (snapshot) => {
             if (snapshot.exists()) {
-                const assignmentsData = snapshot.val();
-                const assignmentsList: Assignment[] = Object.keys(assignmentsData).map(key => {
-                    const assignment = assignmentsData[key];
-                    const submission = assignment.submissions?.[currentUser.uid];
-                    const dueDate = parseISO(assignment.dueDate);
-                    const today = new Date();
-                    
-                    let daysLate = 0;
-                    if (submission) {
-                        daysLate = differenceInCalendarDays(parseISO(submission.submittedAt), dueDate);
-                    } else {
-                        daysLate = differenceInCalendarDays(today, dueDate);
-                    }
-
-                    let status = isBefore(dueDate, today) && !submission ? 'Late' : 'Pending';
-                    if (submission) {
-                        status = 'Submitted';
-                    }
-                    return {
-                        id: key,
-                        ...assignment,
-                        status,
-                        daysLate: daysLate > 0 ? daysLate : 0
-                    };
-                }).sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
-                setAssignments(assignmentsList);
-            } else {
-                setAssignments([]);
-            }
+                const data = snapshot.val();
+                setAssignments(Object.keys(data).map(k => {
+                    const a = data[k]; const sub = a.submissions?.[currentUser.uid]; const dDate = parseISO(a.dueDate); const today = new Date();
+                    let dLate = sub ? differenceInCalendarDays(parseISO(sub.submittedAt), dDate) : differenceInCalendarDays(today, dDate);
+                    return { id: k, ...a, status: sub ? 'Submitted' : (isBefore(dDate, today) ? 'Late' : 'Pending'), daysLate: dLate > 0 ? dLate : 0 };
+                }).sort((a,b) => b.dueDate.localeCompare(a.dueDate)));
+            } else setAssignments([]);
             setLoading(false);
         });
-
-        return () => unsubscribe();
-
+        return () => unsub();
     }, [courseId, currentUser]);
     
-    const handleCreateAndLinkDoc = async (assignment: Assignment) => {
+    const handleCreateAndLinkDoc = async (a: Assignment) => {
         if (!currentUser || !userData || !courseData) return;
-        setActionLoading(assignment.id);
+        setActionLoading(a.id);
         try {
-            const { documentUrl } = await createGoogleDoc({
-                userId: currentUser.uid,
-                courseId,
-                assignmentId: assignment.id,
-                assignmentTitle: `${courseData.code}: ${assignment.title}`,
-            });
-
-            const submissionRef = dbRef(db, `assignments/${courseId}/${assignment.id}/submissions/${currentUser.uid}`);
-            await set(submissionRef, {
-                studentId: currentUser.uid,
-                studentName: userData.name || 'Student',
-                submissionUrl: documentUrl,
-                submittedAt: new Date().toISOString(),
-                isGoogleDoc: true,
-            });
-
-            toast({
-                title: 'Document Created!',
-                description: 'Your Google Doc has been created and linked to this assignment.',
-            });
-            
-            window.open(documentUrl, '_blank');
-        } catch (error: any) {
-            console.error(error);
-            toast({
-                variant: 'destructive',
-                title: 'Failed to create document',
-                description: error.message,
-            });
-        } finally {
-            setActionLoading(null);
-        }
+            const { documentUrl } = await createGoogleDoc({ userId: currentUser.uid, courseId, assignmentId: a.id, assignmentTitle: `${courseData.code}: ${a.title}` });
+            await set(dbRef(db, `assignments/${courseId}/${a.id}/submissions/${currentUser.uid}`), { studentId: currentUser.uid, studentName: userData.name, submissionUrl: documentUrl, submittedAt: new Date().toISOString(), isGoogleDoc: true });
+            toast({ title: 'Document Created!' }); window.open(documentUrl, '_blank');
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Error', description: e.message }); }
+        finally { setActionLoading(null); }
     };
 
-    const handleFileChange = (assignmentId: string, file: File | null) => {
-        setSelectedFiles(prev => ({ ...prev, [assignmentId]: file }));
-    };
-
-    const handleSubmitFile = async (assignment: Assignment) => {
-        const file = selectedFiles[assignment.id];
-        if (!file || !currentUser || !userData) {
-            toast({ variant: 'destructive', title: 'No file selected' });
-            return;
-        }
-
-        setActionLoading(assignment.id);
+    const handleUploadFile = async (a: Assignment) => {
+        const file = selectedFiles[a.id];
+        if (!file || !currentUser || !userData) return;
+        setActionLoading(a.id);
         try {
-            const fileRef = storageRef(storage, `submissions/${courseId}/${assignment.id}/${currentUser.uid}/${file.name}`);
-            const snapshot = await uploadBytes(fileRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
-
-            const submissionRef = dbRef(db, `assignments/${courseId}/${assignment.id}/submissions/${currentUser.uid}`);
-            await set(submissionRef, {
-                studentId: currentUser.uid,
-                studentName: userData.name,
-                submissionUrl: downloadURL,
-                submittedAt: new Date().toISOString(),
-                isGoogleDoc: false
-            });
-
-            toast({ title: "Submission Successful!", description: `${file.name} has been submitted.` });
-            setSelectedFiles(prev => ({...prev, [assignment.id]: null}));
-
-        } catch (error: any) {
-             toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
-        } finally {
-            setActionLoading(null);
-        }
+            const fRef = storageRef(storage, `submissions/${courseId}/${a.id}/${currentUser.uid}/${file.name}`);
+            const url = await getDownloadURL((await uploadBytes(fRef, file)).ref);
+            await set(dbRef(db, `assignments/${courseId}/${a.id}/submissions/${currentUser.uid}`), { studentId: currentUser.uid, studentName: userData.name, submissionUrl: url, submittedAt: new Date().toISOString(), isGoogleDoc: false });
+            toast({ title: "Submitted!" }); setSelectedFiles(prev => ({...prev, [a.id]: null}));
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Error', description: e.message }); }
+        finally { setActionLoading(null); }
     }
 
-    const handleUnsubmit = async (assignment: Assignment) => {
-        if (!currentUser) return;
-        if (!window.confirm("Are you sure you want to unsubmit this assignment? This will remove your current submission record.")) return;
-
-        setActionLoading(assignment.id);
-        try {
-            const submissionRef = dbRef(db, `assignments/${courseId}/${assignment.id}/submissions/${currentUser.uid}`);
-            await remove(submissionRef);
-            toast({ title: 'Submission Removed', description: 'You can now upload a new file or create a new document.' });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Unsubmit Failed', description: error.message });
-        } finally {
-            setActionLoading(null);
-        }
+    const handleUnsubmit = async (a: Assignment) => {
+        if (!currentUser || !confirm("Unsubmit this assignment?")) return;
+        setActionLoading(a.id);
+        try { await remove(dbRef(db, `assignments/${courseId}/${a.id}/submissions/${currentUser.uid}`)); toast({ title: 'Submission Removed' }); }
+        catch (e: any) { toast({ variant: 'destructive', title: 'Error' }); }
+        finally { setActionLoading(null); }
     };
 
-    if(loading) {
-        return (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                <Card key={index}><CardContent className="p-4"><Skeleton className="h-48 w-full" /></CardContent></Card>
-                ))}
-            </div>
-        );
-    }
+    if(loading) return <Skeleton className="h-96 w-full" />;
     
     return (
-        <div className="space-y-6">
-            {assignments.length > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2">
-                    {assignments.map((assignment) => {
-                        const submission = assignment.submissions?.[currentUser?.uid || ''];
-                        const selectedFile = selectedFiles[assignment.id];
-
-                        return (
-                            <Card key={assignment.id} className="flex flex-col shadow-lg">
-                                <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <FileText className="h-6 w-6 text-muted-foreground" />
-                                    <div className="flex flex-col items-end gap-1">
-                                        <Badge variant={statusConfig[assignment.status]?.variant as any ?? 'secondary'} className="flex items-center gap-1">
-                                            {statusConfig[assignment.status]?.icon}
-                                            {assignment.status}
-                                        </Badge>
-                                        {assignment.daysLate > 0 && (
-                                            <span className="text-[10px] font-bold text-destructive animate-pulse uppercase">
-                                                {assignment.status === 'Submitted' ? 'Submitted ' : ''}{assignment.daysLate} day{assignment.daysLate > 1 ? 's' : ''} late
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <CardTitle className="pt-4 font-headline text-lg">{assignment.title}</CardTitle>
-                                <CardDescription>Due: {format(new Date(assignment.dueDate), 'PPP')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-grow">
-                                    <p className="text-sm text-muted-foreground line-clamp-3">{assignment.description}</p>
-                                    {assignment.score && <p className="mt-2 font-semibold text-primary">Score: {assignment.score}</p>}
-                                </CardContent>
-                                <CardFooter className="flex flex-col items-end gap-2">
-                                {submission ? (
-                                    <div className="flex w-full gap-2">
-                                        <Button asChild className="flex-1" variant="outline">
-                                            <a href={submission.submissionUrl} target="_blank" rel="noopener noreferrer">
-                                                <ExternalLink className="mr-2 h-4 w-4" /> View Submission
-                                            </a>
-                                        </Button>
-                                        <Button 
-                                            variant="ghost" 
-                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => handleUnsubmit(assignment)}
-                                            disabled={!!actionLoading}
-                                        >
-                                            {actionLoading === assignment.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <RotateCcw className="h-4 w-4 mr-2" />}
-                                            Unsubmit
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <div className="w-full space-y-2">
-                                        <div className="flex w-full gap-2">
-                                            <Button 
-                                                variant="secondary" 
-                                                onClick={() => handleCreateAndLinkDoc(assignment)}
-                                                disabled={!!actionLoading}
-                                                className="flex-1"
-                                            >
-                                                {actionLoading === assignment.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <GraduationCap className="mr-2 h-4 w-4" />}
-                                                Start with Google Docs
-                                            </Button>
-                                            <input 
-                                                type="file" 
-                                                ref={el => fileInputRefs.current[assignment.id] = el} 
-                                                className="hidden" 
-                                                onChange={(e) => handleFileChange(assignment.id, e.target.files?.[0] || null)}
-                                            />
-                                            <Button 
-                                                variant="outline" 
-                                                className="flex-1"
-                                                onClick={() => fileInputRefs.current[assignment.id]?.click()}
-                                                disabled={!!actionLoading}
-                                            >
-                                                <FileUp className="mr-2 h-4 w-4" /> Upload File
-                                            </Button>
-                                        </div>
-                                         {selectedFile && (
-                                            <div className="w-full flex items-center justify-between p-2 border rounded-md bg-muted/50">
-                                                <p className="text-sm truncate pr-2">{selectedFile.name}</p>
-                                                <Button size="sm" onClick={() => handleSubmitFile(assignment)} disabled={actionLoading === assignment.id}>
-                                                     {actionLoading === assignment.id ? <Loader2 className="h-4 w-4 animate-spin"/> : 'Submit'}
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                </CardFooter>
-                            </Card>
-                        )
-                    })}
-                </div>
-            ) : (
-                <Card>
-                    <CardContent className="pt-6">
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>No Assignments Yet</AlertTitle>
-                            <AlertDescription>
-                                No assignments have been posted for this course yet. Check back later!
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
-            )}
+        <div className="grid gap-6 md:grid-cols-2">
+            {assignments.map(a => {
+                const sub = a.submissions?.[currentUser?.uid || ''];
+                const sFile = selectedFiles[a.id];
+                return (
+                    <Card key={a.id} className="shadow-lg">
+                        <CardHeader className="flex-row items-center justify-between">
+                            <FileText className="h-6 w-6" />
+                            <div className="flex flex-col items-end">
+                                <Badge variant={a.status === 'Submitted' ? 'default' : 'secondary'}>{a.status}</Badge>
+                                {a.daysLate > 0 && <span className="text-[10px] text-destructive font-bold">{a.daysLate} days late</span>}
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <CardTitle className="text-lg">{a.title}</CardTitle>
+                            <CardDescription>Due: {format(parseISO(a.dueDate), 'PPP')}</CardDescription>
+                            <p className="mt-2 text-sm line-clamp-3">{a.description}</p>
+                        </CardContent>
+                        <CardFooter className="flex flex-col gap-2">
+                            {sub ? <><Button asChild variant="outline" className="w-full"><a href={sub.submissionUrl} target="_blank"><ExternalLink className="mr-2 h-4 w-4"/>View</a></Button><Button variant="ghost" className="w-full text-destructive" onClick={()=>handleUnsubmit(a)} disabled={!!actionLoading}>{actionLoading===a.id ? <Loader2 className="animate-spin h-4 w-4"/> : <RotateCcw className="mr-2 h-4 w-4"/>}Unsubmit</Button></> :
+                            <div className="w-full space-y-2"><Button onClick={()=>handleCreateAndLinkDoc(a)} className="w-full" variant="secondary" disabled={!!actionLoading}><GraduationCap className="mr-2 h-4 w-4"/>Google Doc</Button><Button onClick={()=>fileInputRefs.current[a.id]?.click()} className="w-full" variant="outline" disabled={!!actionLoading}><FileUp className="mr-2 h-4 w-4"/>Upload File</Button><input type="file" ref={el=>fileInputRefs.current[a.id]=el} className="hidden" onChange={e=>setSelectedFiles(p=>({...p,[a.id]:e.target.files?.[0]||null}))}/>{sFile && <Button onClick={()=>handleUploadFile(a)} className="w-full" disabled={!!actionLoading}>Submit {sFile.name}</Button>}</div>}
+                        </CardFooter>
+                    </Card>
+                );
+            })}
         </div>
     );
 }

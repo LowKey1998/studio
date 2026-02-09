@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -29,30 +28,20 @@ type CoursePath = {
     semesters: Record<string, { courses: string[] }>;
 };
 
-type UserData = {
-    role: 'Student' | 'Staff' | 'Admin';
-    subRoles?: string[];
-};
-
 export default function StaffCoursesPage() {
     const [activeCourses, setActiveCourses] = React.useState<Course[]>([]);
     const [archivedCourses, setArchivedCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
-    const [userData, setUserData] = React.useState<UserData | null>(null);
     const { toast } = useToast();
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
           if (user) {
             setCurrentUser(user);
-            const userRef = ref(db, `users/${user.uid}`);
-            const snapshot = await get(userRef);
-            if (snapshot.exists()) {
-                setUserData(snapshot.val());
-            }
+          } else {
+            setLoading(false);
           }
-          setLoading(false);
         });
         return () => unsubscribe();
       }, []);
@@ -68,19 +57,11 @@ export default function StaffCoursesPage() {
                 get(ref(db, 'registrations'))
             ]);
 
-            if (!coursesSnap.exists() || !coursePathsSnap.exists() || !semestersSnap.exists()) {
-                setActiveCourses([]);
-                setArchivedCourses([]);
-                setLoading(false);
-                return;
-            }
-
-            const allCourses = coursesSnap.val();
-            const allCoursePaths: CoursePath[] = Object.values(coursePathsSnap.val());
-            const allSemesters = semestersSnap.val();
+            const allCourses = coursesSnap.val() || {};
+            const allCoursePaths: CoursePath[] = Object.values(coursePathsSnap.val() || {});
+            const allSemesters = semestersSnap.val() || {};
             const allRegistrations = regsSnap.val() || {};
 
-            // 1. Get student counts for all courses per semester (to avoid aggregating across all time)
             const studentCounts: { [semesterId: string]: { [courseId: string]: number } } = {};
             for (const userId in allRegistrations) {
                 for (const semesterId in allRegistrations[userId]) {
@@ -96,24 +77,6 @@ export default function StaffCoursesPage() {
                 }
             }
 
-            // 2. Find all courses taught by the current lecturer
-            const myCourseIds = new Set<string>();
-            for (const courseId in allCourses) {
-                const courseData = allCourses[courseId];
-                if (!courseData) continue;
-
-                const lecturerIds = courseData.lecturerIds || [];
-                const isAssigned = currentUser.uid && (
-                    (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
-                    (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
-                );
-
-                if (isAssigned) {
-                    myCourseIds.add(courseId);
-                }
-            }
-
-            // 3. Map courses to their respective semesters based on defined paths
             const newActiveCourses: Course[] = [];
             const newArchivedCourses: Course[] = [];
             const processedEntries = new Set<string>();
@@ -124,161 +87,64 @@ export default function StaffCoursesPage() {
                         const semesterInfo = allSemesters[semesterId];
                         if (!semesterInfo) return;
 
-                        if (semesterData.courses) {
-                            semesterData.courses.forEach(courseId => {
-                                if (myCourseIds.has(courseId)) {
-                                    const uniqueKey = `${courseId}-${semesterId}`;
-                                    if (!processedEntries.has(uniqueKey)) {
-                                        const courseEntry: Course = {
-                                            id: courseId,
-                                            name: allCourses[courseId].name,
-                                            code: allCourses[courseId].code,
-                                            studentCount: studentCounts[semesterId]?.[courseId] || 0,
-                                            semester: semesterInfo.name,
-                                            semesterId: semesterId
-                                        };
+                        (semesterData.courses || []).forEach(courseId => {
+                            const courseData = allCourses[courseId];
+                            if (!courseData) return;
 
-                                        if (semesterInfo.status !== 'Archived') {
-                                            newActiveCourses.push(courseEntry);
-                                        } else {
-                                            newArchivedCourses.push(courseEntry);
-                                        }
-                                        processedEntries.add(uniqueKey);
-                                    }
+                            const lecturerIds = courseData.lecturerIds || [];
+                            const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
+
+                            if (isAssigned) {
+                                const uniqueKey = `${courseId}-${semesterId}`;
+                                if (!processedEntries.has(uniqueKey)) {
+                                    const entry: Course = {
+                                        id: courseId,
+                                        name: courseData.name,
+                                        code: courseData.code,
+                                        studentCount: studentCounts[semesterId]?.[courseId] || 0,
+                                        semester: semesterInfo.name,
+                                        semesterId: semesterId
+                                    };
+                                    if (semesterInfo.status !== 'Archived') newActiveCourses.push(entry);
+                                    else newArchivedCourses.push(entry);
+                                    processedEntries.add(uniqueKey);
                                 }
-                            });
-                        }
+                            }
+                        });
                     });
                 }
             });
 
             setActiveCourses(newActiveCourses.sort((a,b) => a.name.localeCompare(b.name)));
             setArchivedCourses(newArchivedCourses.sort((a,b) => a.name.localeCompare(b.name)));
-
-
         } catch (error) {
-            console.error("Error fetching assigned courses:", error);
-            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your assigned courses." });
+            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch courses." });
         } finally {
             setLoading(false);
         }
     }, [currentUser, toast]);
 
     React.useEffect(() => {
-        if (currentUser) {
-            fetchLecturerCourses();
-        }
+        if (currentUser) fetchLecturerCourses();
     }, [currentUser, fetchLecturerCourses]);
     
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                 <Card className="shadow-lg border-0">
-                    <CardHeader>
-                        <Skeleton className="h-8 w-1/3" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                </Card>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                        <Card key={index} className="shadow-md">
-                            <CardHeader><Skeleton className="h-6 w-2/3" /></CardHeader>
-                            <CardContent><Skeleton className="h-5 w-1/2" /></CardContent>
-                            <CardFooter><Skeleton className="h-10 w-full" /></CardFooter>
-                        </Card>
-                    ))}
-                </div>
-            </div>
-        )
-    }
-
-    const lecturerHasCourses = activeCourses.length > 0 || archivedCourses.length > 0;
+    if (loading) return <div className="space-y-6">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full" />)}</div>;
 
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0">
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">My Assigned Courses</CardTitle>
-                    <CardDescription>An overview of the courses you are teaching. Select a course to manage it.</CardDescription>
-                </CardHeader>
+                <CardHeader><CardTitle className="font-headline text-2xl">My Courses</CardTitle><CardDescription>Select a course to manage assignments, attendance, and grades.</CardDescription></CardHeader>
             </Card>
-
-            {activeCourses.length > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {activeCourses.map((course) => (
-                    <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
-                        <CardHeader>
-                            <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
-                            <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                                <Users className="mr-2 h-4 w-4" />
-                                <span>{course.studentCount} Enrolled Student(s)</span>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                        <Button asChild className="w-full">
-                            <Link href={`/staff/courses/${course.id}`}>
-                                Manage Course <ChevronRight className="ml-2 h-4 w-4" />
-                            </Link>
-                        </Button>
-                        </CardFooter>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {activeCourses.map((course) => (
+                    <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg">
+                        <CardHeader><CardTitle className="text-lg">{course.name}</CardTitle><CardDescription>{course.code} &middot; {course.semester}</CardDescription></CardHeader>
+                        <CardContent><div className="flex items-center text-sm text-muted-foreground"><Users className="mr-2 h-4 w-4" />{course.studentCount} Students</div></CardContent>
+                        <CardFooter><Button asChild className="w-full"><Link href={`/staff/courses/${course.id}`}>Manage <ChevronRight className="ml-2 h-4 w-4" /></Link></Button></CardFooter>
                     </Card>
-                    ))}
-                </div>
-            ) : (
-                 !lecturerHasCourses &&
-                <Card>
-                    <CardContent className="pt-6">
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>No Active Courses Found</AlertTitle>
-                            <AlertDescription>
-                                You are not currently assigned to any active courses.
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
-            )}
-
-            {archivedCourses.length > 0 && (
-                 <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="archived-courses">
-                        <AccordionTrigger>
-                            <div className="flex items-center gap-2 text-lg font-semibold">
-                                <Archive className="h-5 w-5"/>
-                                Archived Courses
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pt-4">
-                                {archivedCourses.map((course) => (
-                                <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg opacity-70">
-                                    <CardHeader>
-                                        <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
-                                        <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="flex items-center text-sm text-muted-foreground">
-                                            <User className="mr-2 h-4 w-4" />
-                                            <span>{course.studentCount} Student(s)</span>
-                                        </div>
-                                    </CardContent>
-                                    <CardFooter>
-                                    <Button asChild className="w-full" variant="secondary">
-                                        <Link href={`/staff/courses/${course.id}`}>
-                                            View Course <ChevronRight className="ml-2 h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                    </CardFooter>
-                                </Card>
-                                ))}
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-            )}
+                ))}
+            </div>
+            {activeCourses.length === 0 && <Alert><Info className="h-4 w-4"/><AlertTitle>No Courses</AlertTitle><AlertDescription>You are not assigned to any active courses.</AlertDescription></Alert>}
         </div>
     );
 }

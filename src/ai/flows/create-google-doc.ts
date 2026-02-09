@@ -32,8 +32,7 @@ const CreateGoogleDocOutputSchema = z.object({
 export type CreateGoogleDocOutput = z.infer<typeof CreateGoogleDocOutputSchema>;
 
 export async function createGoogleDoc(input: CreateGoogleDocInput): Promise<CreateGoogleDocOutput> {
-  const result = await createGoogleDocFlow(input);
-  return result;
+  return await createGoogleDocFlow(input);
 }
 
 const createGoogleDocFlow = ai.defineFlow(
@@ -44,14 +43,12 @@ const createGoogleDocFlow = ai.defineFlow(
   },
   async (input) => {
     // 1. Check if a submission already exists for this student/assignment
-    // This saves Drive quota by preventing duplicate files
     const submissionRef = ref(db, `assignments/${input.courseId}/${input.assignmentId}/submissions/${input.userId}`);
     const submissionSnap = await get(submissionRef);
     
     if (submissionSnap.exists()) {
       const subData = submissionSnap.val();
       if (subData.submissionUrl && subData.isGoogleDoc) {
-        console.log(`Found existing Google Doc for user ${input.userId}: ${subData.submissionUrl}`);
         return { 
           documentUrl: subData.submissionUrl,
           isNew: false 
@@ -59,22 +56,18 @@ const createGoogleDocFlow = ai.defineFlow(
       }
     }
 
-    // 2. Fetch Student Email from Realtime Database
+    // 2. Fetch Student Email
     const userSnap = await get(ref(db, `users/${input.userId}`));
-    if (!userSnap.exists()) {
-      throw new Error("Student profile not found in database.");
-    }
+    if (!userSnap.exists()) throw new Error("Student profile not found.");
     const studentEmail = userSnap.val().email;
-    if (!studentEmail) {
-      throw new Error("Student does not have a registered email address required for Google Doc sharing.");
-    }
+    if (!studentEmail) throw new Error("Student has no email address.");
 
-    // 3. Authenticate with Google using Service Account
+    // 3. Authenticate with Google
     const authEmail = process.env.FIREBASE_CLIENT_EMAIL;
     const authKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
     if (!authEmail || !authKey) {
-      console.warn("FIREBASE_CLIENT_EMAIL or FIREBASE_PRIVATE_KEY not found in .env. Falling back to dummy URL for preview.");
+      console.warn("FIREBASE_CLIENT_EMAIL or FIREBASE_PRIVATE_KEY not found. Falling back to dummy URL.");
       return { 
         documentUrl: `https://docs.google.com/document/d/1a2b3c4d5e6f7g8h9i0j/edit`,
         isNew: true
@@ -105,7 +98,7 @@ const createGoogleDocFlow = ai.defineFlow(
       const fileId = file.data.id;
       if (!fileId) throw new Error("Failed to create Google Doc.");
 
-      // 5. Share with Student (Writer permission)
+      // 5. Share with Student
       await drive.permissions.create({
         fileId: fileId,
         requestBody: {
@@ -116,21 +109,16 @@ const createGoogleDocFlow = ai.defineFlow(
         sendNotificationEmail: true,
       });
 
-      console.log(`Successfully created and shared Google Doc: ${file.data.webViewLink}`);
-
       return {
         documentUrl: file.data.webViewLink!,
         isNew: true
       };
 
     } catch (error: any) {
-      console.error("Error in Google Drive API operation:", error);
-      
-      // Handle Quota Exceeded specifically
+      console.error("Google Drive API error:", error);
       if (error.code === 403 && (error.message?.includes('quota') || error.message?.includes('storage'))) {
-        throw new Error("The institution's Google Drive storage quota has been exceeded. Please contact the administrator to clear some space or upgrade the storage plan.");
+        throw new Error("Storage quota exceeded. Please contact the administrator.");
       }
-      
       throw new Error(`Google Doc creation failed: ${error.message}`);
     }
   }

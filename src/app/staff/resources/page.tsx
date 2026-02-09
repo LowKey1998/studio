@@ -25,58 +25,46 @@ export default function StaffResourcesPage() {
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setCurrentUser(user);
-        });
-        return () => unsubscribe();
+        onAuthStateChanged(auth, user => setCurrentUser(user));
     }, []);
 
     const fetchLecturerCourses = React.useCallback(async () => {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, regsSnapshot, semestersSnap] = await Promise.all([
+            const [coursesSnap, semestersSnap, coursePathsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
-                get(ref(db, 'registrations')),
-                get(ref(db, 'semesters'))
+                get(ref(db, 'semesters')),
+                get(ref(db, 'coursePaths'))
             ]);
 
-            const coursesData = coursesSnap.val() || {};
-            const allRegistrations = regsSnapshot.exists() ? regsSnapshot.val() : {};
-            const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
+            const allCourses = coursesSnap.val() || {};
+            const allSemesters = semestersSnap.val() || {};
+            const allCoursePaths = Object.values(coursePathsSnap.val() || {});
             const lecturerCourses = new Map<string, Course>();
 
-            for (const userId in allRegistrations) {
-                for (const semesterId in allRegistrations[userId]) {
-                    const registration = allRegistrations[userId][semesterId];
-                    const semesterInfo = allSemesters[semesterId];
+            allCoursePaths.forEach((path: any) => {
+                if (path.semesters) {
+                    Object.entries(path.semesters).forEach(([semId, semData]: [string, any]) => {
+                        const semInfo = allSemesters[semId];
+                        if (semInfo?.status === 'Archived') return;
 
-                    if (semesterInfo?.status !== 'Archived') {
-                        for (const courseId of registration.courses || []) {
-                            const courseData = coursesData[courseId];
-                            if (courseData) {
-                                const lecturerIds = courseData.lecturerIds || [];
-                                const isAssigned = currentUser.uid && (
-                                    (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
-                                    (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
-                                );
-
-                                if (isAssigned && !lecturerCourses.has(courseId)) {
-                                    lecturerCourses.set(courseId, {
-                                        id: courseId,
-                                        name: courseData.name,
-                                        code: courseData.code,
-                                        semester: semesterInfo.name || 'Active Semester',
-                                    });
-                                }
+                        (semData.courses || []).forEach((cid: string) => {
+                            const cData = allCourses[cid];
+                            if (!cData) return;
+                            const lIds = cData.lecturerIds || [];
+                            const isAssigned = (Array.isArray(lIds) && lIds.includes(currentUser.uid)) || (cData.lecturerId === currentUser.uid);
+                            
+                            if (isAssigned) {
+                                lecturerCourses.set(`${cid}-${semId}`, { id: cid, name: cData.name, code: cData.code, semester: semInfo.name });
                             }
-                        }
-                    }
+                        });
+                    });
                 }
-            }
+            });
             setCourses(Array.from(lecturerCourses.values()));
         } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your assigned courses." });
+            toast({ variant: 'destructive', title: 'Error' });
         } finally {
             setLoading(false);
         }
@@ -88,41 +76,17 @@ export default function StaffResourcesPage() {
 
     return (
         <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Manage Resources</CardTitle>
-                    <CardDescription>Select a course to upload or manage learning resources like PDFs and video links.</CardDescription>
-                </CardHeader>
-            </Card>
-            {loading ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48" />)}
-                </div>
-            ) : courses.length > 0 ? (
-                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {courses.map(course => (
-                        <Card key={course.id}>
-                            <CardHeader>
-                                <CardTitle>{course.name}</CardTitle>
-                                <CardDescription>{course.code} &middot; {course.semester}</CardDescription>
-                            </CardHeader>
-                            <CardFooter>
-                                <Button asChild className="w-full">
-                                    <Link href={`/staff/courses/${course.id}/resources`}>
-                                        <Folder className="mr-2 h-4 w-4" /> Manage Resources
-                                    </Link>
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                    ))}
-                </div>
-            ) : (
-                <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>No Courses Found</AlertTitle>
-                    <AlertDescription>You are not currently assigned to any active courses.</AlertDescription>
-                </Alert>
-            )}
+            <Card><CardHeader><CardTitle className="font-headline text-2xl">Manage Resources</CardTitle><CardDescription>Upload course materials.</CardDescription></CardHeader></Card>
+            {loading ? <Skeleton className="h-48 w-full" /> : 
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {courses.map(course => (
+                    <Card key={course.id}>
+                        <CardHeader><CardTitle>{course.name}</CardTitle><CardDescription>{course.code} &middot; {course.semester}</CardDescription></CardHeader>
+                        <CardFooter><Button asChild className="w-full"><Link href={`/staff/courses/${course.id}/resources`}><Folder className="mr-2 h-4 w-4" /> Manage Resources</Link></Button></CardFooter>
+                    </Card>
+                ))}
+            </div>}
+            {courses.length === 0 && !loading && <Alert><Info className="h-4 w-4" /><AlertTitle>No Courses</AlertTitle><AlertDescription>No active courses assigned.</AlertDescription></Alert>}
         </div>
     );
 }

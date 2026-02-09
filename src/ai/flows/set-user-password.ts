@@ -4,7 +4,7 @@
  * @fileOverview An AI agent for setting a user's password and notifying them.
  */
 
-import { z } from 'kit';
+import { z } from 'genkit';
 import { ai } from '@/ai/genkit';
 import { getAuth } from 'firebase-admin/auth';
 import { adminApp } from '@/lib/firebase-admin';
@@ -41,26 +41,18 @@ const setUserPasswordFlow = ai.defineFlow(
   async ({ uid, newPassword, welcomeSubject, welcomeBody }) => {
     const auth = getAuth(adminApp);
     try {
-      // First, get the user's data to retrieve their email and name
       const userRecord = await auth.getUser(uid);
       const userEmail = userRecord.email;
       const userName = userRecord.displayName || 'User';
 
-      if (!userEmail) {
-        throw new Error('User does not have an email address.');
-      }
+      if (!userEmail) throw new Error('User does not have an email address.');
 
-      // Fetch additional data from DB for the ID
       const dbUserSnap = await get(ref(db, `users/${uid}`));
       const dbUser = dbUserSnap.val() || {};
       const systemId = dbUser.id || 'N/A';
 
-      // Update the user's password
-      await auth.updateUser(uid, {
-        password: newPassword,
-      });
+      await auth.updateUser(uid, { password: newPassword });
 
-      // Prepare the notification email
       let subject = welcomeSubject || 'Your Password Has Been Reset';
       let body = welcomeBody || `
         <h2>Password Change Notification</h2>
@@ -74,19 +66,14 @@ const setUserPasswordFlow = ai.defineFlow(
         <p>Best regards,<br/>The Administration</p>
       `;
 
-      // Replace placeholders
       subject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
       body = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
 
-      await sendEmail({
-        to: [userEmail],
-        subject: subject,
-        body: body,
-      });
+      await sendEmail({ to: [userEmail], subject, body });
 
       return {
         success: true,
-        message: `Successfully set password for ${userName} and sent a notification email.`,
+        message: `Successfully set password for ${userName} and sent notification.`,
       };
     } catch (error: any) {
       console.error('Error setting user password:', error);
