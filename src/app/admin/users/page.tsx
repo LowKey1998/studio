@@ -53,6 +53,7 @@ import { Switch } from '@/components/ui/switch';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { Separator } from '@/components/ui/separator';
+import { updateUserAccount } from '@/ai/flows/update-user-account';
 
 type User = {
     uid: string;
@@ -99,6 +100,8 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 export default function UserManagementPage() {
     const { user: adminUser, userProfile: adminProfile } = useAuth();
     const [open, setOpen] = React.useState(false);
+    const [isEditOpen, setIsEditOpen] = React.useState(false);
+    const [editingUser, setEditingUser] = React.useState<User | null>(null);
     const [users, setUsers] = React.useState<User[]>([]);
     
     // Form state
@@ -120,14 +123,15 @@ export default function UserManagementPage() {
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>(null);
-    const [searchQuery, setSearchQuery] = React.useState('');
+    const [searchQuery, setSearchTerm] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
+    
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState('');
-    const [settingPassword, setSettingPassword] = React.useState(false);
+    
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
@@ -142,38 +146,64 @@ export default function UserManagementPage() {
             semesters: ref(db, 'semesters'),
             intakes: ref(db, 'intakes')
         };
-        const dataCache: any = { users: {}, programmes: {}, subRoles: {} };
-        const processAndSetUsers = () => {
-            const usersData = dataCache.users;
-            const programmesData = dataCache.programmes;
-            const subRolesData = dataCache.subRoles;
+        
+        const processAndSetUsers = (usersData: any, programmesData: any, subRolesData: any) => {
             const subRolesMap = new Map(Object.entries(subRolesData).map(([id, role]: [string, any]) => [id, role.name]));
             const usersList: User[] = Object.keys(usersData).map(uid => {
                 const user = usersData[uid];
                 const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.values(user.subRoles)) : [];
                 return {
-                    uid, ...user, status: user.status || 'active',
+                    uid, 
+                    ...user, 
+                    status: user.status || 'active',
                     programmeName: user.programmeId ? programmesData[user.programmeId]?.name : undefined,
                     subRoles: uSubRoleIds,
                     subRoleNames: uSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean)
                 };
             });
-            setUsers(usersList); setTableLoading(false);
+            setUsers(usersList); 
+            setTableLoading(false);
         };
-        const unsubs = [
-            onValue(refs.users, (s) => { dataCache.users = s.val() || {}; processAndSetUsers(); }),
-            onValue(refs.programmes, (s) => { dataCache.programmes = s.val() || {}; setAllProgrammes(Object.keys(dataCache.programmes).map(id => ({ id, ...dataCache.programmes[id] }))); processAndSetUsers(); }),
-            onValue(refs.subRoles, (s) => { dataCache.subRoles = s.val() || {}; setAvailableSubRoles(Object.keys(dataCache.subRoles).map(id => ({id, ...dataCache.subRoles[id]}))); processAndSetUsers(); }),
-            onValue(refs.intakes, (s) => setAllIntakes(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [])),
-            onValue(refs.semesters, (s) => setAllSemesters(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [])),
-            onValue(refs.idPrefixes, (s) => setIdSettings(s.exists() ? s.val() : { student: 'STU', staff: 'STF', admin: 'ADM' })),
-        ];
-        return () => unsubs.forEach(u => u());
+
+        const fetchAll = async () => {
+            const [u, p, s, i, sem, pref] = await Promise.all([
+                get(refs.users), get(refs.programmes), get(refs.subRoles), get(refs.intakes), get(refs.semesters), get(refs.idPrefixes)
+            ]);
+            const usersData = u.val() || {};
+            const programmesData = p.val() || {};
+            const subRolesData = s.val() || {};
+            
+            setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
+            setAvailableSubRoles(Object.keys(subRolesData).map(id => ({id, ...subRolesData[id]})));
+            setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
+            setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...sem.val()[id] })) : []);
+            setIdSettings(pref.exists() ? pref.val() : { student: 'STU', staff: 'STF', admin: 'ADM' });
+            
+            processAndSetUsers(usersData, programmesData, subRolesData);
+        };
+
+        fetchAll();
+        
+        const unsubUsers = onValue(refs.users, (s) => {
+            if(s.exists()) {
+                const usersData = s.val();
+                get(refs.programmes).then(ps => {
+                    const progs = ps.val() || {};
+                    get(refs.subRoles).then(sr => {
+                        const roles = sr.val() || {};
+                        processAndSetUsers(usersData, progs, roles);
+                    });
+                });
+            }
+        });
+
+        return () => unsubUsers();
     }, []);
 
     const resetForm = () => {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); setProgramme('');
         setManualId(''); setIsManualId(false); setSelectedIntake(''); setSelectedYear(''); setSelectedSemester('');
+        setEditingUser(null);
     };
 
     const handleCreateUser = async (e: React.FormEvent) => {
@@ -196,9 +226,57 @@ export default function UserManagementPage() {
         finally { await deleteApp(tempApp); setLoading(false); }
     };
 
+    const handleEditUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingUser) return;
+        setLoading(true);
+        try {
+            const dbData: any = {
+                phoneNumber,
+                subRoles: subRoleIds,
+                department: editingUser.department || '',
+            };
+            if(editingUser.role === 'Student') {
+                dbData.programmeId = programme;
+                dbData.intakeId = selectedIntake;
+                dbData.year = Number(selectedYear);
+                dbData.semesterId = selectedSemester;
+            }
+
+            await updateUserAccount({
+                uid: editingUser.uid,
+                name,
+                email,
+                phoneNumber,
+                dbData
+            });
+            toast({ title: 'User Updated' });
+            setIsEditOpen(false);
+            resetForm();
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Update Failed', description: error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openEdit = (user: User) => {
+        setEditingUser(user);
+        setName(user.name);
+        setEmail(user.email);
+        setPhoneNumber(user.phoneNumber || '');
+        setRole(user.role.toLowerCase());
+        setSubRoleIds(user.subRoles || []);
+        setProgramme(user.programmeId || '');
+        setSelectedIntake(user.intakeId || '');
+        setSelectedYear(user.year ? String(user.year) : '');
+        setSelectedSemester(user.semesterId || '');
+        setIsEditOpen(true);
+    };
+
     const handleSetPassword = async () => {
         if (!settingPasswordUser || !newPassword) return;
-        setSettingPassword(true);
+        setLoading(true);
         try {
             await setUserPassword({ 
                 uid: settingPasswordUser.uid, 
@@ -209,7 +287,7 @@ export default function UserManagementPage() {
             toast({ title: 'Password Updated' });
             setIsSetPasswordOpen(false); setNewPassword('');
         } catch (error: any) { toast({ variant: 'destructive', title: 'Failed', description: error.message }); }
-        finally { setSettingPassword(false); }
+        finally { setLoading(false); }
     }
 
     const filteredUsers = React.useMemo(() => {
@@ -244,7 +322,7 @@ export default function UserManagementPage() {
                     <div className="flex gap-4 mb-4">
                         <div className="relative flex-1 max-w-sm">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="Search name, ID or email..." className="pl-8" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                            <Input placeholder="Search name, ID or email..." className="pl-8" value={searchQuery} onChange={e => setSearchTerm(e.target.value)} />
                         </div>
                         <Select value={roleFilter} onValueChange={setRoleFilter}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="All">All Roles</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Student">Student</SelectItem></SelectContent></Select>
                     </div>
@@ -262,6 +340,9 @@ export default function UserManagementPage() {
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => openEdit(user)}>
+                                                    <Pencil className="mr-2 h-4 w-4"/>Edit Details
+                                                </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => { 
                                                     setSettingPasswordUser(user); 
                                                     setPasswordEmailSubject('Account Credentials Updated');
@@ -300,6 +381,54 @@ export default function UserManagementPage() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent className="max-w-2xl">
+                    <form onSubmit={handleEditUser}>
+                        <DialogHeader><DialogTitle>Edit User: {editingUser?.name}</DialogTitle></DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1"><Label>Full Name</Label><Input value={name} onChange={e=>setName(e.target.value)} /></div>
+                                <div className="space-y-1"><Label>Email</Label><Input type="email" value={email} onChange={e=>setEmail(e.target.value)} /></div>
+                            </div>
+                            {role === 'student' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label>Programme</Label>
+                                        <Select value={programme} onValueChange={setProgramme}>
+                                            <SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger>
+                                            <SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label>Intake</Label>
+                                        <Select value={selectedIntake} onValueChange={setSelectedIntake}>
+                                            <SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger>
+                                            <SelectContent>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            )}
+                            {role === 'staff' && (
+                                <div className="space-y-2">
+                                    <Label>Sub-Roles</Label>
+                                    <div className="grid grid-cols-2 gap-2 p-2 border rounded-md">
+                                        {availableSubRoles.map(sr => (
+                                            <div key={sr.id} className="flex items-center gap-2">
+                                                <Checkbox checked={subRoleIds.includes(sr.id)} onCheckedChange={() => {
+                                                    setSubRoleIds(prev => prev.includes(sr.id) ? prev.filter(id => id !== sr.id) : [...prev, sr.id]);
+                                                }} id={`edit-sr-${sr.id}`} />
+                                                <Label htmlFor={`edit-sr-${sr.id}`}>{sr.name}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Save Changes</Button></DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={isSetPasswordOpen} onOpenChange={setIsSetPasswordOpen}>
                 <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
                     <DialogHeader><DialogTitle>Set Password for {settingPasswordUser?.name}</DialogTitle><DialogDescription>Reset user password and customize the email notification.</DialogDescription></DialogHeader>
@@ -312,7 +441,7 @@ export default function UserManagementPage() {
                             <div className="space-y-2"><Label>Body (HTML)</Label><Textarea value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" /></div>
                         </div>
                     </div>
-                    <DialogFooter><Button onClick={handleSetPassword} disabled={settingPassword || newPassword.length < 6}>{settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Update Password</Button></DialogFooter>
+                    <DialogFooter><Button onClick={handleSetPassword} disabled={loading || newPassword.length < 6}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Update Password</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

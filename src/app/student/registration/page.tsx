@@ -213,9 +213,9 @@ export default function StudentRegistrationPage() {
                                                 <p className="text-xs text-muted-foreground italic">No specific deadlines have been published for this semester.</p>
                                             )}
                                             {sem.isMissingDeadlines && (
-                                                <Alert variant="warning" className="py-2">
-                                                    <Info className="h-3 w-3" />
-                                                    <AlertDescription className="text-[10px]">
+                                                <Alert variant="default" className="py-2 bg-yellow-50 border-yellow-200">
+                                                    <Info className="h-3 w-3 text-yellow-600" />
+                                                    <AlertDescription className="text-[10px] text-yellow-700">
                                                         Administration is still finalizing some dates. You can still proceed with registration.
                                                     </AlertDescription>
                                                 </Alert>
