@@ -230,7 +230,7 @@ export default function TimetableManagementPage() {
                                         </div>
                                         <div className="space-y-1">
                                             <Label>Room/Venue</Label>
-                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
+                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -256,14 +256,14 @@ export default function TimetableManagementPage() {
                             <Label>Filter Room</Label>
                             <Select value={roomFilter} onValueChange={setRoomFilter}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
-                                <SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent>
+                                <SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="w-48">
                             <Label>Filter Intake</Label>
                             <Select value={intakeFilter} onValueChange={setIntakeFilter}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
-                                <SelectContent><SelectItem value="all">All Intakes</SelectItem>{intakes.map(i => <SelectItem key={i.id} value={i.name}>{i.name}</SelectItem>)}</SelectContent>
+                                <SelectContent><SelectItem value="all">All Intakes</SelectItem>{intakes.map(i => <SelectItem key={i.id || i.name} value={i.name}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                     </div>
