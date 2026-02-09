@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -148,7 +149,6 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
-    // Deadline Dialog State
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [eventMap, setEventMap] = React.useState<Map<string, { date: string, id: string }>>(new Map());
@@ -243,12 +243,10 @@ export default function RegistrationManagementPage() {
             const semesterId = editingDeadlinesFor.id;
             const semesterName = editingDeadlinesFor.name;
             
-            // 1. Update Payment Plan IDs for the semester
             await update(ref(db, `semesters/${semesterId}`), {
                 paymentPlanIds: selectedPlansInDialog
             });
 
-            // 2. Update Calendar Events
             const updates: Record<string, any> = {};
             for (const plan of allPaymentPlans) {
                 if (selectedPlansInDialog[plan.id]) {
@@ -271,7 +269,6 @@ export default function RegistrationManagementPage() {
                         }
                     }
                 } else {
-                    // Plan removed, cleanup events
                     for (let i = 0; i < plan.installments; i++) {
                         const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterName}`;
                         const existingEvent = eventMap.get(fullTitle);

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -111,23 +112,20 @@ export default function StudentPaymentsPage() {
 
             const summaries: PaymentSummary[] = invoices.map(invoice => {
                 const semesterId = invoice.semesterId;
-                const semesterName = invoice.semester;
-                
                 const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
-                
                 const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
                 const totalPaid = invoiceTransactions.reduce((sum, t) => sum + t.amount, 0);
                 const balance = Math.max(0, totalDue - totalPaid);
 
                 return {
                     semesterId,
-                    semesterName,
+                    semesterName: invoice.semester,
                     invoice,
                     totalDue,
                     totalPaid,
                     balance,
                     status: balance <= 0.01 ? 'Paid' : 'Pending',
-                    transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.dateRequested || a.paymentDate).getTime())
+                    transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
                 };
             });
 
@@ -249,18 +247,12 @@ export default function StudentPaymentsPage() {
                                                         </TableRow>
                                                     )) : (
                                                         <TableRow>
-                                                            <TableCell colSpan={3} className="h-24 text-center text-muted-foreground italic">No payments recorded for this invoice yet.</TableCell>
+                                                            <TableCell colSpan={3} className="h-24 text-center text-muted-foreground italic">No payments recorded yet.</TableCell>
                                                         </TableRow>
                                                     )}
                                                 </TableBody>
                                             </Table>
                                         </div>
-                                        {payment.totalPaid > 0 && (
-                                            <div className="flex justify-between items-center px-2 py-1 bg-green-50 rounded-sm border border-green-100">
-                                                <span className="text-xs font-semibold text-green-700 uppercase tracking-wide">Total Paid So Far</span>
-                                                <span className="font-bold text-green-700">ZMW {payment.totalPaid.toFixed(2)}</span>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </CardContent>
@@ -280,7 +272,7 @@ export default function StudentPaymentsPage() {
                     <CardContent className="py-16 text-center text-muted-foreground">
                         <DollarSign className="mx-auto h-12 w-12 opacity-20 mb-4" />
                         <h3 className="text-lg font-semibold">No Billing History</h3>
-                        <p className="text-sm max-w-xs mx-auto">You haven't been issued any invoices yet. Invoices are generated automatically after course registration is approved.</p>
+                        <p className="text-sm max-w-xs mx-auto">You haven't been issued any invoices yet.</p>
                         <Button className="mt-6" asChild variant="outline">
                             <Link href="/student/registration">Go to Registration</Link>
                         </Button>

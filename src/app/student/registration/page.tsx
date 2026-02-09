@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -12,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { format, parseISO } from 'date-fns';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };
@@ -60,8 +62,8 @@ export default function StudentRegistrationPage() {
             const profile = uSnap.val();
             setUserProfile({ 
                 ...profile, 
-                programmeName: pSnap.val()[profile.programmeId]?.name || 'Unknown', 
-                intakeName: iSnap.val()[profile.intakeId]?.name || 'Unknown' 
+                programmeName: pSnap.val()?.[profile.programmeId]?.name || 'Unknown', 
+                intakeName: iSnap.val()?.[profile.intakeId]?.name || 'Unknown' 
             });
             
             const userPath = Object.values(cpSnap.val() || {}).find((p: any) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId) as any;
@@ -177,7 +179,6 @@ export default function StudentRegistrationPage() {
                             </CardHeader>
                             <CardContent className="space-y-6 pb-6">
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Course List with Timetable */}
                                     <div className="space-y-3">
                                         <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
                                             <BookCopy className="h-3 w-3" /> Proposed Courses
@@ -202,7 +203,6 @@ export default function StudentRegistrationPage() {
                                         </div>
                                     </div>
 
-                                    {/* Deadlines Section */}
                                     <div className="space-y-3">
                                         <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
                                             <CalendarIcon className="h-3 w-3" /> Important Deadlines
