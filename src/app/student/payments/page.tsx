@@ -146,7 +146,7 @@ export default function StudentPaymentsPage() {
             <Card className="shadow-lg border-0">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
-                    <CardDescription>View your detailed billing history, current balances, and payment records.</CardDescription>
+                    <CardDescription>View your billing history and payment records.</CardDescription>
                 </CardHeader>
             </Card>
 

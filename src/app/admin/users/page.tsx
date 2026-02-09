@@ -35,25 +35,21 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from '@/components/ui/checkbox';
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { ref, set, runTransaction, get, push, serverTimestamp, update, onValue, query, orderByChild, equalTo, remove } from 'firebase/database';
-import { app, auth, db, createNotification } from '@/lib/firebase';
+import { ref, get, push, update, onValue, remove } from 'firebase/database';
+import { auth, db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
 import { setUserPassword } from '@/ai/flows/set-user-password';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
-import { sendEmail } from '@/ai/flows/send-email-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { Separator } from '@/components/ui/separator';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import Link from 'next/link';
 
 type User = {
     uid: string;
@@ -68,7 +64,6 @@ type User = {
     programmeName?: string;
     year?: number;
     semesterId?: string;
-    exemptedCourses?: Record<string, boolean>;
     status?: 'active' | 'disabled';
     intakeId?: string;
     dob?: string;
@@ -96,7 +91,7 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 };
 
 export default function UserManagementPage() {
-    const { user: adminUser, userProfile: adminProfile } = useAuth();
+    const { userProfile: adminProfile } = useAuth();
     const [users, setUsers] = React.useState<User[]>([]);
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     
@@ -149,7 +144,6 @@ export default function UserManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
-    const [idSettings, setIdSettings] = React.useState<any>(null);
 
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
@@ -167,8 +161,8 @@ export default function UserManagementPage() {
         };
         
         const fetchData = async () => {
-            const [u, p, s, i, sem, pref] = await Promise.all([
-                get(refs.users), get(refs.programmes), get(refs.subRoles), get(refs.intakes), get(refs.semesters), get(refs.idPrefixes)
+            const [u, p, s, i, sem] = await Promise.all([
+                get(refs.users), get(refs.programmes), get(refs.subRoles), get(refs.intakes), get(refs.semesters)
             ]);
             
             const pData = p.val() || {};
@@ -179,7 +173,6 @@ export default function UserManagementPage() {
             setAvailableSubRoles(Object.keys(srData).map(id => ({id, ...srData[id]})));
             setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
             setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...sem.val()[id] })) : []);
-            setIdSettings(pref.exists() ? pref.val() : { student: 'STU', staff: 'STF', admin: 'ADM' });
 
             if (u.exists()) {
                 const usersData = u.val();
@@ -197,10 +190,8 @@ export default function UserManagementPage() {
                 });
                 setUsers(list);
             }
-            setTableTableLoading(false);
+            setTableLoading(false);
         };
-
-        const setTableTableLoading = (val: boolean) => setTableLoading(val);
 
         fetchData();
         const unsub = onValue(refs.users, (snapshot) => { if(snapshot.exists()) fetchData(); });
@@ -312,7 +303,7 @@ export default function UserManagementPage() {
     };
 
     const handleBulkDelete = async () => {
-        if (!window.confirm(`Are you sure you want to delete ${selectedCount} users? This will remove their database records but NOT their authentication credentials (requires manual cleanup in Firebase Console).`)) return;
+        if (!window.confirm(`Are you sure you want to delete ${selectedCount} users? This will remove their database records but NOT their authentication credentials.`)) return;
         setBulkActionLoading(true);
         const uids = Object.keys(selectedUids).filter(uid => selectedUids[uid]);
         try {
@@ -360,8 +351,8 @@ export default function UserManagementPage() {
     };
 
     const filteredUsers = React.useMemo(() => {
+        const queryText = searchQuery.toLowerCase();
         return users.filter(user => {
-            const queryText = searchQuery.toLowerCase();
             const roleMatch = roleFilter === 'All' || user.role === roleFilter;
             const nameMatch = (user.name || '').toLowerCase().includes(queryText);
             const idMatch = (user.id || '').toLowerCase().includes(queryText);
@@ -449,7 +440,7 @@ export default function UserManagementPage() {
 
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                 <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Edit User: {editingUser?.name}</DialogTitle><DialogDescription>Update all professional and personal details.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle>Edit User: {editingUser?.name}</DialogTitle><DialogDescription>Update professional and personal details.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-auto pr-4 py-4">
                         <form id="edit-user-form" onSubmit={handleSaveEdit}>
                             <Accordion type="multiple" defaultValue={['basic', 'academic']} className="w-full">

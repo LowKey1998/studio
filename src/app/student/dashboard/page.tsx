@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion, Library, UserCheck } from "lucide-react";
+import { ChevronRight, BookOpen, Info, Hand, Calendar as CalendarIcon, Clock, Banknote, FileQuestion, Library } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -10,7 +10,6 @@ import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Progress } from '@/components/ui/progress';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
@@ -58,7 +57,6 @@ const timeToMinutes = (time: string) => {
 
 export default function StudentSemesterOverviewPage() {
     const [activeSemesters, setActiveSemesters] = React.useState<SemesterCourses[]>([]);
-    const [archivedSemesters, setArchivedSemesters] = React.useState<SemesterCourses[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const [bankDetails, setBankDetails] = React.useState<BankDetails[]>([]);
@@ -102,7 +100,6 @@ export default function StudentSemesterOverviewPage() {
 
             if (!registrationsSnap.exists()) {
                 setActiveSemesters([]);
-                setArchivedSemesters([]);
                 setLoading(false);
                 return;
             }
@@ -142,15 +139,12 @@ export default function StudentSemesterOverviewPage() {
             }
 
             const newActiveSemesters: SemesterCourses[] = [];
-            const newArchivedSemesters: SemesterCourses[] = [];
-
             let nextDeadline: Date | null = null;
 
             for (const semesterId in semesterCourseMap) {
                 const semesterInfo = allSemesters[semesterId];
                 const courses = semesterCourseMap[semesterId];
 
-                // Calculate attendance
                 let totalPresent = 0;
                 let totalMarked = 0;
                 courses.forEach(course => {
@@ -169,7 +163,6 @@ export default function StudentSemesterOverviewPage() {
                 });
                 const attendancePercentage = totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100;
                 
-                // Get Timetable
                 const timetableEntries: TimetableEntry[] = [];
                 if(allTimetables[semesterId]) {
                     courses.forEach(course => {
@@ -181,7 +174,6 @@ export default function StudentSemesterOverviewPage() {
                     });
                 }
                 
-                // Get Assessments
                 const assessmentEvents: AssessmentEvent[] = [];
                 Object.values(allCalendarEvents).forEach((event: any) => {
                     if (event.semester === semesterInfo?.name) {
@@ -195,7 +187,6 @@ export default function StudentSemesterOverviewPage() {
                     }
                 });
 
-                // Get Quizzes
                  Object.entries(allQuizzes).forEach(([quizId, quiz]: [string, any]) => {
                     if(quiz.programmeIds?.includes(userProfile.programmeId) && quiz.intakeIds?.includes(userProfile.intakeId)){
                         if(quiz.startTime) {
@@ -203,7 +194,6 @@ export default function StudentSemesterOverviewPage() {
                         }
                     }
                 });
-
 
                 const semesterData = {
                     semesterId: semesterId,
@@ -216,8 +206,6 @@ export default function StudentSemesterOverviewPage() {
 
                 if(semesterInfo && semesterInfo.status !== 'Archived') {
                     newActiveSemesters.push(semesterData);
-                } else {
-                    newArchivedSemesters.push(semesterData);
                 }
             }
 
@@ -229,7 +217,6 @@ export default function StudentSemesterOverviewPage() {
             }
             
             setActiveSemesters(newActiveSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
-            setArchivedSemesters(newArchivedSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
 
         } catch (error) {
             console.error("Error fetching dashboard data:", error);
@@ -251,7 +238,7 @@ export default function StudentSemesterOverviewPage() {
             <Card className="shadow-lg border-0">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">My Dashboard</CardTitle>
-                    <CardDescription>An overview of your currently enrolled classes and schedules.</CardDescription>
+                    <CardDescription>Enrolled classes and schedules.</CardDescription>
                 </CardHeader>
             </Card>
 
@@ -269,106 +256,78 @@ export default function StudentSemesterOverviewPage() {
                     ))}
                 </div>
             ) : activeSemesters.length > 0 ? (
-                <Accordion type="single" collapsible className="w-full space-y-4" defaultValue={activeSemesters[0]?.semesterId}>
+                <div className="space-y-4">
                     {activeSemesters.map((semester) => (
                     <Card key={semester.semesterId} className="shadow-lg">
-                        <AccordionItem value={semester.semesterId} className="border-b-0">
-                            <AccordionTrigger className="p-6 hover:no-underline">
-                                <div className="w-full text-left">
-                                    <div className="flex justify-between items-center">
-                                        <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
-                                        <div className="flex items-center text-sm text-muted-foreground">
-                                            <BookOpen className="mr-2 h-4 w-4" />
-                                            <span>{semester.courses.length} Course(s)</span>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1 mt-4">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <div className="flex items-center text-muted-foreground"><Hand className="mr-2 h-4 w-4" /> <span>Overall Attendance</span></div>
-                                            <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
-                                        </div>
-                                        <Progress value={semester.attendancePercentage} />
+                        <CardHeader>
+                            <div className="flex justify-between items-center">
+                                <CardTitle>{semester.semesterName}</CardTitle>
+                                <Badge variant="outline">{semester.courses.length} Course(s)</Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-muted-foreground">Attendance</span>
+                                    <span className="font-bold">{semester.attendancePercentage.toFixed(0)}%</span>
+                                </div>
+                                <Progress value={semester.attendancePercentage} />
+                            </div>
+                            <div className="grid lg:grid-cols-3 gap-6">
+                                <div className="lg:col-span-2">
+                                    <h4 className="font-semibold mb-2">Timetable</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-px border rounded-lg overflow-hidden">
+                                        {daysOfWeek.map(day => (
+                                            <div key={day} className="bg-card">
+                                                <h3 className="font-semibold text-center text-[10px] p-1 border-b bg-muted/50">{day}</h3>
+                                                <div className="p-1 space-y-1 min-h-[80px]">
+                                                    {semester.timetable
+                                                        .filter(entry => entry.day === day)
+                                                        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                                                        .map((entry, index) => (
+                                                            <div key={index} className="p-1 text-[9px] rounded-md bg-primary/10 border border-primary/20">
+                                                                <p className="font-bold text-primary">{entry.courseCode}</p>
+                                                                <p>{entry.startTime}</p>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            </AccordionTrigger>
-                            <AccordionContent className="px-6 pb-6">
-                                <div className="grid lg:grid-cols-3 gap-6">
-                                    <div className="lg:col-span-2">
-                                        <h4 className="font-semibold mb-2">Class Timetable</h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
-                                            {daysOfWeek.map(day => (
-                                                <div key={day} className="bg-card">
-                                                    <h3 className="font-semibold text-center text-xs p-2 border-b bg-muted/50">{day}</h3>
-                                                    <div className="p-2 space-y-2 min-h-24">
-                                                        {semester.timetable
-                                                            .filter(entry => entry.day === day)
-                                                            .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
-                                                            .map((entry, index) => (
-                                                                <div key={index} className="p-2 text-[10px] rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
-                                                                    <p className="font-bold text-primary">{entry.courseCode}</p>
-                                                                    <p className="text-primary/80">{entry.startTime} - {entry.endTime}</p>
-                                                                    <p className="text-primary/80">Venue: {entry.venue}</p>
-                                                                </div>
-                                                            ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h4 className="font-semibold mb-2">Key Dates</h4>
-                                        <div className="space-y-2">
-                                            {semester.assessments
-                                                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                                                .map((event, index) => (
-                                                <Link key={index} href={event.link || '#'} passHref>
-                                                <div className="flex items-center gap-2 p-2 border rounded-md hover:bg-accent cursor-pointer">
-                                                    {event.type === 'quiz' ? <FileQuestion className="h-4 w-4 text-muted-foreground"/> : <CalendarIcon className="h-4 w-4 text-muted-foreground"/>}
-                                                    <div>
-                                                        <p className="text-sm font-medium">{event.title.replace(`- ${semester.semesterName}`, '')}</p>
-                                                        <p className="text-xs text-muted-foreground">{format(parseISO(event.date), 'PPP')}</p>
-                                                    </div>
-                                                </div>
-                                                </Link>
-                                            ))}
-                                        </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">Dates</h4>
+                                    <div className="space-y-2">
+                                        {semester.assessments.slice(0, 3).map((event, index) => (
+                                            <div key={index} className="flex justify-between text-xs p-2 border rounded bg-muted/20">
+                                                <span className="truncate pr-2">{event.title.split(' - ')[0]}</span>
+                                                <span className="font-medium whitespace-nowrap">{format(parseISO(event.date), 'dd MMM')}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            </AccordionContent>
-                        </AccordionItem>
+                            </div>
+                        </CardContent>
                     </Card>
                     ))}
-                </Accordion>
+                </div>
             ) : (
-                <Card>
-                    <CardContent className="pt-6">
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>No Classes Found</AlertTitle>
-                            <AlertDescription>
-                                You are not enrolled in any classes. Please complete your course registration and payment first.
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
+                <Alert><Info className="h-4 w-4" /><AlertTitle>No Active Classes</AlertTitle><AlertDescription>Complete your registration to see your dashboard.</AlertDescription></Alert>
             )}
 
             {bankDetails.length > 0 && (
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
-                    <CardDescription>Use the following details for bank transfers. Please use your student ID as the reference.</CardDescription>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Banknote/> Payment Details</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                     {bankDetails.map((bank, idx) => (
                         <div key={bank.id} className={idx > 0 ? "pt-6 border-t" : ""}>
-                            <h4 className="font-bold mb-3 flex items-center gap-2 text-primary"><Library className="h-4 w-4"/> {bank.bankName}</h4>
-                            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                                {bank.accountName && <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Account Name</dt><dd className="font-medium">{bank.accountName}</dd></div>}
-                                <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Account Number</dt><dd className="font-medium font-mono">{bank.accountNumber}</dd></div>
-                                <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Branch Code</dt><dd className="font-medium">{bank.branchCode}</dd></div>
-                                {bank.swiftCode && <div className="flex flex-col"><dt className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">SWIFT Code</dt><dd className="font-medium font-mono">{bank.swiftCode}</dd></div>}
-                            </dl>
+                            <h4 className="font-bold mb-3 text-primary">{bank.bankName}</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                {bank.accountName && <div><p className="text-[10px] uppercase text-muted-foreground">Account Name</p><p className="font-medium">{bank.accountName}</p></div>}
+                                <div><p className="text-[10px] uppercase text-muted-foreground">Account Number</p><p className="font-mono font-medium">{bank.accountNumber}</p></div>
+                                <div><p className="text-[10px] uppercase text-muted-foreground">Branch Code</p><p className="font-medium">{bank.branchCode}</p></div>
+                                {bank.swiftCode && <div><p className="text-[10px] uppercase text-muted-foreground">SWIFT</p><p className="font-mono font-medium">{bank.swiftCode}</p></div>}
+                            </div>
                         </div>
                     ))}
                 </CardContent>

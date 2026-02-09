@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -74,7 +74,7 @@ export default function StudentRegistrationPage() {
             const sData = sSnap.val() || {};
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
-            const eventsData = eventsSnap.val() || {};
+            const eventsData = eventsSnapshot.val() || {};
             const timetablesData = timetablesSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
@@ -88,7 +88,6 @@ export default function StudentRegistrationPage() {
                     const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
                     const isRegistered = !!(regs[semId]?.courses?.length > 0);
                     
-                    // Allow access if the admin has explicitly opened it OR if they haven't registered yet and it's not archived
                     const canView = isOfferingActive || !isRegistered;
                     if (!canView) continue;
 
@@ -99,7 +98,6 @@ export default function StudentRegistrationPage() {
                         return { id, name: course?.name, code: course?.code, lecturerNames, timetable };
                     });
 
-                    // Deadlines
                     const deadlines: { title: string; date: string | null }[] = [];
                     let isMissingDeadlines = false;
                     const linkedPlanIds = Object.keys(details.paymentPlanIds || {});
@@ -212,13 +210,13 @@ export default function StudentRegistrationPage() {
                                                     )}
                                                 </div>
                                             )) : (
-                                                <p className="text-xs text-muted-foreground italic">No specific deadlines have been published for this semester.</p>
+                                                <p className="text-xs text-muted-foreground italic">No specific deadlines published.</p>
                                             )}
                                             {sem.isMissingDeadlines && (
                                                 <Alert variant="default" className="py-2 bg-yellow-50 border-yellow-200">
                                                     <Info className="h-3 w-3 text-yellow-600" />
                                                     <AlertDescription className="text-[10px] text-yellow-700">
-                                                        Administration is still finalizing some dates. You can still proceed with registration.
+                                                        Administration is still finalizing some dates.
                                                     </AlertDescription>
                                                 </Alert>
                                             )}
@@ -230,7 +228,7 @@ export default function StudentRegistrationPage() {
                     )) : (
                         <Alert>
                             <Info className="h-4 w-4"/><AlertTitle>No Active Paths</AlertTitle>
-                            <AlertDescription>There are currently no active registration paths for your intake and programme. Please check back when registration opens.</AlertDescription>
+                            <AlertDescription>There are currently no active registration paths for your intake and programme.</AlertDescription>
                         </Alert>
                     )}
                 </CardContent>
