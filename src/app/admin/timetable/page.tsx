@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -35,7 +36,7 @@ type TimetableEntry = {
 };
 
 type Semester = { id: string; name: string; intakeId: string; startDate?: string; endDate?: string; status: 'Open' | 'Closed' | 'Archived'; };
-type Course = { id: string; name: string; code: string; };
+type Course = { id: string; name: string; code: string; status: string; lecturerId: string; lecturerIds?: string[]; };
 type Room = { id: string; name: string; capacity: number; };
 type Intake = { id: string; name: string; };
 
@@ -74,9 +75,9 @@ export default function TimetableManagementPage() {
 
     const { toast } = useToast();
 
-    React.useEffect(() => {
+    const fetchData = React.useCallback(async () => {
         setLoading(true);
-        const fetchData = async () => {
+        try {
             const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap] = await Promise.all([
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -122,13 +123,18 @@ export default function TimetableManagementPage() {
                 }
             }
             setMasterTimetable(entries);
+        } catch (e) {
+            console.error(e);
+        } finally {
             setLoading(false);
-        };
+        }
+    }, []);
 
+    React.useEffect(() => {
         fetchData();
         const unsub = onValue(ref(db, 'timetables'), () => fetchData());
         return () => unsub();
-    }, []);
+    }, [fetchData]);
 
     const handleAutoGenerate = async () => {
         setGenerating(true);
@@ -191,14 +197,10 @@ export default function TimetableManagementPage() {
 
     const coursesForSelectedSemester = React.useMemo(() => {
         if (!selectedSemesterId) return [];
-        // Extract courses assigned to this semester from coursePaths
-        const semesterData = semesters.find(s => s.id === selectedSemesterId);
-        if (!semesterData) return [];
-        
-        // This is a heuristic: get all courses where lecturer or registration exists for this semester
-        // Better way: get from coursePaths. For now, show all active courses
-        return Object.entries(courses).filter(([id, data]) => data.status === 'active').map(([id, data]) => ({ id, ...data }));
-    }, [selectedSemesterId, semesters, courses]);
+        return Object.entries(courses)
+            .filter(([id, data]) => data.status === 'active')
+            .map(([id, data]) => ({ id, ...data }));
+    }, [selectedSemesterId, courses]);
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -287,8 +289,8 @@ export default function TimetableManagementPage() {
                                     {filteredTimetable
                                         .filter(e => e.day === day)
                                         .sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
-                                        .map((entry, idx) => (
-                                            <div key={idx} className="group relative p-3 rounded-lg border bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
+                                        .map((entry) => (
+                                            <div key={entry.id} className="group relative p-3 rounded-lg border bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
                                                 <Button 
                                                     variant="ghost" 
                                                     size="icon" 

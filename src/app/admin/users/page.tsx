@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -52,7 +53,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-type User = {
+type UserProfile = {
     uid: string;
     id: string;
     name: string;
@@ -93,13 +94,13 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 
 export default function UserManagementPage() {
     const { userProfile: adminProfile } = useAuth();
-    const [users, setUsers] = React.useState<User[]>([]);
+    const [users, setUsers] = React.useState<UserProfile[]>([]);
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     
     // Form & Dialog states
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
-    const [editingUser, setEditingUser] = React.useState<User | null>(null);
+    const [editingUser, setEditingUser] = React.useState<UserProfile | null>(null);
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
 
     // Global filters
@@ -135,7 +136,7 @@ export default function UserManagementPage() {
     const [guardianRelationship, setGuardianRelationship] = React.useState('');
 
     // Password Dialog State
-    const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
+    const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
@@ -150,7 +151,7 @@ export default function UserManagementPage() {
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
 
-    React.useEffect(() => {
+    const fetchUsers = React.useCallback(async () => {
         setTableLoading(true);
         const refs = {
             users: ref(db, 'users'),
@@ -160,7 +161,7 @@ export default function UserManagementPage() {
             intakes: ref(db, 'intakes')
         };
         
-        const fetchData = async () => {
+        try {
             const [u, p, s, i, sem] = await Promise.all([
                 get(refs.users), get(refs.programmes), get(refs.subRoles), get(refs.intakes), get(refs.semesters)
             ]);
@@ -176,7 +177,7 @@ export default function UserManagementPage() {
 
             if (u.exists()) {
                 const usersData = u.val();
-                const list: User[] = Object.keys(usersData).map(uid => {
+                const list: UserProfile[] = Object.keys(usersData).map(uid => {
                     const user = usersData[uid];
                     const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.values(user.subRoles)) : [];
                     return {
@@ -190,24 +191,20 @@ export default function UserManagementPage() {
                 });
                 setUsers(list);
             }
+        } catch (error) {
+            console.error(error);
+        } finally {
             setTableLoading(false);
-        };
-
-        fetchData();
-        const unsub = onValue(refs.users, (snapshot) => { if(snapshot.exists()) fetchData(); });
-        return () => unsub();
+        }
     }, []);
 
-    const resetForm = () => {
-        setName(''); setEmail(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); 
-        setProgrammeId(''); setIntakeId(''); setYear(''); setSemesterId('');
-        setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress(''); setBio('');
-        setSchool(''); setQualifications(''); setMedicalHistory('');
-        setGuardianName(''); setGuardianEmail(''); setGuardianContact(''); setGuardianRelationship('');
-        setEditingUser(null);
-    };
+    React.useEffect(() => {
+        fetchUsers();
+        const unsub = onValue(ref(db, 'users'), (snapshot) => { if(snapshot.exists()) fetchUsers(); });
+        return () => unsub();
+    }, [fetchUsers]);
 
-    const handleOpenEdit = (user: User) => {
+    const handleOpenEdit = (user: UserProfile) => {
         setEditingUser(user);
         setName(user.name || '');
         setEmail(user.email || '');
@@ -283,8 +280,6 @@ export default function UserManagementPage() {
         setSelectedUids(next);
     };
 
-    const selectedCount = Object.values(selectedUids).filter(Boolean).length;
-
     const handleBulkStatusUpdate = async (disabled: boolean) => {
         setBulkActionLoading(true);
         const uids = Object.keys(selectedUids).filter(uid => selectedUids[uid]);
@@ -303,7 +298,8 @@ export default function UserManagementPage() {
     };
 
     const handleBulkDelete = async () => {
-        if (!window.confirm(`Are you sure you want to delete ${selectedCount} users? This will remove their database records but NOT their authentication credentials.`)) return;
+        const count = Object.values(selectedUids).filter(Boolean).length;
+        if (!window.confirm(`Are you sure you want to delete ${count} users? This will remove their database records but NOT their authentication credentials.`)) return;
         setBulkActionLoading(true);
         const uids = Object.keys(selectedUids).filter(uid => selectedUids[uid]);
         try {
@@ -360,6 +356,8 @@ export default function UserManagementPage() {
             return roleMatch && (nameMatch || idMatch || emailMatch);
         });
     }, [users, roleFilter, searchQuery]);
+
+    const selectedCount = Object.values(selectedUids).filter(Boolean).length;
 
     return (
         <div className="space-y-6">
