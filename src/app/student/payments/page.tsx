@@ -1,8 +1,9 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Receipt, History, DollarSign, AlertCircle, Info, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Loader2, Receipt, History, DollarSign, AlertCircle, Info, ChevronDown, CheckCircle2, GraduationCap } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -179,7 +180,7 @@ export default function StudentPaymentsPage() {
                                         <div className="rounded-md border p-4 bg-card shadow-sm space-y-3">
                                             <div className="space-y-2">
                                                 <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Academic Fees</p>
-                                                {payment.invoice.courses?.map(id => {
+                                                {(payment.invoice.courses || []).map(id => {
                                                     const course = allCourses[id];
                                                     return course ? (
                                                         <div key={id} className="flex justify-between text-sm">
@@ -204,7 +205,7 @@ export default function StudentPaymentsPage() {
                                                         <span className="font-mono">ZMW {fee.amount.toFixed(2)}</span>
                                                     </div>
                                                 ))}
-                                                {payment.invoice.optionalFees?.map(id => {
+                                                {(payment.invoice.optionalFees || []).map(id => {
                                                     const fee = allSemesters[payment.semesterId]?.optionalFees?.[id];
                                                     return fee ? (
                                                         <div key={id} className="flex justify-between text-sm">
@@ -277,7 +278,7 @@ export default function StudentPaymentsPage() {
             ) : (
                 <Card>
                     <CardContent className="py-16 text-center text-muted-foreground">
-                        <AlertCircle className="mx-auto h-12 w-12 opacity-20 mb-4" />
+                        <DollarSign className="mx-auto h-12 w-12 opacity-20 mb-4" />
                         <h3 className="text-lg font-semibold">No Billing History</h3>
                         <p className="text-sm max-w-xs mx-auto">You haven't been issued any invoices yet. Invoices are generated automatically after course registration is approved.</p>
                         <Button className="mt-6" asChild variant="outline">
