@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -18,6 +19,7 @@ type Course = {
     code: string;
     studentCount: number;
     semester: string;
+    semesterId: string;
 };
 
 type CoursePath = {
@@ -78,29 +80,29 @@ export default function StaffCoursesPage() {
             const allSemesters = semestersSnap.val();
             const allRegistrations = regsSnap.val() || {};
 
-            // 1. Get student counts for all courses
-            const studentCounts: { [courseId: string]: number } = {};
+            // 1. Get student counts for all courses per semester (to avoid aggregating across all time)
+            const studentCounts: { [semesterId: string]: { [courseId: string]: number } } = {};
             for (const userId in allRegistrations) {
                 for (const semesterId in allRegistrations[userId]) {
                     const reg = allRegistrations[userId][semesterId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         if (reg.courses) {
+                            if (!studentCounts[semesterId]) studentCounts[semesterId] = {};
                             for (const courseId of reg.courses) {
-                                studentCounts[courseId] = (studentCounts[courseId] || 0) + 1;
+                                studentCounts[semesterId][courseId] = (studentCounts[semesterId][courseId] || 0) + 1;
                             }
                         }
                     }
                 }
             }
 
-            // 2. Find all courses taught by the current lecturer (plural lecturerIds check)
+            // 2. Find all courses taught by the current lecturer
             const myCourseIds = new Set<string>();
             for (const courseId in allCourses) {
                 const courseData = allCourses[courseId];
                 if (!courseData) continue;
 
                 const lecturerIds = courseData.lecturerIds || [];
-                // Robust assignment check
                 const isAssigned = currentUser.uid && (
                     (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
                     (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
@@ -111,7 +113,7 @@ export default function StaffCoursesPage() {
                 }
             }
 
-            // 3. Find which semesters these courses are in, via course paths
+            // 3. Map courses to their respective semesters based on defined paths
             const newActiveCourses: Course[] = [];
             const newArchivedCourses: Course[] = [];
             const processedEntries = new Set<string>();
@@ -131,8 +133,9 @@ export default function StaffCoursesPage() {
                                             id: courseId,
                                             name: allCourses[courseId].name,
                                             code: allCourses[courseId].code,
-                                            studentCount: studentCounts[courseId] || 0,
+                                            studentCount: studentCounts[semesterId]?.[courseId] || 0,
                                             semester: semesterInfo.name,
+                                            semesterId: semesterId
                                         };
 
                                         if (semesterInfo.status !== 'Archived') {
@@ -203,7 +206,7 @@ export default function StaffCoursesPage() {
             {activeCourses.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {activeCourses.map((course) => (
-                    <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
+                    <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
                         <CardHeader>
                             <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
                             <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
@@ -251,7 +254,7 @@ export default function StaffCoursesPage() {
                         <AccordionContent>
                              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pt-4">
                                 {archivedCourses.map((course) => (
-                                <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg opacity-70">
+                                <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg opacity-70">
                                     <CardHeader>
                                         <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
                                         <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
