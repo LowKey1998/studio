@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -117,7 +118,7 @@ export default function StudentRegistrationPage() {
                         ...details, 
                         id: semId, 
                         isRegistered, 
-                        isOpen: isOpen && !isRegistered, 
+                        isOpen: isOpen || !isRegistered, // Allow access if open OR if not registered yet
                         courses,
                         deadlines,
                         isMissingDeadlines
@@ -160,14 +161,12 @@ export default function StudentRegistrationPage() {
                                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
                                             <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                         </Badge>
-                                    ) : sem.isOpen ? (
+                                    ) : (
                                         <Button asChild>
                                             <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                 Register Now <ChevronRight className="ml-2 h-4 w-4"/>
                                             </Link>
                                         </Button>
-                                    ) : (
-                                        <Badge variant="secondary" className="px-4 py-1">Registration Closed</Badge>
                                     )}
                                 </div>
                             </CardHeader>
@@ -214,7 +213,7 @@ export default function StudentRegistrationPage() {
                                             )) : (
                                                 <p className="text-xs text-muted-foreground italic">No specific deadlines have been published for this semester.</p>
                                             )}
-                                            {sem.isMissingDeadlines && sem.isOpen && (
+                                            {sem.isMissingDeadlines && (
                                                 <Alert variant="warning" className="py-2">
                                                     <Info className="h-3 w-3" />
                                                     <AlertDescription className="text-[10px]">

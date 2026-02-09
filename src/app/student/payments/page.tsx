@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -94,8 +95,8 @@ export default function StudentPaymentsPage() {
 
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
-            setAllSemesters(semestersData);
             setAllCourses(coursesData);
+            setAllSemesters(semestersData);
 
             if (!invoicesSnap.exists()) {
                 setPayments([]);

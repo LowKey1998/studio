@@ -9,6 +9,23 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  serverExternalPackages: [
+    'genkit',
+    '@genkit-ai/googleai',
+    '@genkit-ai/next',
+    '@genkit-ai/core',
+    '@genkit-ai/flow',
+    '@opentelemetry/api',
+    '@opentelemetry/context-async-hooks',
+    'node-fetch',
+    'wav',
+    'nodemailer',
+    'twilio',
+    'googleapis',
+    'node-quickbooks',
+    'papaparse',
+    'xlsx'
+  ],
   images: {
     remotePatterns: [
       {
