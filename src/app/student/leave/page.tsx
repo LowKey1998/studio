@@ -1,7 +1,14 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Loader2, PlusCircle, Calendar as CalendarIcon, Briefcase } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { format, isSameDay, getDay, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 type LeaveRequest = {
   id: string;
