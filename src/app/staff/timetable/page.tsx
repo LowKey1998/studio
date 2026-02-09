@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,19 +30,23 @@ export default function StaffTimetablePage() {
     }, []);
 
     React.useEffect(() => {
-        if (!currentUser) return;
+        if (!currentUser?.uid) return;
 
         const fetchTimetable = async () => {
             setLoading(true);
             try {
-                // Get courses assigned to lecturer
+                // Get all courses and filter by lecturer assignment
                 const coursesRef = ref(db, 'courses');
                 const coursesSnap = await get(coursesRef);
                 const assignedCourseIds: string[] = [];
                 if(coursesSnap.exists()) {
                     const allCourses = coursesSnap.val();
                     for(const courseId in allCourses) {
-                        if (allCourses[courseId].lecturerId === currentUser.uid) {
+                        const courseData = allCourses[courseId];
+                        const lecturerIds = courseData.lecturerIds || [];
+                        const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
+                        
+                        if (isAssigned) {
                             assignedCourseIds.push(courseId);
                         }
                     }
@@ -61,11 +64,12 @@ export default function StaffTimetablePage() {
                 const allEntries: TimetableEntry[] = [];
                 if (timetablesSnap.exists()) {
                     const allTimetables = timetablesSnap.val();
+                    const allCourses = coursesSnap.val();
                     for (const semester in allTimetables) {
                         for (const courseId in allTimetables[semester]) {
                             if (assignedCourseIds.includes(courseId)) {
-                                const courseCode = coursesSnap.val()[courseId].code;
-                                const courseName = coursesSnap.val()[courseId].name;
+                                const courseCode = allCourses[courseId].code;
+                                const courseName = allCourses[courseId].name;
                                 const entries = allTimetables[semester][courseId];
                                 for (const entryId in entries) {
                                     allEntries.push({ ...entries[entryId], courseCode, courseName });
@@ -86,6 +90,7 @@ export default function StaffTimetablePage() {
     }, [currentUser]);
     
     const timeToMinutes = (time: string) => {
+        if (!time) return 0;
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     };
@@ -126,4 +131,3 @@ export default function StaffTimetablePage() {
         </Card>
     );
 }
-

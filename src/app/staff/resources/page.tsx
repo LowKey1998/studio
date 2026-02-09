@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -33,7 +32,7 @@ export default function StaffResourcesPage() {
     }, []);
 
     const fetchLecturerCourses = React.useCallback(async () => {
-        if (!currentUser) return;
+        if (!currentUser?.uid) return;
         setLoading(true);
         try {
             const [coursesSnap, regsSnapshot, semestersSnap] = await Promise.all([
@@ -53,15 +52,23 @@ export default function StaffResourcesPage() {
                     const semesterInfo = allSemesters[semesterId];
 
                     if (semesterInfo?.status !== 'Archived') {
-                        for (const courseId of registration.courses) {
+                        for (const courseId of registration.courses || []) {
                             const courseData = coursesData[courseId];
-                            if (courseData && courseData.lecturerId === currentUser.uid && !lecturerCourses.has(courseId)) {
-                                lecturerCourses.set(courseId, {
-                                    id: courseId,
-                                    name: courseData.name,
-                                    code: courseData.code,
-                                    semester: semesterInfo.name || 'Active Semester',
-                                });
+                            if (courseData) {
+                                const lecturerIds = courseData.lecturerIds || [];
+                                const isAssigned = currentUser.uid && (
+                                    (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
+                                    (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
+                                );
+
+                                if (isAssigned && !lecturerCourses.has(courseId)) {
+                                    lecturerCourses.set(courseId, {
+                                        id: courseId,
+                                        name: courseData.name,
+                                        code: courseData.code,
+                                        semester: semesterInfo.name || 'Active Semester',
+                                    });
+                                }
                             }
                         }
                     }

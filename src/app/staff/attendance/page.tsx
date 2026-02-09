@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -33,7 +32,7 @@ export default function StaffAttendancePage() {
     }, []);
 
     const fetchLecturerCourses = React.useCallback(async () => {
-        if (!currentUser) return;
+        if (!currentUser?.uid) return;
         setLoading(true);
         try {
             const [coursesSnap, regsSnapshot, semestersSnap] = await Promise.all([
@@ -57,7 +56,10 @@ export default function StaffAttendancePage() {
                             const courseData = coursesData[courseId];
                             if (courseData) {
                                 const lecturerIds = courseData.lecturerIds || [];
-                                const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
+                                const isAssigned = currentUser.uid && (
+                                    (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
+                                    (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
+                                );
                                 
                                 if (isAssigned && !lecturerCourses.has(courseId)) {
                                     lecturerCourses.set(courseId, {

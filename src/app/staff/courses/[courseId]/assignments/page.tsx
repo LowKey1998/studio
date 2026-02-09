@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, CalendarIcon, Trash2, Eye } from "lucide-react";
 import { db, auth } from '@/lib/firebase';
 import { ref, get, set, push, remove, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -107,8 +106,12 @@ export default function CourseAssignmentsPage() {
     const isAuthorized = React.useMemo(() => {
         if (!user || !courseData) return false;
         if (userProfile?.role === 'Admin') return true;
-        const assignedLecturers = courseData.lecturerIds || [];
-        return Array.isArray(assignedLecturers) && assignedLecturers.includes(user.uid);
+        
+        const lecturerIds = courseData.lecturerIds || [];
+        return user.uid && (
+            (Array.isArray(lecturerIds) && lecturerIds.includes(user.uid)) ||
+            (courseData.lecturerId && courseData.lecturerId === user.uid)
+        );
     }, [user, userProfile, courseData]);
 
     if (loading) return <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-48 w-full" /></div>;

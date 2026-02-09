@@ -1,18 +1,21 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand, Calendar } from 'lucide-react';
+import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 
 type Course = {
     name: string;
     code: string;
+    lecturerId?: string;
+    lecturerIds?: string[];
 };
 
 export default function StaffCourseLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +24,7 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
     const pathname = usePathname();
     const [course, setCourse] = React.useState<Course | null>(null);
     const [loading, setLoading] = React.useState(true);
+    const { user, userProfile } = useAuth();
 
     React.useEffect(() => {
         if (!courseId) return;
@@ -36,6 +40,17 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         fetchCourse();
     }, [courseId]);
 
+    const isAuthorized = React.useMemo(() => {
+        if (!user || !course) return false;
+        if (userProfile?.role === 'Admin') return true;
+        
+        const lecturerIds = course.lecturerIds || [];
+        return user.uid && (
+            (Array.isArray(lecturerIds) && lecturerIds.includes(user.uid)) ||
+            (course.lecturerId && course.lecturerId === user.uid)
+        );
+    }, [user, userProfile, course]);
+
     const navItems = [
         { name: 'Assignments', href: `/staff/courses/${courseId}/assignments`, icon: <BookMarked/> },
         { name: 'Resources', href: `/staff/courses/${courseId}/resources`, icon: <Folder/> },
@@ -46,7 +61,6 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
     ];
     
     const checkActive = (href: string) => {
-        // A more robust check for the base route
         if(href.endsWith('/assignments')) {
             return pathname === href || pathname === `/staff/courses/${courseId}`;
         }
@@ -63,10 +77,29 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         )
     }
 
+    if (!isAuthorized) {
+        return (
+            <div className="space-y-6">
+                <Button variant="outline" asChild>
+                    <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to My Courses</Link>
+                </Button>
+                <Card>
+                    <CardContent className="pt-6">
+                        <Alert variant="destructive">
+                            <ShieldAlert className="h-4 w-4" />
+                            <AlertTitle>Access Denied</AlertTitle>
+                            <AlertDescription>You are not assigned as a lecturer for this course.</AlertDescription>
+                        </Alert>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
              <Button variant="outline" asChild>
-                <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to All Courses</Link>
+                <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to My Courses</Link>
             </Button>
             <Card>
                 <CardHeader>
@@ -94,4 +127,5 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
     );
 }
 
-    
+import { ShieldAlert } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';

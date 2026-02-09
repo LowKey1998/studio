@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -26,11 +25,6 @@ type CoursePath = {
     intakeId: string;
     programmeId: string;
     semesters: Record<string, { courses: string[] }>;
-};
-
-type Semester = {
-    name: string;
-    status: 'Open' | 'Closed' | 'Archived';
 };
 
 type UserData = {
@@ -62,7 +56,7 @@ export default function StaffCoursesPage() {
       }, []);
 
     const fetchLecturerCourses = React.useCallback(async () => {
-        if (!currentUser) return;
+        if (!currentUser?.uid) return;
         setLoading(true);
         try {
             const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap] = await Promise.all([
@@ -103,12 +97,16 @@ export default function StaffCoursesPage() {
             const myCourseIds = new Set<string>();
             for (const courseId in allCourses) {
                 const courseData = allCourses[courseId];
+                if (!courseData) continue;
+
                 const lecturerIds = courseData.lecturerIds || [];
-                // Support both new plural array and legacy singular field
-                if (
+                // Robust assignment check
+                const isAssigned = currentUser.uid && (
                     (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) ||
-                    (courseData.lecturerId === currentUser.uid)
-                ) {
+                    (courseData.lecturerId && courseData.lecturerId === currentUser.uid)
+                );
+
+                if (isAssigned) {
                     myCourseIds.add(courseId);
                 }
             }
@@ -207,7 +205,7 @@ export default function StaffCoursesPage() {
                     {activeCourses.map((course) => (
                     <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg transition-all duration-300 hover:shadow-xl">
                         <CardHeader>
-                            <CardTitle className="font-headline">{course.name}</CardTitle>
+                            <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
                             <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -255,7 +253,7 @@ export default function StaffCoursesPage() {
                                 {archivedCourses.map((course) => (
                                 <Card key={`${course.id}-${course.semester}`} className="flex flex-col justify-between shadow-lg opacity-70">
                                     <CardHeader>
-                                        <CardTitle className="font-headline">{course.name}</CardTitle>
+                                        <CardTitle className="font-headline text-lg">{course.name}</CardTitle>
                                         <CardDescription>{course.code} &middot; <span className="font-medium">{course.semester}</span></CardDescription>
                                     </CardHeader>
                                     <CardContent>
