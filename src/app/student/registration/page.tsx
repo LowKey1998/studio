@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -14,6 +13,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
+import { Label } from '@/components/ui/label';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };

@@ -2,11 +2,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion, Library } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion, Library, UserCheck } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,7 +18,7 @@ type Course = {
     id: string;
     name: string;
     code: string;
-    lecturerName: string;
+    lecturerNames: string;
 };
 
 type TimetableEntry = {
@@ -46,7 +46,7 @@ type SemesterCourses = {
     assessments: AssessmentEvent[];
 };
 
-type BankDetails = { id: string; bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+type BankDetails = { id: string; bankName: string; accountName?: string; accountNumber: string; branchCode: string; swiftCode?: string; };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -107,13 +107,13 @@ export default function StudentSemesterOverviewPage() {
                 return;
             }
             
-            const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
-            const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
-            const usersData = usersSnap.exists() ? usersSnap.val() : {};
-            const allAttendance = attendanceSnap.exists() ? attendanceSnap.val() : {};
-            const allTimetables = timetablesSnap.exists() ? timetablesSnap.val() : {};
-            const allCalendarEvents = calendarSnap.exists() ? Object.values(calendarSnap.val()) : [];
-            const allQuizzes = quizzesSnap.exists() ? quizzesSnap.val() : {};
+            const allSemesters = semestersSnap.val() || {};
+            const coursesData = coursesSnap.val() || {};
+            const usersData = usersSnap.val() || {};
+            const allAttendance = attendanceSnap.val() || {};
+            const allTimetables = timetablesSnap.val() || {};
+            const allCalendarEvents = calendarSnap.val() || {};
+            const allQuizzes = quizzesSnap.val() || {};
             
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
@@ -126,14 +126,15 @@ export default function StudentSemesterOverviewPage() {
                 const registration = registrationsData[semesterId];
                 if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
                     if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
-                    for (const courseId of registration.courses) {
+                    for (const courseId of (registration.courses || [])) {
                         const courseInfo = coursesData[courseId];
                         if (courseInfo) {
+                            const lecturerNames = (courseInfo.lecturerIds || []).map((lid: string) => userMap.get(lid)).filter(Boolean).join(', ') || userMap.get(courseInfo.lecturerId) || 'Unassigned';
                             semesterCourseMap[semesterId].push({
                                 id: courseId,
                                 name: courseInfo.name,
                                 code: courseInfo.code,
-                                lecturerName: userMap.get(courseInfo.lecturerId) || 'N/A',
+                                lecturerNames
                             });
                         }
                     }
@@ -182,7 +183,7 @@ export default function StudentSemesterOverviewPage() {
                 
                 // Get Assessments
                 const assessmentEvents: AssessmentEvent[] = [];
-                (allCalendarEvents as any[]).forEach((event: any) => {
+                Object.values(allCalendarEvents).forEach((event: any) => {
                     if (event.semester === semesterInfo?.name) {
                         assessmentEvents.push({ title: event.title, date: event.date, type: 'deadline' });
                         if(event.title.toLowerCase().includes('deadline')) {
@@ -231,8 +232,8 @@ export default function StudentSemesterOverviewPage() {
             setArchivedSemesters(newArchivedSemesters.sort((a,b) => b.semesterName.localeCompare(a.semesterName)));
 
         } catch (error) {
-            console.error("Error fetching enrolled courses:", error);
-            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch your enrolled courses." });
+            console.error("Error fetching dashboard data:", error);
+            toast({ variant: 'destructive', title: 'Error', description: "Could not fetch dashboard data." });
         } finally {
             setLoading(false);
         }
@@ -372,43 +373,6 @@ export default function StudentSemesterOverviewPage() {
                     ))}
                 </CardContent>
             </Card>
-            )}
-
-            {archivedSemesters.length > 0 && (
-                <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="archived-courses">
-                        <AccordionTrigger>
-                            <div className="flex items-center gap-2 text-lg font-semibold">
-                                <Archive className="h-5 w-5"/>
-                                Archived Semesters
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 pt-4">
-                                {archivedSemesters.map((semester) => (
-                                <Card key={semester.semesterId} className="flex flex-col justify-between shadow-lg opacity-70">
-                                    <CardHeader>
-                                        <CardTitle className="font-headline">{semester.semesterName}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="flex items-center text-sm text-muted-foreground">
-                                            <BookOpen className="mr-2 h-4 w-4" />
-                                            <span>{semester.courses.length} Course(s)</span>
-                                        </div>
-                                    </CardContent>
-                                    <CardFooter>
-                                    <Button asChild className="w-full" variant="secondary" disabled>
-                                        <Link href={`/student/semester/${semester.semesterId}`}>
-                                            View Details <ChevronRight className="ml-2 h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                    </CardFooter>
-                                </Card>
-                                ))}
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
             )}
         </div>
     );

@@ -1,18 +1,16 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Receipt, History, DollarSign, AlertCircle, Info, ChevronDown, CheckCircle2, GraduationCap } from 'lucide-react';
+import { Receipt, History, DollarSign, ChevronDown, CheckCircle2, GraduationCap, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ref, get } from 'firebase/database';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 

@@ -2,11 +2,6 @@
 
 /**
  * @fileOverview An AI agent for creating a Google Doc for a student assignment.
- * 
- * This flow integrates with the Google Drive API using a Service Account to:
- * 1. Check if a document already exists for this student/assignment to save quota.
- * 2. Create a new Google Doc if none exists.
- * 3. Share it with the student's email address.
  */
 
 import { ai } from '@/ai/genkit';
@@ -84,7 +79,6 @@ const createGoogleDocFlow = ai.defineFlow(
     const drive = google.drive({ version: 'v3', auth });
 
     try {
-      // 4. Create the Google Doc
       const fileMetadata = {
         name: input.assignmentTitle,
         mimeType: 'application/vnd.google-apps.document',
@@ -98,7 +92,6 @@ const createGoogleDocFlow = ai.defineFlow(
       const fileId = file.data.id;
       if (!fileId) throw new Error("Failed to create Google Doc.");
 
-      // 5. Share with Student
       await drive.permissions.create({
         fileId: fileId,
         requestBody: {
@@ -116,9 +109,6 @@ const createGoogleDocFlow = ai.defineFlow(
 
     } catch (error: any) {
       console.error("Google Drive API error:", error);
-      if (error.code === 403 && (error.message?.includes('quota') || error.message?.includes('storage'))) {
-        throw new Error("Storage quota exceeded. Please contact the administrator.");
-      }
       throw new Error(`Google Doc creation failed: ${error.message}`);
     }
   }
