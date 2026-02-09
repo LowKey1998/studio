@@ -23,6 +23,7 @@ import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from "@/components/ui/badge";
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
