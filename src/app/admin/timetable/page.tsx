@@ -54,7 +54,7 @@ export default function TimetableManagementPage() {
     
     const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [courses, setCourses] = React.useState<Record<string, Course>>({});
+    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [rooms, setRooms] = React.useState<Room[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
@@ -66,7 +66,7 @@ export default function TimetableManagementPage() {
 
     // Add Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
-    const [selectedCourseComposite, setSelectedCourseComposite] = React.useState(''); // JSON string of {courseId, semesterId}
+    const [selectedCourseId, setSelectedCourseId] = React.useState('');
     const [day, setDay] = React.useState('');
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
@@ -94,16 +94,15 @@ export default function TimetableManagementPage() {
             const uData = usersSnap.val() || {};
 
             setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
-            setCourses(cData);
+            setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
             setRooms(Object.values(rData));
             setIntakes(Object.keys(iData).map(id => ({ id, ...iData[id] })));
             setUsers(uData);
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
-                const semInfo = sData[semId];
-                if (!semInfo) continue;
-                const intakeInfo = iData[semInfo.intakeId];
+                const semInfo = sData[semId] || { name: 'Manual/Global' };
+                const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
 
                 for (const cId in tData[semId]) {
                     const courseInfo = cData[cId];
@@ -150,14 +149,14 @@ export default function TimetableManagementPage() {
     };
 
     const handleAddEntry = async () => {
-        if (!selectedCourseComposite || !day || !startTime || !endTime || !venue) {
+        if (!selectedCourseId || !day || !startTime || !endTime || !venue) {
             toast({ variant: 'destructive', title: 'Please fill all fields' });
             return;
         }
         setSaving(true);
         try {
-            const { courseId, semesterId } = JSON.parse(selectedCourseComposite);
-            const entryRef = push(ref(db, `timetables/${semesterId}/${courseId}`));
+            // Use 'master' as a generic semester ID for manually entered global sessions
+            const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
             await set(entryRef, { day, startTime, endTime, venue });
             toast({ title: "Entry Added" });
             setIsAddOpen(false);
@@ -180,7 +179,7 @@ export default function TimetableManagementPage() {
     };
 
     const resetAddForm = () => {
-        setSelectedCourseComposite('');
+        setSelectedCourseId('');
         setDay('');
         setStartTime('');
         setEndTime('');
@@ -195,31 +194,6 @@ export default function TimetableManagementPage() {
             return roomMatch && intakeMatch && searchMatch;
         });
     }, [masterTimetable, roomFilter, intakeFilter, searchTerm]);
-
-    const courseOptions = React.useMemo(() => {
-        const options: { value: string; label: string }[] = [];
-        
-        // Find all courses being offered in active (non-archived) semesters
-        const activeSemesters = semesters.filter(s => s.status !== 'Archived');
-        const courseSnapshot = courses;
-
-        // We can check coursePaths or semesterOfferings to find valid Course-Semester pairs
-        // For simplicity, let's look at all courses and map them to their corresponding semesters
-        // based on the intake they belong to.
-        activeSemesters.forEach(sem => {
-            Object.entries(courseSnapshot).forEach(([id, data]) => {
-                if (data.status === 'active') {
-                    // This is a simplified check. A production app would verify the path.
-                    options.push({
-                        value: JSON.stringify({ courseId: id, semesterId: sem.id }),
-                        label: `${data.code} - ${data.name} (${sem.name})`
-                    });
-                }
-            });
-        });
-
-        return options.sort((a,b) => a.label.localeCompare(b.label));
-    }, [semesters, courses]);
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -242,11 +216,11 @@ export default function TimetableManagementPage() {
                                 <DialogHeader><DialogTitle>Manual Schedule Entry</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
                                     <div className="space-y-1">
-                                        <Label>Select Class Instance</Label>
-                                        <Select value={selectedCourseComposite} onValueChange={setSelectedCourseComposite}>
-                                            <SelectTrigger><SelectValue placeholder="Select course and semester..."/></SelectTrigger>
+                                        <Label>Select Course</Label>
+                                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                                            <SelectTrigger><SelectValue placeholder="Search courses..."/></SelectTrigger>
                                             <SelectContent>
-                                                {courseOptions.map((opt, i) => <SelectItem key={i} value={opt.value}>{opt.label}</SelectItem>)}
+                                                {allCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -277,7 +251,7 @@ export default function TimetableManagementPage() {
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg">
                         <div className="flex-1 min-w-[200px]">
                             <Label>Search Course</Label>
-                            <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Search name or code..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
+                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Search name or code..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
                         </div>
                         <div className="w-48">
                             <Label>Filter Room</Label>
