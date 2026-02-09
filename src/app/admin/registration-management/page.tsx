@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, UserPlus, Home, BookCopy } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, UserPlus, Home, BookCopy, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push } from 'firebase/database';
+import { ref, get, set, onValue, update, push, remove } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -387,6 +387,42 @@ export default function RegistrationManagementPage() {
             setSaving(false); 
         }
     }
+
+    const handleDeleteSemester = async (semesterId: string) => {
+        if (!window.confirm("Are you sure you want to delete this semester? This will also remove it from any existing course paths and timetables.")) return;
+        
+        setSaving(true);
+        try {
+            const updates: Record<string, any> = {};
+            updates[`/semesters/${semesterId}`] = null;
+            
+            // Clean up from course paths
+            allCoursePaths.forEach(path => {
+                if (path.semesters && path.semesters[semesterId]) {
+                    updates[`/coursePaths/${path.id}/semesters/${semesterId}`] = null;
+                }
+            });
+
+            // Clean up from active offerings
+            const newOfferings = { ...activePathSemesters };
+            Object.keys(newOfferings).forEach(pathId => {
+                if (newOfferings[pathId][semesterId]) {
+                    delete newOfferings[pathId][semesterId];
+                }
+            });
+            updates[`/semesterOfferings`] = newOfferings;
+            
+            // Clean up from timetables
+            updates[`/timetables/${semesterId}`] = null;
+
+            await update(ref(db), updates);
+            toast({ title: "Semester Deleted" });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Delete Failed", description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
     
 
     return (
@@ -444,23 +480,29 @@ export default function RegistrationManagementPage() {
                                                             const { year, semesterInYear, name: semesterName } = semesterDetails!;
                                                             const label = `Year ${year}, Semester ${semesterInYear}`;
                                                             const historyItems = semData.history ? Object.values(semData.history) : [];
+                                                            const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
 
                                                             return (
                                                             <div key={semId} className="p-4 border rounded-lg bg-card flex flex-col">
                                                                 <div className="flex justify-between items-center mb-2">
                                                                     <Label htmlFor={`${path.id}-${semId}`} className="font-bold text-lg">{label}</Label>
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-4">
                                                                          <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterName)}>Set Deadlines</Button>
                                                                          {historyItems.length > 0 && (
                                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHistoryDialog(historyItems)}>
                                                                                 <History className="h-4 w-4 text-blue-600"/>
                                                                             </Button>
                                                                         )}
-                                                                        <Switch 
-                                                                            id={`${path.id}-${semId}`} 
-                                                                            checked={!!activePathSemesters[path.id]?.[semId]?.active}
-                                                                            onCheckedChange={() => handleToggleSemester(path.id, semId)}
-                                                                        />
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={cn("text-[10px] font-bold uppercase", isActive ? "text-green-600" : "text-muted-foreground")}>
+                                                                                {isActive ? "Active" : "Inactive"}
+                                                                            </span>
+                                                                            <Switch 
+                                                                                id={`${path.id}-${semId}`} 
+                                                                                checked={isActive}
+                                                                                onCheckedChange={() => handleToggleSemester(path.id, semId)}
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 {historyItems.length > 0 && (
@@ -487,6 +529,9 @@ export default function RegistrationManagementPage() {
                                                                     </Button>
                                                                     <Button variant="outline" size="sm" asChild>
                                                                         <Link href="/admin/academics/room-scheduling"><Home className="mr-2 h-4"/>Rooms</Link>
+                                                                    </Button>
+                                                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSemester(semId)}>
+                                                                        <Trash2 className="mr-2 h-4 w-4"/> Delete Semester
                                                                     </Button>
                                                                 </div>
                                                             </div>
