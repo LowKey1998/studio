@@ -127,7 +127,7 @@ export default function StudentPaymentsPage() {
                     totalPaid,
                     balance,
                     status: balance <= 0.01 ? 'Paid' : 'Pending',
-                    transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+                    transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.dateRequested || a.paymentDate).getTime())
                 };
             });
 

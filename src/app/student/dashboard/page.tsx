@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Hand, Calendar as CalendarIcon, FileText, Clock, Banknote, FileQuestion, Library } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -47,7 +46,7 @@ type SemesterCourses = {
     assessments: AssessmentEvent[];
 };
 
-type BankDetails = { bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
+type BankDetails = { id: string; bankName: string; accountName: string; accountNumber: string; branchCode: string; swiftCode: string; };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -62,7 +61,7 @@ export default function StudentSemesterOverviewPage() {
     const [archivedSemesters, setArchivedSemesters] = React.useState<SemesterCourses[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
-    const [bankDetails, setBankDetails] = React.useState<BankDetails | null>(null);
+    const [bankDetails, setBankDetails] = React.useState<BankDetails[]>([]);
     const [countdown, setCountdown] = React.useState('');
     const { toast } = useToast();
 
@@ -95,7 +94,10 @@ export default function StudentSemesterOverviewPage() {
 
             if (settingsSnap.exists()) {
                 const settingsData = settingsSnap.val();
-                if(settingsData.bankDetails) setBankDetails(settingsData.bankDetails);
+                if(settingsData.bankDetails) {
+                    const banks = Object.keys(settingsData.bankDetails).map(id => ({ id, ...settingsData.bankDetails[id] }));
+                    setBankDetails(banks);
+                }
             }
 
             if (!registrationsSnap.exists()) {
@@ -350,19 +352,24 @@ export default function StudentSemesterOverviewPage() {
                 </Card>
             )}
 
-            {bankDetails?.accountName && (
+            {bankDetails.length > 0 && (
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Banknote/> Bank Payment Details</CardTitle>
                     <CardDescription>Use the following details for bank transfers. Please use your student ID as the reference.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                        <div><dt className="font-semibold">Bank Name</dt><dd className="text-muted-foreground">{bankDetails.bankName}</dd></div>
-                        <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bankDetails.accountName}</dd></div>
-                        <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bankDetails.accountNumber}</dd></div>
-                        <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bankDetails.branchCode}</dd></div>
-                    </dl>
+                <CardContent className="space-y-6">
+                    {bankDetails.map((bank, idx) => (
+                        <div key={bank.id} className={idx > 0 ? "pt-6 border-t" : ""}>
+                            <h4 className="font-bold mb-3 flex items-center gap-2 text-primary"><Library className="h-4 w-4"/> {bank.bankName}</h4>
+                            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                                {bank.accountName && <div><dt className="font-semibold">Account Name</dt><dd className="text-muted-foreground">{bank.accountName}</dd></div>}
+                                <div><dt className="font-semibold">Account Number</dt><dd className="text-muted-foreground">{bank.accountNumber}</dd></div>
+                                <div><dt className="font-semibold">Branch Code</dt><dd className="text-muted-foreground">{bank.branchCode}</dd></div>
+                                {bank.swiftCode && <div><dt className="font-semibold">SWIFT Code</dt><dd className="text-muted-foreground">{bank.swiftCode}</dd></div>}
+                            </dl>
+                        </div>
+                    ))}
                 </CardContent>
             </Card>
             )}
