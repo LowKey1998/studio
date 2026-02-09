@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';

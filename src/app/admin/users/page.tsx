@@ -22,7 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield, CheckSquare, Square, UserPlus, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Copy, Download, Send, Mail, Info, Shield, CheckSquare, Square, UserPlus, CheckCircle2, Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -76,6 +76,7 @@ type User = {
     nationalId?: string;
     passport?: string;
     address?: string;
+    bio?: string;
     guardian?: { name: string; contact: string; email?: string; relationship?: string; };
     emergencyContact?: { name: string; relationship: string; contact: string; };
     educationBackground?: { school: string; qualifications: string; };
@@ -100,7 +101,6 @@ export default function UserManagementPage() {
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     
     // Form & Dialog states
-    const [isCreateOpen, setIsCreateOpen] = React.useState(false);
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
     const [editingUser, setEditingUser] = React.useState<User | null>(null);
@@ -113,7 +113,6 @@ export default function UserManagementPage() {
     // Shared Form Fields
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
-    const [password, setPassword] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
     const [role, setRole] = React.useState('');
     const [subRoleIds, setSubRoleIds] = React.useState<string[]>([]);
@@ -138,6 +137,12 @@ export default function UserManagementPage() {
     const [guardianEmail, setGuardianEmail] = React.useState('');
     const [guardianContact, setGuardianContact] = React.useState('');
     const [guardianRelationship, setGuardianRelationship] = React.useState('');
+
+    // Password Dialog State
+    const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
+    const [newPassword, setNewPassword] = React.useState('');
+    const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
+    const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
 
     // Reference Data
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
@@ -192,8 +197,10 @@ export default function UserManagementPage() {
                 });
                 setUsers(list);
             }
-            setTableLoading(false);
+            setTableTableLoading(false);
         };
+
+        const setTableTableLoading = (val: boolean) => setTableLoading(val);
 
         fetchData();
         const unsub = onValue(refs.users, (snapshot) => { if(snapshot.exists()) fetchData(); });
@@ -201,7 +208,7 @@ export default function UserManagementPage() {
     }, []);
 
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); 
+        setName(''); setEmail(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); 
         setProgrammeId(''); setIntakeId(''); setYear(''); setSemesterId('');
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress(''); setBio('');
         setSchool(''); setQualifications(''); setMedicalHistory('');
@@ -324,6 +331,34 @@ export default function UserManagementPage() {
         }
     };
 
+    const handleSetPassword = async () => {
+        if (!settingPasswordUser || !newPassword) return;
+        setLoading(true);
+        try {
+            await setUserPassword({ 
+                uid: settingPasswordUser.uid, 
+                newPassword,
+                welcomeSubject: passwordEmailSubject,
+                welcomeBody: passwordEmailBody
+            });
+            toast({ title: 'Password Updated Successfully' });
+            setIsSetPasswordOpen(false); 
+            setNewPassword('');
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Update Failed', description: error.message }); 
+        } finally { 
+            setLoading(false); 
+        }
+    };
+
+    const handlePasswordResetRequest = (email: string) => {
+        sendPasswordResetEmail(auth, email).then(() => {
+            toast({ title: "Reset Link Sent", description: `Check ${email} for instructions.` });
+        }).catch(err => {
+            toast({ variant: 'destructive', title: "Failed to send link", description: err.message });
+        });
+    };
+
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
             const queryText = searchQuery.toLowerCase();
@@ -340,7 +375,7 @@ export default function UserManagementPage() {
             <Card>
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div><CardTitle className="text-2xl font-headline">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
-                    <Button onClick={() => { resetForm(); setIsCreateOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/>Add User</Button>
+                    <Button asChild><Link href="/admin/admissions/add-student"><PlusCircle className="mr-2 h-4 w-4"/>Add Student</Link></Button>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -500,37 +535,3 @@ export default function UserManagementPage() {
         </div>
     );
 }
-
-// Temporary internal state for password dialog
-const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
-const [newPassword, setNewPassword] = React.useState('');
-const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
-const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
-
-const handleSetPassword = async () => {
-    if (!settingPasswordUser || !newPassword) return;
-    setLoading(true);
-    try {
-        await setUserPassword({ 
-            uid: settingPasswordUser.uid, 
-            newPassword,
-            welcomeSubject: passwordEmailSubject,
-            welcomeBody: passwordEmailBody
-        });
-        toast({ title: 'Password Updated Successfully' });
-        setIsSetPasswordOpen(false); 
-        setNewPassword('');
-    } catch (error: any) { 
-        toast({ variant: 'destructive', title: 'Update Failed', description: error.message }); 
-    } finally { 
-        setLoading(false); 
-    }
-};
-
-const handlePasswordResetRequest = (email: string) => {
-    sendPasswordResetEmail(auth, email).then(() => {
-        toast({ title: "Reset Link Sent", description: `Check ${email} for instructions.` });
-    }).catch(err => {
-        toast({ variant: 'destructive', title: "Failed to send link", description: err.message });
-    });
-};

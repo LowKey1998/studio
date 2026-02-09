@@ -95,7 +95,7 @@ export default function StudentSemesterOverviewPage() {
             if (settingsSnap.exists()) {
                 const settingsData = settingsSnap.val();
                 if(settingsData.bankDetails) {
-                    const banks = Object.keys(settingsData.bankDetails).map(id => ({ id, ...settingsData.bankDetails[id] }));
+                    const banks = Object.entries(settingsData.bankDetails).map(([id, data]: [string, any]) => ({ id, ...data }));
                     setBankDetails(banks);
                 }
             }
