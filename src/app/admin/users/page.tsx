@@ -50,7 +50,6 @@ import { allMenuItems, staffBaseMenuItems, studentMenuItems } from '@/lib/menu-i
 import { Textarea } from '@/components/ui/textarea';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
-import { DialogTrigger } from '@radix-ui/react-dialog';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { Separator } from '@/components/ui/separator';
@@ -100,7 +99,6 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 export default function UserManagementPage() {
     const { user: adminUser, userProfile: adminProfile } = useAuth();
     const [open, setOpen] = React.useState(false);
-    const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [users, setUsers] = React.useState<User[]>([]);
     
     // Form state
@@ -111,48 +109,19 @@ export default function UserManagementPage() {
     const [role, setRole] = React.useState('');
     const [subRoleIds, setSubRoleIds] = React.useState<string[]>([]);
     const [programme, setProgramme] = React.useState('');
-    const [isTransfer, setIsTransfer] = React.useState(false);
-    const [exemptedCourses, setExemptedCourses] = React.useState<Record<string, boolean>>({});
     const [manualId, setManualId] = React.useState('');
     const [isManualId, setIsManualId] = React.useState(false);
-    const [dob, setDob] = React.useState('');
-    const [gender, setGender] = React.useState('');
-    const [nationalId, setNationalId] = React.useState('');
-    const [passport, setPassport] = React.useState('');
-    const [address, setAddress] = React.useState('');
-    const [guardianName, setGuardianName] = React.useState('');
-    const [guardianContact, setGuardianContact] = React.useState('');
-    const [emergencyName, setEmergencyName] = React.useState('');
-    const [emergencyRelationship, setEmergencyRelationship] = React.useState('');
-    const [emergencyContact, setEmergencyContact] = React.useState('');
-    const [previousSchool, setPreviousSchool] = React.useState('');
-    const [qualifications, setQualifications] = React.useState('');
-    const [medicalHistory, setMedicalHistory] = React.useState('');
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [selectedYear, setSelectedYear] = React.useState('');
     const [selectedSemester, setSelectedSemester] = React.useState('');
-    const [availableYears, setAvailableYears] = React.useState<number[]>([]);
-    const [availableSemesters, setAvailableSemesters] = React.useState<Semester[]>([]);
-    const [editingUser, setEditingUser] = React.useState<User | null>(null);
-    const [editName, setEditName] = React.useState('');
-    const [editRole, setEditRole] = React.useState('');
-    const [editSubRoleIds, setEditSubRoleIds] = React.useState<string[]>([]);
-    const [editProgramme, setEditProgramme] = React.useState('');
-    const [editIntake, setEditIntake] = React.useState('');
+    
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
     const [idSettings, setIdSettings] = React.useState<any>(null);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
-    const [selectedUids, setSelectedUids] = React.useState<Set<string>>(new Set());
-    const [isMessageOpen, setIsMessageOpen] = React.useState(false);
-    const [messagingUser, setMessagingUser] = React.useState<User | null>(null);
-    const [messageSubject, setMessageSubject] = React.useState('');
-    const [messageBody, setMessageBody] = React.useState('');
-    const [sendingMessage, setSendingMessage] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<User | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
@@ -168,11 +137,10 @@ export default function UserManagementPage() {
         const refs = {
             users: ref(db, 'users'),
             programmes: ref(db, 'programmes'),
-            courses: ref(db, 'courses'),
-            intakes: ref(db, 'intakes'),
             subRoles: ref(db, 'settings/subRoles'),
             idPrefixes: ref(db, 'settings/idPrefixes'),
-            semesters: ref(db, 'semesters')
+            semesters: ref(db, 'semesters'),
+            intakes: ref(db, 'intakes')
         };
         const dataCache: any = { users: {}, programmes: {}, subRoles: {} };
         const processAndSetUsers = () => {
@@ -196,7 +164,6 @@ export default function UserManagementPage() {
             onValue(refs.users, (s) => { dataCache.users = s.val() || {}; processAndSetUsers(); }),
             onValue(refs.programmes, (s) => { dataCache.programmes = s.val() || {}; setAllProgrammes(Object.keys(dataCache.programmes).map(id => ({ id, ...dataCache.programmes[id] }))); processAndSetUsers(); }),
             onValue(refs.subRoles, (s) => { dataCache.subRoles = s.val() || {}; setAvailableSubRoles(Object.keys(dataCache.subRoles).map(id => ({id, ...dataCache.subRoles[id]}))); processAndSetUsers(); }),
-            onValue(refs.courses, (s) => setAllCourses(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [])),
             onValue(refs.intakes, (s) => setAllIntakes(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [])),
             onValue(refs.semesters, (s) => setAllSemesters(s.exists() ? Object.keys(s.val()).map(id => ({ id, ...s.val()[id] })) : [])),
             onValue(refs.idPrefixes, (s) => setIdSettings(s.exists() ? s.val() : { student: 'STU', staff: 'STF', admin: 'ADM' })),
@@ -205,10 +172,8 @@ export default function UserManagementPage() {
     }, []);
 
     const resetForm = () => {
-        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); setProgramme(''); setIsTransfer(false); setExemptedCourses({});
-        setManualId(''); setIsManualId(false); setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
-        setGuardianName(''); setGuardianContact(''); setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
-        setPreviousSchool(''); setQualifications(''); setMedicalHistory(''); setSelectedIntake(''); setSelectedYear(''); setSelectedSemester('');
+        setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setRole(''); setSubRoleIds([]); setProgramme('');
+        setManualId(''); setIsManualId(false); setSelectedIntake(''); setSelectedYear(''); setSelectedSemester('');
     };
 
     const handleCreateUser = async (e: React.FormEvent) => {
@@ -249,11 +214,24 @@ export default function UserManagementPage() {
 
     const filteredUsers = React.useMemo(() => {
         return users.filter(user => {
-            const query = searchQuery.toLowerCase();
+            const queryText = searchQuery.toLowerCase();
             const roleMatch = roleFilter === 'All' || user.role === roleFilter;
-            return roleMatch && (user.name.toLowerCase().includes(query) || user.id.toLowerCase().includes(query) || user.email.toLowerCase().includes(query));
+            
+            const nameMatch = (user.name || '').toLowerCase().includes(queryText);
+            const idMatch = (user.id || '').toLowerCase().includes(queryText);
+            const emailMatch = (user.email || '').toLowerCase().includes(queryText);
+
+            return roleMatch && (nameMatch || idMatch || emailMatch);
         });
     }, [users, roleFilter, searchQuery]);
+
+    const handlePasswordResetRequest = (email: string) => {
+        sendPasswordResetEmail(auth, email).then(() => {
+            toast({ title: "Reset Link Sent", description: `Check ${email} for instructions.` });
+        }).catch(err => {
+            toast({ variant: 'destructive', title: "Failed to send", description: err.message });
+        });
+    }
 
     return (
         <div className="space-y-6">
@@ -264,8 +242,11 @@ export default function UserManagementPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="flex gap-4 mb-4">
-                        <Input placeholder="Search..." className="max-w-xs" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-                        <Select value={roleFilter} onValueChange={setRoleFilter}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="All">All</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Student">Student</SelectItem></SelectContent></Select>
+                        <div className="relative flex-1 max-w-sm">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search name, ID or email..." className="pl-8" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                        </div>
+                        <Select value={roleFilter} onValueChange={setRoleFilter}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="All">All Roles</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Student">Student</SelectItem></SelectContent></Select>
                     </div>
                     <Table>
                         <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
@@ -273,16 +254,23 @@ export default function UserManagementPage() {
                             {tableLoading ? Array.from({length: 5}).map((_, i) => <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-8 w-full"/></TableCell></TableRow>) :
                             filteredUsers.map(user => (
                                 <TableRow key={user.uid}>
-                                    <TableCell>{user.id}</TableCell>
-                                    <TableCell>{user.name}</TableCell>
+                                    <TableCell className="font-mono text-xs">{user.id}</TableCell>
+                                    <TableCell className="font-medium">{user.name}</TableCell>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell><Badge variant={roleVariant[user.role]}>{user.role}</Badge></TableCell>
                                     <TableCell className="text-right">
                                         <DropdownMenu>
-                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical/></Button></DropdownMenuTrigger>
+                                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Set Password</DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handlePasswordReset(user.email)}><Mail className="mr-2 h-4 w-4"/>Reset Link</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => { 
+                                                    setSettingPasswordUser(user); 
+                                                    setPasswordEmailSubject('Account Credentials Updated');
+                                                    setPasswordEmailBody(`<p>Hello ${user.name},</p><p>Your password has been updated by an administrator. Your new temporary password is: <strong>[Password]</strong></p>`);
+                                                    setIsSetPasswordOpen(true); 
+                                                }}>
+                                                    <Shield className="mr-2 h-4 w-4"/>Set Password
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handlePasswordResetRequest(user.email)}><Mail className="mr-2 h-4 w-4"/>Reset Link</DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </TableCell>
@@ -307,7 +295,7 @@ export default function UserManagementPage() {
                                 <div className="space-y-1"><Label>Password</Label><Input type="password" value={password} onChange={e=>setPassword(e.target.value)} required /></div>
                             </div>
                         </div>
-                        <DialogFooter><Button type="submit" disabled={loading}>Create User</Button></DialogFooter>
+                        <DialogFooter><Button type="submit" disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Create User</Button></DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
@@ -324,13 +312,9 @@ export default function UserManagementPage() {
                             <div className="space-y-2"><Label>Body (HTML)</Label><Textarea value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" /></div>
                         </div>
                     </div>
-                    <DialogFooter><Button onClick={handleSetPassword} disabled={settingPassword || newPassword.length < 6}>Update Password</Button></DialogFooter>
+                    <DialogFooter><Button onClick={handleSetPassword} disabled={settingPassword || newPassword.length < 6}>{settingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}Update Password</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
     );
-}
-
-function handlePasswordReset(email: string) {
-    sendPasswordResetEmail(auth, email);
 }
