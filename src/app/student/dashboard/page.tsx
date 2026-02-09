@@ -322,12 +322,12 @@ export default function StudentSemesterOverviewPage() {
                 <CardContent className="space-y-6">
                     {bankDetails.map((bank, idx) => (
                         <div key={bank.id} className={idx > 0 ? "pt-6 border-t" : ""}>
-                            <h4 className="font-bold mb-3 text-primary">{bank.bankName}</h4>
+                            <h4 className="font-bold mb-3 text-primary">{String(bank.bankName)}</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                {bank.accountName && <div><p className="text-[10px] uppercase text-muted-foreground">Account Name</p><p className="font-medium">{bank.accountName}</p></div>}
-                                <div><p className="text-[10px] uppercase text-muted-foreground">Account Number</p><p className="font-mono font-medium">{bank.accountNumber}</p></div>
-                                <div><p className="text-[10px] uppercase text-muted-foreground">Branch Code</p><p className="font-medium">{bank.branchCode}</p></div>
-                                {bank.swiftCode && <div><p className="text-[10px] uppercase text-muted-foreground">SWIFT</p><p className="font-mono font-medium">{bank.swiftCode}</p></div>}
+                                {bank.accountName && <div><p className="text-[10px] uppercase text-muted-foreground">Account Name</p><p className="font-medium">{String(bank.accountName)}</p></div>}
+                                <div><p className="text-[10px] uppercase text-muted-foreground">Account Number</p><p className="font-mono font-medium">{String(bank.accountNumber)}</p></div>
+                                <div><p className="text-[10px] uppercase text-muted-foreground">Branch Code</p><p className="font-medium">{String(bank.branchCode)}</p></div>
+                                {bank.swiftCode && <div><p className="text-[10px] uppercase text-muted-foreground">SWIFT</p><p className="font-mono font-medium">{String(bank.swiftCode)}</p></div>}
                             </div>
                         </div>
                     ))}

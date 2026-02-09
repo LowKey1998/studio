@@ -95,8 +95,8 @@ export default function TimetableManagementPage() {
 
             setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
             setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
-            setRooms(Object.values(rData));
-            setIntakes(Object.keys(iData).map(id => ({ id, ...iData[id] })));
+            setRooms(Object.entries(rData).map(([id, data]: [string, any]) => ({ id, ...data })));
+            setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setUsers(uData);
 
             const entries: TimetableEntry[] = [];
@@ -155,7 +155,6 @@ export default function TimetableManagementPage() {
         }
         setSaving(true);
         try {
-            // Use 'master' as a generic semester ID for manually entered global sessions
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
             await set(entryRef, { day, startTime, endTime, venue });
             toast({ title: "Entry Added" });
