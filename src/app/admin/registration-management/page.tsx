@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, Trash2, BookCopy, UserPlus, History as HistoryIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, Trash2, BookCopy, UserPlus, History as HistoryIcon, CheckCircle2, AlertCircle, Clock, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -26,17 +25,16 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // --- TYPE DEFINITIONS ---
-type Course = { id: string; name: string; code: string; };
+type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> };
+type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; // Key is now semesterId
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
-type NewSemesterEntry = { year: number | ''; semesterInYear: number | '' };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
 const getOrdinalSuffix = (i: number) => {
@@ -143,6 +141,9 @@ export default function RegistrationManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
+    const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
+    const [timetables, setTimetables] = React.useState<Record<string, any>>({});
+    const [users, setUsers] = React.useState<Record<string, any>>({});
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
@@ -163,7 +164,8 @@ export default function RegistrationManagementPage() {
     React.useEffect(() => {
         const refs = [
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
-            ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), ref(db, 'settings/feeTemplates'),
+            ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
+            ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'timetables'), ref(db, 'users')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -176,8 +178,11 @@ export default function RegistrationManagementPage() {
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
+                case 8: setCalendarEvents(data); break;
+                case 9: setTimetables(data); break;
+                case 10: setUsers(data); break;
             }
-            if(i === 7) setLoading(false);
+            if(i === 10) setLoading(false);
         }));
         return () => unsubs.forEach(unsub => unsub());
     }, []);
@@ -291,6 +296,24 @@ export default function RegistrationManagementPage() {
         setIsHistoryDialogOpen(true);
     };
 
+    const getDeadlineSummary = (semester: Semester) => {
+        const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
+        const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
+        const summary: { title: string; date: string | null }[] = [];
+        let isMissing = false;
+
+        plans.forEach(plan => {
+            for (let i = 0; i < plan.installments; i++) {
+                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
+                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim());
+                if (!event) isMissing = true;
+                summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
+            }
+        });
+
+        return { summary, isMissing, hasPlans: plans.length > 0 };
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -328,21 +351,65 @@ export default function RegistrationManagementPage() {
                                                         const semDetails = semesterDetails!;
                                                         const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                         const historyItems = semData.history ? Object.values(semData.history) : [];
+                                                        const { summary, isMissing, hasPlans } = getDeadlineSummary(semDetails);
                                                         
                                                         return (
                                                             <div key={semId} className="p-4 border rounded-lg bg-card flex flex-col gap-4">
-                                                                <div className="flex justify-between items-center">
-                                                                    <Label className="font-bold">{semDetails.name}</Label>
+                                                                <div className="flex justify-between items-start">
+                                                                    <div className="space-y-1">
+                                                                        <Label className="font-bold text-base">{semDetails.name}</Label>
+                                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                                            {hasPlans ? (
+                                                                                isMissing ? (
+                                                                                    <Badge variant="destructive" className="flex items-center gap-1"><AlertCircle className="h-3 w-3"/>Deadlines Not Set</Badge>
+                                                                                ) : (
+                                                                                    <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-600"><CheckCircle2 className="h-3 w-3"/>Deadlines Set</Badge>
+                                                                                )
+                                                                            ) : (
+                                                                                <Badge variant="secondary">No Payment Plans</Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                     <div className="flex items-center gap-4">
-                                                                        <span className={cn("text-[10px] font-bold uppercase", isActive ? "text-green-600" : "text-muted-foreground")}>{isActive ? "Active" : "Inactive"}</span>
-                                                                        <Switch checked={isActive} onCheckedChange={() => handleToggleSemester(path.id, semId)} />
+                                                                        <div className="flex flex-col items-end">
+                                                                            <span className={cn("text-[10px] font-bold uppercase", isActive ? "text-green-600" : "text-muted-foreground")}>{isActive ? "Active" : "Inactive"}</span>
+                                                                            <Switch checked={isActive} onCheckedChange={() => handleToggleSemester(path.id, semId)} />
+                                                                        </div>
                                                                         {historyItems.length > 0 && (
-                                                                            <Button variant="ghost" size="icon" onClick={() => openHistoryDialog(historyItems)}><HistoryIcon className="h-4 w-4 text-blue-600"/></Button>
+                                                                            <Button variant="ghost" size="icon" onClick={() => openHistoryDialog(historyItems)} title="View History"><HistoryIcon className="h-4 w-4 text-blue-600"/></Button>
                                                                         )}
-                                                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)}><Trash2 className="h-4 w-4"/></Button>
+                                                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
                                                                     </div>
                                                                 </div>
-                                                                <div className="text-sm text-muted-foreground">{(semData.courses || []).map(cid => allCourses[cid]?.code).join(', ')}</div>
+
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Courses & Schedule</Label>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                        {(semData.courses || []).map(cid => {
+                                                                            const course = allCourses[cid];
+                                                                            if(!course) return null;
+                                                                            const lecturerNames = (course.lecturerIds || []).map(lid => users[lid]?.name).filter(Boolean).join(', ') || users[course.lecturerId || '']?.name || 'Unassigned';
+                                                                            const timetable = timetables[semId]?.[cid] ? Object.values(timetables[semId][cid]) : [];
+                                                                            return (
+                                                                                <div key={cid} className="p-2 border rounded bg-muted/20 text-xs">
+                                                                                    <div className="flex justify-between font-bold">
+                                                                                        <span>{course.code} - {course.name}</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1 text-muted-foreground mt-1">
+                                                                                        <UserCheck className="h-3 w-3" /> {lecturerNames}
+                                                                                    </div>
+                                                                                    {timetable.length > 0 && (
+                                                                                        <div className="flex items-center gap-1 text-primary mt-1">
+                                                                                            <Clock className="h-3 w-3" /> 
+                                                                                            {timetable.map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`).join(', ')}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+
                                                                 <div className="flex gap-2 pt-2 border-t">
                                                                     <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semDetails)}><CalendarIcon className="mr-2 h-4 w-4"/>Set Deadlines</Button>
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}><BookCopy className="mr-2 h-4"/>Edit Path</Link></Button>
@@ -454,5 +521,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
-    
