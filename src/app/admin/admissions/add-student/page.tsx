@@ -352,7 +352,7 @@ export default function AddStudentPage() {
                 await sendEmail({
                     to: [email],
                     subject: `Welcome to ${idSettings.name || 'Edutrack360'}!`,
-                    body: `<h2>Welcome!</h2><p>Your account is ready. User ID: ${newId}, Password: ${password}</p>`
+                    body: `<h2>Welcome!</h2><p>Your account is ready. User ID: ${newId}, Password: ${password}</p><p><strong>Note:</strong> If you have trouble logging in, please try <strong>12345678</strong> as your temporary password.</p>`
                 });
 
                 toast({ title: 'Student Account Created', description: `User ID: ${newId}` });
@@ -436,7 +436,8 @@ export default function AddStudentPage() {
     <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></li>
     <li><strong>User ID:</strong> ${user.id}</li>
 </ul>
-<p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+<p><strong>Note:</strong> If you have trouble logging in with your previous password, please try using <strong>12345678</strong> as your temporary password.</p>
+<p>If you have forgotten your password entirely, you can use the "Forgot Password" link on the login page to reset it via email.</p>
 <p>Best regards,<br/>The Administration</p>`);
         setIsCredentialsOpen(true);
     };
@@ -541,7 +542,7 @@ export default function AddStudentPage() {
                     <CardTitle>Registered Students</CardTitle>
                     <CardDescription>Search and edit existing student records.</CardDescription>
                     <div className="relative pt-2">
-                        <Search className="absolute left-2.5 top-4 h-4 w-4 text-muted-foreground" />
+                        <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search by name, ID, or email..."
                             className="pl-8"
