@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -195,10 +194,11 @@ export default function StudentsListPage() {
 <p>Hello ${user.name},</p>
 <p>Here are your login details for the student portal:</p>
 <ul>
-    <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></li>
+    <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li>
     <li><strong>User ID:</strong> ${user.id}</li>
 </ul>
-<p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+<p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p>
+<p>If you have forgotten your password entirely, you can use the "Forgot Password" link on the login page to reset it.</p>
 <p>Best regards,<br/>The Administration</p>`);
         setIsCredentialsOpen(true);
     };

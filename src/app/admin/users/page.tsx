@@ -152,7 +152,7 @@ export default function UserManagementPage() {
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
-    const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
+    const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your credentials have been updated. You can access the portal using the link below:</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p><p>Best regards,<br/>The Administration</p>`);
 
     const [bulkUsersToCreate, setBulkUsersToCreate] = React.useState<any[]>([]);
     const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
@@ -557,7 +557,7 @@ export default function UserManagementPage() {
                                         <TableCell>
                                             <div className="flex flex-col gap-1">
                                                 <Badge variant={roleVariant[user.role] || 'outline'} className="w-fit">{user.role}</Badge>
-                                                <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">{user.subRoleNames?.join(', ')}</span>
+                                                <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">{user.subRoleNames?.join(', ') || ''}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell><Badge variant={user.status === 'active' ? 'default' : 'destructive'} className="capitalize">{user.status}</Badge></TableCell>

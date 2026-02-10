@@ -352,7 +352,7 @@ export default function AddStudentPage() {
                 await sendEmail({
                     to: [email],
                     subject: `Welcome to ${idSettings.name || 'Edutrack360'}!`,
-                    body: `<h2>Welcome!</h2><p>Your account is ready. User ID: ${newId}, Password: ${password}</p><p><strong>Note:</strong> If you have trouble logging in, please try <strong>12345678</strong> as your temporary password.</p>`
+                    body: `<h2>Welcome!</h2><p>Your account is ready.</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> ${newId}</li><li><strong>Password:</strong> ${password}</li></ul><p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p><p>Best regards,<br/>The Administration</p>`
                 });
 
                 toast({ title: 'Student Account Created', description: `User ID: ${newId}` });
@@ -433,7 +433,7 @@ export default function AddStudentPage() {
 <p>Hello ${user.name},</p>
 <p>Here are your login details for the student portal:</p>
 <ul>
-    <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></li>
+    <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li>
     <li><strong>User ID:</strong> ${user.id}</li>
 </ul>
 <p><strong>Note:</strong> If you have trouble logging in with your previous password, please try using <strong>12345678</strong> as your temporary password.</p>
