@@ -41,8 +41,7 @@ export default function StudentEnrollmentPage() {
 
     // Selection state
     const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [selectedSemester, setSelectedSemester] = React.useState('');
-    const [selectedCourseId, setSelectedCourseId] = React.useState<string | null>(null);
+    const [activeSession, setActiveSession] = React.useState<{ courseId: string; semesterId: string } | null>(null);
     const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
@@ -111,10 +110,12 @@ export default function StudentEnrollmentPage() {
     }, [allStudents]);
 
     const handleEnrollStudent = async (uid: string) => {
-        if (!selectedSemester || !selectedCourseId) return;
+        if (!activeSession) return;
+        const { courseId, semesterId } = activeSession;
+        
         setActionLoading(uid);
         try {
-            const regRef = ref(db, `registrations/${uid}/${selectedSemester}`);
+            const regRef = ref(db, `registrations/${uid}/${semesterId}`);
             const regSnap = await get(regRef);
             
             let currentCourses = [];
@@ -122,13 +123,13 @@ export default function StudentEnrollmentPage() {
                 currentCourses = regSnap.val().courses || [];
             }
 
-            if (currentCourses.includes(selectedCourseId)) {
+            if (currentCourses.includes(courseId)) {
                 toast({ title: 'Already enrolled' });
                 setActionLoading(null);
                 return;
             }
 
-            const updatedCourses = [...currentCourses, selectedCourseId];
+            const updatedCourses = [...currentCourses, courseId];
             const student = allStudents.find(s => s.uid === uid);
 
             await update(regRef, { 
@@ -136,11 +137,11 @@ export default function StudentEnrollmentPage() {
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
-                semesterName: semesters.find(s => s.id === selectedSemester)?.name || ''
+                semesterName: semesters.find(s => s.id === semesterId)?.name || ''
             });
 
             toast({ title: 'Student Enrolled Successfully' });
-            fetchEnrolledStudents(selectedCourseId, selectedSemester);
+            fetchEnrolledStudents(courseId, semesterId);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Enrollment Failed', description: e.message });
         } finally {
@@ -149,17 +150,19 @@ export default function StudentEnrollmentPage() {
     };
 
     const handleRemoveStudent = async (uid: string) => {
-        if (!selectedSemester || !selectedCourseId || !window.confirm("Remove student from this course?")) return;
+        if (!activeSession || !window.confirm("Remove student from this course?")) return;
+        const { courseId, semesterId } = activeSession;
+
         setActionLoading(uid);
         try {
-            const regRef = ref(db, `registrations/${uid}/${selectedSemester}`);
+            const regRef = ref(db, `registrations/${uid}/${semesterId}`);
             const regSnap = await get(regRef);
             if (regSnap.exists()) {
                 const currentCourses = regSnap.val().courses || [];
-                const updatedCourses = currentCourses.filter((id: string) => id !== selectedCourseId);
+                const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
                 await update(regRef, { courses: updatedCourses });
                 toast({ title: 'Student Removed' });
-                fetchEnrolledStudents(selectedCourseId, selectedSemester);
+                fetchEnrolledStudents(courseId, semesterId);
             }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Removal Failed' });
@@ -168,8 +171,27 @@ export default function StudentEnrollmentPage() {
         }
     };
 
-    const filteredSemesters = semesters.filter(s => s.intakeId === selectedIntake).sort((a, b) => a.year - b.year || a.semesterInYear - b.semesterInYear);
-    const semesterTimetable = selectedSemester ? timetableData[selectedSemester] || {} : {};
+    const intakeSemesterIds = React.useMemo(() => {
+        return semesters.filter(s => s.intakeId === selectedIntake).map(s => s.id);
+    }, [semesters, selectedIntake]);
+
+    const aggregatedTimetable = React.useMemo(() => {
+        if (!selectedIntake) return {};
+        const result: Record<string, any> = {};
+        intakeSemesterIds.forEach(semId => {
+            const semData = timetableData[semId];
+            if (semData) {
+                Object.entries(semData).forEach(([courseId, entries]) => {
+                    if (!result[courseId]) result[courseId] = {};
+                    Object.entries(entries as object).forEach(([entryId, entryData]) => {
+                        result[courseId][`${semId}-${entryId}`] = { ...entryData, semesterId: semId };
+                    });
+                });
+            }
+        });
+        return result;
+    }, [intakeSemesterIds, timetableData, selectedIntake]);
+
     const availableStudents = allStudents.filter(s => 
         !enrolledStudents.some(e => e.uid === s.uid) &&
         (s.name.toLowerCase().includes(searchStudent.toLowerCase()) || s.id.toLowerCase().includes(searchStudent.toLowerCase()))
@@ -180,13 +202,13 @@ export default function StudentEnrollmentPage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
-                    <CardDescription>Select an Intake and Semester to view its timetable. Click any class to manage its enrolled students.</CardDescription>
+                    <CardDescription>Select an Intake to view all scheduled classes for that group. Click any class to manage its enrolled students.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid md:grid-cols-2 gap-4 max-w-2xl">
                         <div className="space-y-1">
                             <Label className="font-semibold">Select Intake</Label>
-                            <Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setSelectedSemester(''); setSelectedCourseId(null); }}>
+                            <Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setActiveSession(null); }}>
                                 <SelectTrigger><SelectValue placeholder="Select an intake..." /></SelectTrigger>
                                 <SelectContent>
                                     {intakes.map(i => (
@@ -195,24 +217,13 @@ export default function StudentEnrollmentPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="font-semibold">Select Semester</Label>
-                            <Select value={selectedSemester} onValueChange={(val) => { setSelectedSemester(val); setSelectedCourseId(null); }} disabled={!selectedIntake}>
-                                <SelectTrigger><SelectValue placeholder="Select a semester..." /></SelectTrigger>
-                                <SelectContent>
-                                    {filteredSemesters.map(s => (
-                                        <SelectItem key={s.id} value={s.id}>Year {s.year}, Sem {s.semesterInYear} ({s.status})</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
                 </CardContent>
             </Card>
 
-            {selectedSemester && teachingTimes.slots.length > 0 ? (
+            {selectedIntake && teachingTimes.slots.length > 0 ? (
                 <Card>
-                    <CardHeader><CardTitle>Visual Enrollment Grid</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>Intake Schedule Grid</CardTitle></CardHeader>
                     <CardContent className="overflow-x-auto">
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
                             <Table>
@@ -237,7 +248,7 @@ export default function StudentEnrollmentPage() {
                                                 const slotEnd = timeToMinutes(slot.endTime);
                                                 
                                                 const sessionsInSlot: any[] = [];
-                                                Object.entries(semesterTimetable).forEach(([courseId, entries]: [string, any]) => {
+                                                Object.entries(aggregatedTimetable).forEach(([courseId, entries]: [string, any]) => {
                                                     Object.values(entries).forEach((entry: any) => {
                                                         if (entry.day === dayName && timeToMinutes(entry.startTime) >= slotStart && timeToMinutes(entry.startTime) < slotEnd) {
                                                             sessionsInSlot.push({ courseId, ...entry });
@@ -256,11 +267,11 @@ export default function StudentEnrollmentPage() {
                                                                         key={eIdx} 
                                                                         className={cn(
                                                                             "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
-                                                                            selectedCourseId === entry.courseId && "ring-2 ring-primary border-transparent shadow-md scale-[1.02]"
+                                                                            activeSession?.courseId === entry.courseId && activeSession?.semesterId === entry.semesterId && "ring-2 ring-primary border-transparent shadow-md scale-[1.02]"
                                                                         )}
                                                                         onClick={() => {
-                                                                            setSelectedCourseId(entry.courseId);
-                                                                            fetchEnrolledStudents(entry.courseId, selectedSemester);
+                                                                            setActiveSession({ courseId: entry.courseId, semesterId: entry.semesterId });
+                                                                            fetchEnrolledStudents(entry.courseId, entry.semesterId);
                                                                         }}
                                                                     >
                                                                         <div className="flex flex-col gap-1">
@@ -268,6 +279,7 @@ export default function StudentEnrollmentPage() {
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
                                                                                 <MapPin className="h-2.5 w-2.5" /> {entry.venue}
                                                                             </div>
+                                                                            <Badge variant="secondary" className="text-[8px] h-3 py-0 px-1 w-fit">{semesters.find(s=>s.id === entry.semesterId)?.name.split(' ').slice(-2).join(' ')}</Badge>
                                                                         </div>
                                                                     </div>
                                                                 );
@@ -283,15 +295,15 @@ export default function StudentEnrollmentPage() {
                         </div>
                     </CardContent>
                 </Card>
-            ) : selectedSemester && (
-                <Alert><Info className="h-4 w-4"/><AlertTitle>Setup Required</AlertTitle><AlertDescription>Please define Teaching Times and generate a Timetable for this semester first.</AlertDescription></Alert>
+            ) : selectedIntake && (
+                <Alert><Info className="h-4 w-4"/><AlertTitle>No Schedule Found</AlertTitle><AlertDescription>There are no classes scheduled for the semesters associated with this intake.</AlertDescription></Alert>
             )}
 
-            <Dialog open={!!selectedCourseId} onOpenChange={(open) => !open && setSelectedCourseId(null)}>
+            <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Enrollment: {selectedCourseId && allCourses[selectedCourseId]?.name}</DialogTitle>
-                        <DialogDescription>Add or remove students for this specific class session.</DialogDescription>
+                        <DialogTitle>Enrollment: {activeSession && allCourses[activeSession.courseId]?.name}</DialogTitle>
+                        <DialogDescription>Add or remove students for this specific class session in {activeSession && semesters.find(s=>s.id===activeSession.semesterId)?.name}.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">
