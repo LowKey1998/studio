@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,7 +74,7 @@ export default function AttendanceDashboardPage() {
                     lectures.forEach((lecture: any) => {
                         const studentUids = Object.keys(lecture);
                         totalPossible += studentUids.length;
-                        totalPresent += studentUids.filter(uid => lecture[uid] === 'Present' || lecture[uid] === 'Late' || lecture[uid] === 'Excused Absence').length;
+                        totalPresent += studentUids.filter(uid => ['Present', 'Late', 'Excused Absence'].includes(lecture[uid])).length;
                     });
                     
                     courseAttendanceList.push({
@@ -110,7 +109,7 @@ export default function AttendanceDashboardPage() {
                         Object.keys(lecture).forEach(userId => {
                             if (studentRates[userId]?.courses.has(courseId)) {
                                 studentRates[userId].total++;
-                                if(lecture[userId] === 'Present' || lecture[userId] === 'Late' || lecture[userId] === 'Excused Absence') {
+                                if(['Present', 'Late', 'Excused Absence'].includes(lecture[userId])) {
                                     studentRates[userId].present++;
                                 }
                             }
@@ -126,7 +125,7 @@ export default function AttendanceDashboardPage() {
                         studentName: users[userId].name,
                         attendanceRate: rate,
                     }
-                }).filter(s => s.attendanceRate < 75 && studentRates[s.userId].total > 5) // At risk if < 75% and > 5 classes marked
+                }).filter(s => s.attendanceRate < 75 && studentRates[s.userId].total > 5)
                   .sort((a,b) => a.attendanceRate - b.attendanceRate);
 
                 setAtRiskStudents(atRiskList);
@@ -276,7 +275,7 @@ export default function AttendanceDashboardPage() {
                                             {student.records.map((rec, rIdx) => (
                                                 <div key={rec.date || rIdx} className="flex justify-between items-center text-xs">
                                                     <span>{format(parseISO(rec.date), 'MMM dd, yyyy')}</span>
-                                                    <Badge variant={rec.status === 'Present' || rec.status === 'Excused Absence' ? 'default' : (rec.status === 'Late' ? 'secondary' : 'destructive')}>{rec.status}</Badge>
+                                                    <Badge variant={['Present', 'Excused Absence'].includes(rec.status) ? 'default' : (rec.status === 'Late' ? 'secondary' : 'destructive')}>{rec.status}</Badge>
                                                 </div>
                                             ))}
                                             </div>

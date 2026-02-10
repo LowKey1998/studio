@@ -52,6 +52,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 type Lecturer = {
     uid: string;
@@ -165,7 +166,7 @@ export default function CoursesPage() {
             // Fetch Programmes
             if(programmesSnap.exists()) {
                 const programmesData = programmesSnap.val();
-                setProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
+                setAllProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
             } else {
                 setProgrammes([]);
             }

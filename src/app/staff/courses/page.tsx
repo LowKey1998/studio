@@ -48,12 +48,13 @@ export default function StaffCoursesPage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap, timetablesSnap] = await Promise.all([
+            const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap, timetablesSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'registrations')),
-                get(ref(db, 'timetables'))
+                get(ref(db, 'timetables')),
+                get(ref(db, 'users'))
             ]);
 
             const allCourses = coursesSnap.val() || {};
@@ -61,6 +62,7 @@ export default function StaffCoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const allRegistrations = regsSnap.val() || {};
             const allTimetables = timetablesSnap.val() || {};
+            const allUsers = usersSnap.val() || {};
 
             const studentCounts: { [semesterId: string]: { [courseId: string]: number } } = {};
             for (const userId in allRegistrations) {
@@ -93,7 +95,6 @@ export default function StaffCoursesPage() {
                             const lecturerIds = courseData.lecturerIds || [];
                             const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
                             
-                            // NEW FILTER: Only show courses that are on the timetable for this semester
                             const isOnTimetable = !!allTimetables[semesterId]?.[courseId];
 
                             if (isAssigned && isOnTimetable) {
