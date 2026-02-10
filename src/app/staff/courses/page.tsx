@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive, Users } from "lucide-react";
+import { ChevronRight, Info, Users } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -10,7 +10,6 @@ import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 type Course = {
     id: string;
@@ -30,13 +29,12 @@ type CoursePath = {
 
 export default function StaffCoursesPage() {
     const [activeCourses, setActiveCourses] = React.useState<Course[]>([]);
-    const [archivedCourses, setArchivedCourses] = React.useState<Course[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
           if (user) {
             setCurrentUser(user);
           } else {
@@ -50,17 +48,19 @@ export default function StaffCoursesPage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap] = await Promise.all([
+            const [coursesSnap, coursePathsSnap, semestersSnap, regsSnap, timetablesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'registrations'))
+                get(ref(db, 'registrations')),
+                get(ref(db, 'timetables'))
             ]);
 
             const allCourses = coursesSnap.val() || {};
             const allCoursePaths: CoursePath[] = Object.values(coursePathsSnap.val() || {});
             const allSemesters = semestersSnap.val() || {};
             const allRegistrations = regsSnap.val() || {};
+            const allTimetables = timetablesSnap.val() || {};
 
             const studentCounts: { [semesterId: string]: { [courseId: string]: number } } = {};
             for (const userId in allRegistrations) {
@@ -78,14 +78,13 @@ export default function StaffCoursesPage() {
             }
 
             const newActiveCourses: Course[] = [];
-            const newArchivedCourses: Course[] = [];
             const processedEntries = new Set<string>();
 
             allCoursePaths.forEach(path => {
                 if (path.semesters) {
                     Object.entries(path.semesters).forEach(([semesterId, semesterData]) => {
                         const semesterInfo = allSemesters[semesterId];
-                        if (!semesterInfo) return;
+                        if (!semesterInfo || semesterInfo.status === 'Archived') return;
 
                         (semesterData.courses || []).forEach(courseId => {
                             const courseData = allCourses[courseId];
@@ -93,20 +92,21 @@ export default function StaffCoursesPage() {
 
                             const lecturerIds = courseData.lecturerIds || [];
                             const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
+                            
+                            // NEW FILTER: Only show courses that are on the timetable for this semester
+                            const isOnTimetable = !!allTimetables[semesterId]?.[courseId];
 
-                            if (isAssigned) {
+                            if (isAssigned && isOnTimetable) {
                                 const uniqueKey = `${courseId}-${semesterId}`;
                                 if (!processedEntries.has(uniqueKey)) {
-                                    const entry: Course = {
+                                    newActiveCourses.push({
                                         id: courseId,
                                         name: courseData.name,
                                         code: courseData.code,
                                         studentCount: studentCounts[semesterId]?.[courseId] || 0,
                                         semester: semesterInfo.name,
                                         semesterId: semesterId
-                                    };
-                                    if (semesterInfo.status !== 'Archived') newActiveCourses.push(entry);
-                                    else newArchivedCourses.push(entry);
+                                    });
                                     processedEntries.add(uniqueKey);
                                 }
                             }
@@ -116,8 +116,8 @@ export default function StaffCoursesPage() {
             });
 
             setActiveCourses(newActiveCourses.sort((a,b) => a.name.localeCompare(b.name)));
-            setArchivedCourses(newArchivedCourses.sort((a,b) => a.name.localeCompare(b.name)));
         } catch (error) {
+            console.error(error);
             toast({ variant: 'destructive', title: 'Error', description: "Could not fetch courses." });
         } finally {
             setLoading(false);
@@ -133,18 +133,43 @@ export default function StaffCoursesPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0">
-                <CardHeader><CardTitle className="font-headline text-2xl">My Courses</CardTitle><CardDescription>Select a course to manage assignments, attendance, and grades.</CardDescription></CardHeader>
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">My Courses</CardTitle>
+                    <CardDescription>Only courses currently scheduled on your timetable are displayed here.</CardDescription>
+                </CardHeader>
             </Card>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {activeCourses.map((course) => (
                     <Card key={`${course.id}-${course.semesterId}`} className="flex flex-col justify-between shadow-lg">
-                        <CardHeader><CardTitle className="text-lg">{course.name}</CardTitle><CardDescription>{course.code} &middot; {course.semester}</CardDescription></CardHeader>
-                        <CardContent><div className="flex items-center text-sm text-muted-foreground"><Users className="mr-2 h-4 w-4" />{course.studentCount} Students</div></CardContent>
-                        <CardFooter><Button asChild className="w-full"><Link href={`/staff/courses/${course.id}`}>Manage <ChevronRight className="ml-2 h-4 w-4" /></Link></Button></CardFooter>
+                        <CardHeader>
+                            <CardTitle className="text-lg">{course.name}</CardTitle>
+                            <CardDescription>{course.code} &middot; {course.semester}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center text-sm text-muted-foreground">
+                                <Users className="mr-2 h-4 w-4" />
+                                {course.studentCount} Student(s) Enrolled
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button asChild className="w-full">
+                                <Link href={`/staff/courses/${course.id}`}>
+                                    Manage Course <ChevronRight className="ml-2 h-4 w-4" />
+                                </Link>
+                            </Button>
+                        </CardFooter>
                     </Card>
                 ))}
             </div>
-            {activeCourses.length === 0 && <Alert><Info className="h-4 w-4"/><AlertTitle>No Courses</AlertTitle><AlertDescription>You are not assigned to any active courses.</AlertDescription></Alert>}
+            {activeCourses.length === 0 && !loading && (
+                <Alert>
+                    <Info className="h-4 w-4"/>
+                    <AlertTitle>No Active Courses</AlertTitle>
+                    <AlertDescription>
+                        You are not assigned to any courses with scheduled classes in the current timetable.
+                    </AlertDescription>
+                </Alert>
+            )}
         </div>
     );
 }
