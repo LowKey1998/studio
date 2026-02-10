@@ -11,7 +11,8 @@ import {
     UserCheck, 
     ChevronRight, 
     CreditCard,
-    PlusCircle
+    PlusCircle,
+    CheckCircle2
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -145,7 +146,7 @@ export default function StudentDashboardPage() {
                 const due = (inv.totalTuition || 0) + (inv.totalMandatoryFees || 0) + (inv.totalOptionalFees || 0) - (inv.applyScholarship ? inv.totalTuition : 0);
                 totalDue += due;
             });
-            const totalPaid = allTransactions.reduce((acc, t: any) => acc + t.amount, 0);
+            const totalPaid = allTransactions.reduce((acc, t: any) => acc + (t.amount || 0), 0);
             setFeeBalance(Math.max(0, totalDue - totalPaid));
 
             const todayName = daysOfWeek[new Date().getDay()];
