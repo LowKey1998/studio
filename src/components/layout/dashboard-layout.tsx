@@ -65,7 +65,9 @@ export default function DashboardLayout({
   const { user, userProfile, loading } = useAuth();
   const [search, setSearch] = React.useState('');
   const [openAccordion, setOpenAccordion] = React.useState<string[]>([]);
-  const [notificationCounts, setNotificationCounts] = React.useState<Record<string, number>>({});
+  const [notificationCounts, setNotificationCounts] = React.useState<Record<string, number>>({
+      pendingRegistrations: 0
+  });
   
   const handleLogout = async () => {
     try {
@@ -114,6 +116,7 @@ export default function DashboardLayout({
     return () => unsub();
   }, [user]);
 
+  // Listen for pending registration approvals
   React.useEffect(() => {
     const registrationsRef = ref(db, 'registrations');
     const unsub = onValue(registrationsRef, (snapshot) => {
@@ -128,7 +131,7 @@ export default function DashboardLayout({
                 }
             }
         }
-        setNotificationCounts(prev => ({...prev, pendingRegistrations: pendingCount }));
+        setNotificationCounts(prev => ({ ...prev, pendingRegistrations: pendingCount }));
     });
     return () => unsub();
   }, []);
@@ -206,43 +209,47 @@ export default function DashboardLayout({
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
                 if (!item || !item.items) return null;
-                const categoryNotificationCount = (item.items || []).reduce((acc, subItem) => {
-                    const key = subItem.notificationKey;
-                    return acc + (key && notificationCounts[key] > 0 ? notificationCounts[key] : 0);
-                }, 0);
                 
+                const categoryTotalNotifications = item.items.reduce((sum, sub) => {
+                    const key = sub.notificationKey;
+                    return sum + (key ? (notificationCounts[key] || 0) : 0);
+                }, 0);
+
                 return (
                     <AccordionItem value={item.label} key={item.label} className="border-none">
                         <AccordionTrigger className="hover:no-underline hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm">
-                            <div className="flex items-center gap-2">
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.label}</span>
-                                {categoryNotificationCount > 0 && (
-                                     <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
-                                        {categoryNotificationCount}
-                                    </span>
+                            <div className="flex items-center gap-2 w-full pr-2">
+                                <item.icon className="h-4 w-4 shrink-0" />
+                                <span className="flex-1 text-left">{item.label}</span>
+                                {categoryTotalNotifications > 0 && (
+                                    <Badge variant="destructive" className="h-5 min-w-5 flex items-center justify-center p-0 text-[10px] font-bold rounded-full">
+                                        {categoryTotalNotifications}
+                                    </Badge>
                                 )}
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="pl-4">
                              <SidebarMenu>
-                                {item.items.map((subItem: any) => (
-                                    <SidebarMenuItem key={subItem.href}>
-                                        <Link href={subItem.href}>
-                                            <SidebarMenuButton 
-                                                isActive={pathname.startsWith(subItem.href)}
-                                            >
-                                                {subItem.icon && <subItem.icon />}
-                                                <span>{subItem.label}</span>
-                                                 {subItem.notificationKey && notificationCounts[subItem.notificationKey] > 0 && (
-                                                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
-                                                        {notificationCounts[subItem.notificationKey]}
-                                                    </span>
-                                                )}
-                                            </SidebarMenuButton>
-                                        </Link>
-                                    </SidebarMenuItem>
-                                ))}
+                                {item.items.map((subItem: any) => {
+                                    const subCount = subItem.notificationKey ? (notificationCounts[subItem.notificationKey] || 0) : 0;
+                                    return (
+                                        <SidebarMenuItem key={subItem.href}>
+                                            <Link href={subItem.href}>
+                                                <SidebarMenuButton 
+                                                    isActive={pathname.startsWith(subItem.href)}
+                                                >
+                                                    {subItem.icon && <subItem.icon />}
+                                                    <span className="flex-1">{subItem.label}</span>
+                                                    {subCount > 0 && (
+                                                        <Badge variant="destructive" className="h-4 min-w-4 flex items-center justify-center p-0 text-[9px] font-bold rounded-full">
+                                                            {subCount}
+                                                        </Badge>
+                                                    )}
+                                                </SidebarMenuButton>
+                                            </Link>
+                                        </SidebarMenuItem>
+                                    );
+                                })}
                             </SidebarMenu>
                         </AccordionContent>
                     </AccordionItem>
@@ -254,7 +261,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen w-full">
+      <div className="flex h-screen w-full overflow-hidden">
         <Sidebar>
           <SidebarHeader>
             <Logo />
@@ -278,7 +285,7 @@ export default function DashboardLayout({
               </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
-        <div className='flex flex-1 flex-col'>
+        <div className='flex flex-1 flex-col overflow-hidden'>
           <Header />
           <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
         </div>
