@@ -169,15 +169,21 @@ export default function TimetableManagementPage() {
     };
 
     const handleAddEntry = async () => {
-        if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime || !venue) {
-            toast({ variant: 'destructive', title: 'Please fill all fields' });
+        if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
+            toast({ variant: 'destructive', title: 'Please fill all required fields' });
             return;
         }
         setSaving(true);
         try {
             const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
-            await set(entryRef, { day, startTime, endTime, venue, intakeName });
+            await set(entryRef, { 
+                day, 
+                startTime, 
+                endTime, 
+                venue: venue || 'TBA',
+                intakeName 
+            });
             toast({ title: "Entry Added" });
             setIsAddOpen(false);
             resetAddForm();
@@ -319,8 +325,8 @@ export default function TimetableManagementPage() {
                                             <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                         <div className="space-y-1">
-                                            <Label>Room/Venue</Label>
-                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Room..."/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
+                                            <Label>Room/Venue (Optional)</Label>
+                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Select Room (Optional)"/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
