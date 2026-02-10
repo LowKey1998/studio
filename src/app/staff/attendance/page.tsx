@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-type Course = {
+type CourseInstance = {
+    uniqueId: string;
     id: string;
     name: string;
     code: string;
@@ -19,7 +20,7 @@ type Course = {
 };
 
 export default function StaffAttendancePage() {
-    const [courses, setCourses] = React.useState<Course[]>([]);
+    const [courses, setCourses] = React.useState<CourseInstance[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const { toast } = useToast();
@@ -44,7 +45,7 @@ export default function StaffAttendancePage() {
             const allCourses = coursesSnap.val() || {};
             const allSemesters = semestersSnap.val() || {};
             const allCoursePaths = Object.values(coursePathsSnap.val() || {});
-            const lecturerCourses = new Map<string, Course>();
+            const lecturerCourses = new Map<string, CourseInstance>();
 
             allCoursePaths.forEach((path: any) => {
                 if (path.semesters) {
@@ -59,7 +60,15 @@ export default function StaffAttendancePage() {
                             const isAssigned = (Array.isArray(lIds) && lIds.includes(currentUser.uid)) || (cData.lecturerId === currentUser.uid);
                             
                             if (isAssigned) {
-                                lecturerCourses.set(`${cid}-${semId}`, { id: cid, name: cData.name, code: cData.code, semester: semInfo.name });
+                                // Create a unique key for the instance
+                                const uniqueId = `${cid}-${semId}`;
+                                lecturerCourses.set(uniqueId, { 
+                                    uniqueId,
+                                    id: cid, 
+                                    name: cData.name, 
+                                    code: cData.code, 
+                                    semester: semInfo.name 
+                                });
                             }
                         });
                     });
@@ -83,7 +92,7 @@ export default function StaffAttendancePage() {
             {loading ? <Skeleton className="h-48 w-full" /> : 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {courses.map(course => (
-                    <Card key={course.id}>
+                    <Card key={course.uniqueId}>
                         <CardHeader><CardTitle>{course.name}</CardTitle><CardDescription>{course.code} &middot; {course.semester}</CardDescription></CardHeader>
                         <CardFooter><Button asChild className="w-full"><Link href={`/staff/courses/${course.id}/attendance`}><Hand className="mr-2 h-4 w-4" /> Mark Attendance</Link></Button></CardFooter>
                     </Card>

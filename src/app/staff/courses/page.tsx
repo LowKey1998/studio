@@ -210,7 +210,7 @@ export default function StaffCoursesPage() {
                     </div>
                     <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
                         <Switch id="merged-mode" checked={showMerged} onCheckedChange={setShowMerged} />
-                        <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Merge Simultaneous Groups</Label>
+                        <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Merge Simultaneous Classes</Label>
                     </div>
                 </CardHeader>
             </Card>
@@ -255,7 +255,7 @@ export default function StaffCoursesPage() {
                         </CardContent>
                         <CardFooter>
                             <Button asChild className="w-full shadow-md group">
-                                <Link href={`/staff/courses/${course.courseId}`}>
+                                <Link href={`/staff/courses/${course.courseId}/assignments`}>
                                     Manage Class <ChevronRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                 </Link>
                             </Button>

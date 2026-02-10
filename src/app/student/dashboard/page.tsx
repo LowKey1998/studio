@@ -311,7 +311,7 @@ export default function StudentDashboardPage() {
                                                 <CalendarIcon className="h-3 w-3" /> {entry.venue}
                                             </div>
                                         </div>
-                                        <Button variant="ghost" size="icon" asChild><Link href={`/student/courses/${entry.id}`}><ChevronRight className="h-4 w-4"/></Link></Button>
+                                        <Button variant="ghost" size="icon" asChild><Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4"/></Link></Button>
                                     </div>
                                 ))}
                             </div>
