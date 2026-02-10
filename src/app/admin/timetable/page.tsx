@@ -10,7 +10,7 @@ import { ref, get, set, push, onValue, remove } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -176,6 +176,7 @@ export default function TimetableManagementPage() {
         setSaving(true);
         try {
             const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
+            // We save manual entries under a "master" semesterId so they appear globally
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
             await set(entryRef, { day, startTime, endTime, venue, intakeName });
             toast({ title: "Entry Added" });
@@ -206,6 +207,13 @@ export default function TimetableManagementPage() {
         setEndTime('');
         setVenue('');
         setCourseSearch('');
+    };
+
+    const handleCellClick = (selectedDay: string, slot: TimeSlot) => {
+        setDay(selectedDay);
+        setStartTime(slot.startTime);
+        setEndTime(slot.endTime);
+        setIsAddOpen(true);
     };
 
     const filteredTimetable = React.useMemo(() => {
@@ -359,7 +367,7 @@ export default function TimetableManagementPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Matrix View Unavailable</AlertTitle>
                             <AlertDescription>
-                                To see the professional grid view (Days as rows, Times as columns), please define specific **Time Slots** in the <Link href="/admin/academics/teaching-times" className="underline">Teaching Times Setup</Link>.
+                                To see the professional grid view (Days as rows, Times as columns), please define specific **Time Slots** in the <Link href="/admin/academics/teaching-times" className="underline text-primary">Teaching Times Setup</Link>.
                             </AlertDescription>
                         </Alert>
                     ) : (
@@ -378,22 +386,25 @@ export default function TimetableManagementPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {displayDays.map(day => (
-                                        <TableRow key={day}>
-                                            <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{day}</TableCell>
+                                    {displayDays.map(dayName => (
+                                        <TableRow key={dayName}>
+                                            <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
                                             {teachingTimes.slots.map(slot => {
-                                                // Find sessions that start within this slot
                                                 const slotStart = timeToMinutes(slot.startTime);
                                                 const slotEnd = timeToMinutes(slot.endTime);
                                                 
                                                 const sessionsInSlot = filteredTimetable.filter(e => 
-                                                    e.day === day && 
+                                                    e.day === dayName && 
                                                     timeToMinutes(e.startTime) >= slotStart && 
                                                     timeToMinutes(e.startTime) < slotEnd
                                                 );
 
                                                 return (
-                                                    <TableCell key={`${day}-${slot.id}`} className="p-2 border-r align-top min-h-[100px]">
+                                                    <TableCell 
+                                                        key={`${dayName}-${slot.id}`} 
+                                                        className="p-2 border-r align-top min-h-[100px] cursor-pointer hover:bg-primary/5 transition-colors group relative"
+                                                        onClick={() => sessionsInSlot.length === 0 && handleCellClick(dayName, slot)}
+                                                    >
                                                         <div className="space-y-2">
                                                             {sessionsInSlot.map(entry => (
                                                                 <div key={entry.id} className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm">
@@ -401,7 +412,7 @@ export default function TimetableManagementPage() {
                                                                         variant="ghost" 
                                                                         size="icon" 
                                                                         className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-background border opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                                        onClick={() => handleDeleteEntry(entry)}
+                                                                        onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry); }}
                                                                     >
                                                                         <X className="h-3 w-3 text-destructive" />
                                                                     </Button>
@@ -414,6 +425,11 @@ export default function TimetableManagementPage() {
                                                                     </div>
                                                                 </div>
                                                             ))}
+                                                            {sessionsInSlot.length === 0 && (
+                                                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center py-4">
+                                                                    <PlusCircle className="h-4 w-4 text-muted-foreground/50" />
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </TableCell>
                                                 );

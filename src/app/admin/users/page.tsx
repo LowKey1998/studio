@@ -94,7 +94,6 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 export default function UserManagementPage() {
     const { userProfile: adminProfile } = useAuth();
     
-    // Component state hooks must be inside the component
     const [users, setUsers] = React.useState<UserProfile[]>([]);
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     const [isEditOpen, setIsEditOpen] = React.useState(false);
@@ -103,6 +102,8 @@ export default function UserManagementPage() {
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
+    
+    // Edit state
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
@@ -125,10 +126,13 @@ export default function UserManagementPage() {
     const [guardianEmail, setGuardianEmail] = React.useState('');
     const [guardianContact, setGuardianContact] = React.useState('');
     const [guardianRelationship, setGuardianRelationship] = React.useState('');
+
+    // Password state
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
+
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
@@ -159,7 +163,7 @@ export default function UserManagementPage() {
             setAllProgrammes(Object.keys(pData).map(id => ({ id, ...pData[id] })));
             setAvailableSubRoles(Object.keys(srData).map(id => ({id, ...srData[id]})));
             setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
-            setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...sem.val()[id] })) : []);
+            setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...id })) : []);
 
             if (u.exists()) {
                 const usersData = u.val();
