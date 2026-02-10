@@ -336,7 +336,7 @@ export default function TimetableManagementPage() {
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 animate-spin"/>}Save Entry</Button>
+                                    <Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>

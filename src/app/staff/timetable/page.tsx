@@ -3,8 +3,18 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Info, MapPin } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+type TimeSlot = {
+    id: string;
+    startTime: string;
+    endTime: string;
+};
 
 type TimetableEntry = {
     day: string;
@@ -15,10 +25,17 @@ type TimetableEntry = {
     courseName: string;
 };
 
-const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
 
 export default function StaffTimetablePage() {
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
 
@@ -26,68 +43,126 @@ export default function StaffTimetablePage() {
         onAuthStateChanged(auth, user => setCurrentUser(user));
     }, []);
 
-    React.useEffect(() => {
+    const fetchData = React.useCallback(async () => {
         if (!currentUser?.uid) return;
+        setLoading(true);
+        try {
+            const [coursesSnap, timetablesSnap, settingsSnap] = await Promise.all([
+                get(ref(db, 'courses')),
+                get(ref(db, 'timetables')),
+                get(ref(db, 'settings/teachingTimes'))
+            ]);
 
-        const fetchTimetable = async () => {
-            setLoading(true);
-            try {
-                const coursesRef = ref(db, 'courses');
-                const coursesSnap = await get(coursesRef);
-                const myCourseIds = new Set<string>();
-                if(coursesSnap.exists()) {
-                    Object.entries(coursesSnap.val()).forEach(([id, c]: [string, any]) => {
-                        const lIds = c.lecturerIds || [];
-                        if((Array.isArray(lIds) && lIds.includes(currentUser.uid)) || (c.lecturerId === currentUser.uid)) {
-                            myCourseIds.add(id);
-                        }
-                    });
+            const cData = coursesSnap.val() || {};
+            const tData = timetablesSnap.val() || {};
+            const settingsData = settingsSnap.val() || {};
+
+            setTeachingTimes({
+                days: settingsData.days || defaultDays,
+                slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+            });
+
+            const myCourseIds = new Set<string>();
+            Object.entries(cData).forEach(([id, c]: [string, any]) => {
+                const lIds = c.lecturerIds || [];
+                if ((Array.isArray(lIds) && lIds.includes(currentUser.uid)) || (c.lecturerId === currentUser.uid)) {
+                    myCourseIds.add(id);
                 }
+            });
 
-                const timetablesRef = ref(db, 'timetables');
-                const timetablesSnap = await get(timetablesRef);
-                const allEntries: TimetableEntry[] = [];
-                if (timetablesSnap.exists()) {
-                    const allT = timetablesSnap.val();
-                    const allC = coursesSnap.val();
-                    for (const semId in allT) {
-                        for (const cId in allT[semId]) {
-                            if (myCourseIds.has(cId)) {
-                                Object.values(allT[semId][cId]).forEach((entry: any) => {
-                                    allEntries.push({ ...entry, courseCode: allC[cId].code, courseName: allC[cId].name });
-                                });
-                            }
-                        }
+            const entries: TimetableEntry[] = [];
+            for (const semId in tData) {
+                for (const cId in tData[semId]) {
+                    if (myCourseIds.has(cId)) {
+                        const courseInfo = cData[cId];
+                        Object.values(tData[semId][cId]).forEach((entry: any) => {
+                            entries.push({
+                                ...entry,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name
+                            });
+                        });
                     }
                 }
-                setTimetable(allEntries);
-            } catch (error) { console.error(error); }
-            finally { setLoading(false); }
-        };
-        fetchTimetable();
+            }
+            setTimetable(entries);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
     }, [currentUser]);
-    
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
+    const hasSlots = teachingTimes.slots.length > 0;
+
     return (
-        <Card>
-            <CardHeader><CardTitle className="font-headline text-2xl">My Timetable</CardTitle><CardDescription>Your weekly teaching schedule.</CardDescription></CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
-                    {daysOfWeek.map(day => (
-                        <div key={day} className="bg-card min-h-48">
-                            <h3 className="font-semibold text-center p-2 border-b bg-muted/50">{day}</h3>
-                            <div className="p-2 space-y-2">
-                                {loading ? <Skeleton className="h-20 w-full" /> :
-                                timetable.filter(e => e.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map((e, i) => (
-                                    <div key={i} className="p-2 text-xs rounded-md bg-primary/10 border border-primary/20">
-                                        <p className="font-bold text-primary">{e.courseName}</p>
-                                        <p>{e.startTime} - {e.endTime}</p>
-                                        <p>Venue: {e.venue}</p>
-                                    </div>
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="font-headline text-2xl">My Teaching Schedule</CardTitle>
+                <CardDescription>Your weekly recurring classes across all active semesters.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+                {loading ? (
+                    <Skeleton className="h-96 w-full" />
+                ) : !hasSlots ? (
+                    <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>Matrix View Unavailable</AlertTitle>
+                        <AlertDescription>The administration has not yet defined the institutional time slots required for the matrix view.</AlertDescription>
+                    </Alert>
+                ) : (
+                    <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-muted/50">
+                                    <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                    {teachingTimes.slots.map((slot, index) => (
+                                        <TableHead key={slot.id || index} className="text-center font-bold border-r">
+                                            <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
+                                        </TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {displayDays.map(dayName => (
+                                    <TableRow key={dayName}>
+                                        <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
+                                        {teachingTimes.slots.map((slot, sIdx) => {
+                                            const slotStart = timeToMinutes(slot.startTime);
+                                            const slotEnd = timeToMinutes(slot.endTime);
+                                            const sessionsInSlot = timetable.filter(e => 
+                                                e.day === dayName && 
+                                                timeToMinutes(e.startTime) >= slotStart && 
+                                                timeToMinutes(e.startTime) < slotEnd
+                                            );
+
+                                            return (
+                                                <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
+                                                    <div className="space-y-2">
+                                                        {sessionsInSlot.map((entry, eIdx) => (
+                                                            <div key={eIdx} className="p-2 rounded-md border bg-background border-primary/20 shadow-sm">
+                                                                <p className="font-bold text-[10px] text-primary leading-tight">{entry.courseCode}: {entry.courseName}</p>
+                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                    <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                </div>
+                                                                <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </TableCell>
+                                            );
+                                        })}
+                                    </TableRow>
                                 ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

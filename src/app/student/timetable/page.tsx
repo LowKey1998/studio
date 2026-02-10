@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,17 +5,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import Link from 'next/link';
-import { Calendar } from '@/components/ui/calendar';
-import { eachDayOfInterval, format, getDay, isSameMonth, startOfMonth, endOfMonth, isToday } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Info, MapPin } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+type TimeSlot = {
+    id: string;
+    startTime: string;
+    endTime: string;
+};
 
 type TimetableEntry = {
-    courseId: string;
-    day: string; // "Monday", "Tuesday", etc.
+    day: string;
     startTime: string;
     endTime: string;
     venue: string;
@@ -24,196 +25,150 @@ type TimetableEntry = {
     courseName: string;
 };
 
-type ClassOverride = {
-    originalDate: string;
-    newDate?: string;
-    newTime?: string;
-    status: 'rescheduled' | 'cancelled';
-};
-
-const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const timeToMinutes = (time: string) => {
-    if(!time) return 0;
+    if (!time) return 0;
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
 };
 
-export default function StudentCalendarViewPage() {
-    const [allEntries, setAllEntries] = React.useState<TimetableEntry[]>([]);
-    const [allOverrides, setAllOverrides] = React.useState<Record<string, Record<string, ClassOverride>>>({});
+export default function StudentTimetablePage() {
+    const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [month, setMonth] = React.useState(new Date());
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            setCurrentUser(user);
-        });
-        return () => unsubscribe();
+        onAuthStateChanged(auth, user => setCurrentUser(user));
     }, []);
 
-    React.useEffect(() => {
-        if (!currentUser) {
-            setLoading(false);
-            return;
-        }
+    const fetchData = React.useCallback(async () => {
+        if (!currentUser?.uid) return;
+        setLoading(true);
+        try {
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap] = await Promise.all([
+                get(ref(db, `registrations/${currentUser.uid}`)),
+                get(ref(db, 'courses')),
+                get(ref(db, 'timetables')),
+                get(ref(db, 'settings/teachingTimes'))
+            ]);
 
-        const fetchTimetable = async () => {
-            setLoading(true);
-            try {
-                const regsSnap = await get(ref(db, `registrations/${currentUser.uid}`));
-                if (!regsSnap.exists()) {
-                    setAllEntries([]); setLoading(false); return;
-                }
-
-                const enrolledCourseIds = new Set<string>();
-                Object.values(regsSnap.val()).forEach((reg: any) => {
-                    if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                        reg.courses.forEach((id: string) => enrolledCourseIds.add(id));
-                    }
-                });
-                
-                const [coursesSnap, timetablesSnap, overridesSnap] = await Promise.all([
-                    get(ref(db, 'courses')),
-                    get(ref(db, 'timetables')),
-                    get(ref(db, 'classOverrides'))
-                ]);
-
-                const entries: TimetableEntry[] = [];
-                if (timetablesSnap.exists() && coursesSnap.exists()) {
-                    const allTimetables = timetablesSnap.val();
-                    const allCourses = coursesSnap.val();
-                    for (const semesterId in allTimetables) {
-                        for (const courseId in allTimetables[semesterId]) {
-                            if (enrolledCourseIds.has(courseId)) {
-                                Object.values(allTimetables[semesterId][courseId]).forEach((entry: any) => {
-                                    entries.push({
-                                        ...entry,
-                                        courseId,
-                                        courseCode: allCourses[courseId]?.code || 'N/A',
-                                        courseName: allCourses[courseId]?.name || 'Unknown',
-                                    });
-                                });
-                            }
-                        }
-                    }
-                }
-                setAllEntries(entries);
-                setAllOverrides(overridesSnap.exists() ? overridesSnap.val() : {});
-
-            } catch (error) {
-                console.error(error);
-            } finally {
+            if (!regsSnap.exists()) {
+                setTimetable([]);
                 setLoading(false);
+                return;
             }
-        };
 
-        fetchTimetable();
-    }, [currentUser]);
-
-    const dailyClasses = React.useMemo(() => {
-        const classesByDate: Record<string, TimetableEntry[]> = {};
-        if (allEntries.length === 0 && Object.keys(allOverrides).length === 0) return classesByDate;
-
-        const interval = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
-
-        interval.forEach(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            let finalEntriesForDay: TimetableEntry[] = [];
-            
-            const dayOfWeek = daysOfWeek[getDay(day)];
-            const recurringEntries = allEntries.filter(entry => entry.day === dayOfWeek);
-
-            recurringEntries.forEach(entry => {
-                const overrideForThisDate = allOverrides[entry.courseId]?.[dateStr];
-                if (!overrideForThisDate || overrideForThisDate.status !== 'cancelled') {
-                    finalEntriesForDay.push(entry);
+            const enrolledCourseIds = new Set<string>();
+            Object.values(regsSnap.val()).forEach((reg: any) => {
+                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                    (reg.courses || []).forEach((id: string) => enrolledCourseIds.add(id));
                 }
             });
 
-            for (const courseId in allOverrides) {
-                 const rescheduledToThisDay = Object.values(allOverrides[courseId] || {}).find(ov => ov.status === 'rescheduled' && ov.newDate === dateStr);
-                 if (rescheduledToThisDay) {
-                     const originalEntryDetails = allEntries.find(e => e.courseId === courseId);
-                     if (originalEntryDetails) {
-                        finalEntriesForDay = finalEntriesForDay.filter(e => e.courseId !== courseId);
-                        finalEntriesForDay.push({ 
-                            ...originalEntryDetails, 
-                            day: format(day, 'EEEE'),
-                            startTime: rescheduledToThisDay.newTime || originalEntryDetails.startTime
-                        });
-                     }
-                 }
-            }
+            const cData = coursesSnap.val() || {};
+            const tData = timetablesSnap.val() || {};
+            const settingsData = settingsSnap.val() || {};
 
-            if (finalEntriesForDay.length > 0) {
-                classesByDate[dateStr] = finalEntriesForDay.sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+            setTeachingTimes({
+                days: settingsData.days || defaultDays,
+                slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+            });
+
+            const entries: TimetableEntry[] = [];
+            for (const semId in tData) {
+                for (const cId in tData[semId]) {
+                    if (enrolledCourseIds.has(cId)) {
+                        const courseInfo = cData[cId];
+                        Object.values(tData[semId][cId]).forEach((entry: any) => {
+                            entries.push({
+                                ...entry,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name
+                            });
+                        });
+                    }
+                }
             }
-        });
-        return classesByDate;
-    }, [month, allEntries, allOverrides]);
-    
+            setTimetable(entries);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser]);
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
+    const hasSlots = teachingTimes.slots.length > 0;
+
     return (
-        <Card>
+        <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle className="font-headline text-2xl">My Calendar</CardTitle>
-                <CardDescription>Your monthly class schedule, including any rescheduled or cancelled classes.</CardDescription>
+                <CardTitle className="font-headline text-2xl">My Weekly Timetable</CardTitle>
+                <CardDescription>Your weekly class schedule based on your enrolled courses.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <Calendar
-                    mode="single"
-                    month={month}
-                    onMonthChange={setMonth}
-                    components={{
-                        DayContent: ({ date }) => {
-                             const dateStr = format(date, 'yyyy-MM-dd');
-                             const classes = dailyClasses[dateStr];
-                             return (
-                                 <Popover>
-                                    <PopoverTrigger asChild>
-                                        <div className={cn("relative w-full h-full p-1 cursor-pointer hover:bg-accent/50 rounded-md", isToday(date) && "font-bold bg-accent/80")}>
-                                             <span className="absolute top-1 left-1">{format(date, 'd')}</span>
-                                             {classes && (
-                                                <div className="absolute bottom-1 right-1 flex items-center justify-center h-4 w-4 bg-primary text-primary-foreground text-[10px] rounded-full">
-                                                    {classes.length}
-                                                </div>
-                                             )}
-                                         </div>
-                                    </PopoverTrigger>
-                                    {classes && (
-                                     <PopoverContent className="w-80">
-                                        <h4 className="font-semibold mb-2">{format(date, 'PPP')}</h4>
-                                        <div className="space-y-2">
-                                            {classes.map((c, i) => (
-                                                <Link key={i} href={`/student/courses/${c.courseId}`} passHref>
-                                                    <div className="text-xs p-2 rounded-md bg-primary/10 border border-primary/20 hover:bg-primary/20 cursor-pointer">
-                                                        <p className="font-bold text-primary">{c.courseName}</p>
-                                                        <p>{c.startTime} - {c.endTime} @ {c.venue}</p>
+            <CardContent className="overflow-x-auto">
+                {loading ? (
+                    <Skeleton className="h-96 w-full" />
+                ) : !hasSlots ? (
+                    <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>Matrix View Unavailable</AlertTitle>
+                        <AlertDescription>The administration has not yet published the standard teaching time slots.</AlertDescription>
+                    </Alert>
+                ) : (
+                    <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-muted/50">
+                                    <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                    {teachingTimes.slots.map((slot, index) => (
+                                        <TableHead key={slot.id || index} className="text-center font-bold border-r">
+                                            <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
+                                        </TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {displayDays.map(dayName => (
+                                    <TableRow key={dayName}>
+                                        <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
+                                        {teachingTimes.slots.map((slot, sIdx) => {
+                                            const slotStart = timeToMinutes(slot.startTime);
+                                            const slotEnd = timeToMinutes(slot.endTime);
+                                            const sessionsInSlot = timetable.filter(e => 
+                                                e.day === dayName && 
+                                                timeToMinutes(e.startTime) >= slotStart && 
+                                                timeToMinutes(e.startTime) < slotEnd
+                                            );
+
+                                            return (
+                                                <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
+                                                    <div className="space-y-2">
+                                                        {sessionsInSlot.map((entry, eIdx) => (
+                                                            <div key={eIdx} className="p-2 rounded-md border bg-background border-primary/20 shadow-sm">
+                                                                <p className="font-bold text-[10px] text-primary leading-tight">{entry.courseCode}: {entry.courseName}</p>
+                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                    <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                </div>
+                                                                <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                </Link>
-                                            ))}
-                                        </div>
-                                     </PopoverContent>
-                                    )}
-                                </Popover>
-                             )
-                        },
-                         Caption: ({...props}) => {
-                             const currentMonth = format(props.displayMonth, 'MMMM yyyy');
-                             return (
-                                <div className="flex items-center justify-between px-2 py-4">
-                                    <h2 className="font-semibold text-lg">{currentMonth}</h2>
-                                    <div className="flex gap-1">
-                                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                                    </div>
-                                </div>
-                             )
-                         }
-                    }}
-                    className="w-full"
-                />
+                                                </TableCell>
+                                            );
+                                        })}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
