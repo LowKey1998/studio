@@ -166,7 +166,7 @@ export default function CoursesPage() {
             // Fetch Programmes
             if(programmesSnap.exists()) {
                 const programmesData = programmesSnap.val();
-                setAllProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
+                setProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
             } else {
                 setProgrammes([]);
             }
@@ -321,7 +321,7 @@ export default function CoursesPage() {
             
             await update(ref(db), updates);
 
-            toast({ variant: 'success', title: editingCourse ? 'Course Updated' : 'Course Added' });
+            toast({ title: editingCourse ? 'Course Updated' : 'Course Added' });
             fetchData();
             resetForm();
             setIsDialogOpen(false);
@@ -352,7 +352,6 @@ export default function CoursesPage() {
             fetchData();
 
             toast({
-                variant: 'success',
                 title: `Course ${status === 'archived' ? 'Archived' : 'Restored'}`,
                 description: `The course has been successfully moved to ${status === 'archived' ? 'archives' : 'active courses'}.`,
             });

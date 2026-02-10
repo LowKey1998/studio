@@ -34,15 +34,13 @@ import {
     Mail, 
     Shield, 
     CheckCircle2, 
-    Flag, 
     FileUp, 
     Check, 
     Download, 
     Users, 
     UserPlus, 
     UserCog,
-    KeyRound,
-    Lock
+    KeyRound
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -569,7 +567,7 @@ export default function UserManagementPage() {
                                                 <DropdownMenuContent align="end" className="w-48">
                                                     <DropdownMenuLabel>User Actions</DropdownMenuLabel>
                                                     <DropdownMenuItem onClick={() => handleOpenEdit(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><Shield className="mr-2 h-4 w-4"/>Reset Password</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><KeyRound className="mr-2 h-4 w-4"/>Reset Password</DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onClick={() => handlePasswordResetRequest(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Reset Link</DropdownMenuItem>
                                                 </DropdownMenuContent>
