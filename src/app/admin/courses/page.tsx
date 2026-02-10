@@ -568,7 +568,7 @@ export default function CoursesPage() {
                                                                <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
                                                            </Button>
                                                        </TableCell>
-                                                       {activeTab === 'archived' && <TableCell className="text-xs italic">{course.archiveReason || 'N/A'}</TableCell>}
+                                                       {activeTab === 'archived' && <TableHead className="text-xs italic">{course.archiveReason || 'N/A'}</TableHead>}
                                                        <TableCell className="text-right pr-4">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
