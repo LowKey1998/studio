@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -22,6 +21,12 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
+type TimeSlot = {
+    id: string;
+    startTime: string;
+    endTime: string;
+};
+
 type TimetableEntry = {
     id: string;
     semesterId: string;
@@ -41,7 +46,7 @@ type Course = { id: string; name: string; code: string; status: string; lecturer
 type Room = { id: string; name: string; capacity: number; };
 type Intake = { id: string; name: string; };
 
-const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const timeToMinutes = (time: string) => {
     if (!time) return 0;
@@ -60,6 +65,7 @@ export default function TimetableManagementPage() {
     const [rooms, setRooms] = React.useState<Room[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
 
     // Filter states
     const [roomFilter, setRoomFilter] = React.useState('all');
@@ -84,13 +90,14 @@ export default function TimetableManagementPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap, usersSnap] = await Promise.all([
+            const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap, usersSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/rooms')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'timetables')),
-                get(ref(db, 'users'))
+                get(ref(db, 'users')),
+                get(ref(db, 'settings/teachingTimes'))
             ]);
 
             const sData = semSnap.val() || {};
@@ -99,12 +106,17 @@ export default function TimetableManagementPage() {
             const iData = intakesSnap.val() || {};
             const tData = timetablesSnap.val() || {};
             const uData = usersSnap.val() || {};
+            const settingsData = settingsSnap.val() || {};
 
             setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
             setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
             setRooms(Object.entries(rData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setUsers(uData);
+            setTeachingTimes({
+                days: settingsData.days || defaultDays,
+                slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+            });
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
@@ -212,13 +224,16 @@ export default function TimetableManagementPage() {
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
+    const hasSlots = teachingTimes.slots.length > 0;
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <CardTitle className="font-headline text-2xl">Master Timetable Management</CardTitle>
-                        <CardDescription>View and manage schedules across all intakes and rooms.</CardDescription>
+                        <CardDescription>View and manage schedules across all intakes and rooms. Rows represent days, columns represent time slots.</CardDescription>
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={handleAutoGenerate} disabled={generating}>
@@ -290,7 +305,7 @@ export default function TimetableManagementPage() {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <Label>Day</Label>
-                                            <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{daysOfWeek.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
+                                            <Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                         <div className="space-y-1">
                                             <Label>Room/Venue</Label>
@@ -310,7 +325,7 @@ export default function TimetableManagementPage() {
                         </Dialog>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 overflow-x-auto">
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg">
                         <div className="flex-1 min-w-[200px]">
                             <Label>Search Course</Label>
@@ -338,46 +353,76 @@ export default function TimetableManagementPage() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
-                        {daysOfWeek.map(day => (
-                            <div key={day} className="bg-card min-h-screen">
-                                <h3 className="font-bold text-center p-3 border-b bg-muted/50 uppercase tracking-wider text-xs">{day}</h3>
-                                <div className="p-2 space-y-2">
-                                    {filteredTimetable
-                                        .filter(e => e.day === day)
-                                        .sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
-                                        .map((entry) => (
-                                            <div key={`${entry.semesterId}-${entry.courseId}-${entry.id}`} className="group relative p-3 rounded-lg border bg-primary/5 hover:bg-primary/10 transition-colors border-primary/20">
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-background border opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    onClick={() => handleDeleteEntry(entry)}
-                                                >
-                                                    <X className="h-3 w-3 text-destructive" />
-                                                </Button>
-                                                <p className="font-bold text-sm text-primary leading-tight">{entry.courseCode}: {entry.courseName}</p>
-                                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-2">
-                                                    <Clock className="h-3 w-3" /> {entry.startTime} - {entry.endTime}
+                    {!hasSlots ? (
+                        <Alert variant="secondary">
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>Matrix View Unavailable</AlertTitle>
+                            <AlertDescription>
+                                To see the professional grid view (Days as rows, Times as columns), please define specific **Time Slots** in the <Link href="/admin/academics/teaching-times" className="underline">Teaching Times Setup</Link>.
+                            </AlertDescription>
+                        </Alert>
+                    ) : (
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map(slot => (
+                                            <TableHead key={slot.id} className="text-center font-bold border-r">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1">
-                                                    <MapPin className="h-3 w-3" /> {entry.venue}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1">
-                                                    <GraduationCap className="h-3 w-3" /> {entry.semesterName}
-                                                </div>
-                                                <div className="mt-2">
-                                                    <Badge variant="secondary" className="text-[8px] h-4 py-0 px-1">{entry.intakeName}</Badge>
-                                                </div>
-                                            </div>
+                                            </TableHead>
                                         ))}
-                                    {filteredTimetable.filter(e => e.day === day).length === 0 && (
-                                        <p className="text-center text-[10px] text-muted-foreground pt-8 italic">No sessions</p>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {displayDays.map(day => (
+                                        <TableRow key={day}>
+                                            <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{day}</TableCell>
+                                            {teachingTimes.slots.map(slot => {
+                                                // Find sessions that start within this slot
+                                                const slotStart = timeToMinutes(slot.startTime);
+                                                const slotEnd = timeToMinutes(slot.endTime);
+                                                
+                                                const sessionsInSlot = filteredTimetable.filter(e => 
+                                                    e.day === day && 
+                                                    timeToMinutes(e.startTime) >= slotStart && 
+                                                    timeToMinutes(e.startTime) < slotEnd
+                                                );
+
+                                                return (
+                                                    <TableCell key={`${day}-${slot.id}`} className="p-2 border-r align-top min-h-[100px]">
+                                                        <div className="space-y-2">
+                                                            {sessionsInSlot.map(entry => (
+                                                                <div key={entry.id} className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm">
+                                                                    <Button 
+                                                                        variant="ghost" 
+                                                                        size="icon" 
+                                                                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-background border opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                                                        onClick={() => handleDeleteEntry(entry)}
+                                                                    >
+                                                                        <X className="h-3 w-3 text-destructive" />
+                                                                    </Button>
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                                                                            <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                        </div>
+                                                                        <Badge variant="secondary" className="text-[8px] h-3 py-0 px-1 w-fit">{entry.intakeName}</Badge>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

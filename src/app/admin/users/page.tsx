@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -94,20 +93,16 @@ const roleVariant: { [key: string]: 'default' | 'secondary' | 'outline' } = {
 
 export default function UserManagementPage() {
     const { userProfile: adminProfile } = useAuth();
+    
+    // Component state hooks must be inside the component
     const [users, setUsers] = React.useState<UserProfile[]>([]);
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
-    
-    // Form & Dialog states
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
     const [editingUser, setEditingUser] = React.useState<UserProfile | null>(null);
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
-
-    // Global filters
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
-
-    // Shared Form Fields
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
@@ -117,8 +112,6 @@ export default function UserManagementPage() {
     const [intakeId, setIntakeId] = React.useState('');
     const [year, setYear] = React.useState('');
     const [semesterId, setSemesterId] = React.useState('');
-    
-    // Extended Form Fields
     const [dob, setDob] = React.useState('');
     const [gender, setGender] = React.useState('');
     const [nationalId, setNationalId] = React.useState('');
@@ -128,25 +121,18 @@ export default function UserManagementPage() {
     const [school, setSchool] = React.useState('');
     const [qualifications, setQualifications] = React.useState('');
     const [medicalHistory, setMedicalHistory] = React.useState('');
-    
-    // Guardian Info (for students)
     const [guardianName, setGuardianName] = React.useState('');
     const [guardianEmail, setGuardianEmail] = React.useState('');
     const [guardianContact, setGuardianContact] = React.useState('');
     const [guardianRelationship, setGuardianRelationship] = React.useState('');
-
-    // Password Dialog State
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
-
-    // Reference Data
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [availableSubRoles, setAvailableSubRoles] = React.useState<SubRole[]>([]);
-
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();

@@ -22,11 +22,18 @@ const RoomInfoSchema = z.object({
   capacity: z.number(),
 });
 
+const TimeSlotSchema = z.object({
+    id: z.string(),
+    startTime: z.string(),
+    endTime: z.string(),
+});
+
 const TimetableConstraintsSchema = z.object({
   days: z.array(z.string()),
-  startTime: z.string(),
-  endTime: z.string(),
-  sessionDuration: z.number().describe('Duration of each class session in minutes'),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  sessionDuration: z.number().optional().describe('Duration of each class session in minutes'),
+  slots: z.array(TimeSlotSchema).optional().describe('Specific fixed time slots to use for scheduling'),
 });
 
 const TimetableInputSchema = z.object({
@@ -66,17 +73,26 @@ You must adhere to the following constraints:
 1.  **No Conflicts:** A lecturer cannot teach two different classes at the same time.
 2.  **No Student Clashes:** A student cannot be scheduled for two different classes at the same time.
 3.  **Room Capacity:** If rooms are provided, the number of students in a class must not exceed the capacity of the assigned room.
-4.  **Operating Hours:** All classes must be scheduled between {{{constraints.startTime}}} and {{{constraints.endTime}}} on the specified days: {{#each constraints.days}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}.
-5.  **Session Duration:** Each class session must last for {{{constraints.sessionDuration}}} minutes.
+4.  **Operating Hours/Slots:** 
+    {{#if constraints.slots}}
+    Use the following specific time slots for all classes:
+    {{#each constraints.slots}}
+    - Slot: {{startTime}} to {{endTime}}
+    {{/each}}
+    {{else}}
+    All classes must be scheduled between {{{constraints.startTime}}} and {{{constraints.endTime}}} with a session duration of {{{constraints.sessionDuration}}} minutes.
+    {{/if}}
+    On the specified days: {{#each constraints.days}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}.
 
-**Available Rooms:**
-{{#if rooms}}
-{{#each rooms}}
-- Room: {{name}}, Capacity: {{capacity}}
-{{/each}}
-{{else}}
-- No physical rooms currently defined. Please use "TBA" or "Online" as the venue for all entries.
-{{/if}}
+5.  **Venue Assignment:** 
+    {{#if rooms}}
+    Assign classes to the following rooms:
+    {{#each rooms}}
+    - Room: {{name}}, Capacity: {{capacity}}
+    {{/each}}
+    {{else}}
+    No physical rooms currently defined. Please use "TBA" or "Online" as the venue for all entries.
+    {{/if}}
 
 **Courses to Schedule:**
 {{#each courses}}
@@ -134,7 +150,8 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
         startTime: "08:00",
         endTime: "17:00",
         days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-        sessionDuration: 120
+        sessionDuration: 120,
+        slots: []
     };
 
     const activeSemesters = Object.entries(allSemesters).filter(([, sem]: [string, any]) => sem.status === 'Open');
@@ -184,6 +201,7 @@ export async function generateFullTimetable(): Promise<{ message: string }> {
           startTime: teachingTimes.startTime,
           endTime: teachingTimes.endTime,
           sessionDuration: Number(teachingTimes.sessionDuration),
+          slots: teachingTimes.slots || [],
         },
       };
 
