@@ -4,30 +4,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { 
     BookOpen, 
-    Info, 
     Hand, 
     Calendar as CalendarIcon, 
     Clock, 
     Banknote, 
-    FileQuestion, 
-    Library, 
     UserCheck, 
     ChevronRight, 
-    ClipboardCheck, 
     CreditCard,
-    Bell,
-    TrendingUp,
     PlusCircle
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { format, parseISO, isToday, startOfDay } from 'date-fns';
+import { format, parseISO, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -105,7 +97,6 @@ export default function StudentDashboardPage() {
             const allAssessments = assessmentsSnap.val() || {};
             const allQuizzes = quizzesSnap.val() || {};
 
-            // 1. Enrolled Courses & Attendance
             const currentCourses: Course[] = [];
             let totalPresent = 0;
             let totalMarked = 0;
@@ -122,11 +113,10 @@ export default function StudentDashboardPage() {
                                 id: cid,
                                 name: c.name,
                                 code: c.code,
-                                lecturerNames: 'Assigned Faculty' // Simplified
+                                lecturerNames: 'Assigned Faculty'
                             });
                         }
                         
-                        // Attendance calculation
                         const cAtt = allAttendance[cid];
                         if (cAtt) {
                             Object.values(cAtt).forEach((day: any) => {
@@ -142,7 +132,6 @@ export default function StudentDashboardPage() {
             setEnrolledCourses(currentCourses);
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
-            // 2. Financials
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (inv.totalTuition || 0) + (inv.totalMandatoryFees || 0) + (inv.totalOptionalFees || 0) - (inv.applyScholarship ? inv.totalTuition : 0);
@@ -151,7 +140,6 @@ export default function StudentDashboardPage() {
             const totalPaid = allTransactions.reduce((acc, t: any) => acc + t.amount, 0);
             setFeeBalance(totalDue - totalPaid);
 
-            // 3. Today's Schedule
             const todayName = daysOfWeek[new Date().getDay()];
             const schedule: TimetableEntry[] = [];
             for (const semId in allTimetables) {
@@ -167,14 +155,12 @@ export default function StudentDashboardPage() {
             }
             setTodaySchedule(schedule.sort((a,b) => a.startTime.localeCompare(b.startTime)));
 
-            // 4. Deadlines
             const deadlines: DeadlineEvent[] = [];
             Object.values(allCalendarEvents).forEach((ev: any) => {
-                if (ev.title.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(new Date())) {
+                if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(new Date())) {
                     deadlines.push({ title: ev.title, date: ev.date, type: 'payment' });
                 }
             });
-            // Quizzes as deadlines
             Object.entries(allQuizzes).forEach(([id, q]: [string, any]) => {
                 if (q.startTime && new Date(q.startTime) >= startOfDay(new Date())) {
                     deadlines.push({ title: `Quiz: ${q.title}`, date: q.startTime, type: 'quiz', link: `/student/quizzes/${id}` });
@@ -182,7 +168,6 @@ export default function StudentDashboardPage() {
             });
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
 
-            // 5. Recent Grades
             const grades: any[] = [];
             enrolledIds.forEach(cid => {
                 const assessment = allAssessments[cid]?.[user.uid];
@@ -231,7 +216,6 @@ export default function StudentDashboardPage() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Header / Hero */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight font-headline">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
@@ -247,9 +231,8 @@ export default function StudentDashboardPage() {
                 </div>
             </div>
 
-            {/* Quick Stats */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="relative overflow-hidden border-primary/20 shadow-md">
+                <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Courses</CardTitle>
                         <BookOpen className="h-4 w-4 text-primary" />
@@ -259,7 +242,7 @@ export default function StudentDashboardPage() {
                         <p className="text-xs text-muted-foreground mt-1">Currently Enrolled</p>
                     </CardContent>
                 </Card>
-                <Card className="border-primary/20 shadow-md">
+                <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Attendance</CardTitle>
                         <Hand className="h-4 w-4 text-primary" />
@@ -269,7 +252,7 @@ export default function StudentDashboardPage() {
                         <Progress value={attendanceRate} className="h-1.5" />
                     </CardContent>
                 </Card>
-                <Card className="border-primary/20 shadow-md">
+                <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Fee Balance</CardTitle>
                         <Banknote className="h-4 w-4 text-primary" />
@@ -281,20 +264,19 @@ export default function StudentDashboardPage() {
                         <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
                     </CardContent>
                 </Card>
-                <Card className="border-primary/20 shadow-md">
+                <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Academic Status</CardTitle>
                         <UserCheck className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">In Good Standing</div>
-                        <Badge variant="secondary" className="mt-1">Active Student</Badge>
+                        <div className="text-2xl font-bold">Good Standing</div>
+                        <Badge variant="secondary" className="mt-1">Active</Badge>
                     </CardContent>
                 </Card>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {/* Today's Schedule */}
                 <Card className="lg:col-span-2 shadow-lg">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
@@ -309,7 +291,7 @@ export default function StudentDashboardPage() {
                         {todaySchedule.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySchedule.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-4 p-4 rounded-lg border bg-muted/20 transition-colors hover:bg-muted/30">
+                                    <div key={i} className="flex items-center gap-4 p-4 rounded-lg border bg-muted/20">
                                         <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r pr-4">
                                             <span className="text-sm font-bold text-primary">{entry.startTime}</span>
                                             <span className="text-[10px] text-muted-foreground uppercase">{entry.endTime}</span>
@@ -317,7 +299,7 @@ export default function StudentDashboardPage() {
                                         <div className="flex-1">
                                             <p className="font-bold">{entry.courseCode}: {entry.courseName}</p>
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                                                <CalendarIcon className="h-3 w-3" /> Classroom: {entry.venue}
+                                                <CalendarIcon className="h-3 w-3" /> {entry.venue}
                                             </div>
                                         </div>
                                         <Button variant="ghost" size="icon" asChild><Link href={`/student/courses/${entry.id}`}><ChevronRight className="h-4 w-4"/></Link></Button>
@@ -325,7 +307,7 @@ export default function StudentDashboardPage() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-12 text-muted-foreground bg-muted/10 rounded-lg border border-dashed">
+                            <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
                                 <Clock className="mx-auto h-12 w-12 opacity-20 mb-2" />
                                 <p>No classes scheduled for today.</p>
                             </div>
@@ -333,7 +315,6 @@ export default function StudentDashboardPage() {
                     </CardContent>
                 </Card>
 
-                {/* Deadlines & Activity */}
                 <div className="space-y-6">
                     <Card className="shadow-lg border-l-4 border-l-primary">
                         <CardHeader>
@@ -341,7 +322,7 @@ export default function StudentDashboardPage() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((deadline, i) => (
-                                <div key={i} className="flex flex-col gap-1 p-2 rounded-md hover:bg-muted/50 transition-colors border">
+                                <div key={i} className="flex flex-col gap-1 p-2 rounded-md border">
                                     <div className="flex justify-between items-start">
                                         <span className="text-xs font-semibold uppercase text-primary tracking-wider">{deadline.type}</span>
                                         <span className="text-xs text-muted-foreground">{format(parseISO(deadline.date), 'MMM dd')}</span>
@@ -351,7 +332,7 @@ export default function StudentDashboardPage() {
                                         <Link href={deadline.link} className="text-[10px] text-primary hover:underline mt-1">Open Task</Link>
                                     )}
                                 </div>
-                            )) : <p className="text-sm text-muted-foreground text-center py-4">All caught up! No major deadlines.</p>}
+                            )) : <p className="text-sm text-muted-foreground text-center py-4">No major deadlines.</p>}
                         </CardContent>
                     </Card>
 

@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive } from "lucide-react";
+import { ChevronRight, BookOpen, User, Info, Archive, Users } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -63,9 +63,9 @@ export default function StudentCoursesPage() {
                 return;
             }
             
-            const allSemesters = semestersSnap.exists() ? semestersSnap.val() : {};
-            const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
-            const usersData = usersSnap.exists() ? usersSnap.val() : {};
+            const allSemesters = semestersSnap.val() || {};
+            const coursesData = coursesSnap.val() || {};
+            const usersData = usersSnap.val() || {};
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
@@ -74,17 +74,21 @@ export default function StudentCoursesPage() {
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                // Show courses if the student is fully enrolled OR if they are pending payment
                 if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
                     if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
                     for (const courseId of registration.courses) {
                         const courseInfo = coursesData[courseId];
                         if (courseInfo) {
+                            const lecturerNames = (courseInfo.lecturerIds || [])
+                                .map((id: string) => userMap.get(id))
+                                .filter(Boolean)
+                                .join(', ') || userMap.get(courseInfo.lecturerId) || 'N/A';
+
                             semesterCourseMap[semesterId].push({
                                 id: courseId,
                                 name: courseInfo.name,
                                 code: courseInfo.code,
-                                lecturerName: userMap.get(courseInfo.lecturerId) || 'N/A',
+                                lecturerName: lecturerNames,
                                 semester: allSemesters[semesterId]?.name || "Unknown"
                             });
                         }
@@ -161,9 +165,9 @@ export default function StudentCoursesPage() {
                                             <CardDescription>{course.code}</CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="flex items-center text-sm text-muted-foreground">
-                                                <User className="mr-2 h-4 w-4" />
-                                                <span>{course.lecturerName}</span>
+                                            <div className="flex items-start text-sm text-muted-foreground">
+                                                <User className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
+                                                <span className="line-clamp-2">{course.lecturerName}</span>
                                             </div>
                                         </CardContent>
                                         <CardFooter>

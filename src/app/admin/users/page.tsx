@@ -128,7 +128,6 @@ export default function UserManagementPage() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
     
-    // Edit state
     const [name, setName] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [phoneNumber, setPhoneNumber] = React.useState('');
@@ -152,13 +151,11 @@ export default function UserManagementPage() {
     const [guardianContact, setGuardianContact] = React.useState('');
     const [guardianRelationship, setGuardianRelationship] = React.useState('');
 
-    // Password state
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
 
-    // Bulk Create State
     const [bulkUsersToCreate, setBulkUsersToCreate] = React.useState<any[]>([]);
     const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
 
@@ -198,7 +195,7 @@ export default function UserManagementPage() {
                 const usersData = u.val();
                 const list: UserProfile[] = Object.keys(usersData).map(uid => {
                     const user = usersData[uid];
-                    const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.values(user.subRoles)) : [];
+                    const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
                     return {
                         uid, 
                         ...user, 
@@ -457,7 +454,6 @@ export default function UserManagementPage() {
             const user = bulkUsersToCreate[i];
             if (user.imported) continue;
             try {
-                // Use provided password or generate one
                 const password = user.password || Math.random().toString(36).slice(-10);
                 await findOrCreateUser({
                     id: user.id,
