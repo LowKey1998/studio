@@ -1,4 +1,3 @@
-
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -16,6 +15,8 @@ const nextConfig: NextConfig = {
     '@genkit-ai/core',
     '@genkit-ai/flow',
     '@opentelemetry/api',
+    '@opentelemetry/sdk-node',
+    '@opentelemetry/auto-instrumentations-node',
     '@opentelemetry/context-async-hooks',
     'node-fetch',
     'wav',
