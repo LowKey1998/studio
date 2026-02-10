@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -40,7 +41,9 @@ import {
     Download, 
     Users, 
     UserPlus, 
-    UserCog 
+    UserCog,
+    KeyRound,
+    Lock
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,6 +75,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import * as XLSX from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 type UserProfile = {
     uid: string;
@@ -405,6 +409,8 @@ export default function UserManagementPage() {
                     name: row.name || row.Name || row.FullName || '',
                     email: row.email || row.Email || '',
                     role: row.role || row.Role || 'Student',
+                    password: row.password || row.Password || '',
+                    subRoles: row.subRoles ? row.subRoles.split(',').map((s:string) => s.trim()) : [],
                     department: row.department || row.Department || '',
                     phoneNumber: row.phone || row.Phone || row.phoneNumber || '',
                     imported: false
@@ -423,13 +429,15 @@ export default function UserManagementPage() {
             name: '',
             email: '',
             role: 'Student',
+            password: '',
+            subRoles: [],
             department: '',
             phoneNumber: '',
             imported: false
         }]);
     };
 
-    const handleUpdateBulkRow = (index: number, field: string, value: string) => {
+    const handleUpdateBulkRow = (index: number, field: string, value: any) => {
         setBulkUsersToCreate(prev => {
             const next = [...prev];
             next[index] = { ...next[index], [field]: value };
@@ -450,7 +458,8 @@ export default function UserManagementPage() {
             const user = bulkUsersToCreate[i];
             if (user.imported) continue;
             try {
-                const password = Math.random().toString(36).slice(-10);
+                // Use provided password or generate one
+                const password = user.password || Math.random().toString(36).slice(-10);
                 await findOrCreateUser({
                     id: user.id,
                     name: user.name,
@@ -458,7 +467,8 @@ export default function UserManagementPage() {
                     role: user.role as any,
                     password: password,
                     phoneNumber: user.phoneNumber,
-                    department: user.department
+                    department: user.department,
+                    subRoles: user.subRoles
                 });
                 
                 setBulkUsersToCreate(prev => {
@@ -665,10 +675,10 @@ export default function UserManagementPage() {
             </Dialog>
 
             <Dialog open={isBulkCreateOpen} onOpenChange={setIsBulkCreateOpen}>
-                <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Bulk Create Users</DialogTitle>
-                        <DialogDescription>Add rows manually or upload an Excel/CSV file to create multiple accounts.</DialogDescription>
+                        <DialogDescription>Add rows manually or upload an Excel/CSV file to create multiple accounts at once.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
                         <div className="flex flex-col md:flex-row items-center gap-4 p-4 border rounded-lg bg-muted/20">
@@ -676,13 +686,15 @@ export default function UserManagementPage() {
                                 <Label>Upload File (.xlsx, .xls, .csv)</Label>
                                 <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFileUpload} />
                             </div>
-                            <Button variant="outline" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
-                            <Button variant="outline" onClick={() => {
-                                const ws = XLSX.utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', department: '', phone: '' }]);
-                                const wb = XLSX.utils.book_new();
-                                XLSX.utils.book_append_sheet(wb, ws, "Users");
-                                XLSX.writeFile(wb, "bulk_user_template.xlsx");
-                            }}><Download className="mr-2 h-4 w-4"/>Template</Button>
+                            <div className="flex gap-2">
+                                <Button variant="outline" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
+                                <Button variant="outline" onClick={() => {
+                                    const ws = XLSX.utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', password: '', subRoles: '', department: '', phone: '' }]);
+                                    const wb = XLSX.utils.book_new();
+                                    XLSX.utils.book_append_sheet(wb, ws, "Users");
+                                    XLSX.writeFile(wb, "bulk_user_template.xlsx");
+                                }}><Download className="mr-2 h-4 w-4"/>Template</Button>
+                            </div>
                         </div>
 
                         <ScrollArea className="flex-1 border rounded-md">
@@ -692,7 +704,9 @@ export default function UserManagementPage() {
                                         <TableHead className="w-[150px]">System ID</TableHead>
                                         <TableHead className="w-[200px]">Name</TableHead>
                                         <TableHead className="w-[200px]">Email</TableHead>
-                                        <TableHead className="w-[150px]">Role</TableHead>
+                                        <TableHead className="w-[120px]">Role</TableHead>
+                                        <TableHead className="w-[150px]">Password</TableHead>
+                                        <TableHead className="w-[180px]">Sub-Roles</TableHead>
                                         <TableHead className="w-[150px]">Dept/Info</TableHead>
                                         <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
@@ -700,12 +714,12 @@ export default function UserManagementPage() {
                                 <TableBody>
                                     {bulkUsersToCreate.map((u, i) => (
                                         <TableRow key={i} className={cn(u.imported && "bg-green-50 opacity-60")}>
-                                            <TableCell><Input value={u.id} onChange={e => handleUpdateBulkRow(i, 'id', e.target.value)} disabled={u.imported}/></TableCell>
-                                            <TableCell><Input value={u.name} onChange={e => handleUpdateBulkRow(i, 'name', e.target.value)} disabled={u.imported}/></TableCell>
-                                            <TableCell><Input value={u.email} onChange={e => handleUpdateBulkRow(i, 'email', e.target.value)} disabled={u.imported}/></TableCell>
+                                            <TableCell><Input value={u.id} onChange={e => handleUpdateBulkRow(i, 'id', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
+                                            <TableCell><Input value={u.name} onChange={e => handleUpdateBulkRow(i, 'name', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
+                                            <TableCell><Input value={u.email} onChange={e => handleUpdateBulkRow(i, 'email', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
                                             <TableCell>
                                                 <Select value={u.role} onValueChange={v => handleUpdateBulkRow(i, 'role', v)} disabled={u.imported}>
-                                                    <SelectTrigger><SelectValue/></SelectTrigger>
+                                                    <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="Student">Student</SelectItem>
                                                         <SelectItem value="Staff">Staff</SelectItem>
@@ -713,7 +727,36 @@ export default function UserManagementPage() {
                                                     </SelectContent>
                                                 </Select>
                                             </TableCell>
-                                            <TableCell><Input value={u.department} onChange={e => handleUpdateBulkRow(i, 'department', e.target.value)} disabled={u.imported}/></TableCell>
+                                            <TableCell><Input type="text" placeholder="Auto-gen" value={u.password} onChange={e => handleUpdateBulkRow(i, 'password', e.target.value)} disabled={u.imported} className="h-8 text-xs font-mono"/></TableCell>
+                                            <TableCell>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <Button variant="outline" size="sm" className="h-8 w-full justify-between text-[10px]" disabled={u.imported || u.role === 'Student'}>
+                                                            <span className="truncate">{u.subRoles?.length ? `${u.subRoles.length} Roles` : 'None'}</span>
+                                                            <KeyRound className="h-3 w-3 ml-1"/>
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-56 p-2">
+                                                        <ScrollArea className="h-48">
+                                                            {availableSubRoles.map(sr => (
+                                                                <div key={sr.id} className="flex items-center gap-2 p-1 hover:bg-muted rounded">
+                                                                    <Checkbox 
+                                                                        id={`bulk-sr-${i}-${sr.id}`} 
+                                                                        checked={u.subRoles?.includes(sr.id)} 
+                                                                        onCheckedChange={(c) => {
+                                                                            const current = u.subRoles || [];
+                                                                            const next = c ? [...current, sr.id] : current.filter((id:string) => id !== sr.id);
+                                                                            handleUpdateBulkRow(i, 'subRoles', next);
+                                                                        }}
+                                                                    />
+                                                                    <Label htmlFor={`bulk-sr-${i}-${sr.id}`} className="text-xs flex-1 cursor-pointer">{sr.name}</Label>
+                                                                </div>
+                                                            ))}
+                                                        </ScrollArea>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </TableCell>
+                                            <TableCell><Input value={u.department} onChange={e => handleUpdateBulkRow(i, 'department', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
                                             <TableCell>
                                                 {u.imported ? <Check className="h-4 w-4 text-green-600"/> : (
                                                     <Button variant="ghost" size="icon" onClick={() => handleRemoveBulkRow(i)} disabled={isProcessingBulk}><Trash2 className="h-4 w-4 text-destructive"/></Button>
@@ -722,7 +765,7 @@ export default function UserManagementPage() {
                                         </TableRow>
                                     ))}
                                     {bulkUsersToCreate.length === 0 && (
-                                        <TableRow><TableCell colSpan={6} className="text-center h-24 text-muted-foreground">No users added yet. Upload a file or add rows manually.</TableCell></TableRow>
+                                        <TableRow><TableCell colSpan={8} className="text-center h-24 text-muted-foreground">No users added yet. Upload a file or add rows manually.</TableCell></TableRow>
                                     )}
                                 </TableBody>
                             </Table>

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -414,8 +415,8 @@ export default function TimetableManagementPage() {
                                                         onClick={() => sessionsInSlot.length === 0 && handleCellClick(dayName, slot)}
                                                     >
                                                         <div className="space-y-2">
-                                                            {sessionsInSlot.map(entry => (
-                                                                <div key={entry.id} className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm">
+                                                            {sessionsInSlot.map((entry, eIdx) => (
+                                                                <div key={`${entry.id}-${eIdx}`} className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm">
                                                                     <Button 
                                                                         variant="ghost" 
                                                                         size="icon" 

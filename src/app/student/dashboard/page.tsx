@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -29,6 +30,7 @@ import { Progress } from '@/components/ui/progress';
 import { format, parseISO, isToday, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
+import { cn } from '@/lib/utils';
 
 type Course = {
     id: string;
@@ -44,6 +46,7 @@ type TimetableEntry = {
     venue: string;
     courseCode: string;
     courseName: string;
+    id: string;
 };
 
 type DeadlineEvent = {
@@ -154,9 +157,9 @@ export default function StudentDashboardPage() {
             for (const semId in allTimetables) {
                 for (const cid in allTimetables[semId]) {
                     if (enrolledIds.has(cid)) {
-                        Object.values(allTimetables[semId][cid]).forEach((entry: any) => {
+                        Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
-                                schedule.push({ ...entry, courseCode: allCourses[cid]?.code, courseName: allCourses[cid]?.name });
+                                schedule.push({ ...entry, courseCode: allCourses[cid]?.code, courseName: allCourses[cid]?.name, id: entryId });
                             }
                         });
                     }
@@ -202,7 +205,7 @@ export default function StudentDashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, daysOfWeek]);
 
     React.useEffect(() => {
         if (user) fetchData();
@@ -369,7 +372,7 @@ export default function StudentDashboardPage() {
                         </CardContent>
                         <CardFooter>
                             <Button variant="ghost" size="sm" className="w-full text-xs" asChild>
-                                <Link href="/student/courses/results">View All Results</Link>
+                                <Link href="/student/courses">View All Results</Link>
                             </Button>
                         </CardFooter>
                     </Card>
