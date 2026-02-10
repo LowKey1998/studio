@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -176,7 +175,7 @@ export default function AttendanceDashboardPage() {
                 studentName: allUsers[uid].name,
                 records: records.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             };
-        }).sort((a,b) => a.studentName.localeCompare(b.studentName));
+        }).sort((a,b) => a.studentName.localeCompare(b.name));
         
         setDetailedStudentData(studentData);
         setIsDetailOpen(true);
