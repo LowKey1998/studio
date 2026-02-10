@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -99,7 +100,7 @@ export default function AttendanceDashboardPage() {
                 for (const userId in registrations) {
                     for (const semester in registrations[userId]) {
                         if (registrations[userId][semester].status === 'Completed' || registrations[userId][semester].status === 'Pending Payment') {
-                            registrations[userId][semester].courses.forEach((cid: string) => studentRates[userId]?.courses.add(cid));
+                            registrations[userId][semester].courses?.forEach((cid: string) => studentRates[userId]?.courses.add(cid));
                         }
                     }
                 }
@@ -156,7 +157,7 @@ export default function AttendanceDashboardPage() {
         const enrolledUids: string[] = [];
         for (const userId in allRegs) {
             for (const sem in allRegs[userId]) {
-                if (allRegs[userId][sem].courses.includes(course.courseId) && (allRegs[userId][sem].status === 'Completed' || allRegs[userId][sem].status === 'Pending Payment')) {
+                if (allRegs[userId][sem].courses?.includes(course.courseId) && (allRegs[userId][sem].status === 'Completed' || allRegs[userId][sem].status === 'Pending Payment')) {
                     enrolledUids.push(userId);
                     break;
                 }
@@ -175,7 +176,7 @@ export default function AttendanceDashboardPage() {
                 studentName: allUsers[uid].name,
                 records: records.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             };
-        }).sort((a,b) => a.studentName.localeCompare(b.name));
+        }).sort((a,b) => a.studentName.localeCompare(b.studentName));
         
         setDetailedStudentData(studentData);
         setIsDetailOpen(true);
@@ -183,9 +184,9 @@ export default function AttendanceDashboardPage() {
 
     return (
         <div className="space-y-6">
-             <Card>
+             <Card className="shadow-lg border-0">
                 <CardHeader>
-                    <CardTitle>Attendance Monitoring</CardTitle>
+                    <CardTitle className="font-headline text-2xl">Attendance Monitoring</CardTitle>
                     <CardDescription>View overall attendance rates and identify students at risk due to poor attendance.</CardDescription>
                 </CardHeader>
             </Card>

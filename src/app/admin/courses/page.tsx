@@ -34,7 +34,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -47,10 +47,11 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ref, set, push, get, child, serverTimestamp, update, remove } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 
 type Lecturer = {
     uid: string;
@@ -152,7 +153,7 @@ export default function CoursesPage() {
                 const usersData = usersSnap.val();
                 Object.keys(usersData).forEach(uid => {
                     const user = usersData[uid];
-                    if (user.role === 'Staff' && user.subRoles?.includes('Lecturer')) {
+                    if (user.role === 'Staff' && (user.subRoles?.includes('Lecturer') || user.subRoles?.includes('staff-lecturer'))) {
                         lecturersList.push({ uid, name: user.name });
                     }
                 });
@@ -179,13 +180,18 @@ export default function CoursesPage() {
                     for (const semesterId in regs[userId]) {
                         const registration = regs[userId][semesterId];
                         if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
-                            registration.courses.forEach((courseId: string) => {
+                            registration.courses?.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
                                     courseEnrollments[courseId] = [];
                                 }
                                 const studentData = userMap.get(userId);
                                 if (studentData) {
-                                     courseEnrollments[courseId].push({ uid: userId, name: studentData.name, id: studentData.id, semesterName: registration.semesterName });
+                                     courseEnrollments[courseId].push({ 
+                                         uid: userId, 
+                                         name: studentData.name, 
+                                         id: studentData.id, 
+                                         semesterName: registration.semesterName || 'Unknown' 
+                                     });
                                 }
                             });
                         }
@@ -277,13 +283,11 @@ export default function CoursesPage() {
             const updates: Record<string, any> = {};
 
             if (editingCourse) {
-                // Update existing course
                 updates[`/courses/${editingCourse.id}`] = {
                     ...editingCourse,
                     ...courseData
                 };
             } else {
-                // Add new course
                 const newCourseRef = push(ref(db, 'courses'));
                 courseId = newCourseRef.key!;
                 updates[`/courses/${courseId}`] = courseData;
@@ -305,7 +309,7 @@ export default function CoursesPage() {
                 if (isSelected && !isCurrentlyLinked) {
                     updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = true;
                 } else if (!isSelected && isCurrentlyLinked) {
-                    updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = null; // Deletes the key
+                    updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = null;
                 }
             });
             
@@ -343,13 +347,13 @@ export default function CoursesPage() {
 
             toast({
                 variant: 'success',
-                title: `Course ${status === 'archived' ? 'Deleted' : 'Restored'}`,
-                description: `The course has been successfully moved to ${status === 'archived' ? 'the trash' : 'active courses'}.`,
+                title: `Course ${status === 'archived' ? 'Archived' : 'Restored'}`,
+                description: `The course has been successfully moved to ${status === 'archived' ? 'archives' : 'active courses'}.`,
             });
         } catch (error: any) {
              toast({
                 variant: 'destructive',
-                title: `Failed to ${status === 'archived' ? 'delete' : 'restore'} course`,
+                title: `Failed to ${status === 'archived' ? 'archive' : 'restore'} course`,
                 description: error.message || 'An unexpected error occurred.',
             });
         }
@@ -361,7 +365,7 @@ export default function CoursesPage() {
             toast({
                 variant: 'destructive',
                 title: 'Reason Required',
-                description: 'Please provide a reason for deleting the course.',
+                description: 'Please provide a reason for archiving the course.',
             });
             return;
         }
@@ -408,52 +412,54 @@ export default function CoursesPage() {
     }, [courses, activeTab, searchTerm, yearFilter]);
 
     return (
-        <Card className="shadow-lg">
+        <Card className="shadow-lg border-0">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <CardTitle className="font-headline text-2xl">Course Management</CardTitle>
-                    <CardDescription>Create new courses and assign them to lecturers and programmes.</CardDescription>
+                    <CardTitle className="font-headline text-2xl">Academic Course Management</CardTitle>
+                    <CardDescription>Configure course details, credits, and programme assignments.</CardDescription>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
                     <DialogTrigger asChild>
                         <Button>
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            Add Course
+                            Add New Course
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-lg">
+                    <DialogContent className="sm:max-w-2xl">
                         <form onSubmit={handleFormSubmit}>
                             <DialogHeader>
-                                <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Add New Course'}</DialogTitle>
+                                <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
                                 <DialogDescription>
-                                    Define the course details and assign a lecturer and programmes.
+                                    Define academic parameters and assign a primary lecturer.
                                 </DialogDescription>
                             </DialogHeader>
-                            <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-4 pr-4">
-                                <div className="space-y-1">
-                                    <Label htmlFor="courseName">Name</Label>
-                                    <Input id="courseName" placeholder="e.g., Intro to AI" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
+                            <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="courseName">Course Name</Label>
+                                        <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="courseCode">Course Code</Label>
+                                        <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
+                                    </div>
                                 </div>
-                                 <div className="space-y-1">
-                                    <Label htmlFor="courseCode">Code</Label>
-                                    <Input id="courseCode" placeholder="e.g., CS-401" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="courseCredits">Credits</Label>
+                                        <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
+                                    </div>
                                     <div className="space-y-1">
                                         <Label htmlFor="courseCost">Cost (ZMW)</Label>
                                         <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseYear">Year</Label>
+                                        <Label htmlFor="courseYear">Academic Year</Label>
                                         <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label htmlFor="courseCredits">Credits (Optional)</Label>
-                                    <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label htmlFor="lecturer">Lecturer</Label>
+                                    <Label htmlFor="lecturer">Primary Lecturer</Label>
                                     <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
                                         <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
                                         <SelectContent>
@@ -464,8 +470,8 @@ export default function CoursesPage() {
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Programmes</Label>
-                                    <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
+                                    <Label>Assign to Programmes</Label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
                                         {programmes.map(prog => (
                                             <div key={prog.id} className="flex items-center gap-2">
                                                 <Checkbox
@@ -473,18 +479,18 @@ export default function CoursesPage() {
                                                     checked={!!selectedProgrammes[prog.id]}
                                                     onCheckedChange={() => handleProgrammeSelection(prog.id)}
                                                 />
-                                                <Label htmlFor={`prog-${prog.id}`} className="font-normal">{prog.name}</Label>
+                                                <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-                            <DialogFooter className="pt-4">
+                            <DialogFooter className="pt-4 border-t">
                                 <DialogClose asChild>
-                                    <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                                    <Button variant="outline" type="button">Cancel</Button>
                                 </DialogClose>
                                 <Button type="submit" disabled={formLoading}>
-                                    {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Add Course'}
+                                    {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -492,25 +498,25 @@ export default function CoursesPage() {
                 </Dialog>
             </CardHeader>
             <CardContent>
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
                     <TabsList>
-                        <TabsTrigger value="active">Active</TabsTrigger>
-                        <TabsTrigger value="archived">Archived</TabsTrigger>
+                        <TabsTrigger value="active">Active Catalog</TabsTrigger>
+                        <TabsTrigger value="archived">Archived / Legacy</TabsTrigger>
                     </TabsList>
                 </Tabs>
-                <div className="flex gap-4 mb-4">
+                <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/10">
                     <div className="relative flex-1">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input 
-                            placeholder="Search by code or name..."
+                            placeholder="Search code or name..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-8"
+                            className="pl-8 bg-background"
                         />
                     </div>
                     <Select value={yearFilter} onValueChange={setYearFilter}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Filter by year" />
+                        <SelectTrigger className="w-full md:w-[180px] bg-background">
+                            <SelectValue placeholder="Year Filter" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Years</SelectItem>
@@ -522,60 +528,60 @@ export default function CoursesPage() {
                     </Select>
                 </div>
                  <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
-                    <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full">
+                    <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
                         {loading ? (
-                            <Skeleton className="h-48 w-full" />
+                            Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>)
                         ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
                            Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', ''))).map(([year, courses]) => (
-                               <AccordionItem value={year} key={year}>
-                                   <AccordionTrigger className="font-bold text-lg">{year} Courses ({courses.length})</AccordionTrigger>
-                                   <AccordionContent>
+                               <AccordionItem value={year} key={year} className="border rounded-lg bg-card overflow-hidden">
+                                   <AccordionTrigger className="font-bold text-lg px-4 hover:no-underline">{year} Courses <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
+                                   <AccordionContent className="px-0">
                                        <Table>
                                            <TableHeader>
-                                                <TableRow>
-                                                   <TableHead>Course Code</TableHead>
-                                                   <TableHead>Course Name</TableHead>
+                                                <TableRow className="bg-muted/30">
+                                                   <TableHead className="pl-4">Code</TableHead>
+                                                   <TableHead>Name</TableHead>
                                                    <TableHead>Lecturer</TableHead>
                                                    <TableHead>Students</TableHead>
-                                                   {activeTab === 'archived' && <TableHead>Reason</TableHead>}
-                                                   <TableHead className="text-right">Actions</TableHead>
+                                                   {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
+                                                   <TableHead className="text-right pr-4">Actions</TableHead>
                                                </TableRow>
                                            </TableHeader>
                                            <TableBody>
                                                {courses.map((course) => (
                                                    <TableRow key={course.id}>
-                                                       <TableCell className="font-medium">{course.code}</TableCell>
-                                                       <TableCell>{course.name}</TableCell>
-                                                       <TableCell>{course.lecturerName}</TableCell>
+                                                       <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
                                                        <TableCell>
-                                                           <Button variant="link" className="p-0 h-auto" onClick={() => handleViewStudents(course.enrolledStudents || [])}>
-                                                               {course.studentCount || 0}
+                                                           <div className="flex flex-col">
+                                                               <span className="font-medium">{course.name}</span>
+                                                               {course.credits && <span className="text-[10px] text-muted-foreground">{course.credits} Credits</span>}
+                                                           </div>
+                                                       </TableCell>
+                                                       <TableCell className="text-sm">{course.lecturerName}</TableCell>
+                                                       <TableCell>
+                                                           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course.enrolledStudents || [])}>
+                                                               <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
                                                            </Button>
                                                        </TableCell>
-                                                       {activeTab === 'archived' && <TableCell>{course.archiveReason || 'N/A'}</TableCell>}
-                                                       <TableCell className="text-right flex justify-end gap-2">
-                                                            {activeTab === 'active' ? (
-                                                                <>
-                                                                <Button variant="outline" size="sm" onClick={() => openEditDialog(course)}>
-                                                                    <Pencil className="mr-2 h-4 w-4" />
-                                                                    Edit
-                                                                </Button>
-                                                                <AlertDialogTrigger asChild>
-                                                                    <Button 
-                                                                        variant="destructive"
-                                                                        size="icon"
-                                                                        onClick={() => setArchivingCourse(course)}
-                                                                    >
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </Button>
-                                                                </AlertDialogTrigger>
-                                                                </>
-                                                            ) : (
-                                                                <Button variant="ghost" size="sm" onClick={() => handleUpdateCourseStatus(course.id, 'active')}>
-                                                                    <Undo2 className="mr-2 h-4 w-4" />
-                                                                    Restore
-                                                                </Button>
-                                                            )}
+                                                       {activeTab === 'archived' && <TableCell className="text-xs italic">{course.archiveReason || 'N/A'}</TableCell>}
+                                                       <TableCell className="text-right pr-4">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    {activeTab === 'active' ? (
+                                                                        <>
+                                                                        <DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit Details</DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleViewStudents(course.enrolledStudents || [])}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
+                                                                        <DropdownMenuSeparator />
+                                                                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}>
+                                                                            <Trash2 className="mr-2 h-4 w-4"/>Archive Course
+                                                                        </DropdownMenuItem>
+                                                                        </>
+                                                                    ) : (
+                                                                        <DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}><Undo2 className="mr-2 h-4 w-4"/>Restore Course</DropdownMenuItem>
+                                                                    )}
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
                                                        </TableCell>
                                                    </TableRow>
                                                ))}
@@ -585,21 +591,24 @@ export default function CoursesPage() {
                                </AccordionItem>
                            ))
                         ) : (
-                            <div className="text-center text-muted-foreground py-10">No {activeTab} courses found matching the current filters.</div>
+                            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                                <BookCopy className="h-12 w-12 opacity-20 mb-4" />
+                                <p>No {activeTab} courses found matching the filters.</p>
+                            </div>
                         )}
                     </Accordion>
 
                      <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogTitle>Archive Course?</AlertDialogTitle>
                             <AlertDialogDescription>
-                                This will move the course to the trash (archived). You can restore it later from the archived tab.
+                                This course will be moved to the legacy tab. Please provide a reason for archiving.
                             </AlertDialogDescription>
                              <div className="space-y-2 pt-2">
-                                <Label htmlFor="archiveReason">Reason for Deletion</Label>
+                                <Label htmlFor="archiveReason">Reason for Archiving</Label>
                                 <Input 
                                     id="archiveReason" 
-                                    placeholder="e.g., Semester Ended, Course Canceled" 
+                                    placeholder="e.g., Curriculum update, End of cycle" 
                                     value={archiveReason}
                                     onChange={(e) => setArchiveReason(e.target.value)}
                                 />
@@ -608,36 +617,37 @@ export default function CoursesPage() {
                         <AlertDialogFooter>
                             <AlertDialogCancel onClick={() => { setArchivingCourse(null); setArchiveReason(''); }}>Cancel</AlertDialogCancel>
                             <AlertDialogAction onClick={handleArchiveSubmit} className="bg-destructive hover:bg-destructive/90">
-                                Yes, delete it
+                                Confirm Archive
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
 
                 <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Enrolled Students</DialogTitle>
+                            <DialogDescription>A list of students currently enrolled or pending payment for this course.</DialogDescription>
                         </DialogHeader>
-                        <div className="max-h-[60vh] overflow-y-auto">
+                        <div className="max-h-[60vh] overflow-y-auto rounded-md border">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Student ID</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Semester</TableHead>
+                                        <TableHead className="pl-4">Student ID</TableHead>
+                                        <TableHead>Full Name</TableHead>
+                                        <TableHead className="pr-4">Active Semester</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {viewingStudents.length > 0 ? viewingStudents.map(s => (
                                         <TableRow key={s.uid}>
-                                            <TableCell>{s.id}</TableCell>
-                                            <TableCell>{s.name}</TableCell>
-                                            <TableCell>{s.semesterName}</TableCell>
+                                            <TableCell className="font-mono text-xs pl-4">{s.id}</TableCell>
+                                            <TableCell className="font-medium text-sm">{s.name}</TableCell>
+                                            <TableCell className="text-xs pr-4">{s.semesterName}</TableCell>
                                         </TableRow>
                                     )) : (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="text-center">No students enrolled.</TableCell>
+                                            <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">No students enrolled.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>

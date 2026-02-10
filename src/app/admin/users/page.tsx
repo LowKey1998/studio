@@ -502,7 +502,7 @@ export default function UserManagementPage() {
 
     return (
         <div className="space-y-6">
-            <Card>
+            <Card className="shadow-lg border-0">
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div><CardTitle className="text-2xl font-headline">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
                     <div className="flex gap-2">
