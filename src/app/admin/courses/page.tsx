@@ -47,7 +47,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, set, push, get, child, serverTimestamp, update, remove } from 'firebase/database';
+import { ref, get, child, serverTimestamp, update, remove, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -73,6 +73,7 @@ type Course = {
     cost: number;
     year: number;
     lecturerId: string;
+    lecturerIds?: string[];
     lecturerName?: string;
     status: 'active' | 'archived';
     archiveReason?: string;
@@ -147,17 +148,18 @@ export default function CoursesPage() {
                 get(ref(db, 'registrations'))
             ]);
             
+            const userMap = new Map<string, any>();
+            if (usersSnap.exists()) {
+                Object.entries(usersSnap.val()).forEach(([uid, userData]) => userMap.set(uid, userData));
+            }
+
             // Fetch Lecturers
             const lecturersList: Lecturer[] = [];
-            if (usersSnap.exists()) {
-                const usersData = usersSnap.val();
-                Object.keys(usersData).forEach(uid => {
-                    const user = usersData[uid];
-                    if (user.role === 'Staff' && (user.subRoles?.includes('Lecturer') || user.subRoles?.includes('staff-lecturer'))) {
-                        lecturersList.push({ uid, name: user.name });
-                    }
-                });
-            }
+            userMap.forEach((user, uid) => {
+                if (user.role === 'Staff' && user.subRoles?.includes('Lecturer')) {
+                    lecturersList.push({ uid, name: user.name });
+                }
+            });
             setLecturers(lecturersList);
             
             // Fetch Programmes
@@ -166,11 +168,6 @@ export default function CoursesPage() {
                 setProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
             } else {
                 setProgrammes([]);
-            }
-
-            const userMap = new Map<string, any>();
-            if (usersSnap.exists()) {
-                Object.entries(usersSnap.val()).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
@@ -202,14 +199,22 @@ export default function CoursesPage() {
 
             if (coursesSnap.exists()) {
                 const coursesData = coursesSnap.val();
-                const coursesList: Course[] = Object.keys(coursesData).map(key => ({
-                    id: key,
-                    ...coursesData[key],
-                    status: coursesData[key].status || 'active',
-                    lecturerName: userMap.get(coursesData[key].lecturerId)?.name || 'N/A',
-                    enrolledStudents: courseEnrollments[key] || [],
-                    studentCount: (courseEnrollments[key] || []).length
-                }));
+                const coursesList: Course[] = Object.keys(coursesData).map(key => {
+                    const c = coursesData[key];
+                    const lecturerNames = (c.lecturerIds || [])
+                        .map((id: string) => userMap.get(id)?.name)
+                        .filter(Boolean)
+                        .join(', ') || userMap.get(c.lecturerId)?.name || 'N/A';
+
+                    return {
+                        id: key,
+                        ...c,
+                        status: c.status || 'active',
+                        lecturerName: lecturerNames,
+                        enrolledStudents: courseEnrollments[key] || [],
+                        studentCount: (courseEnrollments[key] || []).length
+                    };
+                });
                 setCourses(coursesList);
             } else {
                 setCourses([]);
@@ -541,7 +546,7 @@ export default function CoursesPage() {
                                                 <TableRow className="bg-muted/30">
                                                    <TableHead className="pl-4">Code</TableHead>
                                                    <TableHead>Name</TableHead>
-                                                   <TableHead>Lecturer</TableHead>
+                                                   <TableHead>Lecturer(s)</TableHead>
                                                    <TableHead>Students</TableHead>
                                                    {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
                                                    <TableHead className="text-right pr-4">Actions</TableHead>
