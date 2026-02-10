@@ -13,14 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound } from 'lucide-react';
+import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo, update } from 'firebase/database';
-import { app, db, auth } from '@/lib/firebase';
+import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update } from 'firebase/database';
+import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { onAuthStateChanged } from 'firebase/auth';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
@@ -29,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 
 type User = {
@@ -88,7 +88,7 @@ type CoursePath = {
     id: string;
     intakeId: string;
     programmeId: string;
-    semesters: Record<string, { courses: string[] }>; // Key is semesterId
+    semesters: Record<string, { courses: string[] }>;
 };
 
 
@@ -141,6 +141,12 @@ export default function AddStudentPage() {
     const [students, setStudents] = React.useState<User[]>([]);
     const [listSearchTerm, setListSearchTerm] = React.useState('');
     
+    // Credentials Preview State
+    const [isCredentialsOpen, setIsCredentialsOpen] = React.useState(false);
+    const [selectedStudentForCreds, setSelectedStudentForCreds] = React.useState<User | null>(null);
+    const [credSubject, setCredSubject] = React.useState('Your Portal Login Details');
+    const [credBody, setCredBody] = React.useState('');
+
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
@@ -420,6 +426,39 @@ export default function AddStudentPage() {
         });
     }, [students, listSearchTerm]);
 
+    const openCredentialsPreview = (user: User) => {
+        setSelectedStudentForCreds(user);
+        setCredSubject('Your Portal Login Details');
+        setCredBody(`<h2>Login Details Reminder</h2>
+<p>Hello ${user.name},</p>
+<p>Here are your login details for the student portal:</p>
+<ul>
+    <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></li>
+    <li><strong>User ID:</strong> ${user.id}</li>
+</ul>
+<p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+<p>Best regards,<br/>The Administration</p>`);
+        setIsCredentialsOpen(true);
+    };
+
+    const handleSendCredentials = async () => {
+        if (!selectedStudentForCreds || !credBody) return;
+        setLoading(true);
+        try {
+            await sendEmail({
+                to: [selectedStudentForCreds.email],
+                subject: credSubject,
+                body: credBody,
+            });
+            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${selectedStudentForCreds.name}.` });
+            setIsCredentialsOpen(false);
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send Email', description: error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <Card className="max-w-4xl mx-auto border-primary/20 shadow-lg">
@@ -535,7 +574,10 @@ export default function AddStudentPage() {
                                         <div className="text-xs text-muted-foreground">{student.email}</div>
                                     </TableCell>
                                     <TableCell className="text-xs">{student.programmeName}</TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right space-x-2">
+                                        <Button variant="ghost" size="sm" onClick={() => openCredentialsPreview(student)} title="Send Credentials Email">
+                                            <Mail className="h-4 w-4 mr-2" /> Creds
+                                        </Button>
                                         <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)}>
                                             <Pencil className="h-4 w-4 mr-2" /> Edit
                                         </Button>
@@ -551,6 +593,25 @@ export default function AddStudentPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            <Dialog open={isCredentialsOpen} onOpenChange={setIsCredentialsOpen}>
+                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Preview Credentials Email</DialogTitle>
+                        <DialogDescription>Review and edit the welcome message for {selectedStudentForCreds?.name} before sending.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4 space-y-4">
+                        <div className="space-y-1"><Label>Subject</Label><Input value={credSubject} onChange={e => setCredSubject(e.target.value)} /></div>
+                        <div className="space-y-1"><Label>Message Body (HTML)</Label><Textarea value={credBody} onChange={e => setCredBody(e.target.value)} rows={15} className="font-mono text-xs" /></div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCredentialsOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSendCredentials} disabled={loading}>
+                            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send Credentials
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

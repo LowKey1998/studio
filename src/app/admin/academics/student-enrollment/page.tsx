@@ -1,34 +1,26 @@
-
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, ChevronsUpDown, Info, AlertCircle, Users, Copy, PlusCircle, Calendar as CalendarIcon, Clock, MapPin } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, get, update, set, push, onValue } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; };
+type Intake = { id: string; name: string; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; cost: number; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
-type TimetableEntry = { day: string; startTime: string; endTime: string; venue: string; };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -39,6 +31,7 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StudentEnrollmentPage() {
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
@@ -47,6 +40,7 @@ export default function StudentEnrollmentPage() {
     const [timetableData, setTimetableData] = React.useState<Record<string, any>>({});
 
     // Selection state
+    const [selectedIntake, setSelectedIntake] = React.useState('');
     const [selectedSemester, setSelectedSemester] = React.useState('');
     const [selectedCourseId, setSelectedCourseId] = React.useState<string | null>(null);
     const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
@@ -59,7 +53,8 @@ export default function StudentEnrollmentPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [semSnap, coursesSnap, usersSnap, settingsSnap, tSnap] = await Promise.all([
+                const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, tSnap] = await Promise.all([
+                    get(ref(db, 'intakes')),
                     get(ref(db, 'semesters')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'users')),
@@ -67,7 +62,8 @@ export default function StudentEnrollmentPage() {
                     get(ref(db, 'timetables'))
                 ]);
 
-                if (semSnap.exists()) setSemesters(Object.entries(semSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.name.localeCompare(a.name)));
+                if (intakeSnap.exists()) setIntakes(Object.entries(intakeSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.name.localeCompare(a.name)));
+                if (semSnap.exists()) setSemesters(Object.entries(semSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
                 if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
                 if (usersSnap.exists()) {
                     const data = usersSnap.val();
@@ -172,6 +168,7 @@ export default function StudentEnrollmentPage() {
         }
     };
 
+    const filteredSemesters = semesters.filter(s => s.intakeId === selectedIntake).sort((a, b) => a.year - b.year || a.semesterInYear - b.semesterInYear);
     const semesterTimetable = selectedSemester ? timetableData[selectedSemester] || {} : {};
     const availableStudents = allStudents.filter(s => 
         !enrolledStudents.some(e => e.uid === s.uid) &&
@@ -183,19 +180,32 @@ export default function StudentEnrollmentPage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
-                    <CardDescription>Select a semester to view its timetable. Click any class to manage its enrolled students.</CardDescription>
+                    <CardDescription>Select an Intake and Semester to view its timetable. Click any class to manage its enrolled students.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="max-w-md">
-                        <Label className="font-semibold">Select Semester</Label>
-                        <Select value={selectedSemester} onValueChange={(val) => { setSelectedSemester(val); setSelectedCourseId(null); }}>
-                            <SelectTrigger><SelectValue placeholder="Select a semester..." /></SelectTrigger>
-                            <SelectContent>
-                                {semesters.map(s => (
-                                    <SelectItem key={s.id} value={s.id}>{s.name} ({s.status})</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="grid md:grid-cols-2 gap-4 max-w-2xl">
+                        <div className="space-y-1">
+                            <Label className="font-semibold">Select Intake</Label>
+                            <Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setSelectedSemester(''); setSelectedCourseId(null); }}>
+                                <SelectTrigger><SelectValue placeholder="Select an intake..." /></SelectTrigger>
+                                <SelectContent>
+                                    {intakes.map(i => (
+                                        <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="font-semibold">Select Semester</Label>
+                            <Select value={selectedSemester} onValueChange={(val) => { setSelectedSemester(val); setSelectedCourseId(null); }} disabled={!selectedIntake}>
+                                <SelectTrigger><SelectValue placeholder="Select a semester..." /></SelectTrigger>
+                                <SelectContent>
+                                    {filteredSemesters.map(s => (
+                                        <SelectItem key={s.id} value={s.id}>Year {s.year}, Sem {s.semesterInYear} ({s.status})</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
