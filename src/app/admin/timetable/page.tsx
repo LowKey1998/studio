@@ -384,8 +384,8 @@ export default function TimetableManagementPage() {
                                 <TableHeader>
                                     <TableRow className="bg-muted/50 hover:bg-muted/50">
                                         <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
-                                        {teachingTimes.slots.map(slot => (
-                                            <TableHead key={slot.id || `${slot.startTime}-${slot.endTime}`} className="text-center font-bold border-r">
+                                        {teachingTimes.slots.map((slot, index) => (
+                                            <TableHead key={slot.id || index} className="text-center font-bold border-r">
                                                 <div className="flex flex-col items-center">
                                                     <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
                                                 </div>
@@ -397,7 +397,7 @@ export default function TimetableManagementPage() {
                                     {displayDays.map(dayName => (
                                         <TableRow key={dayName}>
                                             <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
-                                            {teachingTimes.slots.map(slot => {
+                                            {teachingTimes.slots.map((slot, sIdx) => {
                                                 const slotStart = timeToMinutes(slot.startTime);
                                                 const slotEnd = timeToMinutes(slot.endTime);
                                                 
@@ -409,7 +409,7 @@ export default function TimetableManagementPage() {
 
                                                 return (
                                                     <TableCell 
-                                                        key={`${dayName}-${slot.id || slot.startTime}`} 
+                                                        key={`${dayName}-${slot.id || sIdx}`} 
                                                         className="p-2 border-r align-top min-h-[100px] cursor-pointer hover:bg-primary/5 transition-colors group relative"
                                                         onClick={() => sessionsInSlot.length === 0 && handleCellClick(dayName, slot)}
                                                     >

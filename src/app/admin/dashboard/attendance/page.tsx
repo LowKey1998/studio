@@ -267,13 +267,13 @@ export default function AttendanceDashboardPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {detailedStudentData.map(student => (
-                                    <TableRow key={student.studentId}>
+                                {detailedStudentData.map((student, sIdx) => (
+                                    <TableRow key={student.studentId || sIdx}>
                                         <TableCell className="font-medium align-top">{student.studentName} ({student.studentId})</TableCell>
                                         <TableCell>
                                             <div className="space-y-1">
-                                            {student.records.map(rec => (
-                                                <div key={rec.date} className="flex justify-between items-center text-xs">
+                                            {student.records.map((rec, rIdx) => (
+                                                <div key={rec.date || rIdx} className="flex justify-between items-center text-xs">
                                                     <span>{format(parseISO(rec.date), 'MMM dd, yyyy')}</span>
                                                     <Badge variant={rec.status === 'Present' || rec.status === 'Excused Absence' ? 'default' : (rec.status === 'Late' ? 'secondary' : 'destructive')}>{rec.status}</Badge>
                                                 </div>

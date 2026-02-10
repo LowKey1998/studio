@@ -22,7 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Mail, Shield, CheckCircle2, Flag } from 'lucide-react';
+import { PlusCircle, MoreVertical, Search, Loader2, UserX, UserCheck, Trash2, Pencil, Mail, Shield, CheckCircle2, Flag, FileUp, Check, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,7 +35,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from '@/components/ui/checkbox';
-import { ref, get, update, onValue, push } from 'firebase/database';
+import { ref, get, update, onValue, push, set } from 'firebase/database';
 import { auth, db } from '@/lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { updateUserStatus } from '@/ai/flows/update-user-status';
@@ -51,6 +51,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
+import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
 
 type UserProfile = {
     uid: string;
@@ -98,6 +100,7 @@ export default function UserManagementPage() {
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
+    const [isBulkCreateOpen, setIsBulkCreateOpen] = React.useState(false);
     const [editingUser, setEditingUser] = React.useState<UserProfile | null>(null);
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -132,6 +135,10 @@ export default function UserManagementPage() {
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your password has been updated by an administrator. Your new credentials are:</p><ul><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Please log in and change your password at your earliest convenience.</p>`);
+
+    // Bulk Create State
+    const [bulkUsersToCreate, setBulkUsersToCreate] = React.useState<any[]>([]);
+    const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
 
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
@@ -362,6 +369,65 @@ export default function UserManagementPage() {
         });
     };
 
+    const handleBulkFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws);
+                setBulkUsersToCreate(data.map((row: any) => ({
+                    id: row.id || row.ID || row.SystemID || `USER-${Date.now().toString().slice(-6)}`,
+                    name: row.name || row.Name || row.FullName || '',
+                    email: row.email || row.Email || '',
+                    role: row.role || row.Role || 'Student',
+                    department: row.department || row.Department || '',
+                    phoneNumber: row.phone || row.Phone || row.phoneNumber || '',
+                    imported: false
+                })).filter(u => u.name && u.email));
+                toast({ title: "File Processed", description: `${data.length} users ready for review.` });
+            } catch (err) {
+                toast({ variant: 'destructive', title: "Processing Error" });
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    const handleConfirmBulkCreate = async () => {
+        setIsProcessingBulk(true);
+        let success = 0;
+        let errors = 0;
+
+        for (const user of bulkUsersToCreate) {
+            if (user.imported) continue;
+            try {
+                const password = Math.random().toString(36).slice(-10);
+                await findOrCreateUser({
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role as any,
+                    password: password,
+                    phoneNumber: user.phoneNumber,
+                    department: user.department
+                });
+                user.imported = true;
+                success++;
+            } catch (e) {
+                errors++;
+            }
+        }
+
+        toast({ title: "Import Task Complete", description: `Successfully created ${success} users. Errors: ${errors}.` });
+        setIsProcessingBulk(false);
+        if (errors === 0) setIsBulkCreateOpen(false);
+    };
+
     const filteredUsers = React.useMemo(() => {
         const queryText = searchQuery.toLowerCase();
         return users.filter(user => {
@@ -380,7 +446,10 @@ export default function UserManagementPage() {
             <Card>
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div><CardTitle className="text-2xl font-headline">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
-                    <Button asChild><Link href="/admin/admissions/add-student"><PlusCircle className="mr-2 h-4 w-4"/>Add Student</Link></Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}><FileUp className="mr-2 h-4 w-4"/>Bulk Create</Button>
+                        <Button asChild><Link href="/admin/admissions/add-student"><PlusCircle className="mr-2 h-4 w-4"/>Add Student</Link></Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -535,6 +604,68 @@ export default function UserManagementPage() {
                         </div>
                     </div>
                     <DialogFooter><Button onClick={handleSetPassword} disabled={loading || newPassword.length < 6}>{loading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Update Password</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isBulkCreateOpen} onOpenChange={setIsBulkCreateOpen}>
+                <DialogContent className="max-w-5xl h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Create Users</DialogTitle>
+                        <DialogDescription>Upload an Excel or CSV file to create multiple user accounts at once.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
+                        <div className="flex flex-col md:flex-row items-center gap-4 p-4 border rounded-lg bg-muted/20">
+                            <div className="flex-1 space-y-1">
+                                <Label>Upload File (.xlsx, .xls, .csv)</Label>
+                                <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFileUpload} />
+                            </div>
+                            <Button variant="outline" onClick={() => {
+                                const ws = XLSX.utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', department: '', phone: '' }]);
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, "Users");
+                                XLSX.writeFile(wb, "bulk_user_template.xlsx");
+                            }}><Download className="mr-2 h-4 w-4"/>Download Template</Button>
+                        </div>
+
+                        {bulkUsersToCreate.length > 0 && (
+                            <ScrollArea className="flex-1 border rounded-md">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/50 sticky top-0 z-10">
+                                            <TableHead>ID</TableHead>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>Email</TableHead>
+                                            <TableHead>Role</TableHead>
+                                            <TableHead>Dept</TableHead>
+                                            <TableHead>Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {bulkUsersToCreate.map((u, i) => (
+                                            <TableRow key={i} className={cn(u.imported && "bg-green-50 opacity-60")}>
+                                                <TableCell className="font-mono text-xs">{u.id}</TableCell>
+                                                <TableCell>{u.name}</TableCell>
+                                                <TableCell>{u.email}</TableCell>
+                                                <TableCell><Badge variant="outline">{u.role}</Badge></TableCell>
+                                                <TableCell>{u.department}</TableCell>
+                                                <TableCell>{u.imported ? <Check className="h-4 w-4 text-green-600"/> : <Clock className="h-4 w-4 text-muted-foreground"/>}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </ScrollArea>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button 
+                            onClick={handleConfirmBulkCreate} 
+                            disabled={isProcessingBulk || bulkUsersToCreate.length === 0 || bulkUsersToCreate.every(u => u.imported)}
+                        >
+                            {isProcessingBulk ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserCheck className="mr-2 h-4 w-4" />}
+                            Create {bulkUsersToCreate.filter(u => !u.imported).length} Users
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
