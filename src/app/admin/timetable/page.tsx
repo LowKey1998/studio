@@ -20,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 type TimeSlot = {
     id: string;
