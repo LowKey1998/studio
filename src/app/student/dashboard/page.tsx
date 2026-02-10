@@ -14,7 +14,7 @@ import {
     PlusCircle
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -23,6 +23,8 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+
+const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type Course = {
     id: string;
@@ -59,8 +61,6 @@ export default function StudentDashboardPage() {
     const [recentGrades, setRecentGrades] = React.useState<any[]>([]);
     const { toast } = useToast();
 
-    const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
     const fetchData = React.useCallback(async () => {
         if (!user) return;
         setLoading(true);
@@ -74,7 +74,8 @@ export default function StudentDashboardPage() {
                 invoicesSnap,
                 transactionsSnap,
                 assessmentsSnap,
-                quizzesSnap
+                quizzesSnap,
+                usersSnap
             ] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
@@ -84,7 +85,8 @@ export default function StudentDashboardPage() {
                 get(ref(db, `invoices/${user.uid}`)),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'assessments')),
-                get(ref(db, 'quizzes'))
+                get(ref(db, 'quizzes')),
+                get(ref(db, 'users'))
             ]);
 
             const allCourses = coursesSnap.val() || {};
@@ -96,6 +98,7 @@ export default function StudentDashboardPage() {
             const allTransactions = Object.values(transactionsSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
             const allAssessments = assessmentsSnap.val() || {};
             const allQuizzes = quizzesSnap.val() || {};
+            const allUsers = usersSnap.val() || {};
 
             const currentCourses: Course[] = [];
             let totalPresent = 0;
@@ -109,11 +112,16 @@ export default function StudentDashboardPage() {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
                         if (c) {
+                            const lecturerNames = (c.lecturerIds || [])
+                                .map((id: string) => allUsers[id]?.name)
+                                .filter(Boolean)
+                                .join(', ') || allUsers[c.lecturerId]?.name || 'N/A';
+
                             currentCourses.push({
                                 id: cid,
                                 name: c.name,
                                 code: c.code,
-                                lecturerNames: 'Assigned Faculty'
+                                lecturerNames
                             });
                         }
                         
@@ -138,7 +146,7 @@ export default function StudentDashboardPage() {
                 totalDue += due;
             });
             const totalPaid = allTransactions.reduce((acc, t: any) => acc + t.amount, 0);
-            setFeeBalance(totalDue - totalPaid);
+            setFeeBalance(Math.max(0, totalDue - totalPaid));
 
             const todayName = daysOfWeek[new Date().getDay()];
             const schedule: TimetableEntry[] = [];
@@ -190,7 +198,7 @@ export default function StudentDashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [user, daysOfWeek]);
+    }, [user]);
 
     React.useEffect(() => {
         if (user) fetchData();
@@ -276,7 +284,7 @@ export default function StudentDashboardPage() {
                 </Card>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 lg:grid-cols-3">
                 <Card className="lg:col-span-2 shadow-lg">
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
