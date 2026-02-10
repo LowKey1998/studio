@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, TrendingDown, ChevronRight } from 'lucide-react';
+import { AlertCircle, TrendingDown, ChevronRight, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, parseISO } from 'date-fns';

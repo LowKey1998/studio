@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -139,7 +138,7 @@ export default function AssessmentSetupPage() {
                     <CardTitle>Continuous Assessment Setup</CardTitle>
                     <CardDescription>Define CA structures and component weights. These templates can then be assigned to courses.</CardDescription>
                 </div>
-                <Button onClick={() => openDialog(null)}><PlusCircle className="mr-2 h-4"/>New Assessment Template</Button>
+                <Button onClick={() => openDialog(null)}><PlusCircle className="mr-2 h-4 w-4"/>New Assessment Template</Button>
             </CardHeader>
             <CardContent>
                  {loading ? <Skeleton className="h-48" /> : templates.length > 0 ? (
@@ -220,7 +219,7 @@ export default function AssessmentSetupPage() {
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSaveTemplate} disabled={saving || totalWeight !== 100}>{saving && <Loader2 className="mr-2"/>}Save Template</Button>
+                    <Button onClick={handleSaveTemplate} disabled={saving || totalWeight !== 100}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Template</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

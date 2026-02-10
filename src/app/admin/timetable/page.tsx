@@ -176,7 +176,6 @@ export default function TimetableManagementPage() {
         setSaving(true);
         try {
             const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
-            // We save manual entries under a "master" semesterId so they appear globally
             const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
             await set(entryRef, { day, startTime, endTime, venue, intakeName });
             toast({ title: "Entry Added" });
@@ -213,17 +212,20 @@ export default function TimetableManagementPage() {
         setDay(selectedDay);
         setStartTime(slot.startTime);
         setEndTime(slot.endTime);
+        if (intakeFilter !== 'all') {
+            setSelectedIntakeId(intakeFilter);
+        }
         setIsAddOpen(true);
     };
 
     const filteredTimetable = React.useMemo(() => {
         return masterTimetable.filter(entry => {
             const roomMatch = roomFilter === 'all' || entry.venue === roomFilter;
-            const intakeMatch = intakeFilter === 'all' || entry.intakeName === intakeFilter;
+            const intakeMatch = intakeFilter === 'all' || entry.intakeName === intakes.find(i => i.id === intakeFilter)?.name;
             const searchMatch = !searchTerm || entry.courseName.toLowerCase().includes(searchTerm.toLowerCase()) || entry.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
             return roomMatch && intakeMatch && searchMatch;
         });
-    }, [masterTimetable, roomFilter, intakeFilter, searchTerm]);
+    }, [masterTimetable, roomFilter, intakeFilter, searchTerm, intakes]);
 
     const searchedCourses = React.useMemo(() => {
         if (!courseSearch) return allCourses;
@@ -356,7 +358,7 @@ export default function TimetableManagementPage() {
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Intakes</SelectItem>
-                                    {intakes.map(i => <SelectItem key={i.id || i.name} value={i.name}>{i.name}</SelectItem>)}
+                                    {intakes.map(i => <SelectItem key={i.id || i.name} value={i.id}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -377,7 +379,7 @@ export default function TimetableManagementPage() {
                                     <TableRow className="bg-muted/50 hover:bg-muted/50">
                                         <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
                                         {teachingTimes.slots.map(slot => (
-                                            <TableHead key={slot.id} className="text-center font-bold border-r">
+                                            <TableHead key={slot.id || `${slot.startTime}-${slot.endTime}`} className="text-center font-bold border-r">
                                                 <div className="flex flex-col items-center">
                                                     <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
                                                 </div>
@@ -401,7 +403,7 @@ export default function TimetableManagementPage() {
 
                                                 return (
                                                     <TableCell 
-                                                        key={`${dayName}-${slot.id}`} 
+                                                        key={`${dayName}-${slot.id || slot.startTime}`} 
                                                         className="p-2 border-r align-top min-h-[100px] cursor-pointer hover:bg-primary/5 transition-colors group relative"
                                                         onClick={() => sessionsInSlot.length === 0 && handleCellClick(dayName, slot)}
                                                     >
