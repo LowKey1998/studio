@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Users, Layers, Layers2, Clock, MapPin } from "lucide-react";
+import { ChevronRight, Info, Users, Layers, Clock, MapPin } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -29,7 +29,7 @@ type CourseInstance = {
 };
 
 type MergedCourse = {
-    key: string; // scheduleKey
+    key: string; 
     courseId: string;
     name: string;
     code: string;
@@ -97,8 +97,8 @@ export default function StaffCoursesPage() {
             // 2. Identify active courses assigned to this lecturer that are on the timetable
             const instances: CourseInstance[] = [];
             for (const semId in allTimetables) {
-                const semInfo = allSemesters[semId];
-                if (!semInfo || semInfo.status === 'Archived') continue;
+                const semInfo = allSemesters[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry', status: 'Active' };
+                if (semInfo.status === 'Archived') continue;
 
                 for (const courseId in allTimetables[semId]) {
                     const courseData = allCoursesData[courseId];
@@ -205,7 +205,7 @@ export default function StaffCoursesPage() {
                     <div>
                         <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
                         <CardDescription>
-                            Showing courses from the active timetable where you are the assigned lecturer.
+                            Courses from the active timetable where you are assigned as a lecturer.
                         </CardDescription>
                     </div>
                     <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
