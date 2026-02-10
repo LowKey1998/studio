@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { db, auth } from "@/lib/firebase";
 import { ref, onValue, get } from 'firebase/database';
-import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2, MoreVertical } from 'lucide-react';
+import { Search, Printer, User, Mail, Phone, Calendar, Send, Loader2, MoreVertical, KeyRound } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -64,11 +64,16 @@ export default function StudentsListPage() {
     
     // Dialog states
     const [selectedStudent, setSelectedStudent] = React.useState<Student | null>(null);
-    const [isDetailOpen, setIsDetailOpen] = React.useState(false);
     const [isMessageOpen, setIsMessageOpen] = React.useState(false);
+    const [isCredentialsOpen, setIsCredentialsOpen] = React.useState(false);
+    
     const [messageSubject, setMessageSubject] = React.useState('');
     const [messageBody, setMessageBody] = React.useState('');
-    const [sendingMessage, setSendingMessage] = React.useState(false);
+    const [sendingAction, setSendingAction] = React.useState(false);
+
+    // Credentials Preview State
+    const [credSubject, setCredSubject] = React.useState('Your Portal Login Details');
+    const [credBody, setCredBody] = React.useState('');
 
     React.useEffect(() => {
         const programmesRef = ref(db, 'programmes');
@@ -156,7 +161,7 @@ export default function StudentsListPage() {
             toast({ variant: 'destructive', title: 'Subject and message are required.'});
             return;
         }
-        setSendingMessage(true);
+        setSendingAction(true);
         try {
             const emailBody = `
                 <p>You have received a message from ${adminProfile.name} (${adminProfile.id}):</p>
@@ -179,36 +184,40 @@ export default function StudentsListPage() {
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to Send', description: error.message });
         } finally {
-            setSendingMessage(false);
+            setSendingAction(false);
         }
     };
     
-    const handleSendCredentials = async (user: Student) => {
-        if (!user) return;
-        setTableLoading(true);
-        try {
-            const body = `
-                <h2>Login Details Reminder</h2>
-                <p>Hello ${user.name},</p>
-                <p>Here are your login details for the student portal:</p>
-                <ul>
-                    <li><strong>Portal Link:</strong> <a href="https://studio--edutrack360-copy.us-central1.hosted.app/">https://studio--edutrack360-copy.us-central1.hosted.app/</a></li>
-                    <li><strong>User ID:</strong> ${user.id}</li>
-                </ul>
-                <p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
-                <p>Best regards,<br/>The Administration</p>
-            `;
+    const openCredentialsPreview = (user: Student) => {
+        setSelectedStudent(user);
+        setCredSubject('Your Portal Login Details');
+        setCredBody(`<h2>Login Details Reminder</h2>
+<p>Hello ${user.name},</p>
+<p>Here are your login details for the student portal:</p>
+<ul>
+    <li><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></li>
+    <li><strong>User ID:</strong> ${user.id}</li>
+</ul>
+<p>If you have forgotten your password, you can use the "Forgot Password" link on the login page to reset it.</p>
+<p>Best regards,<br/>The Administration</p>`);
+        setIsCredentialsOpen(true);
+    };
 
+    const handleSendCredentials = async () => {
+        if (!selectedStudent || !credBody) return;
+        setSendingAction(true);
+        try {
             await sendEmail({
-                to: [user.email],
-                subject: 'Your Portal Login Details',
-                body,
+                to: [selectedStudent.email],
+                subject: credSubject,
+                body: credBody,
             });
-            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${user.name}.` });
+            toast({ title: 'Credentials Sent', description: `An email with login details has been sent to ${selectedStudent.name}.` });
+            setIsCredentialsOpen(false);
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to Send Email', description: error.message });
         } finally {
-            setTableLoading(false);
+            setSendingAction(false);
         }
     };
 
@@ -269,12 +278,12 @@ export default function StudentsListPage() {
                         <TableBody>
                             {loading || tableLoading ? (
                                  Array.from({ length: 10 }).map((_, i) => (
-                                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                    <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
                                 ))
                             ) : filteredStudents.length > 0 ? (
                                 filteredStudents.map(student => (
                                 <TableRow key={student.uid}>
-                                    <TableCell>{student.id}</TableCell>
+                                    <TableCell className="font-mono text-xs">{student.id}</TableCell>
                                     <TableCell className="font-medium">{student.name}</TableCell>
                                     <TableCell>
                                         <div className="text-sm">{student.email}</div>
@@ -296,8 +305,8 @@ export default function StudentsListPage() {
                                                 <DropdownMenuItem onClick={() => { setSelectedStudent(student); setIsMessageOpen(true); }}>
                                                     <Send className="mr-2 h-4 w-4"/>Send Message
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleSendCredentials(student)}>
-                                                    <Mail className="mr-2 h-4 w-4"/>Send Credentials
+                                                <DropdownMenuItem onClick={() => openCredentialsPreview(student)}>
+                                                    <KeyRound className="mr-2 h-4 w-4"/>Send Credentials
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -332,7 +341,26 @@ export default function StudentsListPage() {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setIsMessageOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSendMessage} disabled={sendingMessage}>{sendingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
+                    <Button onClick={handleSendMessage} disabled={sendingAction}>{sendingAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isCredentialsOpen} onOpenChange={setIsCredentialsOpen}>
+            <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                <DialogHeader>
+                    <DialogTitle>Preview Credentials Email</DialogTitle>
+                    <DialogDescription>Review and edit the welcome message for {selectedStudent?.name} before sending.</DialogDescription>
+                </DialogHeader>
+                <div className="flex-1 overflow-auto py-4 space-y-4">
+                    <div className="space-y-1"><Label>Subject</Label><Input value={credSubject} onChange={e => setCredSubject(e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Message Body (HTML)</Label><Textarea value={credBody} onChange={e => setCredBody(e.target.value)} rows={15} className="font-mono text-xs" /></div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCredentialsOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSendCredentials} disabled={sendingAction}>
+                        {sendingAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />} Send Credentials
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, ChevronsUpDown, Info, AlertCircle, Users, Copy, PlusCircle } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, ChevronsUpDown, Info, AlertCircle, Users, Copy, PlusCircle, Calendar as CalendarIcon, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue } from 'firebase/database';
@@ -20,26 +21,36 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; };
 type Course = { id: string; name: string; code: string; cost: number; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
+type TimeSlot = { id: string; startTime: string; endTime: string; };
+type TimetableEntry = { day: string; startTime: string; endTime: string; venue: string; };
+
+const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
 
 export default function StudentEnrollmentPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [courses, setCourses] = React.useState<Course[]>([]);
-    const [programmes, setProgrammes] = React.useState<Record<string, any>>({});
+    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
-    const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
-    
-    // Filter state
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: daysOfWeek, slots: [] });
+    const [timetableData, setTimetableData] = React.useState<Record<string, any>>({});
+
+    // Selection state
     const [selectedSemester, setSelectedSemester] = React.useState('');
-    const [selectedCourse, setSelectedCourse] = React.useState('');
+    const [selectedCourseId, setSelectedCourseId] = React.useState<string | null>(null);
+    const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
-    const [bulkIds, setBulkIds] = React.useState('');
-    const [showAllSemesters, setShowAllSemesters] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -47,26 +58,29 @@ export default function StudentEnrollmentPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [semSnap, coursesSnap, usersSnap, progsSnap] = await Promise.all([
+                const [semSnap, coursesSnap, usersSnap, settingsSnap, tSnap] = await Promise.all([
                     get(ref(db, 'semesters')),
                     get(ref(db, 'courses')),
                     get(ref(db, 'users')),
-                    get(ref(db, 'programmes'))
+                    get(ref(db, 'settings/teachingTimes')),
+                    get(ref(db, 'timetables'))
                 ]);
 
-                if (semSnap.exists()) {
-                    setSemesters(Object.entries(semSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.name.localeCompare(a.name)));
-                }
-                if (coursesSnap.exists()) {
-                    setCourses(Object.entries(coursesSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => a.name.localeCompare(b.name)));
-                }
+                if (semSnap.exists()) setSemesters(Object.entries(semSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.name.localeCompare(a.name)));
+                if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
                 if (usersSnap.exists()) {
                     const data = usersSnap.val();
                     setAllStudents(Object.keys(data).filter(uid => data[uid].role === 'Student').map(uid => ({ uid, ...data[uid] })));
                 }
-                if (progsSnap.exists()) {
-                    setProgrammes(progsSnap.val());
+                if (settingsSnap.exists()) {
+                    const s = settingsSnap.val();
+                    setTeachingTimes({
+                        days: s.days || daysOfWeek,
+                        slots: (s.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                    });
                 }
+                if (tSnap.exists()) setTimetableData(tSnap.val());
+
             } catch (e) {
                 toast({ variant: 'destructive', title: 'Data Loading Error' });
             } finally {
@@ -76,19 +90,15 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [toast]);
 
-    const fetchEnrolledStudents = React.useCallback(async () => {
-        if (!selectedSemester || !selectedCourse) {
-            setEnrolledStudents([]);
-            return;
-        }
-        setLoading(true);
+    const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
+        setActionLoading('fetching');
         try {
             const regsSnap = await get(ref(db, 'registrations'));
             if (regsSnap.exists()) {
                 const regs = regsSnap.val();
                 const uids: string[] = [];
                 for (const userId in regs) {
-                    if (regs[userId][selectedSemester]?.courses?.includes(selectedCourse)) {
+                    if (regs[userId][semesterId]?.courses?.includes(courseId)) {
                         uids.push(userId);
                     }
                 }
@@ -99,85 +109,41 @@ export default function StudentEnrollmentPage() {
         } catch (e) {
             console.error(e);
         } finally {
-            setLoading(false);
+            setActionLoading(null);
         }
-    }, [selectedSemester, selectedCourse, allStudents]);
-
-    React.useEffect(() => {
-        fetchEnrolledCourses();
-    }, [selectedSemester, selectedCourse]);
-
-    // Keep function name consistent with call in useEffect
-    const fetchEnrolledCourses = fetchEnrolledStudents;
-
-    const updateInvoiceForEnrollment = async (uid: string, semesterId: string, updatedCourseIds: string[]) => {
-        const regRef = ref(db, `registrations/${uid}/${semesterId}`);
-        const regSnap = await get(regRef);
-        if (!regSnap.exists()) return;
-
-        const regData = regSnap.val();
-        const invoiceId = regData.invoiceId;
-        if (!invoiceId) return;
-
-        const invoiceRef = ref(db, `invoices/${uid}/${invoiceId}`);
-        const invoiceSnap = await get(invoiceRef);
-        if (!invoiceSnap.exists()) return;
-
-        const student = allStudents.find(s => s.uid === uid);
-        const programme = student?.programmeId ? programmes[student.programmeId] : null;
-        
-        let newTuition = 0;
-        if (programme?.tuitionFee) {
-            newTuition = programme.tuitionFee;
-        } else {
-            newTuition = updatedCourseIds.reduce((sum, cid) => {
-                const course = courses.find(c => c.id === cid);
-                return sum + (course?.cost || 0);
-            }, 0);
-        }
-
-        await update(invoiceRef, {
-            courses: updatedCourseIds,
-            totalTuition: newTuition
-        });
-    };
+    }, [allStudents]);
 
     const handleEnrollStudent = async (uid: string) => {
-        if (!selectedSemester || !selectedCourse) return;
+        if (!selectedSemester || !selectedCourseId) return;
         setActionLoading(uid);
         try {
             const regRef = ref(db, `registrations/${uid}/${selectedSemester}`);
             const regSnap = await get(regRef);
             
             let currentCourses = [];
-            let isNewRegistration = false;
             if (regSnap.exists()) {
                 currentCourses = regSnap.val().courses || [];
-            } else {
-                isNewRegistration = true;
             }
 
-            if (currentCourses.includes(selectedCourse)) {
+            if (currentCourses.includes(selectedCourseId)) {
                 toast({ title: 'Already enrolled' });
                 setActionLoading(null);
                 return;
             }
 
-            const updatedCourses = [...currentCourses, selectedCourse];
+            const updatedCourses = [...currentCourses, selectedCourseId];
             const student = allStudents.find(s => s.uid === uid);
 
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
-                registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString()
+                registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
+                semesterName: semesters.find(s => s.id === selectedSemester)?.name || ''
             });
 
-            // Sync with invoice
-            await updateInvoiceForEnrollment(uid, selectedSemester, updatedCourses);
-
             toast({ title: 'Student Enrolled Successfully' });
-            fetchEnrolledStudents();
+            fetchEnrolledStudents(selectedCourseId, selectedSemester);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Enrollment Failed', description: e.message });
         } finally {
@@ -185,59 +151,18 @@ export default function StudentEnrollmentPage() {
         }
     };
 
-    const handleBulkEnrollByIds = async () => {
-        if (!selectedSemester || !selectedCourse || !bulkIds.trim()) return;
-        setActionLoading('bulk');
-        const ids = bulkIds.split(/[\n,]+/).map(id => id.trim()).filter(Boolean);
-        let success = 0;
-        let fail = 0;
-
-        try {
-            for (const studentId of ids) {
-                const student = allStudents.find(s => s.id === studentId);
-                if (student) {
-                    try {
-                        const regRef = ref(db, `registrations/${student.uid}/${selectedSemester}`);
-                        const regSnap = await get(regRef);
-                        let currentCourses = regSnap.exists() ? regSnap.val().courses || [] : [];
-                        
-                        if (!currentCourses.includes(selectedCourse)) {
-                            const updatedCourses = [...currentCourses, selectedCourse];
-                            await update(regRef, { 
-                                courses: updatedCourses,
-                                programmeId: student.programmeId || '',
-                                status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
-                                registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString()
-                            });
-                            await updateInvoiceForEnrollment(student.uid, selectedSemester, updatedCourses);
-                        }
-                        success++;
-                    } catch (e) { fail++; }
-                } else {
-                    fail++;
-                }
-            }
-            toast({ title: 'Bulk Enrollment Complete', description: `Successfully enrolled ${success} students. Failed: ${fail}.` });
-            setBulkIds('');
-            fetchEnrolledStudents();
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
     const handleRemoveStudent = async (uid: string) => {
-        if (!window.confirm("Remove student from this course?")) return;
+        if (!selectedSemester || !selectedCourseId || !window.confirm("Remove student from this course?")) return;
         setActionLoading(uid);
         try {
             const regRef = ref(db, `registrations/${uid}/${selectedSemester}`);
             const regSnap = await get(regRef);
             if (regSnap.exists()) {
                 const currentCourses = regSnap.val().courses || [];
-                const updatedCourses = currentCourses.filter((id: string) => id !== selectedCourse);
+                const updatedCourses = currentCourses.filter((id: string) => id !== selectedCourseId);
                 await update(regRef, { courses: updatedCourses });
-                await updateInvoiceForEnrollment(uid, selectedSemester, updatedCourses);
                 toast({ title: 'Student Removed' });
-                fetchEnrolledStudents();
+                fetchEnrolledStudents(selectedCourseId, selectedSemester);
             }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Removal Failed' });
@@ -246,151 +171,168 @@ export default function StudentEnrollmentPage() {
         }
     };
 
+    const semesterTimetable = selectedSemester ? timetableData[selectedSemester] || {} : {};
     const availableStudents = allStudents.filter(s => 
         !enrolledStudents.some(e => e.uid === s.uid) &&
         (s.name.toLowerCase().includes(searchStudent.toLowerCase()) || s.id.toLowerCase().includes(searchStudent.toLowerCase()))
     );
-
-    const filteredSemesters = React.useMemo(() => {
-        return showAllSemesters ? semesters : semesters.filter(s => s.status === 'Open');
-    }, [semesters, showAllSemesters]);
 
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
-                    <CardDescription>Manually enroll or remove students from courses.</CardDescription>
+                    <CardDescription>Select a semester to view its timetable. Click any class to manage its enrolled students.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <Label className="font-semibold">Semester</Label>
-                            <div className="flex items-center space-x-2">
-                                <Switch 
-                                    id="show-all-semesters" 
-                                    checked={showAllSemesters} 
-                                    onCheckedChange={setShowAllSemesters} 
-                                />
-                                <Label htmlFor="show-all-semesters" className="text-xs cursor-pointer">Show All Terms</Label>
-                            </div>
-                        </div>
-                        <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-                            <SelectTrigger><SelectValue placeholder={showAllSemesters ? "Select any semester..." : "Select active semester..."} /></SelectTrigger>
+                <CardContent>
+                    <div className="max-w-md">
+                        <Label className="font-semibold">Select Semester</Label>
+                        <Select value={selectedSemester} onValueChange={(val) => { setSelectedSemester(val); setSelectedCourseId(null); }}>
+                            <SelectTrigger><SelectValue placeholder="Select a semester..." /></SelectTrigger>
                             <SelectContent>
-                                {filteredSemesters.length > 0 ? (
-                                    filteredSemesters.map(s => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                            {s.name} {s.status !== 'Open' && `(${s.status})`}
-                                        </SelectItem>
-                                    ))
-                                ) : (
-                                    <SelectItem value="none" disabled>No active semesters. Toggle "Show All" to see more.</SelectItem>
-                                )}
+                                {semesters.map(s => (
+                                    <SelectItem key={s.id} value={s.id}>{s.name} ({s.status})</SelectItem>
+                                ))}
                             </SelectContent>
-                        </Select>
-                        {!showAllSemesters && (
-                            <p className="text-[10px] text-muted-foreground italic">Only semesters currently 'Open' for registration are shown by default.</p>
-                        )}
-                    </div>
-                    <div className="space-y-4">
-                        <Label className="font-semibold">Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse} disabled={!selectedSemester}>
-                            <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
-                            <SelectContent>{courses.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                 </CardContent>
             </Card>
 
-            {selectedSemester && selectedCourse ? (
-                <div className="grid md:grid-cols-3 gap-6">
-                    <Card className="md:col-span-2">
-                        <CardHeader>
-                            <CardTitle>Enrolled Students ({enrolledStudents.length})</CardTitle>
-                        </CardHeader>
-                        <CardContent>
+            {selectedSemester && teachingTimes.slots.length > 0 ? (
+                <Card>
+                    <CardHeader><CardTitle>Visual Enrollment Grid</CardTitle></CardHeader>
+                    <CardContent className="overflow-x-auto">
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
                             <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Student ID</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map((slot) => (
+                                            <TableHead key={slot.id} className="text-center font-bold border-r">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
+                                                </div>
+                                            </TableHead>
+                                        ))}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {enrolledStudents.length > 0 ? enrolledStudents.map(s => (
-                                        <TableRow key={s.uid}>
-                                            <TableCell>{s.id}</TableCell>
-                                            <TableCell>{s.name}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => handleRemoveStudent(s.uid)} disabled={actionLoading === s.uid}>
-                                                    {actionLoading === s.uid ? <Loader2 className="animate-spin h-4 w-4"/> : <Trash2 className="h-4 w-4 text-destructive"/>}
-                                                </Button>
-                                            </TableCell>
+                                    {teachingTimes.days.map(dayName => (
+                                        <TableRow key={dayName}>
+                                            <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
+                                            {teachingTimes.slots.map((slot) => {
+                                                const slotStart = timeToMinutes(slot.startTime);
+                                                const slotEnd = timeToMinutes(slot.endTime);
+                                                
+                                                const sessionsInSlot: any[] = [];
+                                                Object.entries(semesterTimetable).forEach(([courseId, entries]: [string, any]) => {
+                                                    Object.values(entries).forEach((entry: any) => {
+                                                        if (entry.day === dayName && timeToMinutes(entry.startTime) >= slotStart && timeToMinutes(entry.startTime) < slotEnd) {
+                                                            sessionsInSlot.push({ courseId, ...entry });
+                                                        }
+                                                    });
+                                                });
+
+                                                return (
+                                                    <TableCell key={`${dayName}-${slot.id}`} className="p-2 border-r align-top min-h-[100px]">
+                                                        <div className="space-y-2">
+                                                            {sessionsInSlot.map((entry, eIdx) => {
+                                                                const course = allCourses[entry.courseId];
+                                                                if(!course) return null;
+                                                                return (
+                                                                    <div 
+                                                                        key={eIdx} 
+                                                                        className={cn(
+                                                                            "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
+                                                                            selectedCourseId === entry.courseId && "ring-2 ring-primary border-transparent shadow-md scale-[1.02]"
+                                                                        )}
+                                                                        onClick={() => {
+                                                                            setSelectedCourseId(entry.courseId);
+                                                                            fetchEnrolledStudents(entry.courseId, selectedSemester);
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{course.code}: {course.name}</p>
+                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                                                                                <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </TableCell>
+                                                );
+                                            })}
                                         </TableRow>
-                                    )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No students enrolled yet.</TableCell></TableRow>}
+                                    ))}
                                 </TableBody>
                             </Table>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Enroll Students</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <Tabs defaultValue="list">
-                                <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="list">From List</TabsTrigger>
-                                    <TabsTrigger value="bulk">Bulk by ID</TabsTrigger>
-                                </TabsList>
-                                <TabsContent value="list" className="space-y-4 pt-4">
-                                    <div className="relative">
-                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input placeholder="Search students..." className="pl-8" value={searchStudent} onChange={e => setSearchStudent(e.target.value)} />
-                                    </div>
-                                    <ScrollArea className="h-80 border rounded-md p-2">
-                                        {availableStudents.map(s => (
-                                            <div key={s.uid} className="flex items-center justify-between p-2 hover:bg-muted rounded-md transition-colors">
-                                                <div className="text-sm">
-                                                    <p className="font-medium">{s.name}</p>
-                                                    <p className="text-xs text-muted-foreground">{s.id}</p>
-                                                </div>
-                                                <Button size="icon" variant="ghost" onClick={() => handleEnrollStudent(s.uid)} disabled={actionLoading === s.uid}>
-                                                    {actionLoading === s.uid ? <Loader2 className="animate-spin h-4 w-4"/> : <PlusCircle className="h-4 w-4 text-primary"/>}
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </ScrollArea>
-                                </TabsContent>
-                                <TabsContent value="bulk" className="space-y-4 pt-4">
-                                    <Label>Paste Student IDs</Label>
-                                    <div className="space-y-2">
-                                        <Textarea 
-                                            placeholder="STU-001&#10;STU-002&#10;STU-003" 
-                                            rows={8} 
-                                            value={bulkIds}
-                                            onChange={e => setBulkIds(e.target.value)}
-                                        />
-                                        <p className="text-xs text-muted-foreground">One ID per line or separated by commas.</p>
-                                    </div>
-                                    <Button className="w-full mt-2" onClick={handleBulkEnrollByIds} disabled={actionLoading === 'bulk'}>
-                                        {actionLoading === 'bulk' ? <Loader2 className="mr-2 animate-spin h-4 w-4"/> : <UserPlus className="mr-2 h-4 w-4"/>}
-                                        Enroll All
-                                    </Button>
-                                </TabsContent>
-                            </Tabs>
-                        </CardContent>
-                    </Card>
-                </div>
-            ) : (
-                <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Selection Required</AlertTitle>
-                    <AlertDescription>Please select both a semester and a course to manage enrollment.</AlertDescription>
-                </Alert>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : selectedSemester && (
+                <Alert><Info className="h-4 w-4"/><AlertTitle>Setup Required</AlertTitle><AlertDescription>Please define Teaching Times and generate a Timetable for this semester first.</AlertDescription></Alert>
             )}
+
+            <Dialog open={!!selectedCourseId} onOpenChange={(open) => !open && setSelectedCourseId(null)}>
+                <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Enrollment: {selectedCourseId && allCourses[selectedCourseId]?.name}</DialogTitle>
+                        <DialogDescription>Add or remove students for this specific class session.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
+                        <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">
+                            <h3 className="font-bold flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary"/> Available Students</h3>
+                            <div className="relative">
+                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input placeholder="Search students..." className="pl-8 bg-background" value={searchStudent} onChange={e => setSearchStudent(e.target.value)} />
+                            </div>
+                            <ScrollArea className="flex-1">
+                                <div className="space-y-2 pr-4">
+                                    {availableStudents.map(s => (
+                                        <div key={s.uid} className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted transition-colors">
+                                            <div className="text-sm">
+                                                <p className="font-bold">{s.name}</p>
+                                                <p className="text-xs text-muted-foreground">{s.id}</p>
+                                            </div>
+                                            <Button size="sm" variant="outline" onClick={() => handleEnrollStudent(s.uid)} disabled={!!actionLoading}>
+                                                {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </div>
+
+                        <div className="flex flex-col gap-4 border rounded-lg p-4">
+                            <h3 className="font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary"/> Enrolled Students ({enrolledStudents.length})</h3>
+                            <ScrollArea className="flex-1">
+                                <div className="space-y-2 pr-4">
+                                    {enrolledStudents.map(s => (
+                                        <div key={s.uid} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted transition-colors">
+                                            <div className="text-sm">
+                                                <p className="font-bold">{s.name}</p>
+                                                <p className="text-xs text-muted-foreground">{s.id}</p>
+                                            </div>
+                                            <Button size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleRemoveStudent(s.uid)} disabled={!!actionLoading}>
+                                                {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {enrolledStudents.length === 0 && (
+                                        <div className="text-center py-12 text-muted-foreground">No students enrolled yet.</div>
+                                    )}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Done</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

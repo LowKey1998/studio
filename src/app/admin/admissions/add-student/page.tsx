@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Search, Pencil, Save, X } from 'lucide-react';
+import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, serverTimestamp, query, orderByChild, equalTo, update } from 'firebase/database';
 import { app, db, auth } from '@/lib/firebase';
@@ -261,6 +261,17 @@ export default function AddStudentPage() {
         setLoading(true);
 
         try {
+            const isIdTaken = async (id: string) => {
+                const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
+                const snapshot = await get(userQuery);
+                if (!snapshot.exists()) return false;
+                if (editingUid) {
+                    const foundUid = Object.keys(snapshot.val())[0];
+                    return foundUid !== editingUid;
+                }
+                return true;
+            };
+
             const userDataPayload: any = {
                 name, email, phoneNumber, status: 'active',
                 programmeId: programme, year: Number(selectedYear), semesterId: selectedSemester, intakeId: selectedIntake,
@@ -272,6 +283,16 @@ export default function AddStudentPage() {
             if(isTransfer && Object.keys(exemptedCourses).length > 0) userDataPayload.exemptedCourses = exemptedCourses;
 
             if (editingUid) {
+                if (isManualId) {
+                    const newId = manualId.trim();
+                    if (await isIdTaken(newId)) {
+                        toast({ variant: 'destructive', title: 'ID already taken by another user' });
+                        setLoading(false);
+                        return;
+                    }
+                    userDataPayload.id = newId;
+                }
+
                 await updateUserAccount({
                     uid: editingUid,
                     name,
@@ -289,12 +310,6 @@ export default function AddStudentPage() {
                 const tempAuth = getAuth(tempApp);
 
                 let newId = '';
-                const isIdTaken = async (id: string) => {
-                    const userQuery = query(ref(db, 'users'), orderByChild('id'), equalTo(id));
-                    const snapshot = await get(userQuery);
-                    return snapshot.exists();
-                };
-
                 if (isManualId) {
                     newId = manualId.trim();
                     if (await isIdTaken(newId)) {
@@ -372,7 +387,11 @@ export default function AddStudentPage() {
         setMedicalHistory(student.medicalHistory || '');
         setIsTransfer(!!student.exemptedCourses);
         setExemptedCourses(student.exemptedCourses || {});
-        setIsManualId(false);
+        
+        // Setup manual ID for editing
+        setManualId(student.id);
+        setIsManualId(true);
+
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -421,16 +440,15 @@ export default function AddStudentPage() {
                                 <AccordionTrigger className="text-lg font-semibold">Basic Information</AccordionTrigger>
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {!editingUid && (
-                                            <div className="space-y-2">
-                                                <Label>User ID</Label>
-                                                <div className="flex items-center space-x-2">
-                                                    <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
-                                                    <Label htmlFor="manual-id-switch">{isManualId ? 'Manual ID' : 'Auto-generate ID'}</Label>
-                                                </div>
-                                                {isManualId && <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value)} />}
+                                        <div className="space-y-2">
+                                            <Label className="flex items-center gap-2"><KeyRound className="h-4 w-4"/> User ID (System ID)</Label>
+                                            <div className="flex items-center space-x-2">
+                                                <Switch id="manual-id-switch" checked={isManualId} onCheckedChange={setIsManualId} />
+                                                <Label htmlFor="manual-id-switch">{isManualId ? 'Manual Edit' : 'Auto-generate'}</Label>
                                             </div>
-                                        )}
+                                            {isManualId && <Input placeholder="Enter custom User ID" value={manualId} onChange={(e) => setManualId(e.target.value.toUpperCase())} />}
+                                            {!isManualId && <div className="text-xs text-muted-foreground p-2 bg-muted rounded italic">ID will be generated automatically upon creation.</div>}
+                                        </div>
                                         <div className="space-y-1"><Label>Full Name</Label><Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} disabled={loading}/></div>
                                         <div className="space-y-1"><Label>Email</Label><Input type="email" placeholder="john.doe@example.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading}/></div>
                                         <div className="space-y-1"><Label>Phone Number</Label><Input type="tel" placeholder="+260 977 123456" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} disabled={loading}/></div>
@@ -465,7 +483,7 @@ export default function AddStudentPage() {
                                         <div className="space-y-2 rounded-md border p-3"><Label>Parent/Guardian</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} /><Input placeholder="Contact Number" value={guardianContact} onChange={e => setGuardianContact(e.target.value)} /></div></div>
                                         <div className="space-y-2 rounded-md border p-3"><Label>Emergency Contact</Label><div className="space-y-2 pt-1"><Input placeholder="Full Name" value={emergencyName} onChange={e => setEmergencyName(e.target.value)} /><Input placeholder="Relationship" value={emergencyRelationship} onChange={e => setEmergencyRelationship(e.target.value)} /><Input placeholder="Contact Number" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)} /></div></div>
                                     </div>
-                                    <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousSchool} onChange={e => setPreviousSchool(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
+                                    <div className="space-y-2 rounded-md border p-3"><Label>Education Background</Label><div className="space-y-2 pt-1"><Input placeholder="Previous School" value={previousEmployer} onChange={e => setPreviousEmployer(e.target.value)} /><Textarea placeholder="Qualifications / Certificates" value={qualifications} onChange={e => setQualifications(e.target.value)} /></div></div>
                                     <div className="space-y-2 rounded-md border p-3"><Label>Medical History & Special Needs</Label><Textarea placeholder="e.g., Allergies, disabilities, etc." value={medicalHistory} onChange={e => setMedicalHistory(e.target.value)} /></div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -507,7 +525,7 @@ export default function AddStudentPage() {
                         <TableBody>
                             {tableLoading ? (
                                 Array.from({ length: 5 }).map((_, i) => (
-                                    <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                                    <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
                                 ))
                             ) : filteredStudents.length > 0 ? (
                                 filteredStudents.map(student => (
