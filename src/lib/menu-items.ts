@@ -369,7 +369,7 @@ export const studentMenuItems = [
         items: [
             { href: '/student/innovation/idea-board', label: 'Idea Board', icon: Newspaper },
             { href: '/student/innovation/my-projects', label: 'My Projects', icon: Briefcase },
-            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration Portal', icon: Users },
+            { href: '/admin/innovation/collaboration-portal', label: 'Collaboration / Team Building Portal', icon: Users },
         ]
     },
     {

@@ -26,6 +26,12 @@ import {
     AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
@@ -567,7 +573,7 @@ export default function StudentEnrollmentPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Dynamic Placeholders</AlertTitle>
                             <AlertDescription>
-                                <p className="text-xs">Use the following tags to insert student/class details: <code className="bg-background px-1">[Name]</code>, <code className="bg-background px-1">[UserID]</code>, <code className="bg-background px-1">[CourseName]</code>, <code className="bg-background px-1">[CourseCode]</code>, <code className="bg-background px-1">[Semester]</code>, <code className="bg-background px-1">[Day]</code>, <code className="bg-background px-1">[Time]</code>.</p>
+                                <p className="text-xs">Use the following tags to insert student/class details: <code className="bg-background px-1 rounded">[Name]</code>, <code className="bg-background px-1 rounded">[UserID]</code>, <code className="bg-background px-1 rounded">[CourseName]</code>, <code className="bg-background px-1 rounded">[CourseCode]</code>, <code className="bg-background px-1 rounded">[Semester]</code>, <code className="bg-background px-1 rounded">[Day]</code>, <code className="bg-background px-1 rounded">[Time]</code>.</p>
                             </AlertDescription>
                         </Alert>
                     </div>
