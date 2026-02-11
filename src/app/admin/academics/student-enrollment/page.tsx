@@ -2,10 +2,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, ChevronsUpDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, get, update } from 'firebase/database';
+import { ref, get, update, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +23,20 @@ type Course = { id: string; name: string; code: string; cost: number; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
 
+type TimetableEntry = {
+    id: string;
+    semesterId: string;
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    semesterName: string;
+    intakeName: string;
+    day: string;
+    startTime: string;
+    endTime: string;
+    venue: string;
+};
+
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const timeToMinutes = (time: string) => {
@@ -36,9 +50,9 @@ export default function StudentEnrollmentPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: daysOfWeek, slots: [] });
-    const [timetableData, setTimetableData] = React.useState<Record<string, any>>({});
+    const [loading, setLoading] = React.useState(true);
 
     // Selection state
     const [selectedIntake, setSelectedIntake] = React.useState('');
@@ -49,43 +63,78 @@ export default function StudentEnrollmentPage() {
 
     const { toast } = useToast();
 
-    React.useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, tSnap] = await Promise.all([
-                    get(ref(db, 'intakes')),
-                    get(ref(db, 'semesters')),
-                    get(ref(db, 'courses')),
-                    get(ref(db, 'users')),
-                    get(ref(db, 'settings/teachingTimes')),
-                    get(ref(db, 'timetables'))
-                ]);
+    const fetchData = React.useCallback(async () => {
+        setLoading(true);
+        try {
+            const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, timetablesSnap] = await Promise.all([
+                get(ref(db, 'intakes')),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'users')),
+                get(ref(db, 'settings/teachingTimes')),
+                get(ref(db, 'timetables'))
+            ]);
 
-                if (intakeSnap.exists()) setIntakes(Object.entries(intakeSnap.val()).map(([id, data]) => ({ id, ...(data as any) })).sort((a,b) => b.name.localeCompare(a.name)));
-                if (semSnap.exists()) setSemesters(Object.entries(semSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
-                if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
-                if (usersSnap.exists()) {
-                    const data = usersSnap.val();
-                    setAllStudents(Object.keys(data).filter(uid => data[uid].role === 'Student').map(uid => ({ uid, ...data[uid] })));
+            const iData = intakeSnap.val() || {};
+            const sData = semSnap.val() || {};
+            const cData = coursesSnap.val() || {};
+            const uData = usersSnap.val() || {};
+            const tData = timetablesSnap.val() || {};
+            const settingsData = settingsSnap.val() || {};
+
+            setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name)));
+            setSemesters(Object.entries(sData).map(([id, data]: [string, any]) => ({ id, ...data })));
+            setAllCourses(cData);
+            
+            const studentsList: Student[] = [];
+            for (const uid in uData) {
+                if (uData[uid].role === 'Student') {
+                    studentsList.push({ uid, ...uData[uid] });
                 }
-                if (settingsSnap.exists()) {
-                    const s = settingsSnap.val();
-                    setTeachingTimes({
-                        days: s.days || daysOfWeek,
-                        slots: (s.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+            }
+            setAllStudents(studentsList);
+
+            setTeachingTimes({
+                days: settingsData.days || daysOfWeek,
+                slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+            });
+
+            const entries: TimetableEntry[] = [];
+            for (const semId in tData) {
+                const semInfo = sData[semId] || { name: 'Manual Entry' };
+                const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
+
+                for (const cId in tData[semId]) {
+                    const courseInfo = cData[cId];
+                    if (!courseInfo) continue;
+
+                    Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                        entries.push({
+                            id: entryId,
+                            semesterId: semId,
+                            courseId: cId,
+                            courseCode: courseInfo.code,
+                            courseName: courseInfo.name,
+                            semesterName: semInfo.name,
+                            intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
+                            ...entry
+                        });
                     });
                 }
-                if (tSnap.exists()) setTimetableData(tSnap.val());
-
-            } catch (e) {
-                toast({ variant: 'destructive', title: 'Data Loading Error' });
-            } finally {
-                setLoading(false);
             }
-        };
-        fetchData();
+            setMasterTimetable(entries);
+
+        } catch (e) {
+            console.error(e);
+            toast({ variant: 'destructive', title: 'Data Loading Error' });
+        } finally {
+            setLoading(false);
+        }
     }, [toast]);
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
         setActionLoading('fetching');
@@ -172,38 +221,28 @@ export default function StudentEnrollmentPage() {
         }
     };
 
-    const intakeSemesterIds = React.useMemo(() => {
-        return semesters.filter(s => s.intakeId === selectedIntake).map(s => s.id);
-    }, [semesters, selectedIntake]);
-
-    const aggregatedTimetable = React.useMemo(() => {
-        if (!selectedIntake) return {};
-        const result: Record<string, any> = {};
-        intakeSemesterIds.forEach(semId => {
-            const semData = timetableData[semId];
-            if (semData) {
-                Object.entries(semData).forEach(([courseId, entries]) => {
-                    if (!result[courseId]) result[courseId] = {};
-                    Object.entries(entries as object).forEach(([entryId, entryData]) => {
-                        result[courseId][`${semId}-${entryId}`] = { ...entryData, semesterId: semId };
-                    });
-                });
-            }
-        });
-        return result;
-    }, [intakeSemesterIds, timetableData, selectedIntake]);
+    const intakeName = intakes.find(i => i.id === selectedIntake)?.name;
+    const filteredTimetable = React.useMemo(() => {
+        if (!selectedIntake) return [];
+        return masterTimetable.filter(entry => entry.intakeName === intakeName);
+    }, [masterTimetable, selectedIntake, intakeName]);
 
     const availableStudents = allStudents.filter(s => 
         !enrolledStudents.some(e => e.uid === s.uid) &&
         (s.name.toLowerCase().includes(searchStudent.toLowerCase()) || s.id.toLowerCase().includes(searchStudent.toLowerCase()))
     );
 
+    if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
+
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    const hasSlots = teachingTimes.slots.length > 0;
+
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
-                    <CardDescription>Select an Intake to view all scheduled classes for that group. Click any class to manage its enrolled students.</CardDescription>
+                    <CardDescription>Select an Intake to view its schedule grid. Click any class to manage its enrolled students.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid md:grid-cols-2 gap-4 max-w-2xl">
@@ -222,17 +261,27 @@ export default function StudentEnrollmentPage() {
                 </CardContent>
             </Card>
 
-            {selectedIntake && teachingTimes.slots.length > 0 ? (
+            {selectedIntake && !hasSlots && (
+                <Alert variant="secondary">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Matrix View Unavailable</AlertTitle>
+                    <AlertDescription>
+                        Please define standard time slots in "Teaching Times Setup" under Academics to enable the grid view.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {selectedIntake && hasSlots && (
                 <Card>
-                    <CardHeader><CardTitle>Intake Schedule Grid</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>{intakeName} Master Schedule Grid</CardTitle></CardHeader>
                     <CardContent className="overflow-x-auto">
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
                                         <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
-                                        {teachingTimes.slots.map((slot) => (
-                                            <TableHead key={slot.id} className="text-center font-bold border-r">
+                                        {teachingTimes.slots.map((slot, index) => (
+                                            <TableHead key={slot.id || index} className="text-center font-bold border-r">
                                                 <div className="flex flex-col items-center">
                                                     <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
                                                 </div>
@@ -241,50 +290,43 @@ export default function StudentEnrollmentPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {teachingTimes.days.map(dayName => (
+                                    {displayDays.map(dayName => (
                                         <TableRow key={dayName}>
                                             <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
-                                            {teachingTimes.slots.map((slot) => {
+                                            {teachingTimes.slots.map((slot, sIdx) => {
                                                 const slotStart = timeToMinutes(slot.startTime);
                                                 const slotEnd = timeToMinutes(slot.endTime);
                                                 
-                                                const sessionsInSlot: any[] = [];
-                                                Object.entries(aggregatedTimetable).forEach(([courseId, entries]: [string, any]) => {
-                                                    Object.values(entries).forEach((entry: any) => {
-                                                        if (entry.day === dayName && timeToMinutes(entry.startTime) >= slotStart && timeToMinutes(entry.startTime) < slotEnd) {
-                                                            sessionsInSlot.push({ courseId, ...entry });
-                                                        }
-                                                    });
-                                                });
+                                                const sessionsInSlot = filteredTimetable.filter(e => 
+                                                    e.day === dayName && 
+                                                    timeToMinutes(e.startTime) >= slotStart && 
+                                                    timeToMinutes(e.startTime) < slotEnd
+                                                );
 
                                                 return (
-                                                    <TableCell key={`${dayName}-${slot.id}`} className="p-2 border-r align-top min-h-[100px]">
+                                                    <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
                                                         <div className="space-y-2">
-                                                            {sessionsInSlot.map((entry, eIdx) => {
-                                                                const course = allCourses[entry.courseId];
-                                                                if(!course) return null;
-                                                                return (
-                                                                    <div 
-                                                                        key={eIdx} 
-                                                                        className={cn(
-                                                                            "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
-                                                                            activeSession?.courseId === entry.courseId && activeSession?.semesterId === entry.semesterId && "ring-2 ring-primary border-transparent shadow-md scale-[1.02]"
-                                                                        )}
-                                                                        onClick={() => {
-                                                                            setActiveSession({ courseId: entry.courseId, semesterId: entry.semesterId });
-                                                                            fetchEnrolledStudents(entry.courseId, entry.semesterId);
-                                                                        }}
-                                                                    >
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{course.code}: {course.name}</p>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                                                                                <MapPin className="h-2.5 w-2.5" /> {entry.venue}
-                                                                            </div>
-                                                                            <Badge variant="secondary" className="text-[8px] h-3 py-0 px-1 w-fit">{semesters.find(s=>s.id === entry.semesterId)?.name.split(' ').slice(-2).join(' ')}</Badge>
+                                                            {sessionsInSlot.map((entry, eIdx) => (
+                                                                <div 
+                                                                    key={eIdx} 
+                                                                    className={cn(
+                                                                        "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
+                                                                        activeSession?.courseId === entry.courseId && activeSession?.semesterId === entry.semesterId && "ring-2 ring-primary border-transparent shadow-md"
+                                                                    )}
+                                                                    onClick={() => {
+                                                                        setActiveSession({ courseId: entry.courseId, semesterId: entry.semesterId });
+                                                                        fetchEnrolledStudents(entry.courseId, entry.semesterId);
+                                                                    }}
+                                                                >
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                                                                            <MapPin className="h-2.5 w-2.5" /> {entry.venue}
                                                                         </div>
+                                                                        <Badge variant="secondary" className="text-[8px] h-3 py-0 px-1 w-fit">{entry.semesterName.split(' ').slice(-2).join(' ')}</Badge>
                                                                     </div>
-                                                                );
-                                                            })}
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </TableCell>
                                                 );
@@ -296,15 +338,13 @@ export default function StudentEnrollmentPage() {
                         </div>
                     </CardContent>
                 </Card>
-            ) : selectedIntake && (
-                <Alert><Info className="h-4 w-4"/><AlertTitle>No Schedule Found</AlertTitle><AlertDescription>There are no classes scheduled for the semesters associated with this intake.</AlertDescription></Alert>
             )}
 
             <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Enrollment: {activeSession && allCourses[activeSession.courseId]?.name}</DialogTitle>
-                        <DialogDescription>Add or remove students for this specific class session in {activeSession && semesters.find(s=>s.id===activeSession.semesterId)?.name}.</DialogDescription>
+                        <DialogDescription>Add or remove students for this session in {activeSession && semesters.find(s=>s.id===activeSession.semesterId)?.name}.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">

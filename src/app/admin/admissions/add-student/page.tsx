@@ -51,7 +51,7 @@ type User = {
     nationalId?: string;
     passport?: string;
     address?: string;
-    guardian?: { name: string; contact: string; };
+    guardian?: { name: string; contact: string; email?: string; relationship?: string; };
     emergencyContact?: { name: string; relationship: string; contact: string; };
     educationBackground?: { school: string; qualifications: string; };
     medicalHistory?: string;
@@ -113,6 +113,8 @@ export default function AddStudentPage() {
     const [address, setAddress] = React.useState('');
     const [guardianName, setGuardianName] = React.useState('');
     const [guardianContact, setGuardianContact] = React.useState('');
+    const [guardianEmail, setGuardianEmail] = React.useState('');
+    const [guardianRelationship, setGuardianRelationship] = React.useState('');
     const [emergencyName, setEmergencyName] = React.useState('');
     const [emergencyRelationship, setEmergencyRelationship] = React.useState('');
     const [emergencyContact, setEmergencyContact] = React.useState('');
@@ -249,7 +251,7 @@ export default function AddStudentPage() {
         setName(''); setEmail(''); setPassword(''); setPhoneNumber(''); setProgramme(''); setIsTransfer(false); setExemptedCourses({}); setSelectedIntake('');
         setManualId(''); setIsManualId(false);
         setDob(''); setGender(''); setNationalId(''); setPassport(''); setAddress('');
-        setGuardianName(''); setGuardianContact('');
+        setGuardianName(''); setGuardianContact(''); setGuardianEmail(''); setGuardianRelationship('');
         setEmergencyName(''); setEmergencyRelationship(''); setEmergencyContact('');
         setPreviousSchool(''); setQualifications(''); setMedicalHistory('');
         setSelectedYear(''); setSelectedSemester('');
@@ -281,7 +283,7 @@ export default function AddStudentPage() {
                 name, email, phoneNumber, status: 'active',
                 programmeId: programme, year: Number(selectedYear), semesterId: selectedSemester, intakeId: selectedIntake,
                 dob, gender, nationalId, passport, address, medicalHistory,
-                guardian: { name: guardianName, contact: guardianContact },
+                guardian: { name: guardianName, contact: guardianContact, email: guardianEmail, relationship: guardianRelationship },
                 emergencyContact: { name: emergencyName, relationship: emergencyRelationship, contact: emergencyContact },
                 educationBackground: { school: previousSchool, qualifications: qualifications }
             };
@@ -352,7 +354,7 @@ export default function AddStudentPage() {
                 await sendEmail({
                     to: [email],
                     subject: `Welcome to ${idSettings.name || 'Edutrack360'}!`,
-                    body: `<h2>Welcome!</h2><p>Your account is ready.</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> ${newId}</li><li><strong>Password:</strong> ${password}</li></ul><p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p><p>Best regards,<br/>The Administration</p>`
+                    body: `<h2>Welcome!</h2><p>Your account is ready.</p><p>You can access the portal using the credentials below.</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> ${newId}</li><li><strong>Password:</strong> ${password}</li></ul><p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p><p>Best regards,<br/>The Administration</p>`
                 });
 
                 toast({ title: 'Student Account Created', description: `User ID: ${newId}` });
@@ -384,6 +386,8 @@ export default function AddStudentPage() {
         setAddress(student.address || '');
         setGuardianName(student.guardian?.name || '');
         setGuardianContact(student.guardian?.contact || '');
+        setGuardianEmail(student.guardian?.email || '');
+        setGuardianRelationship(student.guardian?.relationship || '');
         setEmergencyName(student.emergencyContact?.name || '');
         setEmergencyRelationship(student.emergencyContact?.relationship || '');
         setEmergencyContact(student.emergencyContact?.contact || '');
