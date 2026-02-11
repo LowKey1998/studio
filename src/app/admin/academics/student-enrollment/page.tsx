@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Mail, Send, Settings2, X } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Send, Settings2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update } from 'firebase/database';
@@ -36,7 +36,6 @@ import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -86,14 +85,12 @@ export default function StudentEnrollmentPage() {
     
     // Email Template state
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
-    const [skipPreview, setSkipPreview] = React.useState(false);
     const [enrollmentTemplate, setEnrollmentTemplate] = React.useState({
         subject: 'Class Enrollment Notification: [CourseCode]',
         body: `<h2>Class Enrollment Notification</h2>
 <p>Hello [Name],</p>
 <p>You have been <strong>enrolled in</strong> the following course:</p>
 <p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>
-<strong>Semester:</strong> [Semester]<br/>
 <strong>Time:</strong> [Day] at [Time]</p>
 <p>You can view your updated classes and timetable on the student portal:<br/>
 <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
@@ -106,7 +103,6 @@ export default function StudentEnrollmentPage() {
 <p>Hello [Name],</p>
 <p>You have been <strong>removed from</strong> the following course:</p>
 <p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>
-<strong>Semester:</strong> [Semester]<br/>
 <strong>Time:</strong> [Day] at [Time]</p>
 <p>If you believe this is an error, please contact the Registrar's office.</p>
 <p>You can view your current classes on the student portal:<br/>
@@ -114,17 +110,6 @@ export default function StudentEnrollmentPage() {
 <p><strong>User ID:</strong> [UserID]</p>
 <p>Best regards,<br/>The Registrar's Office</p>`
     });
-
-    // Email Preview Dialog state
-    const [isEmailPreviewOpen, setIsEmailPreviewOpen] = React.useState(false);
-    const [emailPreview, setEmailPreview] = React.useState({ to: '', subject: '', body: '' });
-    const [pendingEmailAction, setPendingEmailAction] = React.useState<{ 
-        type: 'enroll' | 'remove', 
-        uid: string, 
-        name: string, 
-        studentId: string, 
-        email: string 
-    } | null>(null);
 
     // Deletion confirmation state
     const [studentToRemove, setStudentToRemove] = React.useState<Student | null>(null);
@@ -231,7 +216,7 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [fetchData]);
 
-    const performEnrollmentAction = async (type: 'enroll' | 'remove', student: Student, emailData: { subject: string, body: string }) => {
+    const performEnrollmentAction = async (type: 'enroll' | 'remove', student: Student) => {
         if (!activeSession) return;
         const { courseId, semesterId } = activeSession;
         
@@ -268,49 +253,30 @@ export default function StudentEnrollmentPage() {
                 }
             }
 
-            // Send the email
+            // Generate and Send the Email automatically using templates
+            const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
+            const replacePlaceholders = (text: string) => {
+                return text
+                    .replace(/\[Name\]/g, student.name)
+                    .replace(/\[CourseName\]/g, activeSession.courseName)
+                    .replace(/\[CourseCode\]/g, activeSession.courseCode)
+                    .replace(/\[Day\]/g, activeSession.day)
+                    .replace(/\[Time\]/g, activeSession.startTime)
+                    .replace(/\[UserID\]/g, student.id);
+            };
+
             await sendEmail({
                 to: [student.email],
-                subject: emailData.subject,
-                body: emailData.body
+                subject: replacePlaceholders(baseTemplate.subject),
+                body: replacePlaceholders(baseTemplate.body)
             });
             
             toast({ title: 'Notification Sent' });
-            setIsEmailPreviewOpen(false);
-            setPendingEmailAction(null);
             setStudentToRemove(null);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
         } finally {
             setActionLoading(null);
-        }
-    };
-
-    const handlePreActionEmail = (type: 'enroll' | 'remove', student: Student) => {
-        if (!activeSession) return;
-        
-        const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
-        
-        const replacePlaceholders = (text: string) => {
-            return text
-                .replace(/\[Name\]/g, student.name)
-                .replace(/\[CourseName\]/g, activeSession.courseName)
-                .replace(/\[CourseCode\]/g, activeSession.courseCode)
-                .replace(/\[Semester\]/g, activeSession.semesterName)
-                .replace(/\[Day\]/g, activeSession.day)
-                .replace(/\[Time\]/g, activeSession.startTime)
-                .replace(/\[UserID\]/g, student.id);
-        };
-
-        const subject = replacePlaceholders(baseTemplate.subject);
-        const body = replacePlaceholders(baseTemplate.body);
-
-        if (skipPreview) {
-            performEnrollmentAction(type, student, { subject, body });
-        } else {
-            setEmailPreview({ to: student.email, subject, body });
-            setPendingEmailAction({ type, uid: student.uid, name: student.name, studentId: student.id, email: student.email });
-            setIsEmailPreviewOpen(true);
         }
     };
 
@@ -442,6 +408,7 @@ export default function StudentEnrollmentPage() {
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
                                                                         fetchEnrolledStudents(entry.courseId, entry.semesterId);
+                                                                        setStudentIntakeFilter(selectedIntake);
                                                                     }}
                                                                 >
                                                                     <div className="flex flex-col gap-1">
@@ -501,7 +468,7 @@ export default function StudentEnrollmentPage() {
                                                 <p className="font-bold">{s.name}</p>
                                                 <p className="text-xs text-muted-foreground">{s.id}</p>
                                             </div>
-                                            <Button size="sm" variant="outline" onClick={() => handlePreActionEmail('enroll', s)} disabled={!!actionLoading}>
+                                            <Button size="sm" variant="outline" onClick={() => performEnrollmentAction('enroll', s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}
                                             </Button>
                                         </div>
@@ -542,17 +509,9 @@ export default function StudentEnrollmentPage() {
                 <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Notification Template Settings</DialogTitle>
-                        <DialogDescription>Define the default messages sent when students are enrolled or removed from a class.</DialogDescription>
+                        <DialogDescription>Define the default messages sent automatically when students are enrolled or removed from a class.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto py-4 pr-2">
-                        <div className="flex items-center justify-between mb-6 p-4 border rounded-lg bg-primary/5 border-primary/20">
-                            <div className="space-y-0.5">
-                                <Label className="text-base">Quick-Send Mode</Label>
-                                <p className="text-sm text-muted-foreground">Skip the preview dialog and send emails immediately using the templates below.</p>
-                            </div>
-                            <Switch checked={skipPreview} onCheckedChange={setSkipPreview} />
-                        </div>
-
                         <Accordion type="multiple" defaultValue={['enrollment', 'removal']} className="w-full">
                             <AccordionItem value="enrollment">
                                 <AccordionTrigger className="font-bold">Enrollment Email Template</AccordionTrigger>
@@ -585,7 +544,7 @@ export default function StudentEnrollmentPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Dynamic Placeholders</AlertTitle>
                             <AlertDescription>
-                                <p className="text-xs">Use the following tags to insert student/class details: <code className="bg-background px-1 rounded">[Name]</code>, <code className="bg-background px-1 rounded">[UserID]</code>, <code className="bg-background px-1 rounded">[CourseName]</code>, <code className="bg-background px-1 rounded">[CourseCode]</code>, <code className="bg-background px-1 rounded">[Semester]</code>, <code className="bg-background px-1 rounded">[Day]</code>, <code className="bg-background px-1 rounded">[Time]</code>.</p>
+                                <p className="text-xs">Use the following tags to insert student/class details: <code className="bg-background px-1 rounded">[Name]</code>, <code className="bg-background px-1 rounded">[UserID]</code>, <code className="bg-background px-1 rounded">[CourseName]</code>, <code className="bg-background px-1 rounded">[CourseCode]</code>, <code className="bg-background px-1 rounded">[Day]</code>, <code className="bg-background px-1 rounded">[Time]</code>.</p>
                             </AlertDescription>
                         </Alert>
                     </div>
@@ -595,54 +554,19 @@ export default function StudentEnrollmentPage() {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={isEmailPreviewOpen} onOpenChange={setIsEmailPreviewOpen}>
-                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle>Preview Notification Email</DialogTitle>
-                        <DialogDescription>Review and edit the email before it is sent to {pendingEmailAction?.name}.</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-auto py-4 space-y-4">
-                        <div className="space-y-1">
-                            <Label>Recipient</Label>
-                            <Input value={emailPreview.to} disabled className="bg-muted"/>
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Subject</Label>
-                            <Input value={emailPreview.subject} onChange={e => setEmailPreview(p => ({...p, subject: e.target.value}))}/>
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Message Body</Label>
-                            <Textarea 
-                                value={emailPreview.body} 
-                                onChange={e => setEmailPreview(p => ({...p, body: e.target.value}))}
-                                rows={15}
-                                className="font-mono text-xs"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Cancel</Button>
-                        <Button onClick={() => pendingEmailAction && performEnrollmentAction(pendingEmailAction.type, allStudents.find(s => s.uid === pendingEmailAction.uid)!, emailPreview)} disabled={!!actionLoading}>
-                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
-                            Send & Confirm Action
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
             <AlertDialog open={!!studentToRemove} onOpenChange={(open) => !open && setStudentToRemove(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Remove Student from Class?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? {skipPreview ? "A notification email will be sent automatically." : "You will be prompted to review the notification email next."}
+                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? A notification email will be sent automatically based on your template.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction 
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => studentToRemove && handlePreActionEmail('remove', studentToRemove)}
+                            onClick={() => studentToRemove && performEnrollmentAction('remove', studentToRemove)}
                         >
                             Proceed
                         </AlertDialogAction>
