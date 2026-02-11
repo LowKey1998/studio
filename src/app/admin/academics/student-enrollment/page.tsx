@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, ChevronLeft } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update, onValue } from 'firebase/database';

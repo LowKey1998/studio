@@ -18,6 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 
 type StudentLeaveRequest = {
   id: string;
@@ -76,7 +77,7 @@ export default function StudentAbsenceApprovalsPage() {
                 '/student/leave'
             );
 
-            toast({ variant: 'success', title: `Request ${decision}`, description: `${request.studentName}'s request has been ${decision.toLowerCase()}.` });
+            toast({ title: `Request ${decision}`, description: `${request.studentName}'s request has been ${decision.toLowerCase()}.` });
         } catch(error: any) {
              toast({ variant: 'destructive', title: 'Action Failed', description: error.message || 'An unexpected error occurred.'});
         } finally {
