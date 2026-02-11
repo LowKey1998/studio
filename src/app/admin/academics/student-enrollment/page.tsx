@@ -78,7 +78,7 @@ export default function StudentEnrollmentPage() {
     const [enrolledStudents, setEnrolledStudents] = React.useState<EnrolledStudent[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
-    const [studentIntakeFilter, setStudentIntakeFilter] = React.useState('all');
+    const [studentIntakeFilter, setIntakeFilter] = React.useState('all');
     
     // Multi-select state
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
@@ -363,7 +363,7 @@ export default function StudentEnrollmentPage() {
         setSelectedUids(next);
     };
 
-    const handleToggleSelect = (uid: string) => {
+    const handleToggleSelection = (uid: string) => {
         setSelectedUids(prev => ({ ...prev, [uid]: !prev[uid] }));
     };
 
@@ -466,7 +466,7 @@ export default function StudentEnrollmentPage() {
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
                                                                         fetchEnrolledStudents(entry.courseId);
-                                                                        setStudentIntakeFilter(selectedIntake);
+                                                                        setIntakeFilter(selectedIntake);
                                                                         setSelectedUids({});
                                                                     }}
                                                                 >
@@ -509,7 +509,7 @@ export default function StudentEnrollmentPage() {
                                     <h3 className="font-bold flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary"/> Available</h3>
                                 </div>
                                 <div className="w-32">
-                                    <Select value={studentIntakeFilter} onValueChange={setStudentIntakeFilter}>
+                                    <Select value={studentIntakeFilter} onValueChange={setIntakeFilter}>
                                         <SelectTrigger className="h-8 text-xs">
                                             <Filter className="h-3 w-3 mr-1" />
                                             <SelectValue />
