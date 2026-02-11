@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Progress } from '@/components/ui/progress';
@@ -62,47 +63,45 @@ export default function StudentDashboardPage() {
     const [intakeName, setIntakeName] = React.useState('');
     const { toast } = useToast();
 
-    const fetchData = React.useCallback(async () => {
+    React.useEffect(() => {
         if (!user) return;
+
         setLoading(true);
-        try {
-            const [
-                registrationsSnap,
-                coursesSnap,
-                attendanceSnap,
-                timetablesSnap,
-                calendarSnap,
-                invoicesSnap,
-                transactionsSnap,
-                assessmentsSnap,
-                quizzesSnap,
-                usersSnap,
-                intakesSnap
-            ] = await Promise.all([
-                get(ref(db, `registrations/${user.uid}`)),
-                get(ref(db, 'courses')),
-                get(ref(db, 'attendance')),
-                get(ref(db, 'timetables')),
-                get(ref(db, 'calendarEvents')),
-                get(ref(db, `invoices/${user.uid}`)),
-                get(ref(db, 'transactions')),
-                get(ref(db, 'assessments')),
-                get(ref(db, 'quizzes')),
-                get(ref(db, 'users')),
-                get(ref(db, 'intakes'))
+        
+        // Listen for static data changes
+        const coursesRef = ref(db, 'courses');
+        const usersRef = ref(db, 'users');
+        const intakesRef = ref(db, 'intakes');
+        const calendarRef = ref(db, 'calendarEvents');
+        const timetablesRef = ref(db, 'timetables');
+        const assessmentsRef = ref(db, 'assessments');
+        const quizzesRef = ref(db, 'quizzes');
+
+        // Real-time listeners for student-specific data
+        const registrationsRef = ref(db, `registrations/${user.uid}`);
+        const invoicesRef = ref(db, `invoices/${user.uid}`);
+        const transactionsRef = ref(db, 'transactions');
+        const attendanceRef = ref(db, 'attendance');
+
+        const unsubRegs = onValue(registrationsRef, async (regSnap) => {
+            const allRegistrations = regSnap.val() || {};
+            
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap] = await Promise.all([
+                get(coursesRef), get(usersRef), get(intakesRef), get(attendanceRef), 
+                get(timetablesRef), get(calendarRef), get(invoicesRef), 
+                get(transactionsRef), get(assessmentsRef), get(quizzesRef)
             ]);
 
-            const allCourses = coursesSnap.val() || {};
-            const allRegistrations = registrationsSnap.val() || {};
-            const allAttendance = attendanceSnap.val() || {};
-            const allTimetables = timetablesSnap.val() || {};
-            const allCalendarEvents = calendarSnap.val() || {};
-            const allInvoices = invoicesSnap.val() || {};
-            const allTransactions = Object.values(transactionsSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
-            const allAssessments = assessmentsSnap.val() || {};
-            const allQuizzes = quizzesSnap.val() || {};
-            const allUsers = usersSnap.val() || {};
-            const allIntakes = intakesSnap.val() || {};
+            const allCourses = cSnap.val() || {};
+            const allUsers = uSnap.val() || {};
+            const allIntakes = iSnap.val() || {};
+            const allAttendance = aSnap.val() || {};
+            const allTimetables = tSnap.val() || {};
+            const allCalendarEvents = calSnap.val() || {};
+            const allInvoices = invSnap.val() || {};
+            const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
+            const allAssessments = assSnap.val() || {};
+            const allQuizzes = qSnap.val() || {};
 
             if (userProfile?.intakeId) {
                 setIntakeName(allIntakes[userProfile.intakeId]?.name || 'N/A');
@@ -163,7 +162,7 @@ export default function StudentDashboardPage() {
                     if (enrolledIds.has(cid)) {
                         Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
-                                schedule.push({ ...entry, courseCode: allCourses[cid]?.code, courseName: allCourses[cid]?.name, id: entryId });
+                                schedule.push({ ...entry, courseCode: allCourses[cid]?.code, courseName: allCourses[cid]?.name, id: cid });
                             }
                         });
                     }
@@ -200,17 +199,11 @@ export default function StudentDashboardPage() {
                 }
             });
             setRecentGrades(grades.slice(-3));
-
-        } catch (error) {
-            console.error(error);
-        } finally {
             setLoading(false);
-        }
-    }, [user, userProfile?.intakeId]);
+        });
 
-    React.useEffect(() => {
-        if (user) fetchData();
-    }, [user, fetchData]);
+        return () => unsubRegs();
+    }, [user, userProfile?.intakeId]);
 
     if (authLoading || loading) {
         return (
@@ -238,7 +231,7 @@ export default function StudentDashboardPage() {
                     <div className="flex items-center gap-2 text-muted-foreground mt-1">
                         <span>{userProfile?.programmeName || 'Academic Portal'}</span>
                         <span>&middot;</span>
-                        <Badge variant="secondary" className="font-bold">{intakeName}</Badge>
+                        <Badge variant="secondary" className="font-bold">Intake: {intakeName}</Badge>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
