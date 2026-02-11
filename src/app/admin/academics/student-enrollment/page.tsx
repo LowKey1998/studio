@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -91,7 +90,7 @@ export default function StudentEnrollmentPage() {
 <p>You can view your updated classes and timetable on the student portal:<br/>
 <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
 <p><strong>User ID:</strong> [UserID]</p>
-<p>Best regards,<br/>The Registrar's Office</p>`
+<p>Best regards,<br/>The Administration</p>`
     });
     const [removalTemplate, setRemovalTemplate] = React.useState({
         subject: 'Class Removal Notification: [CourseCode]',
@@ -104,7 +103,7 @@ export default function StudentEnrollmentPage() {
 <p>You can view your current classes on the student portal:<br/>
 <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
 <p><strong>User ID:</strong> [UserID]</p>
-<p>Best regards,<br/>The Registrar's Office</p>`
+<p>Best regards,<br/>The Administration</p>`
     });
 
     // Deletion confirmation state
@@ -112,22 +111,23 @@ export default function StudentEnrollmentPage() {
 
     const { toast } = useToast();
 
-    const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
+    const fetchEnrolledStudents = React.useCallback(async (courseId: string) => {
         setActionLoading('fetching');
         try {
             const regsSnap = await get(ref(db, 'registrations'));
+            const uids: string[] = [];
             if (regsSnap.exists()) {
                 const regs = regsSnap.val();
-                const uids: string[] = [];
                 for (const userId in regs) {
-                    if (regs[userId][semesterId]?.courses?.includes(courseId)) {
-                        uids.push(userId);
+                    for (const semId in regs[userId]) {
+                        if (regs[userId][semId].courses?.includes(courseId)) {
+                            uids.push(userId);
+                            break;
+                        }
                     }
                 }
-                setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
-            } else {
-                setEnrolledStudents([]);
             }
+            setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
         } catch (e) {
             console.error(e);
         } finally {
@@ -264,10 +264,8 @@ export default function StudentEnrollmentPage() {
                 });
                 
                 toast({ title: 'Student Enrolled', description: `Added to ${targetSemester.name}` });
-                fetchEnrolledStudents(activeSession.courseId, activeSession.semesterId);
             } else {
-                // If removing, it's safer to remove it from ALL semesters for this student 
-                // just in case they were added to a different one than the one currently being viewed.
+                // If removing, scan all semesters for this student and remove the course
                 const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
                 if (allRegsSnap.exists()) {
                     const allRegs = allRegsSnap.val();
@@ -279,7 +277,6 @@ export default function StudentEnrollmentPage() {
                     }
                     await update(ref(db), updates);
                     toast({ title: 'Student Removed' });
-                    setEnrolledStudents(prev => prev.filter(s => s.uid !== student.uid));
                 }
             }
 
@@ -303,6 +300,7 @@ export default function StudentEnrollmentPage() {
             
             toast({ title: 'Notification Sent' });
             setStudentToRemove(null);
+            await fetchEnrolledStudents(activeSession.courseId);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
         } finally {
@@ -437,7 +435,7 @@ export default function StudentEnrollmentPage() {
                                                                     )}
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
-                                                                        fetchEnrolledStudents(entry.courseId, entry.semesterId);
+                                                                        fetchEnrolledStudents(entry.courseId);
                                                                         setStudentIntakeFilter(selectedIntake);
                                                                     }}
                                                                 >
@@ -467,7 +465,7 @@ export default function StudentEnrollmentPage() {
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Enrollment: {activeSession && activeSession.courseName}</DialogTitle>
-                        <DialogDescription>Add or remove students for this session in {activeSession && activeSession.semesterName}.</DialogDescription>
+                        <DialogDescription>Add or remove students for this session. Notifications are sent automatically.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">

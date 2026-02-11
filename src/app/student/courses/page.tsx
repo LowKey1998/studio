@@ -186,7 +186,7 @@ export default function StudentCoursesPage() {
                                 {intake.academicState && (
                                     <Badge variant="secondary" className="w-fit gap-2 h-8 px-3 text-sm">
                                         <CalendarDays className="h-4 w-4" />
-                                        Current: Year {intake.academicState.year}, Semester {intake.academicState.semester}
+                                        Current: Year {intake.academicState.year}, Sem {intake.academicState.semester}
                                     </Badge>
                                 )}
                             </div>
