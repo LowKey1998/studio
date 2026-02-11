@@ -2,10 +2,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, ChevronsUpDown } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, get, update, onValue } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -181,7 +181,6 @@ export default function StudentEnrollmentPage() {
 
             const updatedCourses = [...currentCourses, courseId];
             const student = allStudents.find(s => s.uid === uid);
-            const intakeInfo = intakes.find(i => i.id === selectedIntake);
 
             await update(regRef, { 
                 courses: updatedCourses,

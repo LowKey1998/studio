@@ -197,7 +197,7 @@ export default function StudentsListPage() {
     <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li>
     <li><strong>User ID:</strong> ${user.id}</li>
 </ul>
-<p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p>
+<p><strong>Note:</strong> If you have trouble logging in with your previous password, please try using <strong>12345678</strong> as your temporary password.</p>
 <p>If you have forgotten your password entirely, you can use the "Forgot Password" link on the login page to reset it.</p>
 <p>Best regards,<br/>The Administration</p>`);
         setIsCredentialsOpen(true);
