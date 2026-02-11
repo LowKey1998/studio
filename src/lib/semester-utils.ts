@@ -106,7 +106,9 @@ export function calculateAcademicState(
     }) || sortedCycles[0];
 
     // 3. Determine Study Year
-    const academicYear = Math.ceil(cyclesCounted / (sortedCycles.length || 1));
+    // A Study Year contains X cycles (usually 2).
+    const cyclesPerYear = sortedCycles.length || 1;
+    const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     return { 
         year: Math.max(1, academicYear), 
