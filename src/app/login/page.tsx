@@ -1,4 +1,3 @@
-
 'use client';
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,9 +20,7 @@ import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { sendCustomPasswordReset } from "@/ai/flows/forgot-password-flow";
 
 export default function LoginPage() {
   const [userId, setUserId] = useState('');
@@ -31,12 +28,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-
-  // State for password reset
-  const [isResetOpen, setIsResetOpen] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetUserId, setResetUserId] = useState('');
-
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,42 +95,6 @@ export default function LoginPage() {
     }
   };
 
-  const handlePasswordReset = async () => {
-    if (!resetUserId) {
-        toast({ variant: 'destructive', title: 'User ID required' });
-        return;
-    }
-    setResetLoading(true);
-    try {
-        const usersRef = ref(db, 'users');
-        const q = query(usersRef, orderByChild('id'), equalTo(resetUserId.trim()));
-        const snapshot = await get(q);
-
-        if (!snapshot.exists()) {
-            throw new Error("User ID not found.");
-        }
-        
-        const usersData = snapshot.val();
-        const userEmail = Object.values(usersData)[0].email;
-
-        if (!userEmail) {
-            throw new Error("User email not found in records.");
-        }
-
-        // Call the custom Genkit flow to send the branded email
-        await sendCustomPasswordReset({ email: userEmail });
-        
-        toast({ title: 'Branded Reset Email Sent', description: 'Please check your email inbox for instructions.' });
-        setIsResetOpen(false);
-        setResetUserId('');
-
-    } catch(error: any) {
-         toast({ variant: 'destructive', title: 'Password Reset Failed', description: error.message });
-    } finally {
-        setResetLoading(false);
-    }
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
@@ -168,31 +123,7 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                    <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
-                        <DialogTrigger asChild>
-                            <Button variant="link" type="button" className="ml-auto inline-block text-sm underline">Forgot your password?</Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Reset Password</DialogTitle>
-                                <DialogDescription>Enter your User ID to receive a branded password reset link at your registered email address.</DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4 space-y-2">
-                                <Label htmlFor="reset-user-id">User ID</Label>
-                                <Input id="reset-user-id" placeholder="e.g., STU-001" value={resetUserId} onChange={e => setResetUserId(e.target.value)} />
-                            </div>
-                            <DialogFooter>
-                                <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
-                                <Button onClick={handlePasswordReset} disabled={resetLoading}>
-                                    {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                    Send Branded Link
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                </div>
+                <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
                   type="password"
@@ -217,10 +148,10 @@ export default function LoginPage() {
                 </Button>
              </div>
           </CardContent>
-           <CardFooter className="justify-center mt-4">
+           <CardFooter className="flex flex-col gap-2 justify-center mt-4">
              <Button variant="link" asChild>
                 <Link href="/contact">
-                    Contact Administration
+                    Contact Administrator
                 </Link>
              </Button>
           </CardFooter>

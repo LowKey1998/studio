@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import {
@@ -180,10 +179,10 @@ export function ProfileDialog({ isOpen, onOpenChange, userId }: ProfileDialogPro
                             <AvatarImage src={displayImage} alt="Profile preview" data-ai-hint="person avatar" />
                             <AvatarFallback className="text-3xl">{userInitial}</AvatarFallback>
                         </Avatar>
-                        <div className="absolute inset-0 flex flex-col justify-end rounded-full bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-                            <div className="flex h-1/3 items-center justify-center gap-2 rounded-b-full bg-black/50 text-white backdrop-blur-sm">
-                                <Camera className="h-4 w-4" />
-                                <span className="text-sm">Change</span>
+                        <div className="absolute inset-0 flex flex-col justify-center items-center rounded-full bg-black/20 opacity-100 transition-opacity group-hover:bg-black/40">
+                            <div className="flex flex-col items-center justify-center gap-1 text-white">
+                                <Camera className="h-8 w-8 drop-shadow-md" />
+                                <span className="text-[10px] font-bold uppercase drop-shadow-md opacity-0 group-hover:opacity-100 transition-opacity">Change Photo</span>
                             </div>
                         </div>
                     </div>
