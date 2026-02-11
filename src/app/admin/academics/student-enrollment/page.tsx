@@ -85,6 +85,7 @@ export default function StudentEnrollmentPage() {
     
     // Multi-select state
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
+    const [selectedEnrolledUids, setSelectedEnrolledUids] = React.useState<Record<string, boolean>>({});
     const [sendEmails, setSendEmails] = React.useState(true);
     
     // Email Template state
@@ -216,7 +217,7 @@ export default function StudentEnrollmentPage() {
         const students = Array.isArray(studentOrStudents) ? studentOrStudents : [studentOrStudents];
         if (students.length === 0) return;
 
-        setActionLoading(type === 'enroll' ? 'bulk-enroll' : students[0].uid);
+        setActionLoading(type === 'enroll' ? 'bulk-enroll' : (type === 'remove' && students.length > 1 ? 'bulk-remove' : students[0].uid));
         
         try {
             for (const student of students) {
@@ -300,6 +301,7 @@ export default function StudentEnrollmentPage() {
             });
             
             if (type === 'enroll') setSelectedUids({});
+            if (type === 'remove') setSelectedEnrolledUids({});
             setStudentToRemove(null);
             await fetchEnrolledStudents(activeSession.courseId);
         } catch (e: any) {
@@ -348,7 +350,20 @@ export default function StudentEnrollmentPage() {
         setSelectedUids(prev => ({ ...prev, [uid]: !prev[uid] }));
     };
 
+    const handleSelectAllEnrolled = (checked: boolean) => {
+        const next: Record<string, boolean> = {};
+        if (checked) {
+            enrolledStudents.forEach(s => next[s.uid] = true);
+        }
+        setSelectedEnrolledUids(next);
+    };
+
+    const handleToggleEnrolledSelection = (uid: string) => {
+        setSelectedEnrolledUids(prev => ({ ...prev, [uid]: !prev[uid] }));
+    };
+
     const selectedCount = Object.values(selectedUids).filter(Boolean).length;
+    const selectedEnrolledCount = Object.values(selectedEnrolledUids).filter(Boolean).length;
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -466,6 +481,7 @@ export default function StudentEnrollmentPage() {
                                                                         fetchEnrolledStudents(entry.courseId);
                                                                         setIntakeFilter(selectedIntake);
                                                                         setSelectedUids({});
+                                                                        setSelectedEnrolledUids({});
                                                                     }}
                                                                 >
                                                                     <div className="flex flex-col gap-1">
@@ -560,17 +576,34 @@ export default function StudentEnrollmentPage() {
                         </div>
 
                         <div className="flex flex-col gap-4 border rounded-lg p-4">
-                            <h3 className="font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary"/> Enrolled Students ({enrolledStudents.length})</h3>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox 
+                                        checked={enrolledStudents.length > 0 && Object.keys(selectedEnrolledUids).length === enrolledStudents.length} 
+                                        onCheckedChange={handleSelectAllEnrolled} 
+                                    />
+                                    <h3 className="font-bold flex items-center gap-2"><Users className="h-4 w-4 text-primary"/> Enrolled ({enrolledStudents.length})</h3>
+                                </div>
+                                {selectedEnrolledCount > 0 && (
+                                    <Button size="sm" variant="destructive" onClick={() => performEnrollmentAction('remove', enrolledStudents.filter(s => selectedEnrolledUids[s.uid]))} disabled={actionLoading === 'bulk-remove'}>
+                                        {actionLoading === 'bulk-remove' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Trash2 className="h-4 w-4 mr-2"/>}
+                                        Remove ({selectedEnrolledCount})
+                                    </Button>
+                                )}
+                            </div>
                             <ScrollArea className="flex-1">
                                 <div className="space-y-2 pr-4">
                                     {enrolledStudents.map(s => (
                                         <div key={s.uid} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted transition-colors">
-                                            <div className="text-sm">
-                                                <p className="font-bold">{s.name}</p>
-                                                <p className="text-xs text-muted-foreground">{s.id}</p>
-                                                <Badge variant="secondary" className="mt-1 text-[9px] h-4">
-                                                    {s.enrolledInSemester}
-                                                </Badge>
+                                            <div className="flex items-center gap-3">
+                                                <Checkbox checked={!!selectedEnrolledUids[s.uid]} onCheckedChange={() => handleToggleEnrolledSelection(s.uid)} />
+                                                <div className="text-sm">
+                                                    <p className="font-bold">{s.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{s.id}</p>
+                                                    <Badge variant="secondary" className="mt-1 text-[9px] h-4">
+                                                        {s.enrolledInSemester}
+                                                    </Badge>
+                                                </div>
                                             </div>
                                             <Button size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setStudentToRemove(s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}

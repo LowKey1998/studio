@@ -102,7 +102,7 @@ export function calculateAcademicState(
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     // 3. Determine Study Semester (Progressive relative to student start)
-    // Toggles 1 -> 2 -> 1 -> 2 based on cycles encountered.
+    // Toggles 1 -> 2 -> 1 -> 2 based on cycles encountered since intake.
     const studySemester = ((cyclesCounted - 1) % cyclesPerYear) + 1;
 
     return { 
