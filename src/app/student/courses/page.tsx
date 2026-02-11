@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, User, Info, Archive } from "lucide-react";
+import { ChevronRight, User, Info, Archive, CalendarDays } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { calculateAcademicState } from '@/lib/semester-utils';
 
 type Course = {
     id: string;
@@ -26,6 +27,7 @@ type IntakeCourses = {
     intakeId: string;
     intakeName: string;
     courses: Course[];
+    academicState?: { year: number; semester: number; isAnomaly: boolean } | null;
 };
 
 
@@ -51,12 +53,13 @@ export default function StudentCoursesPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, intakesSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, intakesSnap, calendarSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, 'intakes')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
 
             if (!registrationsSnap.exists()) {
@@ -70,6 +73,7 @@ export default function StudentCoursesPage() {
             const coursesData = coursesSnap.val() || {};
             const usersData = usersSnap.val() || {};
             const intakesData = intakesSnap.val() || {};
+            const calendarSettings = calendarSnap.val();
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
@@ -111,11 +115,32 @@ export default function StudentCoursesPage() {
             }
 
             const processMapToList = (map: Record<string, Course[]>) => {
-                return Object.entries(map).map(([intakeId, courses]) => ({
-                    intakeId,
-                    intakeName: intakesData[intakeId]?.name || "Unknown Intake",
-                    courses,
-                })).sort((a,b) => b.intakeName.localeCompare(a.intakeName));
+                return Object.entries(map).map(([intakeId, courses]) => {
+                    const intakeName = intakesData[intakeId]?.name || "Unknown Intake";
+                    let academicState = null;
+
+                    if (calendarSettings && intakeName !== "Unknown Intake") {
+                        const yearMatch = intakeName.match(/\d{4}/);
+                        const monthMatch = intakeName.match(/[A-Z]{3}/);
+                        if (yearMatch && monthMatch) {
+                            const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                            const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+                            academicState = calculateAcademicState(
+                                intakeStartStr, 
+                                new Date(), 
+                                calendarSettings.standardCycles, 
+                                Object.values(calendarSettings.anomalies || {})
+                            );
+                        }
+                    }
+
+                    return {
+                        intakeId,
+                        intakeName,
+                        courses,
+                        academicState
+                    };
+                }).sort((a,b) => b.intakeName.localeCompare(a.intakeName));
             };
             
             setActiveIntakes(processMapToList(intakeCourseMap));
@@ -141,7 +166,7 @@ export default function StudentCoursesPage() {
             <Card className="shadow-lg border-0">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
-                    <CardDescription>An overview of your enrolled classes grouped by intake.</CardDescription>
+                    <CardDescription>An overview of your enrolled classes grouped by intake cohort.</CardDescription>
                 </CardHeader>
             </Card>
 
@@ -152,19 +177,27 @@ export default function StudentCoursesPage() {
                     ))}
                 </div>
             ) : activeIntakes.length > 0 ? (
-                 <div className="space-y-4">
+                 <div className="space-y-6">
                     {activeIntakes.map((intake) => (
-                    <Card key={intake.intakeId} className="shadow-lg border-primary/20">
-                        <CardHeader>
-                            <CardTitle className="text-primary">{intake.intakeName}</CardTitle>
+                    <Card key={intake.intakeId} className="shadow-lg border-primary/20 overflow-hidden">
+                        <CardHeader className="bg-muted/30">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <CardTitle className="text-primary">{intake.intakeName}</CardTitle>
+                                {intake.academicState && (
+                                    <Badge variant="secondary" className="w-fit gap-2 h-8 px-3 text-sm">
+                                        <CalendarDays className="h-4 w-4" />
+                                        Current: Year {intake.academicState.year}, Semester {intake.academicState.semester}
+                                    </Badge>
+                                )}
+                            </div>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="pt-6">
                              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 {intake.courses.map((course, idx) => (
-                                     <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-md transition-all duration-300 hover:shadow-xl">
+                                     <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-md transition-all duration-300 hover:shadow-xl border-t-2 border-t-primary/10">
                                         <CardHeader>
                                             <CardTitle className="font-headline text-lg leading-tight">{course.name}</CardTitle>
-                                            <CardDescription>{course.code}</CardDescription>
+                                            <CardDescription className="font-bold font-mono">{course.code}</CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-2">
                                             <div className="flex items-start text-sm text-muted-foreground">
