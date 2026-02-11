@@ -111,7 +111,6 @@ export default function StudentEnrollmentPage() {
 <p>Best regards,<br/>The Administration</p>`
     });
 
-    // Deletion confirmation state
     const [studentToRemove, setStudentToRemove] = React.useState<EnrolledStudent | null>(null);
 
     const { toast } = useToast();
@@ -232,7 +231,6 @@ export default function StudentEnrollmentPage() {
         
         try {
             for (const student of students) {
-                // 1. Calculate student's CURRENT semester based on their intake and institutional calendar
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
                 if (!studentIntake) continue;
 
@@ -250,7 +248,6 @@ export default function StudentEnrollmentPage() {
                     Object.values(calendarSettings.anomalies || {})
                 );
 
-                // 2. Find the semesterId that matches this year/semester for the student's intake
                 const targetSemester = semesters.find(s => 
                     s.intakeId === (student.intakeId || selectedIntake) && 
                     s.year === state.year && 
@@ -278,7 +275,6 @@ export default function StudentEnrollmentPage() {
                         semesterName: targetSemester.name
                     });
                 } else {
-                    // If removing, scan all semesters for this student and remove the course
                     const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
                     if (allRegsSnap.exists()) {
                         const allRegs = allRegsSnap.val();
@@ -292,7 +288,6 @@ export default function StudentEnrollmentPage() {
                     }
                 }
 
-                // 3. Send Notification (Immediate)
                 const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
                 const replacePlaceholders = (text: string) => {
                     return text

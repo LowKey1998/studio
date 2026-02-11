@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -231,7 +230,7 @@ export default function StudentDashboardPage() {
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Your Intake: {intakeName}
+                            Intake: {intakeName}
                         </Badge>
                     </div>
                 </div>

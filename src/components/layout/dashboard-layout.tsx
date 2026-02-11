@@ -11,6 +11,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInput,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut } from 'lucide-react';
@@ -38,13 +39,8 @@ const hasStaffPermission = (item: any, profile: UserProfile) => {
         '/staff/library',
     ]);
 
-    // Always allow base staff pages
     if (baseStaffHrefs.has(item.href)) return true;
-
-    // Allow if user has explicit permission from access rules
     if (profile.permissions?.[item.href]) return true;
-
-    // Allow if item has a sub-role permission and user has that sub-role
     if (item.permission && profile.subRoleNames?.some(name => name.toLowerCase() === item.permission.toLowerCase())) {
         return true;
     }
@@ -52,6 +48,21 @@ const hasStaffPermission = (item: any, profile: UserProfile) => {
     return false;
 };
 
+/**
+ * Handles closing the mobile sidebar automatically when navigation occurs.
+ */
+function SidebarMobileManager() {
+  const { setOpenMobile, isMobile, openMobile } = useSidebar();
+  const pathname = usePathname();
+
+  React.useEffect(() => {
+    if (isMobile && openMobile) {
+      setOpenMobile(false);
+    }
+  }, [pathname, isMobile, setOpenMobile, openMobile]);
+
+  return null;
+}
 
 export default function DashboardLayout({
   children,
@@ -89,7 +100,6 @@ export default function DashboardLayout({
     }
   };
 
-  // Set up Firebase presence
   React.useEffect(() => {
     if (!user) return;
 
@@ -115,7 +125,6 @@ export default function DashboardLayout({
     return () => unsub();
   }, [user]);
 
-  // Listen for pending registration approvals
   React.useEffect(() => {
     const registrationsRef = ref(db, 'registrations');
     const unsub = onValue(registrationsRef, (snapshot) => {
@@ -146,13 +155,10 @@ export default function DashboardLayout({
       case 'staff': {
             return allMenuItems.map(category => {
                 if (!category.items || category.isComingSoon) return null;
-                
                 const permittedItems = category.items.filter(item => hasStaffPermission(item, userProfile));
-                
                 if (permittedItems.length > 0) {
                     return { ...category, items: permittedItems };
                 }
-                
                 return null;
             }).filter(Boolean) as typeof allMenuItems;
         }
@@ -161,16 +167,12 @@ export default function DashboardLayout({
     }
   }, [userProfile]);
 
-  
   React.useEffect(() => {
     if (loading || !menuItems.length) return;
-
     const activeCategory = menuItems.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
     if(activeCategory && !openAccordion.includes(activeCategory)) {
         setOpenAccordion(prev => [...new Set([...prev, activeCategory!])]);
     }
-  // This dependency array is intentionally limited to avoid re-running on every accordion change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, menuItems, loading]);
 
   const renderMenu = () => {
@@ -181,12 +183,10 @@ export default function DashboardLayout({
     const filteredItems = menuItems
       .map(category => {
         if (!category) return null;
-        
         let categoryItems = category.items || [];
         if (search.trim()) {
              const searchLower = search.toLowerCase();
              if(category.label.toLowerCase().includes(searchLower)) {
-                 // if category name matches, show all its items
              } else if (category.items) {
                  categoryItems = category.items.filter((subItem: any) =>
                     subItem.label.toLowerCase().includes(searchLower)
@@ -195,9 +195,7 @@ export default function DashboardLayout({
                  return null;
              }
         }
-
         if (categoryItems.length === 0 && search.trim() && !category.label.toLowerCase().includes(search.toLowerCase())) return null;
-
         return {...category, items: categoryItems};
       })
       .filter(Boolean);
@@ -208,7 +206,6 @@ export default function DashboardLayout({
         <Accordion type="multiple" value={defaultOpen as string[]} onValueChange={setOpenAccordion} className="w-full">
             {filteredItems.map((item) => {
                 if (!item || !item.items) return null;
-                
                 const categoryTotalNotifications = item.items.reduce((sum, sub) => {
                     const key = sub.notificationKey;
                     return sum + (key ? (notificationCounts[key] || 0) : 0);
@@ -234,9 +231,7 @@ export default function DashboardLayout({
                                     return (
                                         <SidebarMenuItem key={subItem.href}>
                                             <Link href={subItem.href}>
-                                                <SidebarMenuButton 
-                                                    isActive={pathname.startsWith(subItem.href)}
-                                                >
+                                                <SidebarMenuButton isActive={pathname.startsWith(subItem.href)}>
                                                     {subItem.icon && <subItem.icon />}
                                                     <span className="flex-1">{subItem.label}</span>
                                                     {subCount > 0 && (
@@ -260,6 +255,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
+      <SidebarMobileManager />
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar>
           <SidebarHeader>

@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -7,7 +6,7 @@ import { ChevronRight, Info, Archive, CalendarDays, BookCopy, UserCheck, Clock }
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -66,14 +65,9 @@ export default function StudentCoursesPage() {
                 get(ref(db, 'settings/academicCalendar'))
             ]);
 
-            if (!registrationsSnap.exists()) {
-                setSemesterGroups([]);
-                setArchivedGroups([]);
-                setLoading(false);
-                return;
-            }
-            
             const userProfile = usersSnap.val()?.[currentUser.uid];
+            if (!userProfile) throw new Error("Profile not found");
+            
             const studentIntakeId = userProfile?.intakeId;
             const currentIntakeName = studentIntakeId ? intakesSnap.val()?.[studentIntakeId]?.name : 'Your Intake';
             setIntakeName(currentIntakeName);
@@ -102,11 +96,11 @@ export default function StudentCoursesPage() {
             const activeGroups: Record<string, SemesterGroup> = {};
             const archivedGroups: Record<string, SemesterGroup> = {};
             
-            const registrationsData = registrationsSnap.val();
+            // Fetch ALL registrations for this student to ensure visibility across statuses
+            const registrationsData = registrationsSnap.val() || {};
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                // Include all statuses so student sees added courses immediately
                 if (registration.courses && registration.courses.length > 0) {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
@@ -178,7 +172,7 @@ export default function StudentCoursesPage() {
                             <CardDescription>Academic pathway for Intake: <strong>{intakeName}</strong></CardDescription>
                         </div>
                         {academicState && (
-                            <Badge variant="secondary" className="w-fit gap-2 h-10 px-4 text-sm font-bold">
+                            <Badge variant="secondary" className="w-fit gap-2 h-10 px-4 text-sm font-bold border-primary/20 bg-primary/5">
                                 <CalendarDays className="h-4 w-4" />
                                 Current Standing: Year {academicState.year}, Sem {academicState.semester}
                             </Badge>
