@@ -76,7 +76,7 @@ export default function StudentCoursesPage() {
                 const registration = registrationsData[semesterId];
                 if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
                     if(!semesterCourseMap[semesterId]) semesterCourseMap[semesterId] = [];
-                    for (const courseId of registration.courses) {
+                    for (const courseId of (registration.courses || [])) {
                         const courseInfo = coursesData[courseId];
                         if (courseInfo) {
                             const lecturerNames = (courseInfo.lecturerIds || [])
@@ -109,10 +109,12 @@ export default function StudentCoursesPage() {
                     courses,
                 };
 
-                if(semesterInfo && semesterInfo.status !== 'Archived') {
-                    newActiveSemesters.push(semesterData);
-                } else {
+                // CRITICAL FIX: Only archive if the semester is explicitly marked 'Archived'
+                if(semesterInfo && semesterInfo.status === 'Archived') {
                     newArchivedSemesters.push(semesterData);
+                } else {
+                    // Semesters that are 'Open' or 'Closed' but not 'Archived' are considered active
+                    newActiveSemesters.push(semesterData);
                 }
             }
             

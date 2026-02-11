@@ -56,7 +56,7 @@ export default function StudentEnrollmentPage() {
 
     // Selection state
     const [selectedIntake, setSelectedIntake] = React.useState('');
-    const [activeSession, setActiveSession] = React.useState<{ courseId: string; semesterId: string } | null>(null);
+    const [activeSession, setActiveSession] = React.useState<TimetableEntry | null>(null);
     const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
@@ -181,10 +181,12 @@ export default function StudentEnrollmentPage() {
 
             const updatedCourses = [...currentCourses, courseId];
             const student = allStudents.find(s => s.uid === uid);
+            const intakeInfo = intakes.find(i => i.id === selectedIntake);
 
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
+                intakeId: selectedIntake, // Ensure intake is recorded
                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''
@@ -311,10 +313,10 @@ export default function StudentEnrollmentPage() {
                                                                     key={eIdx} 
                                                                     className={cn(
                                                                         "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
-                                                                        activeSession?.courseId === entry.courseId && activeSession?.semesterId === entry.semesterId && "ring-2 ring-primary border-transparent shadow-md"
+                                                                        activeSession?.id === entry.id && "ring-2 ring-primary border-transparent shadow-md"
                                                                     )}
                                                                     onClick={() => {
-                                                                        setActiveSession({ courseId: entry.courseId, semesterId: entry.semesterId });
+                                                                        setActiveSession(entry);
                                                                         fetchEnrolledStudents(entry.courseId, entry.semesterId);
                                                                     }}
                                                                 >
@@ -343,8 +345,8 @@ export default function StudentEnrollmentPage() {
             <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Enrollment: {activeSession && allCourses[activeSession.courseId]?.name}</DialogTitle>
-                        <DialogDescription>Add or remove students for this session in {activeSession && semesters.find(s=>s.id===activeSession.semesterId)?.name}.</DialogDescription>
+                        <DialogTitle>Enrollment: {activeSession && activeSession.courseName}</DialogTitle>
+                        <DialogDescription>Add or remove students for this session in {activeSession && activeSession.semesterName}.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">

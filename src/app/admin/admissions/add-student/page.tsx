@@ -199,6 +199,7 @@ export default function AddStudentPage() {
             console.error("Error fetching data:", error);
              toast({ variant: 'destructive', title: 'Failed to fetch data' });
         } finally {
+            setTableLoading(tableLoading);
             setTableLoading(false);
         }
     }, [toast]);
