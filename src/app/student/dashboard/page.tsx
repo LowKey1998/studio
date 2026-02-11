@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -101,7 +102,7 @@ export default function StudentDashboardPage() {
             const allQuizzes = qSnap.val() || {};
 
             if (userProfile?.intakeId) {
-                setIntakeName(allIntakes[userProfile.intakeId]?.name || 'N/A');
+                setIntakeName(allIntakes[userProfile.intakeId]?.name || 'Your Intake');
             }
 
             const currentCourses: Course[] = [];
@@ -111,8 +112,8 @@ export default function StudentDashboardPage() {
 
             for (const semId in allRegistrations) {
                 const reg = allRegistrations[semId];
-                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    (reg.courses || []).forEach((cid: string) => {
+                if (reg.courses) {
+                    reg.courses.forEach((cid: string) => {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
                         if (c) {

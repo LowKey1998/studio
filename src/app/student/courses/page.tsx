@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -105,7 +106,8 @@ export default function StudentCoursesPage() {
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
+                // Include all statuses so student sees added courses immediately
+                if (registration.courses && registration.courses.length > 0) {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
