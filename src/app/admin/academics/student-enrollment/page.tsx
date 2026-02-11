@@ -37,7 +37,7 @@ type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; cost: number; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
-type EnrolledStudent = Student & { enrolledInSemester: string };
+type EnrolledStudent = Student & { enrolledInSemester: string; semesterId: string; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
 
 type TimetableEntry = {
@@ -128,9 +128,11 @@ export default function StudentEnrollmentPage() {
 
                     for (const semId in regs[userId]) {
                         if (regs[userId][semId].courses?.includes(courseId)) {
+                            const semInfo = semesters.find(s => s.id === semId);
                             enrollmentList.push({
                                 ...student,
-                                enrolledInSemester: regs[userId][semId].semesterName || "Unknown Semester"
+                                enrolledInSemester: semInfo ? `Year ${semInfo.year}, Sem ${semInfo.semesterInYear}` : "Unknown Semester",
+                                semesterId: semId
                             });
                         }
                     }
@@ -142,7 +144,7 @@ export default function StudentEnrollmentPage() {
         } finally {
             setActionLoading(null);
         }
-    }, [allStudents]);
+    }, [allStudents, semesters]);
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
@@ -249,7 +251,7 @@ export default function StudentEnrollmentPage() {
                 );
 
                 const targetSemester = semesters.find(s => 
-                    s.intakeId === (student.intakeId || selectedIntake) && 
+                    s.intakeId === studentIntake.id && 
                     s.year === state.year && 
                     s.semesterInYear === state.semester
                 );
@@ -275,16 +277,14 @@ export default function StudentEnrollmentPage() {
                         semesterName: targetSemester.name
                     });
                 } else {
-                    const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
-                    if (allRegsSnap.exists()) {
-                        const allRegs = allRegsSnap.val();
-                        const updates: Record<string, any> = {};
-                        for (const semId in allRegs) {
-                            if (allRegs[semId].courses?.includes(activeSession.courseId)) {
-                                updates[`registrations/${student.uid}/${semId}/courses`] = allRegs[semId].courses.filter((id: string) => id !== activeSession.courseId);
-                            }
-                        }
-                        await update(ref(db), updates);
+                    const studentToRemoveEnrolled = student as EnrolledStudent;
+                    const specificRegRef = ref(db, `registrations/${student.uid}/${studentToRemoveEnrolled.semesterId}`);
+                    const specificRegSnap = await get(specificRegRef);
+                    
+                    if (specificRegSnap.exists()) {
+                        const courses = specificRegSnap.val().courses || [];
+                        const updatedCourses = courses.filter((id: string) => id !== activeSession.courseId);
+                        await update(specificRegRef, { courses: updatedCourses });
                     }
                 }
 

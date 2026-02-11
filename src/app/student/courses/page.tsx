@@ -96,7 +96,6 @@ export default function StudentCoursesPage() {
             const activeGroups: Record<string, SemesterGroup> = {};
             const archivedGroups: Record<string, SemesterGroup> = {};
             
-            // Fetch ALL registrations for this student to ensure visibility across statuses
             const registrationsData = registrationsSnap.val() || {};
             
             for (const semesterId in registrationsData) {
@@ -105,7 +104,7 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // STRICT FILTER: Only show semesters belonging to the student's intake
+                    // Only show semesters belonging to the student's intake
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';

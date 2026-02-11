@@ -13,6 +13,7 @@ import {
     CreditCard,
     PlusCircle,
     GraduationCap,
+    CalendarDays
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -24,6 +25,7 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { calculateAcademicState } from '@/lib/semester-utils';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -61,6 +63,7 @@ export default function StudentDashboardPage() {
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
     const [recentGrades, setRecentGrades] = React.useState<any[]>([]);
     const [intakeName, setIntakeName] = React.useState('');
+    const [academicStanding, setAcademicStanding] = React.useState<string>('');
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -79,14 +82,15 @@ export default function StudentDashboardPage() {
         const invoicesRef = ref(db, `invoices/${user.uid}`);
         const transactionsRef = ref(db, 'transactions');
         const attendanceRef = ref(db, 'attendance');
+        const calendarSettingsRef = ref(db, 'settings/academicCalendar');
 
         const unsubRegs = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap] = await Promise.all([
                 get(coursesRef), get(usersRef), get(intakesRef), get(attendanceRef), 
                 get(timetablesRef), get(calendarRef), get(invoicesRef), 
-                get(transactionsRef), get(assessmentsRef), get(quizzesRef)
+                get(transactionsRef), get(assessmentsRef), get(quizzesRef), get(calendarSettingsRef)
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -99,9 +103,26 @@ export default function StudentDashboardPage() {
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
             const allAssessments = assSnap.val() || {};
             const allQuizzes = qSnap.val() || {};
+            const calSettings = settingsSnap.val() || {};
 
             if (userProfile?.intakeId) {
-                setIntakeName(allIntakes[userProfile.intakeId]?.name || 'Your Intake');
+                const iName = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
+                setIntakeName(iName);
+
+                // Calculate Standing
+                const yearMatch = iName.match(/\d{4}/);
+                const monthMatch = iName.match(/[A-Z]{3}/);
+                if (yearMatch && monthMatch) {
+                    const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                    const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+                    const state = calculateAcademicState(
+                        intakeStartStr, 
+                        new Date(), 
+                        calSettings.standardCycles, 
+                        Object.values(calSettings.anomalies || {})
+                    );
+                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                }
             }
 
             const currentCourses: Course[] = [];
@@ -146,10 +167,10 @@ export default function StudentDashboardPage() {
 
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
-                const due = (inv.totalTuition || 0) + (inv.totalMandatoryFees || 0) + (inv.totalOptionalFees || 0) - (inv.applyScholarship ? inv.totalTuition : 0);
+                const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
                 totalDue += due;
             });
-            const totalPaid = allTransactions.reduce((acc, t: any) => acc + (t.amount || 0), 0);
+            const totalPaid = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
             setFeeBalance(Math.max(0, totalDue - totalPaid));
 
             const todayName = daysOfWeek[new Date().getDay()];
@@ -225,13 +246,19 @@ export default function StudentDashboardPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight font-headline text-primary">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Intake: {intakeName}
+                            Your Enrollment Intake: {intakeName}
                         </Badge>
+                        {academicStanding && (
+                            <Badge variant="secondary" className="gap-1.5">
+                                <CalendarDays className="h-3 w-3" />
+                                {academicStanding}
+                            </Badge>
+                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
