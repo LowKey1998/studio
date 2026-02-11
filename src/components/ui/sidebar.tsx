@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -71,8 +70,6 @@ const SidebarProvider = React.forwardRef<
     const isMobile = useIsMobile()
     const [openMobile, setOpenMobile] = React.useState(false)
 
-    // This is the internal state of the sidebar.
-    // We use openProp and setOpenProp for control from outside the component.
     const [_open, _setOpen] = React.useState(defaultOpen)
     const open = openProp ?? _open
     const setOpen = React.useCallback(
@@ -84,20 +81,19 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState)
         }
 
-        // This sets the cookie to keep the sidebar state.
         document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
       },
       [setOpenProp, open]
     )
 
-    // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile
+      // Robust check for mobile view to ensure the correct state is toggled
+      const isActuallyMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : isMobile;
+      return isActuallyMobile
         ? setOpenMobile((open) => !open)
         : setOpen((open) => !open)
     }, [isMobile, setOpen, setOpenMobile])
 
-    // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
@@ -113,8 +109,6 @@ const SidebarProvider = React.forwardRef<
       return () => window.removeEventListener("keydown", handleKeyDown)
     }, [toggleSidebar])
 
-    // We add a state so that we can do data-state="expanded" or "collapsed".
-    // This makes it easier to style the sidebar with Tailwind classes.
     const state = open ? "expanded" : "collapsed"
 
     const contextValue = React.useMemo<SidebarContext>(
@@ -438,7 +432,7 @@ SidebarGroupLabel.displayName = "SidebarGroupLabel"
 const SidebarGroupAction = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button"> & { asChild?: boolean }
->(({ className, asChild = false, ...props }, ref) => {
+>(({ className, asChild = false, showOnHover = false, ...props }, ref) => {
   const Comp = asChild ? Slot : "button"
 
   return (
@@ -704,7 +698,7 @@ const SidebarMenuSubButton = React.forwardRef<
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:text-sidebar-accent-foreground",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
         size === "sm" && "text-xs",
         size === "md" && "text-sm",

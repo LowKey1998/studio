@@ -264,7 +264,6 @@ export default function StudentEnrollmentPage() {
                         semesterName: targetSemester.name
                     });
 
-                    // Comprehensive Notification (In-App + FCM Push)
                     await createNotification(
                         student.uid,
                         `You have been enrolled in ${activeSession.courseName} (${activeSession.courseCode}) for ${targetSemester.name}.`,
@@ -281,7 +280,6 @@ export default function StudentEnrollmentPage() {
                         await update(specificRegRef, { courses: updatedCourses });
                     }
 
-                    // Comprehensive Notification (In-App + FCM Push)
                     await createNotification(
                         student.uid,
                         `You have been removed from ${activeSession.courseName} (${activeSession.courseCode}) for the current semester.`,
