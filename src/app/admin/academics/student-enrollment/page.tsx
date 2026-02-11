@@ -36,6 +36,7 @@ import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -85,6 +86,7 @@ export default function StudentEnrollmentPage() {
     
     // Email Template state
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
+    const [skipPreview, setSkipPreview] = React.useState(false);
     const [enrollmentTemplate, setEnrollmentTemplate] = React.useState({
         subject: 'Class Enrollment Notification: [CourseCode]',
         body: `<h2>Class Enrollment Notification</h2>
@@ -229,6 +231,61 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [fetchData]);
 
+    const performEnrollmentAction = async (type: 'enroll' | 'remove', student: Student, emailData: { subject: string, body: string }) => {
+        if (!activeSession) return;
+        const { courseId, semesterId } = activeSession;
+        
+        setActionLoading(student.uid);
+        try {
+            const regRef = ref(db, `registrations/${student.uid}/${semesterId}`);
+            const regSnap = await get(regRef);
+            
+            if (type === 'enroll') {
+                let currentCourses = [];
+                if (regSnap.exists()) {
+                    currentCourses = regSnap.val().courses || [];
+                }
+                const updatedCourses = [...new Set([...currentCourses, courseId])];
+
+                await update(regRef, { 
+                    courses: updatedCourses,
+                    programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
+                    intakeId: selectedIntake || student?.intakeId || '',
+                    status: regSnap.exists() ? regSnap.val().status : 'Completed',
+                    registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
+                    semesterName: semesters.find(s => s.id === semesterId)?.name || ''
+                });
+                
+                toast({ title: 'Student Enrolled Successfully' });
+                fetchEnrolledStudents(courseId, semesterId);
+            } else {
+                if (regSnap.exists()) {
+                    const currentCourses = regSnap.val().courses || [];
+                    const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
+                    await update(regRef, { courses: updatedCourses });
+                    toast({ title: 'Student Removed' });
+                    setEnrolledStudents(prev => prev.filter(s => s.uid !== student.uid));
+                }
+            }
+
+            // Send the email
+            await sendEmail({
+                to: [student.email],
+                subject: emailData.subject,
+                body: emailData.body
+            });
+            
+            toast({ title: 'Notification Sent' });
+            setIsEmailPreviewOpen(false);
+            setPendingEmailAction(null);
+            setStudentToRemove(null);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const handlePreActionEmail = (type: 'enroll' | 'remove', student: Student) => {
         if (!activeSession) return;
         
@@ -248,65 +305,12 @@ export default function StudentEnrollmentPage() {
         const subject = replacePlaceholders(baseTemplate.subject);
         const body = replacePlaceholders(baseTemplate.body);
 
-        setEmailPreview({ to: student.email, subject, body });
-        setPendingEmailAction({ type, uid: student.uid, name: student.name, studentId: student.id, email: student.email });
-        setIsEmailPreviewOpen(true);
-    };
-
-    const handleConfirmEmailAndAction = async () => {
-        if (!pendingEmailAction || !activeSession) return;
-        const { type, uid, email } = pendingEmailAction;
-        const { courseId, semesterId } = activeSession;
-        
-        setActionLoading(uid);
-        try {
-            const regRef = ref(db, `registrations/${uid}/${semesterId}`);
-            const regSnap = await get(regRef);
-            
-            if (type === 'enroll') {
-                let currentCourses = [];
-                if (regSnap.exists()) {
-                    currentCourses = regSnap.val().courses || [];
-                }
-                const updatedCourses = [...new Set([...currentCourses, courseId])];
-                const student = allStudents.find(s => s.uid === uid);
-
-                await update(regRef, { 
-                    courses: updatedCourses,
-                    programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                    intakeId: selectedIntake || student?.intakeId || '',
-                    status: regSnap.exists() ? regSnap.val().status : 'Completed',
-                    registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
-                    semesterName: semesters.find(s => s.id === semesterId)?.name || ''
-                });
-                
-                toast({ title: 'Student Enrolled Successfully' });
-                fetchEnrolledStudents(courseId, semesterId);
-            } else {
-                if (regSnap.exists()) {
-                    const currentCourses = regSnap.val().courses || [];
-                    const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
-                    await update(regRef, { courses: updatedCourses });
-                    toast({ title: 'Student Removed' });
-                    setEnrolledStudents(prev => prev.filter(s => s.uid !== uid));
-                }
-            }
-
-            // Send the edited email
-            await sendEmail({
-                to: [email],
-                subject: emailPreview.subject,
-                body: emailPreview.body
-            });
-            
-            toast({ title: 'Notification Sent' });
-            setIsEmailPreviewOpen(false);
-            setPendingEmailAction(null);
-            setStudentToRemove(null);
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
-        } finally {
-            setActionLoading(null);
+        if (skipPreview) {
+            performEnrollmentAction(type, student, { subject, body });
+        } else {
+            setEmailPreview({ to: student.email, subject, body });
+            setPendingEmailAction({ type, uid: student.uid, name: student.name, studentId: student.id, email: student.email });
+            setIsEmailPreviewOpen(true);
         }
     };
 
@@ -538,9 +542,17 @@ export default function StudentEnrollmentPage() {
                 <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Notification Template Settings</DialogTitle>
-                        <DialogDescription>Define the default messages sent when students are enrolled or removed from a class. These settings are applied to the preview window.</DialogDescription>
+                        <DialogDescription>Define the default messages sent when students are enrolled or removed from a class.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto py-4 pr-2">
+                        <div className="flex items-center justify-between mb-6 p-4 border rounded-lg bg-primary/5 border-primary/20">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Quick-Send Mode</Label>
+                                <p className="text-sm text-muted-foreground">Skip the preview dialog and send emails immediately using the templates below.</p>
+                            </div>
+                            <Switch checked={skipPreview} onCheckedChange={setSkipPreview} />
+                        </div>
+
                         <Accordion type="multiple" defaultValue={['enrollment', 'removal']} className="w-full">
                             <AccordionItem value="enrollment">
                                 <AccordionTrigger className="font-bold">Enrollment Email Template</AccordionTrigger>
@@ -578,7 +590,7 @@ export default function StudentEnrollmentPage() {
                         </Alert>
                     </div>
                     <DialogFooter>
-                        <Button onClick={() => setIsConfigOpen(false)}>Close & Apply to Previews</Button>
+                        <Button onClick={() => setIsConfigOpen(false)}>Close & Apply Settings</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -610,7 +622,7 @@ export default function StudentEnrollmentPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Cancel</Button>
-                        <Button onClick={handleConfirmEmailAndAction} disabled={!!actionLoading}>
+                        <Button onClick={() => pendingEmailAction && performEnrollmentAction(pendingEmailAction.type, allStudents.find(s => s.uid === pendingEmailAction.uid)!, emailPreview)} disabled={!!actionLoading}>
                             {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
                             Send & Confirm Action
                         </Button>
@@ -623,7 +635,7 @@ export default function StudentEnrollmentPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Remove Student from Class?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? You will be prompted to send a notification email next.
+                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? {skipPreview ? "A notification email will be sent automatically." : "You will be prompted to review the notification email next."}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -632,7 +644,7 @@ export default function StudentEnrollmentPage() {
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={() => studentToRemove && handlePreActionEmail('remove', studentToRemove)}
                         >
-                            Proceed to Notification
+                            Proceed
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
