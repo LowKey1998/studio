@@ -15,3 +15,4 @@ import '@/ai/flows/find-or-create-user.ts';
 import '@/ai/flows/set-user-password.ts';
 import '@/ai/flows/update-user-account.ts';
 import '@/ai/flows/forgot-password-flow.ts';
+import '@/ai/flows/send-contact-email.ts';

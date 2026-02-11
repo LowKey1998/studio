@@ -5,6 +5,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { FacebookPixel } from '@/components/facebook-pixel';
 import { ThemeProvider } from '@/components/theme-provider';
+import { FCMManager } from '@/components/fcm-manager';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -18,8 +19,6 @@ const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
 });
 
-// Metadata can't be dynamic in the root layout in this setup.
-// The dynamic title will be set by the ThemeProvider client component.
 export const metadata: Metadata = {
   title: 'Edutrack360',
   description: 'A modern student management system.',
@@ -40,6 +39,7 @@ export default function RootLayout({
             {children}
             <Toaster />
             <FacebookPixel />
+            <FCMManager />
         </ThemeProvider>
       </body>
     </html>
