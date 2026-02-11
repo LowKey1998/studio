@@ -2,7 +2,7 @@
  * @fileOverview Utilities for calculating academic year and semester based on intake date and current date.
  */
 
-import { parseISO, format, startOfMonth, addMonths, isBefore, isAfter } from 'date-fns';
+import { parseISO, format, startOfMonth, addMonths } from 'date-fns';
 
 export type AcademicCycle = {
     semester: number;
@@ -50,19 +50,21 @@ export function calculateAcademicState(
     let cycleCount = 0;
     let checkDate = new Date(intakeDate);
     
-    // If the intake month itself is a cycle start, it counts as hit #1
-    while (checkDate <= normalizedCurrentDate) {
+    // Safety break to prevent infinite loops
+    let iterations = 0;
+    while (checkDate <= normalizedCurrentDate && iterations < 600) {
         const month = checkDate.getMonth();
         // Does this month represent a start of a new institutional semester?
         if (sortedCycles.some(c => c.startMonth === month)) {
             cycleCount++;
         }
         checkDate = addMonths(checkDate, 1);
+        iterations++;
     }
 
     // 2. Determine Year of study
     // If there are 2 cycles per year, hits 1 and 2 are Year 1, hits 3 and 4 are Year 2, etc.
-    const academicYear = Math.ceil(cycleCount / sortedCycles.length);
+    const academicYear = Math.ceil(cycleCount / (sortedCycles.length || 1));
 
     // 3. Determine the actual institutional semester (Jan cycle or July cycle)
     // This is simply the cycle associated with the current month.
