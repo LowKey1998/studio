@@ -2,7 +2,7 @@
  * @fileOverview Utilities for calculating academic year and semester based on intake date and current date.
  */
 
-import { differenceInMonths, parseISO, format, startOfMonth, addMonths } from 'date-fns';
+import { parseISO, format, startOfMonth, addMonths } from 'date-fns';
 
 export type AcademicCycle = {
     semester: number;
@@ -19,10 +19,6 @@ export type Anomaly = {
 /**
  * Calculates the current year and semester for a given intake.
  * Progression is calculated by counting institutional semester boundaries crossed.
- * 
- * Logic:
- * - A "Semester Count" increments every time today's date passes a month defined in the institutional cycle.
- * - Year = ceil(SemesterCount / number_of_cycles_per_year)
  */
 export function calculateAcademicState(
     intakeDateStr: string,
@@ -48,24 +44,24 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // 1. Calculate how many institutional cycle starts have been passed since the intake started
-    let semesterCount = 0;
+    // 1. Calculate total number of cycles passed since intake
+    let cycleCount = 0;
     let checkDate = new Date(intakeDate);
     
-    // Iterate month by month from intake start to current date
     while (checkDate <= normalizedCurrentDate) {
         const month = checkDate.getMonth();
         if (sortedCycles.some(c => c.startMonth === month)) {
-            semesterCount++;
+            cycleCount++;
         }
         checkDate = addMonths(checkDate, 1);
     }
 
-    // 2. Calculate Year based on cycles completed
-    // If there are 2 cycles per year, the 1st and 2nd semesters of study are Year 1.
-    const academicYear = Math.ceil(semesterCount / sortedCycles.length);
+    // 2. Determine Year of study
+    // Year 1: Cycles 1-2
+    // Year 2: Cycles 3-4
+    const academicYear = Math.ceil(cycleCount / sortedCycles.length);
 
-    // 3. Determine the institutional semester number based on the current month
+    // 3. Determine current institutional semester
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[0];
 

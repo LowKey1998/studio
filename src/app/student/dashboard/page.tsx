@@ -254,9 +254,9 @@ export default function StudentDashboardPage() {
                             Your Enrollment Intake: {intakeName}
                         </Badge>
                         {academicStanding && (
-                            <Badge variant="secondary" className="gap-1.5">
+                            <Badge variant="secondary" className="gap-1.5 font-bold">
                                 <CalendarDays className="h-3 w-3" />
-                                {academicStanding}
+                                Academic Standing: {academicStanding}
                             </Badge>
                         )}
                     </div>
