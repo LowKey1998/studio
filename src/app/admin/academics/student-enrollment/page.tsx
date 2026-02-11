@@ -118,7 +118,6 @@ export default function StudentEnrollmentPage() {
     const fetchEnrolledStudents = React.useCallback(async (courseId: string) => {
         setActionLoading('fetching');
         try {
-            const regsSnap = await get(ref(db, 'regs')); // Legacy path? No, assuming registrations.
             const actualRegsSnap = await get(ref(db, 'registrations'));
             const enrollmentList: EnrolledStudent[] = [];
             if (actualRegsSnap.exists()) {
