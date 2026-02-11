@@ -12,6 +12,7 @@ import {
     ChevronRight, 
     CreditCard,
     PlusCircle,
+    GraduationCap,
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -67,7 +68,6 @@ export default function StudentDashboardPage() {
 
         setLoading(true);
         
-        // Listen for static data changes
         const coursesRef = ref(db, 'courses');
         const usersRef = ref(db, 'users');
         const intakesRef = ref(db, 'intakes');
@@ -75,8 +75,6 @@ export default function StudentDashboardPage() {
         const timetablesRef = ref(db, 'timetables');
         const assessmentsRef = ref(db, 'assessments');
         const quizzesRef = ref(db, 'quizzes');
-
-        // Real-time listeners for student-specific data
         const registrationsRef = ref(db, `registrations/${user.uid}`);
         const invoicesRef = ref(db, `invoices/${user.uid}`);
         const transactionsRef = ref(db, 'transactions');
@@ -202,7 +200,7 @@ export default function StudentDashboardPage() {
         });
 
         return () => unsubRegs();
-    }, [user, userProfile?.intakeId]);
+    }, [user, userProfile, toast]);
 
     if (authLoading || loading) {
         return (
@@ -226,11 +224,14 @@ export default function StudentDashboardPage() {
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight font-headline">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
-                    <div className="flex items-center gap-2 text-muted-foreground mt-1">
-                        <span>{userProfile?.programmeName || 'Academic Portal'}</span>
-                        <span>&middot;</span>
-                        <Badge variant="secondary" className="font-bold">Intake: {intakeName}</Badge>
+                    <h1 className="text-3xl font-bold tracking-tight font-headline text-primary">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
+                    <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">
+                            {userProfile?.programmeName || 'Academic Portal'}
+                        </Badge>
+                        <Badge className="font-bold bg-primary text-primary-foreground">
+                            Your Intake: {intakeName}
+                        </Badge>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
