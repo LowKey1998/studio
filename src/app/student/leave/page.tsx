@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { Loader2, PlusCircle, Calendar as CalendarIcon, Briefcase, Info, AlertCi
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, createNotification } from '@/lib/firebase';
+import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, query, orderByChild, equalTo, onValue } from 'firebase/database';
 import {
   Dialog,
@@ -85,27 +86,92 @@ export default function StudentLeavePage() {
         if (!course) return;
         setFormLoading(true);
         try {
-            await set(push(ref(db, 'studentLeaveRequests')), { courseId: course.id, courseName: course.name, leaveDate: format(leaveDate, 'yyyy-MM-dd'), reason, status: 'Pending', dateRequested: new Date().toISOString(), studentId: currentUser.uid, studentName: userData.name, studentSystemId: userData.id, lecturerId: course.lecturerId });
-            toast({ title: 'Submitted' }); setIsDialogOpen(false); setReason(''); setLeaveDate(undefined);
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Failed' }); }
+            const newRequestRef = push(ref(db, 'studentLeaveRequests'));
+            await set(newRequestRef, { 
+                courseId: course.id, 
+                courseName: course.name, 
+                leaveDate: format(leaveDate, 'yyyy-MM-dd'), 
+                reason, 
+                status: 'Pending', 
+                dateRequested: new Date().toISOString(), 
+                studentId: currentUser.uid, 
+                studentName: userData.name, 
+                studentSystemId: userData.id, 
+                lecturerId: course.lecturerId 
+            });
+
+            // Notify Academics (Registrars)
+            const registrarIds = await getRegistrarIds();
+            const notificationPromises = registrarIds.map(id => 
+                createNotification(id, `${userData.name} submitted a new absence request for ${course.name}.`, '/admin/academics/student-absences')
+            );
+            await Promise.all(notificationPromises);
+
+            toast({ title: 'Request Submitted to Academics' }); 
+            setIsDialogOpen(false); setReason(''); setLeaveDate(undefined);
+        } catch (error: any) { toast({ variant: 'destructive', title: 'Failed to submit request' }); }
         finally { setFormLoading(false); }
     };
 
     return (
         <div className="space-y-6">
-            <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Absence Requests</CardTitle><CardDescription>Manage your requests.</CardDescription></div><Button onClick={()=>setIsDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Request Absence</Button></CardHeader>
+            <Card className="shadow-lg border-0">
+                <CardHeader className="flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="font-headline text-2xl">Absence Requests</CardTitle>
+                        <CardDescription>Formally request an excused absence from a scheduled class. Requests are reviewed by Academics.</CardDescription>
+                    </div>
+                    <Button onClick={()=>setIsDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Request Absence</Button>
+                </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader><TableRow><TableHead>Date Requested</TableHead><TableHead>Course</TableHead><TableHead>Absence Date</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full"/></TableCell></TableRow> :
-                             leaveRequests.map(req => (<TableRow key={req.id}><TableCell>{format(new Date(req.dateRequested), 'PPP')}</TableCell><TableCell>{req.courseName}</TableCell><TableCell>{format(new Date(req.leaveDate), 'PPP')}</TableCell><TableCell><Badge>{req.status}</Badge></TableCell></TableRow>))
+                             leaveRequests.length > 0 ? leaveRequests.map(req => (
+                                <TableRow key={req.id}>
+                                    <TableCell>{format(new Date(req.dateRequested), 'PPP')}</TableCell>
+                                    <TableCell>{req.courseName}</TableCell>
+                                    <TableCell>{format(new Date(req.leaveDate), 'PPP')}</TableCell>
+                                    <TableCell><Badge variant={req.status === 'Approved' ? 'default' : (req.status === 'Declined' ? 'destructive' : 'secondary')}>{req.status}</Badge></TableCell>
+                                </TableRow>
+                             )) : <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">No absence requests found.</TableCell></TableRow>
                             }
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}><DialogContent><form onSubmit={handleApply}><DialogHeader><DialogTitle>New Request</DialogTitle></DialogHeader><div className="space-y-4 py-4"><Select onValueChange={setSelectedCourseId}><SelectTrigger><SelectValue placeholder="Select course"/></SelectTrigger><SelectContent>{enrolledCourses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><Input type="date" onChange={e=>setLeaveDate(new Date(e.target.value))} /><Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason..."/></div><DialogFooter><Button type="submit">Submit</Button></DialogFooter></form></DialogContent></Dialog>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <form onSubmit={handleApply}>
+                        <DialogHeader>
+                            <DialogTitle>New Absence Request</DialogTitle>
+                            <DialogDescription>Submit your reason for missing a class. This will be reviewed by the Registrar's office.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-1">
+                                <Label>Course</Label>
+                                <Select onValueChange={setSelectedCourseId} value={selectedCourseId}>
+                                    <SelectTrigger><SelectValue placeholder="Select course"/></SelectTrigger>
+                                    <SelectContent>{enrolledCourses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Absence Date</Label>
+                                <Input type="date" onChange={e=>setLeaveDate(new Date(e.target.value))} required />
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Reason for Absence</Label>
+                                <Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Please explain why you will be unable to attend..." required />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                            <Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Submit'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

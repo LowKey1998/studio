@@ -45,6 +45,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/registration-management', label: 'Registration Management', icon: Settings },
+        { href: '/admin/academics/student-absences', label: 'Student Absence Approvals', icon: ClipboardCheck },
         { href: '/admin/academics/semester-setup', label: 'Academic Calendar Rules', icon: CalendarDays },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
         { href: '/admin/courses', label: 'Create/View Course', icon: BookCopy },
@@ -89,7 +90,7 @@ export const allMenuItems = [
         { href: '/admin/exams/grading-setup', label: 'Grading Setup', icon: SlidersHorizontal },
         { href: '/admin/exams/grade-approval', label: 'Grade Approval', icon: CheckCircle2 },
         { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
-        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: GraduationCap },
+        { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: FileCheck },
         { href: '/admin/exams/result-publishing', label: 'Result Publishing', icon: Upload },
         { href: '/admin/exams/student-appeals', label: 'Student Appeals Tracking', icon: Search },
       ]
