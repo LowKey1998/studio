@@ -1,15 +1,14 @@
-
-
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getDatabase, ref, push, set, serverTimestamp, get, query, orderByChild, equalTo } from "firebase/database";
+import { getDatabase, ref, get, query, orderByChild, equalTo } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
+import { sendNotification } from "@/app/actions/notifications";
 import type { Notification } from "./types";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: process.env.NEXT_PUBLIC_FACEBOOK_AUTH_DOMAIN || process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
@@ -25,26 +24,15 @@ const storage = getStorage(app);
 const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 /**
- * Creates a notification for a specific user.
- * @param userId - The UID of the user to notify.
- * @param message - The notification message.
- * @param link - The URL the notification should link to.
- * @param type - The type of notification for styling.
+ * Creates a notification for a specific user using the server-side action.
+ * This handles both database persistence and FCM push.
  */
 export const createNotification = async (userId: string, message: string, link: string, type: Notification['type'] = 'info') => {
-  const notificationRef = push(ref(db, `notifications/${userId}`));
-  await set(notificationRef, {
-    message,
-    link,
-    type,
-    timestamp: serverTimestamp(),
-    read: false,
-  });
+  return await sendNotification(userId, message, link, type);
 };
 
 /**
  * Retrieves all user IDs for students and staff.
- * @returns A promise that resolves to an array of user IDs.
  */
 export const getAllStudentAndStaffIds = async (): Promise<string[]> => {
     const usersRef = ref(db, 'users');
@@ -58,14 +46,8 @@ export const getAllStudentAndStaffIds = async (): Promise<string[]> => {
 
 /**
  * Retrieves all registrar user IDs.
- * @returns A promise that resolves to an array of user IDs.
  */
 export const getRegistrarIds = async (): Promise<string[]> => {
-    const usersRef = ref(db, 'users');
-    const q = query(usersRef, orderByChild('subRoles/Registrar'), equalTo(true));
-    
-    // A more robust way would be to fetch all staff and filter,
-    // as Realtime DB querying on arrays is limited.
     const snapshot = await get(ref(db, 'users'));
     if (snapshot.exists()) {
         const users = snapshot.val();
@@ -77,6 +59,4 @@ export const getRegistrarIds = async (): Promise<string[]> => {
     return [];
 }
 
-
 export { app, auth, db, storage, messaging };
-
