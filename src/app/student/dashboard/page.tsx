@@ -246,12 +246,12 @@ export default function StudentDashboardPage() {
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Your Enrollment Intake: {intakeName}
+                            Intake: {intakeName}
                         </Badge>
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">
                                 <CalendarDays className="h-3 w-3" />
-                                Current Standing: {academicStanding}
+                                Standing: {academicStanding}
                             </Badge>
                         )}
                     </div>
@@ -274,7 +274,7 @@ export default function StudentDashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{enrolledCourses.length}</div>
-                        <p className="text-xs text-muted-foreground mt-1">Currently Enrolled</p>
+                        <p className="text-xs text-muted-foreground mt-1">Enrolled</p>
                     </CardContent>
                 </Card>
                 <Card className="shadow-md">
@@ -301,7 +301,7 @@ export default function StudentDashboardPage() {
                 </Card>
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Academic Status</CardTitle>
+                        <CardTitle className="text-sm font-medium">Status</CardTitle>
                         <UserCheck className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>

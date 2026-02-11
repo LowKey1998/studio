@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update, set } from 'firebase/database';
@@ -376,10 +376,27 @@ export default function StudentEnrollmentPage() {
                             </Select>
                         </div>
                         {calculatedState && (
-                            <div className="flex items-end">
-                                <Badge variant="secondary" className="h-10 px-4 text-sm gap-2">
-                                    <CalendarDays className="h-4 w-4"/> Current: Year {calculatedState.year}, Sem {calculatedState.semester}
-                                </Badge>
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Progression Trace</Label>
+                                <div className="flex flex-wrap gap-2">
+                                    <Badge variant="secondary" className="h-10 px-4 text-sm gap-2">
+                                        <CalendarDays className="h-4 w-4"/> Current: Year {calculatedState.year}, Sem {calculatedState.semester}
+                                    </Badge>
+                                    <Popover>
+                                        <PopoverTrigger asChild><Button variant="ghost" size="sm" className="h-10 border border-dashed"><Info className="h-4 w-4 mr-2"/>View Logic</Button></PopoverTrigger>
+                                        <PopoverContent className="w-80">
+                                            <div className="space-y-2">
+                                                <h4 className="font-bold border-b pb-1">Progression Trace</h4>
+                                                <div className="text-xs space-y-1">
+                                                    <div className="flex justify-between"><span>Identified Start:</span><span className="font-bold">{calculatedState.identifiedMonth}</span></div>
+                                                    <div className="flex justify-between"><span>Cycles Counted:</span><span className="font-bold">{calculatedState.cyclesCounted}</span></div>
+                                                    <Separator className="my-1"/>
+                                                    <p className="text-[10px] text-muted-foreground leading-tight italic">Logic: Study Year increments after every two institutional cycles encountered since the intake month.</p>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                             </div>
                         )}
                     </div>

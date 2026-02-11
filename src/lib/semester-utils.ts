@@ -59,9 +59,8 @@ export function calculateAcademicState(
     ],
     anomalies: Anomaly[] = []
 ) {
-    if (!intakeDateStr) return { year: 1, semester: 1, isAnomaly: false };
+    if (!intakeDateStr) return { year: 1, semester: 1, isAnomaly: false, cyclesCounted: 0, identifiedMonth: 'N/A' };
 
-    // Normalize dates to start of month for calculation
     const intakeDate = startOfMonth(parseISO(intakeDateStr));
     const normalizedCurrentDate = startOfMonth(currentDate);
     
@@ -71,22 +70,26 @@ export function calculateAcademicState(
     );
 
     if (activeAnomaly) {
-        return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
+        return { 
+            year: activeAnomaly.year, 
+            semester: activeAnomaly.semester, 
+            isAnomaly: true, 
+            cyclesCounted: 0, 
+            identifiedMonth: format(intakeDate, 'MMMM') 
+        };
     }
 
-    // Ensure cycles are sorted by startMonth
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
     // 1. Count distinct institutional semester boundaries encountered since intake month
-    let semestersStarted = 0;
+    let cyclesCounted = 0;
     let checkDate = new Date(intakeDate);
     
-    // Safety check to prevent infinite loops
     let iterations = 0;
     while ((checkDate < normalizedCurrentDate || isSameMonth(checkDate, normalizedCurrentDate)) && iterations < 600) {
         if (cycleStartMonths.includes(checkDate.getMonth())) {
-            semestersStarted++;
+            cyclesCounted++;
         }
         checkDate = addMonths(checkDate, 1);
         iterations++;
@@ -98,18 +101,18 @@ export function calculateAcademicState(
         if (c.startMonth <= c.endMonth) {
             return currentMonth >= c.startMonth && currentMonth <= c.endMonth;
         } else {
-            // Cycle spans across year boundary
             return currentMonth >= c.startMonth || currentMonth <= c.endMonth;
         }
     }) || sortedCycles[0];
 
     // 3. Determine Study Year
-    // Every 2 cycle boundaries hit moves to the next year
-    const academicYear = Math.ceil(semestersStarted / (sortedCycles.length || 1));
+    const academicYear = Math.ceil(cyclesCounted / (sortedCycles.length || 1));
 
     return { 
         year: Math.max(1, academicYear), 
         semester: currentCycle.semester,
+        cyclesCounted,
+        identifiedMonth: format(intakeDate, 'MMMM'),
         isAnomaly: false
     };
 }
