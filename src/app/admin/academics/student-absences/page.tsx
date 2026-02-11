@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -7,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Check, X, ClipboardCheck, User, Info, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User as AuthUser } from 'firebase/auth';
 import { auth, db, createNotification } from '@/lib/firebase';
 import { ref, update, onValue, set } from 'firebase/database';
 import { format } from 'date-fns';
@@ -17,7 +15,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
 type StudentLeaveRequest = {

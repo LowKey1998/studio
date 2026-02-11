@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -47,7 +46,7 @@ export default function StudentsListPage() {
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [tableLoading, setTableLoading] = React.useState(true);
+    const [tableLoading, setTableLoading] = React.useState(tableLoading);
     const { toast } = useToast();
 
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -125,7 +124,7 @@ export default function StudentsListPage() {
                 <Table>
                     <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Programme</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                     <TableBody>
-                        {tableLoading ? Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-10 w-full" /></TableCell></TableRow>)) : 
+                        {loading || tableLoading ? Array.from({ length: 5 }).map((_, i) => (<TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-10 w-full" /></TableCell></TableRow>)) : 
                         filteredStudents.map(student => (
                             <TableRow key={student.uid}>
                                 <TableCell className="font-mono text-xs">{student.id}</TableCell>

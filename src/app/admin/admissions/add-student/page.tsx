@@ -59,9 +59,8 @@ type User = {
 };
 
 type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
-type Course = { id: string; name: string; code: string; year: number; }
-type Intake = { id: string; name: string; }
+type Intake = { id: string; name: string; };
+type Semester = { id: string; name: string; year: number; semesterInYear: number; intakeId: string; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }>; };
 
 export default function AddStudentPage() {
@@ -103,7 +102,6 @@ export default function AddStudentPage() {
     
     // Data for dialogs
     const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
@@ -126,9 +124,8 @@ export default function AddStudentPage() {
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
         try {
-            const [programmesSnap, coursesSnap, intakesSnap, settingsSnap, semestersSnap, coursePathsSnap, usersSnap] = await Promise.all([
+            const [programmesSnap, intakesSnap, settingsSnap, semestersSnap, coursePathsSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'programmes')),
-                get(ref(db, 'courses')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/idPrefixes')),
                 get(ref(db, 'semesters')),
@@ -138,10 +135,12 @@ export default function AddStudentPage() {
 
             const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
             if (programmesSnap.exists()) setAllProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
-            if (coursesSnap.exists()) setAllCourses(Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] })));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (settingsSnap.exists()) setIdSettings(settingsSnap.val());
-            if (semestersSnap.exists()) setAllSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })));
+            if (semestersSnap.exists()) {
+                const sData = semestersSnap.val();
+                setAllSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
+            }
             if (coursePathsSnap.exists()) {
                 setAllCoursePaths(Object.values(coursePathsSnap.val()));
             }
@@ -374,7 +373,7 @@ export default function AddStudentPage() {
             <Card className="max-w-4xl mx-auto shadow-md">
                 <CardHeader>
                     <CardTitle>Registered Students</CardTitle>
-                    <div className="relative pt-2"><Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." className="pl-8" value={listSearchTerm} onChange={(e) => setListSearchTerm(e.target.value)} /></div>
+                    <div className="relative pt-2"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." className="pl-8" value={listSearchTerm} onChange={(e) => setListSearchTerm(e.target.value)} /></div>
                 </CardHeader>
                 <CardContent>
                     <Table>
