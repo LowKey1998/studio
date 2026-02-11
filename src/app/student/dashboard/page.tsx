@@ -12,7 +12,6 @@ import {
     ChevronRight, 
     CreditCard,
     PlusCircle,
-    GraduationCap,
     CalendarDays
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';

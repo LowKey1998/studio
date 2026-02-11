@@ -244,7 +244,7 @@ export default function StudentEnrollmentPage() {
                 );
 
                 if (!targetSemester) {
-                    console.warn(`No target semester object found for Intake ${studentIntake.name}, Yr ${state.year}, Sem ${state.semester}`);
+                    console.warn(`No target semester found for ${studentIntake.name}, Year ${state.year}, Sem ${state.semester}`);
                     continue;
                 }
 

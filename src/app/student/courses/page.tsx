@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Archive, CalendarDays, BookCopy, UserCheck, Clock } from "lucide-react";
+import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -76,7 +76,11 @@ export default function StudentCoursesPage() {
                 const yearMatch = currentIntakeName.match(/\d{4}/);
                 const monthMatch = currentIntakeName.match(/[A-Z]{3}/);
                 if (yearMatch && monthMatch) {
-                    const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                    const monthsMap: Record<string, string> = {
+                        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+                        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+                    };
+                    const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
                     const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                     setAcademicState(calculateAcademicState(
                         intakeStartStr, 
