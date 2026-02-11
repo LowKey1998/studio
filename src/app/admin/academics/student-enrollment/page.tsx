@@ -2,10 +2,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, get, update } from 'firebase/database';
+import { ref, get, update, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -190,7 +190,7 @@ export default function StudentEnrollmentPage() {
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                intakeId: selectedIntake,
+                intakeId: selectedIntake, // Explicitly include intake
                 status: regSnap.exists() ? regSnap.val().status : 'Completed',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''
@@ -232,7 +232,6 @@ export default function StudentEnrollmentPage() {
     
     const calculatedState = React.useMemo(() => {
         if (!intakeName || !calendarSettings) return null;
-        // Simple heuristic: extract year from name if it looks like 2024JAN
         const yearMatch = intakeName.match(/\d{4}/);
         const monthMatch = intakeName.match(/[A-Z]{3}/);
         if (!yearMatch || !monthMatch) return null;

@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -172,6 +171,7 @@ export default function StudentCoursesPage() {
                                                 <User className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
                                                 <span className="line-clamp-2">{course.lecturerName}</span>
                                             </div>
+                                            <Badge variant="outline" className="text-[10px]">{course.semesterName}</Badge>
                                         </CardContent>
                                         <CardFooter>
                                         <Button asChild className="w-full">
