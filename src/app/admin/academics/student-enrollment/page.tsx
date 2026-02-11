@@ -170,7 +170,6 @@ export default function StudentEnrollmentPage() {
     const handleEnrollStudent = async (uid: string) => {
         if (!activeSession) return;
         const { courseId, semesterId } = activeSession;
-        const selectedIntakeData = intakes.find(i => i.id === selectedIntake);
         
         setActionLoading(uid);
         try {
@@ -221,12 +220,9 @@ export default function StudentEnrollmentPage() {
                 const currentCourses = regSnap.val().courses || [];
                 const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
                 
-                // If this was the only course, we could either keep the record or remove it.
-                // Keeping the status/dates is usually safer for audit purposes.
                 await update(regRef, { courses: updatedCourses });
                 
                 toast({ title: 'Student Removed' });
-                // Refresh local list
                 setEnrolledStudents(prev => prev.filter(s => s.uid !== uid));
             }
         } catch (e: any) {

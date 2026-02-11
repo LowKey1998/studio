@@ -221,6 +221,7 @@ export default function AddStudentPage() {
 
             const userDataPayload: any = {
                 name, email, phoneNumber, status: 'active',
+                role: 'Student',
                 programmeId: programme, year: Number(selectedYear), semesterId: selectedSemester, intakeId: selectedIntake,
                 dob, gender, nationalId, passport, address, medicalHistory,
                 guardian: { name: guardianName, contact: guardianContact, email: guardianEmail, relationship: guardianRelationship },
@@ -263,7 +264,6 @@ export default function AddStudentPage() {
 
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
                 userDataPayload.id = newId;
-                userDataPayload.role = 'Student';
                 await set(ref(db, `users/${userCredential.user.uid}`), userDataPayload);
                 await set(ref(db, `userRoles/${userCredential.user.uid}`), { role: 'student' });
                 
