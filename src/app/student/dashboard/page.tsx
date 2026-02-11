@@ -112,7 +112,11 @@ export default function StudentDashboardPage() {
                 const yearMatch = iName.match(/\d{4}/);
                 const monthMatch = iName.match(/[A-Z]{3}/);
                 if (yearMatch && monthMatch) {
-                    const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                    const monthsMap: Record<string, string> = {
+                        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+                        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+                    };
+                    const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
                     const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                     const state = calculateAcademicState(
                         intakeStartStr, 
@@ -250,12 +254,12 @@ export default function StudentDashboardPage() {
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Intake: {intakeName}
+                            Your Enrollment Intake: {intakeName}
                         </Badge>
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">
                                 <CalendarDays className="h-3 w-3" />
-                                Academic Standing: {academicStanding}
+                                Current Standing: {academicStanding}
                             </Badge>
                         )}
                     </div>

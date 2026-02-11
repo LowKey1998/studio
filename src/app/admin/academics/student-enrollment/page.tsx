@@ -223,7 +223,11 @@ export default function StudentEnrollmentPage() {
                 const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
                 if (!yearMatch || !monthMatch) continue;
 
-                const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                const monthsMap: Record<string, string> = {
+                    'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+                    'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+                };
+                const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
                 const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                 
                 const state = calculateAcademicState(
@@ -316,7 +320,11 @@ export default function StudentEnrollmentPage() {
         const monthMatch = intakeNameForState.match(/[A-Z]{3}/);
         if (!yearMatch || !monthMatch) return null;
 
-        const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+        const monthsMap: Record<string, string> = {
+            'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+            'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+        };
+        const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
         const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
         
         return calculateAcademicState(

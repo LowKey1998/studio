@@ -46,7 +46,7 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // 1. Identify the institutional semester number for the current month
+    // 1. Identify the global institutional cycle for the current month
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = cycles.find(c => {
         if (c.startMonth <= c.endMonth) {
@@ -57,13 +57,13 @@ export function calculateAcademicState(
         }
     }) || cycles[0];
 
-    // 2. Count distinct semester periods started since intake
-    // We count every boundary hit (Jan or July in standard setup) starting FROM the intake month
+    // 2. Count distinct institutional semester periods (boundaries) started since intake
+    // We count every boundary hit (e.g., Jan or July) starting FROM the intake month
     let semestersStarted = 0;
     let checkDate = new Date(intakeDate);
     const cycleStartMonths = cycles.map(c => c.startMonth);
     
-    // Safety check to prevent infinite loops
+    // Safety check to prevent infinite loops (max 50 years)
     let iterations = 0;
     while (checkDate <= normalizedCurrentDate && iterations < 600) {
         if (cycleStartMonths.includes(checkDate.getMonth())) {
@@ -74,7 +74,8 @@ export function calculateAcademicState(
     }
 
     // 3. Determine Study Year
-    // Standard rule: 1st/2nd sem started = Year 1, 3rd/4th = Year 2, etc.
+    // Standard rule: 1st/2nd institutional cycles started since intake = Year 1, 3rd/4th = Year 2, etc.
+    // This correctly handles students starting in Semester 2 (July)
     const academicYear = Math.ceil(semestersStarted / (cycles.length || 1));
 
     return { 
