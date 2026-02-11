@@ -83,6 +83,8 @@ export function calculateAcademicState(
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
     // 1. Count distinct institutional semester boundaries encountered since intake month
+    // A student starting in July hits boundary 1 (July).
+    // Moving to January hits boundary 2 (Jan).
     let cyclesCounted = 0;
     let checkDate = new Date(intakeDate);
     
@@ -95,19 +97,25 @@ export function calculateAcademicState(
         iterations++;
     }
 
-    // 2. Identify the current institutional cycle based on current month
-    const currentMonth = normalizedCurrentDate.getMonth();
-    const currentCycle = sortedCycles.find(c => {
+    // 2. Identify which institutional cycle the student STARTED in
+    const intakeMonth = intakeDate.getMonth();
+    const startingCycleIndex = sortedCycles.findIndex(c => {
         if (c.startMonth <= c.endMonth) {
-            return currentMonth >= c.startMonth && currentMonth <= c.endMonth;
+            return intakeMonth >= c.startMonth && intakeMonth <= c.endMonth;
         } else {
-            return currentMonth >= c.startMonth || currentMonth <= c.endMonth;
+            return intakeMonth >= c.startMonth || intakeMonth <= c.endMonth;
         }
-    }) || sortedCycles[0];
+    });
 
-    // 3. Determine Study Year
-    // A Study Year contains X cycles (usually 2).
+    // 3. Determine current institutional cycle based on cyclesCounted
+    // If they started in July (Cycle 1), and cyclesCounted is 2 (next boundary Jan),
+    // then (1 + 2 - 1) % 2 = 0 (Jan cycle).
     const cyclesPerYear = sortedCycles.length || 1;
+    const currentCycleIndex = (startingCycleIndex + (cyclesCounted - 1)) % cyclesPerYear;
+    const currentCycle = sortedCycles[currentCycleIndex];
+
+    // 4. Determine Study Year
+    // A Study Year increments after every full rotation of institutional cycles.
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     return { 
