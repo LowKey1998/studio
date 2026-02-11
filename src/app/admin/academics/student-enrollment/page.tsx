@@ -15,6 +15,16 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
@@ -64,6 +74,9 @@ export default function StudentEnrollmentPage() {
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
     const [studentIntakeFilter, setStudentIntakeFilter] = React.useState('all');
+    
+    // Deletion dialog state
+    const [studentToRemove, setStudentToRemove] = React.useState<Student | null>(null);
 
     const { toast } = useToast();
 
@@ -209,7 +222,7 @@ export default function StudentEnrollmentPage() {
     };
 
     const handleRemoveStudent = async (uid: string) => {
-        if (!activeSession || !window.confirm("Remove student from this course?")) return;
+        if (!activeSession) return;
         const { courseId, semesterId } = activeSession;
 
         setActionLoading(uid);
@@ -229,6 +242,7 @@ export default function StudentEnrollmentPage() {
             toast({ variant: 'destructive', title: 'Removal Failed' });
         } finally {
             setActionLoading(null);
+            setStudentToRemove(null);
         }
     };
 
@@ -351,8 +365,8 @@ export default function StudentEnrollmentPage() {
                                                                 <div 
                                                                     key={eIdx} 
                                                                     className={cn(
-                                                                        "cursor-pointer group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-all border-primary/20 shadow-sm",
-                                                                        activeSession?.id === entry.id && "ring-2 ring-primary border-transparent shadow-md"
+                                                                        "cursor-pointer group relative p-2 rounded-md border bg-background border-primary/20 shadow-sm transition-all",
+                                                                        activeSession?.id === entry.id ? "ring-2 ring-primary border-transparent shadow-md" : "hover:bg-primary/5"
                                                                     )}
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
@@ -435,7 +449,7 @@ export default function StudentEnrollmentPage() {
                                                 <p className="font-bold">{s.name}</p>
                                                 <p className="text-xs text-muted-foreground">{s.id}</p>
                                             </div>
-                                            <Button size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleRemoveStudent(s.uid)} disabled={!!actionLoading}>
+                                            <Button size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setStudentToRemove(s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
                                             </Button>
                                         </div>
@@ -452,6 +466,26 @@ export default function StudentEnrollmentPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!studentToRemove} onOpenChange={(open) => !open && setStudentToRemove(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove Student from Class?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? This action will update their course registration record immediately.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => studentToRemove && handleRemoveStudent(studentToRemove.uid)}
+                        >
+                            Confirm Removal
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
