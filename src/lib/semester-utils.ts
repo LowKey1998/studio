@@ -18,6 +18,34 @@ export type Anomaly = {
 };
 
 /**
+ * Robustly parses an intake name into a YYYY-MM-DD date string.
+ * Supports formats like "2025JUL", "July 2025", etc.
+ */
+export function parseIntakeDate(intakeName: string): string | null {
+    if (!intakeName) return null;
+    const yearMatch = intakeName.match(/\d{4}/);
+    if (!yearMatch) return null;
+    const year = yearMatch[0];
+
+    const monthsMap: Record<string, string> = {
+        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12',
+        'JANUARY': '01', 'FEBRUARY': '02', 'MARCH': '03', 'APRIL': '04', 'MAY': '05', 'JUNE': '06',
+        'JULY': '07', 'AUGUST': '08', 'SEPTEMBER': '09', 'OCTOBER': '10', 'NOVEMBER': '11', 'DECEMBER': '12'
+    };
+
+    const upperName = intakeName.toUpperCase();
+    let month = '01'; 
+    for (const key in monthsMap) {
+        if (upperName.includes(key)) {
+            month = monthsMap[key];
+            break;
+        }
+    }
+    return `${year}-${month}-01`;
+}
+
+/**
  * Calculates the current year and semester for a given intake.
  * Progression is calculated by identifying institutional semester boundaries (Cycle Starts) 
  * encountered starting FROM the student's specific intake month.
@@ -50,8 +78,7 @@ export function calculateAcademicState(
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
-    // 1. Count distinct institutional semester boundaries encountered since intake
-    // We count every boundary hit (e.g., Jan or July) starting FROM the intake month
+    // 1. Count distinct institutional semester boundaries encountered since intake month
     let semestersStarted = 0;
     let checkDate = new Date(intakeDate);
     
@@ -65,7 +92,7 @@ export function calculateAcademicState(
         iterations++;
     }
 
-    // 2. Identify the global institutional cycle for the current month
+    // 2. Identify the current institutional cycle based on current month
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = sortedCycles.find(c => {
         if (c.startMonth <= c.endMonth) {
@@ -77,7 +104,7 @@ export function calculateAcademicState(
     }) || sortedCycles[0];
 
     // 3. Determine Study Year
-    // Standard rule: Hit 1 & 2 = Year 1, Hit 3 & 4 = Year 2, etc.
+    // Every 2 cycle boundaries hit moves to the next year
     const academicYear = Math.ceil(semestersStarted / (sortedCycles.length || 1));
 
     return { 

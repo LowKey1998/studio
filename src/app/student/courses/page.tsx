@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { calculateAcademicState } from '@/lib/semester-utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type Course = {
     id: string;
@@ -73,15 +73,8 @@ export default function StudentCoursesPage() {
             setIntakeName(currentIntakeName);
 
             if (calendarSnap.exists() && currentIntakeName) {
-                const yearMatch = currentIntakeName.match(/\d{4}/);
-                const monthMatch = currentIntakeName.match(/[A-Z]{3}/);
-                if (yearMatch && monthMatch) {
-                    const monthsMap: Record<string, string> = {
-                        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-                        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-                    };
-                    const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
-                    const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+                const intakeStartStr = parseIntakeDate(currentIntakeName);
+                if (intakeStartStr) {
                     setAcademicState(calculateAcademicState(
                         intakeStartStr, 
                         new Date(), 

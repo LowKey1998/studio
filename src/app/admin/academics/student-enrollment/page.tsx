@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { calculateAcademicState } from '@/lib/semester-utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Textarea } from '@/components/ui/textarea';
@@ -219,16 +219,8 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
                 if (!studentIntake) continue;
 
-                const yearMatch = studentIntake.name.match(/\d{4}/);
-                const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
-                if (!yearMatch || !monthMatch) continue;
-
-                const monthsMap: Record<string, string> = {
-                    'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-                    'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-                };
-                const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
-                const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+                const intakeStartStr = parseIntakeDate(studentIntake.name);
+                if (!intakeStartStr) continue;
                 
                 const state = calculateAcademicState(
                     intakeStartStr, 
@@ -316,16 +308,8 @@ export default function StudentEnrollmentPage() {
     
     const calculatedState = React.useMemo(() => {
         if (!intakeNameForState || !calendarSettings) return null;
-        const yearMatch = intakeNameForState.match(/\d{4}/);
-        const monthMatch = intakeNameForState.match(/[A-Z]{3}/);
-        if (!yearMatch || !monthMatch) return null;
-
-        const monthsMap: Record<string, string> = {
-            'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-            'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-        };
-        const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
-        const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+        const intakeStartStr = parseIntakeDate(intakeNameForState);
+        if (!intakeStartStr) return null;
         
         return calculateAcademicState(
             intakeStartStr, 

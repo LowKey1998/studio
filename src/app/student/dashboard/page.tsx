@@ -24,7 +24,7 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { calculateAcademicState } from '@/lib/semester-utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -108,15 +108,8 @@ export default function StudentDashboardPage() {
                 const iName = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
                 setIntakeName(iName);
 
-                const yearMatch = iName.match(/\d{4}/);
-                const monthMatch = iName.match(/[A-Z]{3}/i);
-                if (yearMatch && monthMatch) {
-                    const monthsMap: Record<string, string> = {
-                        'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-                        'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-                    };
-                    const startMonth = monthsMap[monthMatch[0].toUpperCase()] || '01';
-                    const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+                const intakeStartStr = parseIntakeDate(iName);
+                if (intakeStartStr) {
                     const state = calculateAcademicState(
                         intakeStartStr, 
                         new Date(), 
