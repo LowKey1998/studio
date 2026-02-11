@@ -87,28 +87,11 @@ export default function StudentEnrollmentPage() {
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
     const [enrollmentTemplate, setEnrollmentTemplate] = React.useState({
         subject: 'Class Enrollment Notification: [CourseCode]',
-        body: `<h2>Class Enrollment Notification</h2>
-<p>Hello [Name],</p>
-<p>You have been <strong>enrolled in</strong> the following course:</p>
-<p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>
-<strong>Time:</strong> [Day] at [Time]</p>
-<p>You can view your updated classes and timetable on the student portal:<br/>
-<a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
-<p><strong>User ID:</strong> [UserID]</p>
-<p>Best regards,<br/>The Administration</p>`
+        body: `<h2>Class Enrollment Notification</h2>\n<p>Hello [Name],</p>\n<p>You have been <strong>enrolled in</strong> the following course:</p>\n<p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>\n<strong>Time:</strong> [Day] at [Time]</p>\n<p>You can view your updated classes and timetable on the student portal:<br/>\n<a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>\n<p><strong>User ID:</strong> [UserID]</p>\n<p>Best regards,<br/>The Administration</p>`
     });
     const [removalTemplate, setRemovalTemplate] = React.useState({
         subject: 'Class Removal Notification: [CourseCode]',
-        body: `<h2>Class Removal Notification</h2>
-<p>Hello [Name],</p>
-<p>You have been <strong>removed from</strong> the following course:</p>
-<p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>
-<strong>Time:</strong> [Day] at [Time]</p>
-<p>If you believe this is an error, please contact the Registrar's office.</p>
-<p>You can view your current classes on the student portal:<br/>
-<a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
-<p><strong>User ID:</strong> [UserID]</p>
-<p>Best regards,<br/>The Administration</p>`
+        body: `<h2>Class Removal Notification</h2>\n<p>Hello [Name],</p>\n<p>You have been <strong>removed from</strong> the following course:</p>\n<p><strong>Course:</strong> [CourseName] ([CourseCode])<br/>\n<strong>Time:</strong> [Day] at [Time]</p>\n<p>If you believe this is an error, please contact the Registrar's office.</p>\n<p>You can view your current classes on the student portal:<br/>\n<a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>\n<p><strong>User ID:</strong> [UserID]</p>\n<p>Best regards,<br/>The Administration</p>`
     });
 
     const [studentToRemove, setStudentToRemove] = React.useState<EnrolledStudent | null>(null);

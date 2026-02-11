@@ -21,8 +21,8 @@ export default function SemesterSetupPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [standardCycles, setStandardCycles] = React.useState([
-        { semester: 1, startMonth: 0 },
-        { semester: 2, startMonth: 6 }
+        { semester: 1, startMonth: 0, endMonth: 5 },
+        { semester: 2, startMonth: 6, endMonth: 11 }
     ]);
     const [anomalies, setAnomalies] = React.useState<any[]>([]);
     const { toast } = useToast();
@@ -66,26 +66,47 @@ export default function SemesterSetupPage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Calendar className="text-primary"/> Institutional Academic Cycles</CardTitle>
-                    <CardDescription>Define the standard months when semesters begin. This controls the automatic "Year/Semester" labels throughout the system.</CardDescription>
+                    <CardDescription>Define the standard months when semesters begin and end. This controls rolling intake progression.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="grid md:grid-cols-2 gap-6">
                         {standardCycles.map((cycle, i) => (
-                            <div key={i} className="p-4 border rounded-lg bg-muted/20 space-y-3">
-                                <Label className="font-bold">Semester {cycle.semester} Start</Label>
-                                <Select 
-                                    value={String(cycle.startMonth)} 
-                                    onValueChange={(val) => {
-                                        const next = [...standardCycles];
-                                        next[i].startMonth = Number(val);
-                                        setStandardCycles(next);
-                                    }}
-                                >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {months.map((m, idx) => <SelectItem key={idx} value={String(idx)}>{m}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                            <div key={i} className="p-4 border rounded-lg bg-muted/20 space-y-4">
+                                <Label className="font-bold text-base">Cycle for Semester {cycle.semester}</Label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label className="text-xs uppercase text-muted-foreground">Start Month</Label>
+                                        <Select 
+                                            value={String(cycle.startMonth)} 
+                                            onValueChange={(val) => {
+                                                const next = [...standardCycles];
+                                                next[i].startMonth = Number(val);
+                                                setStandardCycles(next);
+                                            }}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {months.map((m, idx) => <SelectItem key={idx} value={String(idx)}>{m}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs uppercase text-muted-foreground">End Month</Label>
+                                        <Select 
+                                            value={String(cycle.endMonth)} 
+                                            onValueChange={(val) => {
+                                                const next = [...standardCycles];
+                                                next[i].endMonth = Number(val);
+                                                setStandardCycles(next);
+                                            }}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {months.map((m, idx) => <SelectItem key={idx} value={String(idx)}>{m}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -102,7 +123,7 @@ export default function SemesterSetupPage() {
                         </div>
 
                         {anomalies.map((a, i) => (
-                            <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-card">
+                            <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-card shadow-sm">
                                 <div className="space-y-1">
                                     <Label className="text-xs">Academic Year</Label>
                                     <Input type="number" value={a.year} onChange={e => {
