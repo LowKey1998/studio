@@ -45,9 +45,11 @@ export function calculateAcademicState(
     }
 
     // 1. Calculate total number of cycles passed since intake
+    // We count how many institutional boundaries have been crossed since the intake date
     let cycleCount = 0;
     let checkDate = new Date(intakeDate);
     
+    // Ensure we start counting from the very first month if it's a boundary
     while (checkDate <= normalizedCurrentDate) {
         const month = checkDate.getMonth();
         if (sortedCycles.some(c => c.startMonth === month)) {
@@ -57,13 +59,12 @@ export function calculateAcademicState(
     }
 
     // 2. Determine Year of study
-    // Year 1: Cycles 1-2
-    // Year 2: Cycles 3-4
+    // For 2 semesters per year: 1-2 = Year 1, 3-4 = Year 2, etc.
     const academicYear = Math.ceil(cycleCount / sortedCycles.length);
 
-    // 3. Determine current institutional semester
+    // 3. Determine current institutional semester (Jan or July cycle)
     const currentMonth = normalizedCurrentDate.getMonth();
-    const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[0];
+    const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[sortedCycles.length - 1];
 
     return { 
         year: Math.max(1, academicYear), 

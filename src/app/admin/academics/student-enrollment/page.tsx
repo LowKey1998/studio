@@ -236,6 +236,7 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
                 if (!studentIntake) continue;
 
+                // Robust Intake Month Mapping
                 const yearMatch = studentIntake.name.match(/\d{4}/);
                 const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
                 if (!yearMatch || !monthMatch) continue;
@@ -243,6 +244,7 @@ export default function StudentEnrollmentPage() {
                 const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
                 const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                 
+                // Calculate student's EXACT current progression using refined counting logic
                 const state = calculateAcademicState(
                     intakeStartStr, 
                     new Date(), 
@@ -250,13 +252,17 @@ export default function StudentEnrollmentPage() {
                     Object.values(calendarSettings.anomalies || {})
                 );
 
+                // Find the specific semester object for THIS student's intake at THIS progression level
                 const targetSemester = semesters.find(s => 
                     s.intakeId === studentIntake.id && 
                     s.year === state.year && 
                     s.semesterInYear === state.semester
                 );
 
-                if (!targetSemester) continue;
+                if (!targetSemester) {
+                    console.warn(`No target semester object found for Intake ${studentIntake.name}, Yr ${state.year}, Sem ${state.semester}`);
+                    continue;
+                }
 
                 const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
                 const regSnap = await get(regRef);
@@ -322,12 +328,12 @@ export default function StudentEnrollmentPage() {
     };
 
     const selectedIntakeData = intakes.find(i => i.id === selectedIntake);
-    const intakeName = selectedIntakeData?.name;
+    const intakeNameForState = selectedIntakeData?.name;
     
     const calculatedState = React.useMemo(() => {
-        if (!intakeName || !calendarSettings) return null;
-        const yearMatch = intakeName.match(/\d{4}/);
-        const monthMatch = intakeName.match(/[A-Z]{3}/);
+        if (!intakeNameForState || !calendarSettings) return null;
+        const yearMatch = intakeNameForState.match(/\d{4}/);
+        const monthMatch = intakeNameForState.match(/[A-Z]{3}/);
         if (!yearMatch || !monthMatch) return null;
 
         const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
@@ -339,12 +345,12 @@ export default function StudentEnrollmentPage() {
             calendarSettings.standardCycles, 
             Object.values(calendarSettings.anomalies || {})
         );
-    }, [intakeName, calendarSettings]);
+    }, [intakeNameForState, calendarSettings]);
 
     const filteredTimetable = React.useMemo(() => {
-        if (!selectedIntake || !intakeName) return [];
-        return masterTimetable.filter(entry => entry.intakeName === intakeName);
-    }, [masterTimetable, selectedIntake, intakeName]);
+        if (!selectedIntake || !intakeNameForState) return [];
+        return masterTimetable.filter(entry => entry.intakeName === intakeNameForState);
+    }, [masterTimetable, selectedIntake, intakeNameForState]);
 
     const availableStudents = allStudents.filter(s => 
         !enrolledStudents.some(e => e.uid === s.uid) &&
@@ -420,7 +426,7 @@ export default function StudentEnrollmentPage() {
 
             {selectedIntake && hasSlots && (
                 <Card>
-                    <CardHeader><CardTitle>{intakeName} Timetable Grid</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>{intakeNameForState} Timetable Grid</CardTitle></CardHeader>
                     <CardContent className="overflow-x-auto">
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
                             <Table>

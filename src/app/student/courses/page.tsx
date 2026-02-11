@@ -104,7 +104,7 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // Only show semesters belonging to the student's intake
+                    // STRICT COHORT FILTER: Only show semesters belonging to the student's intake
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';
@@ -152,7 +152,7 @@ export default function StudentCoursesPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, toast]);
+    }, [currentUser, toast, userProfile]);
 
 
     React.useEffect(() => {
