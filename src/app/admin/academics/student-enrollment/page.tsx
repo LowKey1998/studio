@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Send, Settings2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, get, update } from 'firebase/database';
+import { ref, get, update, set } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -116,7 +117,7 @@ export default function StudentEnrollmentPage() {
 
     const { toast } = useToast();
 
-    const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
+    const fetchEnrolledStudents = React.useCallback(async (courseId: string) => {
         setActionLoading('fetching');
         try {
             const regsSnap = await get(ref(db, 'registrations'));
@@ -124,8 +125,11 @@ export default function StudentEnrollmentPage() {
                 const regs = regsSnap.val();
                 const uids: string[] = [];
                 for (const userId in regs) {
-                    if (regs[userId][semesterId]?.courses?.includes(courseId)) {
-                        uids.push(userId);
+                    for (const semId in regs[userId]) {
+                        if (regs[userId][semId]?.courses?.includes(courseId)) {
+                            uids.push(userId);
+                            break; // Avoid double counting if student has course in multiple semesters (unlikely but possible)
+                        }
                     }
                 }
                 setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
@@ -135,6 +139,7 @@ export default function StudentEnrollmentPage() {
         } catch (e) {
             console.error(e);
         } finally {
+            setLoading(false);
             setActionLoading(null);
         }
     }, [allStudents]);
@@ -217,12 +222,39 @@ export default function StudentEnrollmentPage() {
     }, [fetchData]);
 
     const performEnrollmentAction = async (type: 'enroll' | 'remove', student: Student) => {
-        if (!activeSession) return;
-        const { courseId, semesterId } = activeSession;
+        if (!activeSession || !calendarSettings) return;
+        const { courseId } = activeSession;
         
         setActionLoading(student.uid);
         try {
-            const regRef = ref(db, `registrations/${student.uid}/${semesterId}`);
+            // 1. Calculate student's CURRENT semester based on their intake and institutional calendar
+            const studentIntake = intakes.find(i => i.id === student.intakeId);
+            if (!studentIntake) throw new Error("Student intake not found.");
+
+            const yearMatch = studentIntake.name.match(/\d{4}/);
+            const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
+            if (!yearMatch || !monthMatch) throw new Error("Invalid intake name format.");
+
+            const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+            const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+            
+            const state = calculateAcademicState(
+                intakeStartStr, 
+                new Date(), 
+                calendarSettings.standardCycles, 
+                Object.values(calendarSettings.anomalies || {})
+            );
+
+            // 2. Find the semesterId that matches this year/semester for the student's intake
+            const targetSemester = semesters.find(s => 
+                s.intakeId === student.intakeId && 
+                s.year === state.year && 
+                s.semesterInYear === state.semester
+            );
+
+            if (!targetSemester) throw new Error(`Could not find a defined semester for Year ${state.year}, Sem ${state.semester} in the student's intake.`);
+
+            const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
             const regSnap = await get(regRef);
             
             if (type === 'enroll') {
@@ -235,25 +267,32 @@ export default function StudentEnrollmentPage() {
                 await update(regRef, { 
                     courses: updatedCourses,
                     programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                    intakeId: selectedIntake || student?.intakeId || '',
+                    intakeId: student.intakeId,
                     status: regSnap.exists() ? regSnap.val().status : 'Completed',
                     registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
-                    semesterName: semesters.find(s => s.id === semesterId)?.name || ''
+                    semesterName: targetSemester.name
                 });
                 
-                toast({ title: 'Student Enrolled Successfully' });
-                fetchEnrolledStudents(courseId, semesterId);
+                toast({ title: 'Student Enrolled', description: `Added to ${targetSemester.name}` });
+                fetchEnrolledStudents(courseId);
             } else {
-                if (regSnap.exists()) {
-                    const currentCourses = regSnap.val().courses || [];
-                    const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
-                    await update(regRef, { courses: updatedCourses });
+                // If removing, we need to find WHICH semester they are actually enrolled in for this course
+                const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
+                if (allRegsSnap.exists()) {
+                    const allRegs = allRegsSnap.val();
+                    for (const semId in allRegs) {
+                        if (allRegs[semId].courses?.includes(courseId)) {
+                            const updated = allRegs[semId].courses.filter((id: string) => id !== courseId);
+                            await update(ref(db, `registrations/${student.uid}/${semId}`), { courses: updated });
+                            break;
+                        }
+                    }
                     toast({ title: 'Student Removed' });
                     setEnrolledStudents(prev => prev.filter(s => s.uid !== student.uid));
                 }
             }
 
-            // Generate and Send the Email automatically using templates
+            // 3. Send Notification
             const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
             const replacePlaceholders = (text: string) => {
                 return text
@@ -407,7 +446,7 @@ export default function StudentEnrollmentPage() {
                                                                     )}
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
-                                                                        fetchEnrolledStudents(entry.courseId, entry.semesterId);
+                                                                        fetchEnrolledStudents(entry.courseId);
                                                                         setStudentIntakeFilter(selectedIntake);
                                                                     }}
                                                                 >

@@ -12,7 +12,6 @@ import {
     ChevronRight, 
     CreditCard,
     PlusCircle,
-    CheckCircle2
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -60,6 +59,7 @@ export default function StudentDashboardPage() {
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
     const [recentGrades, setRecentGrades] = React.useState<any[]>([]);
+    const [intakeName, setIntakeName] = React.useState('');
     const { toast } = useToast();
 
     const fetchData = React.useCallback(async () => {
@@ -76,7 +76,8 @@ export default function StudentDashboardPage() {
                 transactionsSnap,
                 assessmentsSnap,
                 quizzesSnap,
-                usersSnap
+                usersSnap,
+                intakesSnap
             ] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
@@ -87,7 +88,8 @@ export default function StudentDashboardPage() {
                 get(ref(db, 'transactions')),
                 get(ref(db, 'assessments')),
                 get(ref(db, 'quizzes')),
-                get(ref(db, 'users'))
+                get(ref(db, 'users')),
+                get(ref(db, 'intakes'))
             ]);
 
             const allCourses = coursesSnap.val() || {};
@@ -100,6 +102,11 @@ export default function StudentDashboardPage() {
             const allAssessments = assessmentsSnap.val() || {};
             const allQuizzes = quizzesSnap.val() || {};
             const allUsers = usersSnap.val() || {};
+            const allIntakes = intakesSnap.val() || {};
+
+            if (userProfile?.intakeId) {
+                setIntakeName(allIntakes[userProfile.intakeId]?.name || 'N/A');
+            }
 
             const currentCourses: Course[] = [];
             let totalPresent = 0;
@@ -199,7 +206,7 @@ export default function StudentDashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, userProfile?.intakeId]);
 
     React.useEffect(() => {
         if (user) fetchData();
@@ -228,7 +235,11 @@ export default function StudentDashboardPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight font-headline">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
-                    <p className="text-muted-foreground">{userProfile?.programmeName || 'Welcome to your student portal.'}</p>
+                    <div className="flex items-center gap-2 text-muted-foreground mt-1">
+                        <span>{userProfile?.programmeName || 'Academic Portal'}</span>
+                        <span>&middot;</span>
+                        <Badge variant="secondary" className="font-bold">{intakeName}</Badge>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" asChild>
