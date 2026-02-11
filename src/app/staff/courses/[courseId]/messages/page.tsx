@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { useParams } from 'next/navigation';
@@ -120,7 +119,7 @@ export default function CourseMessagesPage() {
             if (regsData) {
                 Object.keys(regsData).forEach(userId => {
                     Object.keys(regsData[userId]).forEach(semester => {
-                        if (regsData[userId][semester].courses.includes(courseId)) {
+                        if (regsData[userId][semester].courses?.includes(courseId)) {
                             studentUids.add(userId);
                         }
                     });
@@ -130,7 +129,9 @@ export default function CourseMessagesPage() {
             const courseRef = ref(db, `courses/${courseId}`);
             const courseSnap = await get(courseRef);
             if(courseSnap.exists()){
-                studentUids.add(courseSnap.val().lecturerId);
+                const cData = courseSnap.val();
+                studentUids.add(cData.lecturerId);
+                if (cData.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
             }
 
             const enrolled = Array.from(studentUids).map(uid => ({ uid, name: usersData[uid]?.name || 'Unknown' })).filter(u => u.name !== 'Unknown');
@@ -221,6 +222,16 @@ export default function CourseMessagesPage() {
                 timestamp: serverTimestamp()
             });
 
+            // Notify original post author if not self
+            const originalPost = messages.find(m => m.id === messageId);
+            if (originalPost && originalPost.senderId !== currentUser.uid) {
+                await createNotification(
+                    originalPost.senderId,
+                    `${currentUserData.name} commented on your post in ${originalPost.title.substring(0, 20)}...`,
+                    `/student/courses/${courseId}/messages`
+                );
+            }
+
             // Handle notifications for mentions
             const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
             let match;
@@ -283,7 +294,7 @@ export default function CourseMessagesPage() {
 
         return parts.map((part, i) => {
             if (i % 3 === 1) { // This is the name part of a match
-                return <strong key={i} className="text-primary bg-primary/10 px-1 rounded-sm">@{parts[i]}</strong>;
+                return <strong key={i} className="text-primary bg-primary/10 px-1 rounded-sm">@{part}</strong>;
             }
             if (i % 3 === 2) { // This is the UID part, we don't render it
                 return null;

@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase';
+import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, set } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -263,6 +263,13 @@ export default function StudentEnrollmentPage() {
                         registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                         semesterName: targetSemester.name
                     });
+
+                    // In-app Notification
+                    await createNotification(
+                        student.uid,
+                        `You have been enrolled in ${activeSession.courseName} (${activeSession.courseCode}) for ${targetSemester.name}.`,
+                        '/student/courses'
+                    );
                 } else {
                     const studentToRemoveEnrolled = student as EnrolledStudent;
                     const specificRegRef = ref(db, `registrations/${student.uid}/${studentToRemoveEnrolled.semesterId}`);
@@ -273,6 +280,13 @@ export default function StudentEnrollmentPage() {
                         const updatedCourses = courses.filter((id: string) => id !== activeSession.courseId);
                         await update(specificRegRef, { courses: updatedCourses });
                     }
+
+                    // In-app Notification
+                    await createNotification(
+                        student.uid,
+                        `You have been removed from ${activeSession.courseName} (${activeSession.courseCode}) for the current semester.`,
+                        '/student/courses'
+                    );
                 }
 
                 if (sendEmails) {

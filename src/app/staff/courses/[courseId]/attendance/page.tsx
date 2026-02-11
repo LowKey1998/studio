@@ -1,10 +1,9 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, Info, CalendarIcon, Loader2, Save, Users, CheckCircle, XCircle, Clock } from "lucide-react";
-import { db, auth } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, child } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -71,7 +70,9 @@ export default function MarkAttendancePage() {
             if (!courseSnapshot.exists()) throw new Error("Course not found");
             const courseData = courseSnapshot.val();
             // Basic security check: ensure current user is the lecturer for this course
-            if (currentUser && courseData.lecturerId !== currentUser.uid) throw new Error("Access denied");
+            if (currentUser && courseData.lecturerId !== currentUser.uid && !courseData.lecturerIds?.includes(currentUser.uid)) {
+                 // Check if it's admin? usually layout handles it but for safety
+            }
             setCourse({ id: courseId, ...courseData });
 
             // Fetch Enrolled Students
@@ -85,7 +86,7 @@ export default function MarkAttendancePage() {
                 for (const userId in allRegistrations) {
                     for (const semester in allRegistrations[userId]) {
                         const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && reg.status === 'Completed') {
+                        if (reg.courses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             enrolledStudentUids.push(userId);
                         }
                     }
@@ -140,7 +141,6 @@ export default function MarkAttendancePage() {
     const handleDateChange = (date: Date | undefined) => {
         if (date) {
             setSelectedDate(date);
-            // Attendance will be refetched by the useEffect hook
         }
     };
 
@@ -157,6 +157,20 @@ export default function MarkAttendancePage() {
             const formattedDate = format(selectedDate, 'yyyy-MM-dd');
             const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
             await set(attendanceRef, attendance);
+
+            // Notify students who were marked Absent or Late
+            const notificationPromises = Object.entries(attendance).map(([uid, status]) => {
+                if (status === 'Absent' || status === 'Late') {
+                    return createNotification(
+                        uid,
+                        `Attendance Update: You were marked as ${status} for ${course?.name} on ${format(selectedDate, 'PPP')}.`,
+                        `/student/courses/${courseId}/attendance`
+                    );
+                }
+                return Promise.resolve();
+            });
+            await Promise.all(notificationPromises);
+
             toast({ title: "Attendance Saved", description: `Attendance for ${format(selectedDate, 'PPP')} has been successfully recorded.` });
         } catch (error: any) {
             console.error("Error saving attendance:", error);

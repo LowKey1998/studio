@@ -1,10 +1,9 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, MessageSquare } from "lucide-react";
-import { db, auth } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -174,7 +173,19 @@ export default function FinalExamEntryPage() {
         try {
             const scoresRef = ref(db, `assessments/${selectedCourse}`);
             await set(scoresRef, scores);
-            toast({ title: "Scores Saved", description: "Final exam scores have been updated." });
+
+            // Notify students
+            const course = courses.find(c => c.id === selectedCourse);
+            const notificationPromises = Object.keys(scores).map(uid => 
+                createNotification(
+                    uid,
+                    `Your final exam results for ${course?.code || 'course'} have been posted.`,
+                    `/student/courses/${selectedCourse}/results`
+                )
+            );
+            await Promise.all(notificationPromises);
+
+            toast({ title: "Scores Saved", description: "Final exam scores have been updated and students notified." });
         } catch (error: any) {
             console.error("Error saving scores:", error);
             toast({ variant: 'destructive', title: "Save Failed", description: error.message });

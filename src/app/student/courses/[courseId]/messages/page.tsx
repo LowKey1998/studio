@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { useParams } from 'next/navigation';
@@ -108,7 +107,9 @@ export default function CourseMessagesPage() {
             const courseRef = ref(db, `courses/${courseId}`);
             const courseSnap = await get(courseRef);
             if(courseSnap.exists()){
-                studentUids.add(courseSnap.val().lecturerId);
+                const cData = courseSnap.val();
+                studentUids.add(cData.lecturerId);
+                if (cData.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
             }
 
             const enrolled: Record<string, EnrolledUser> = {};
@@ -202,6 +203,15 @@ export default function CourseMessagesPage() {
                 content: commentText,
                 timestamp: serverTimestamp()
             });
+
+            const originalPost = messages.find(m => m.id === messageId);
+            if (originalPost && originalPost.senderId !== currentUser.uid) {
+                await createNotification(
+                    originalPost.senderId,
+                    `${currentUserData.name} commented on your post in the course group.`,
+                    `/student/courses/${courseId}/messages`
+                );
+            }
 
             const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
             let match;

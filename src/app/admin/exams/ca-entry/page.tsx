@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, MessageSquare } from "lucide-react";
-import { db, auth } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -183,7 +183,19 @@ export default function CAEntryPage() {
         try {
             const scoresRef = ref(db, `assessments/${selectedCourseId}`);
             await set(scoresRef, scores);
-            toast({ title: "Scores Saved", description: "Continuous assessment scores have been updated." });
+
+            // Notify students whose scores were updated
+            const course = courses.find(c => c.id === selectedCourseId);
+            const notificationPromises = Object.keys(scores).map(uid => 
+                createNotification(
+                    uid,
+                    `Your continuous assessment scores for ${course?.code || 'course'} have been updated.`,
+                    `/student/courses/${selectedCourseId}/results`
+                )
+            );
+            await Promise.all(notificationPromises);
+
+            toast({ title: "Scores Saved", description: "Continuous assessment scores have been updated and students notified." });
         } catch (error: any) {
             toast({ variant: 'destructive', title: "Save Failed", description: error.message });
         } finally {

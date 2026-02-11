@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, CalendarIcon, Trash2, Eye } from "lucide-react";
-import { db, auth } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, remove, onValue } from 'firebase/database';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -81,6 +81,29 @@ export default function CourseAssignmentsPage() {
         try {
             const newRef = push(ref(db, `assignments/${courseId}`));
             await set(newRef, { title, description, dueDate: format(dueDate, 'yyyy-MM-dd') });
+            
+            // Notify all enrolled students
+            const regsSnap = await get(ref(db, 'registrations'));
+            if (regsSnap.exists()) {
+                const regs = regsSnap.val();
+                const studentUids = new Set<string>();
+                for (const uId in regs) {
+                    for (const sId in regs[uId]) {
+                        if (regs[uId][sId].courses?.includes(courseId)) {
+                            studentUids.add(uId);
+                        }
+                    }
+                }
+                const notificationPromises = Array.from(studentUids).map(uid => 
+                    createNotification(
+                        uid,
+                        `New Assignment Posted: ${title} for ${courseData?.code || 'course'}.`,
+                        `/student/courses/${courseId}/assignments`
+                    )
+                );
+                await Promise.all(notificationPromises);
+            }
+
             toast({ title: 'Assignment Added' });
             fetchData(); 
             resetForms(); 
