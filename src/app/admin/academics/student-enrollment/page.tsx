@@ -34,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -84,6 +85,7 @@ export default function StudentEnrollmentPage() {
     
     // Multi-select state
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
+    const [sendEmails, setSendEmails] = React.useState(true);
     
     // Email Template state
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
@@ -272,27 +274,29 @@ export default function StudentEnrollmentPage() {
                     }
                 }
 
-                const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
-                const replacePlaceholders = (text: string) => {
-                    return text
-                        .replace(/\[Name\]/g, student.name)
-                        .replace(/\[CourseName\]/g, activeSession.courseName)
-                        .replace(/\[CourseCode\]/g, activeSession.courseCode)
-                        .replace(/\[Day\]/g, activeSession.day)
-                        .replace(/\[Time\]/g, activeSession.startTime)
-                        .replace(/\[UserID\]/g, student.id);
-                };
+                if (sendEmails) {
+                    const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
+                    const replacePlaceholders = (text: string) => {
+                        return text
+                            .replace(/\[Name\]/g, student.name)
+                            .replace(/\[CourseName\]/g, activeSession.courseName)
+                            .replace(/\[CourseCode\]/g, activeSession.courseCode)
+                            .replace(/\[Day\]/g, activeSession.day)
+                            .replace(/\[Time\]/g, activeSession.startTime)
+                            .replace(/\[UserID\]/g, student.id);
+                    };
 
-                await sendEmail({
-                    to: [student.email],
-                    subject: replacePlaceholders(baseTemplate.subject),
-                    body: replacePlaceholders(baseTemplate.body)
-                });
+                    await sendEmail({
+                        to: [student.email],
+                        subject: replacePlaceholders(baseTemplate.subject),
+                        body: replacePlaceholders(baseTemplate.body)
+                    });
+                }
             }
 
             toast({ 
                 title: type === 'enroll' ? 'Enrollment Complete' : 'Removal Complete', 
-                description: `${students.length} student(s) processed and notified.` 
+                description: `${students.length} student(s) processed.${sendEmails ? ' Notifications sent.' : ' Silently updated.'}` 
             });
             
             if (type === 'enroll') setSelectedUids({});
@@ -390,10 +394,10 @@ export default function StudentEnrollmentPage() {
                                             <div className="space-y-2">
                                                 <h4 className="font-bold border-b pb-1">Progression Trace</h4>
                                                 <div className="text-xs space-y-1">
-                                                    <div className="flex justify-between"><span>Identified Start:</span><span className="font-bold">{calculatedState.identifiedMonth}</span></div>
-                                                    <div className="flex justify-between"><span>Cycles Counted:</span><span className="font-bold">{calculatedState.cyclesCounted}</span></div>
+                                                    <div className="flex justify-between"><span>Identified Start Month:</span><span className="font-bold">{calculatedState.identifiedMonth}</span></div>
+                                                    <div className="flex justify-between"><span>Total Boundaries Counted:</span><span className="font-bold">{calculatedState.cyclesCounted}</span></div>
                                                     <Separator className="my-1"/>
-                                                    <p className="text-[10px] text-muted-foreground leading-tight italic">Logic: Study Year increments after every two institutional cycles encountered since the intake month.</p>
+                                                    <p className="text-[10px] text-muted-foreground leading-tight italic">Boundaries are January and July cycle starts. Year increments after every 2 cycles encountered since start month.</p>
                                                 </div>
                                             </div>
                                         </PopoverContent>
@@ -489,8 +493,16 @@ export default function StudentEnrollmentPage() {
             <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Enrollment: {activeSession && activeSession.courseName}</DialogTitle>
-                        <DialogDescription>Add or remove students for this session. Notifications are sent automatically.</DialogDescription>
+                        <div className="flex items-center justify-between pr-8">
+                            <div>
+                                <DialogTitle>Enrollment: {activeSession && activeSession.courseName}</DialogTitle>
+                                <DialogDescription>Add or remove students for this session.</DialogDescription>
+                            </div>
+                            <div className="flex items-center gap-2 px-4 py-2 border rounded-md bg-muted/20">
+                                <Switch id="send-emails" checked={sendEmails} onCheckedChange={setSendEmails} />
+                                <Label htmlFor="send-emails" className="text-xs cursor-pointer">Send Email Alerts</Label>
+                            </div>
+                        </div>
                     </DialogHeader>
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">
@@ -582,7 +594,7 @@ export default function StudentEnrollmentPage() {
                 <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Notification Template Settings</DialogTitle>
-                        <DialogDescription>Define the default messages sent automatically when students are enrolled or removed from a class.</DialogDescription>
+                        <DialogDescription>Define the messages sent automatically when students are enrolled or removed from a class (when alerts are enabled).</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto py-4 pr-2">
                         <Accordion type="multiple" defaultValue={['enrollment', 'removal']} className="w-full">
@@ -591,11 +603,11 @@ export default function StudentEnrollmentPage() {
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="space-y-1">
                                         <Label>Subject Line</Label>
-                                        <Input value={enrollmentTemplate.subject} onChange={e => setEnrollmentTemplate(p => ({...p, subject: e.target.value}))}/>
+                                        <Input value={enrollmentTemplate.subject} onChange={(e) => setEnrollmentTemplate(p => ({...p, subject: e.target.value}))}/>
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={e => setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={(e) => setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -604,11 +616,11 @@ export default function StudentEnrollmentPage() {
                                 <AccordionContent className="space-y-4 pt-2">
                                     <div className="space-y-1">
                                         <Label>Subject Line</Label>
-                                        <Input value={removalTemplate.subject} onChange={e => setRemovalTemplate(p => ({...p, subject: e.target.value}))}/>
+                                        <Input value={removalTemplate.subject} onChange={(e) => setRemovalTemplate(p => ({...p, subject: e.target.value}))}/>
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={removalTemplate.body} onChange={e => setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={removalTemplate.body} onChange={(e) => setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -617,7 +629,7 @@ export default function StudentEnrollmentPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Dynamic Placeholders</AlertTitle>
                             <AlertDescription>
-                                <p className="text-xs">Use the following tags to insert student/class details: <code className="bg-background px-1 rounded">[Name]</code>, <code className="bg-background px-1 rounded">[UserID]</code>, <code className="bg-background px-1 rounded">[CourseName]</code>, <code className="bg-background px-1 rounded">[CourseCode]</code>, <code className="bg-background px-1 rounded">[Day]</code>, <code className="bg-background px-1 rounded">[Time]</code>.</p>
+                                <p className="text-xs">Use tags like <code className="bg-background px-1 rounded">[Name]</code>, <code className="bg-background px-1 rounded">[UserID]</code>, <code className="bg-background px-1 rounded">[CourseName]</code>, <code className="bg-background px-1 rounded">[CourseCode]</code>.</p>
                             </AlertDescription>
                         </Alert>
                     </div>
@@ -632,7 +644,7 @@ export default function StudentEnrollmentPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Remove Student from Class?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? A notification email will be sent automatically based on your template.
+                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? {sendEmails ? 'A notification email will be sent automatically.' : 'The student will be removed silently.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

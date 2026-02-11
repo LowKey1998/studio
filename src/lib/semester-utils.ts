@@ -19,7 +19,7 @@ export type Anomaly = {
 
 /**
  * Robustly parses an intake name into a YYYY-MM-DD date string.
- * Supports formats like "2025JUL", "July 2025", etc.
+ * Supports formats like "2025JUL", "July 2025", "2024JAN", etc.
  */
 export function parseIntakeDate(intakeName: string): string | null {
     if (!intakeName) return null;
@@ -46,16 +46,16 @@ export function parseIntakeDate(intakeName: string): string | null {
 }
 
 /**
- * Calculates the current year and semester for a given intake.
- * Progression is calculated by identifying institutional semester boundaries (Cycle Starts) 
- * encountered starting FROM the student's specific intake month.
+ * Calculates the current study year and semester for a given intake.
+ * Progression is calculated by identifying institutional cycle boundaries (e.g., Jan/July)
+ * encountered strictly starting FROM the student's intake month.
  */
 export function calculateAcademicState(
     intakeDateStr: string,
     currentDate: Date = new Date(),
     cycles: AcademicCycle[] = [
-        { semester: 1, startMonth: 0, endMonth: 5 }, // Jan - Jun
-        { semester: 2, startMonth: 6, endMonth: 11 } // Jul - Dec
+        { semester: 1, startMonth: 0, endMonth: 5 }, // Cycle 1 (e.g., Jan)
+        { semester: 2, startMonth: 6, endMonth: 11 } // Cycle 2 (e.g., July)
     ],
     anomalies: Anomaly[] = []
 ) {
@@ -82,7 +82,7 @@ export function calculateAcademicState(
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
-    // 1. Count distinct institutional semester boundaries encountered since intake month
+    // 1. Count distinct institutional boundaries encountered since intake month
     let cyclesCounted = 0;
     let checkDate = new Date(intakeDate);
     
@@ -98,11 +98,11 @@ export function calculateAcademicState(
     const cyclesPerYear = sortedCycles.length || 1;
 
     // 2. Determine Study Year
-    // A Study Year increments after every full rotation of institutional cycles.
+    // A Study Year increments after every full rotation of institutional cycles relative to the start.
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
-    // 3. Determine Study Semester (Progressive)
-    // For a 2-cycle system, this will alternate 1 -> 2 -> 1 -> 2
+    // 3. Determine Study Semester (Progressive relative to student start)
+    // Toggles 1 -> 2 -> 1 -> 2 based on cycles encountered.
     const studySemester = ((cyclesCounted - 1) % cyclesPerYear) + 1;
 
     return { 
