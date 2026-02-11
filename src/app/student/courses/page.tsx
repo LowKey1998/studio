@@ -10,7 +10,6 @@ import { ref, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState } from '@/lib/semester-utils';
 
@@ -74,8 +73,8 @@ export default function StudentCoursesPage() {
             }
             
             const userProfile = usersSnap.val()?.[currentUser.uid];
-            const intakeId = userProfile?.intakeId;
-            const currentIntakeName = intakeId ? intakesSnap.val()?.[intakeId]?.name : 'Your Intake';
+            const studentIntakeId = userProfile?.intakeId;
+            const currentIntakeName = studentIntakeId ? intakesSnap.val()?.[studentIntakeId]?.name : 'Your Intake';
             setIntakeName(currentIntakeName);
 
             if (calendarSnap.exists() && currentIntakeName) {
@@ -110,8 +109,8 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // Only filter for student's own intake
-                    if (semesterInfo.intakeId !== intakeId && registration.intakeId !== intakeId) continue;
+                    // STRICT FILTER: Only show semesters belonging to the student's intake
+                    if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';
                     const targetGroups = isArchived ? archivedGroups : activeGroups;
@@ -249,42 +248,34 @@ export default function StudentCoursesPage() {
             )}
 
             {archivedGroups.length > 0 && (
-                <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="archived-courses" className="border-none">
-                        <AccordionTrigger className="hover:no-underline p-0 opacity-60">
-                            <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
-                                <Archive className="h-5 w-5"/>
-                                View Completed / Archived Semesters
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="pt-6">
-                             <div className="space-y-8">
-                                {archivedGroups.map((group) => (
-                                    <div key={group.semesterId} className="space-y-4">
-                                        <h3 className="font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear} (Completed)</h3>
-                                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                            {group.courses.map((course, idx) => (
-                                                <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-70">
-                                                    <CardHeader>
-                                                        <CardTitle className="font-headline text-base">{course.name}</CardTitle>
-                                                        <CardDescription>{course.code}</CardDescription>
-                                                    </CardHeader>
-                                                    <CardFooter>
-                                                    <Button asChild className="w-full" variant="secondary" size="sm">
-                                                        <Link href={`/student/courses/${course.id}`}>
-                                                            View Records <ChevronRight className="ml-2 h-4 w-4" />
-                                                        </Link>
-                                                    </Button>
-                                                    </CardFooter>
-                                                </Card>
-                                            ))}
-                                        </div>
-                                    </div>
+                <div className="space-y-8 mt-12 pt-8 border-t">
+                    <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
+                        <Archive className="h-5 w-5"/>
+                        Completed / Archived Semesters
+                    </div>
+                    {archivedGroups.map((group) => (
+                        <div key={group.semesterId} className="space-y-4">
+                            <h3 className="font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear} (Completed)</h3>
+                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {group.courses.map((course, idx) => (
+                                    <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-70">
+                                        <CardHeader>
+                                            <CardTitle className="font-headline text-base">{course.name}</CardTitle>
+                                            <CardDescription>{course.code}</CardDescription>
+                                        </CardHeader>
+                                        <CardFooter>
+                                        <Button asChild className="w-full" variant="secondary" size="sm">
+                                            <Link href={`/student/courses/${course.id}`}>
+                                                View Records <ChevronRight className="ml-2 h-4 w-4" />
+                                            </Link>
+                                        </Button>
+                                        </CardFooter>
+                                    </Card>
                                 ))}
                             </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
+                        </div>
+                    ))}
+                </div>
             )}
         </div>
     );

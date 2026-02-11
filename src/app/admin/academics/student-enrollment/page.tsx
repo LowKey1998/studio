@@ -36,6 +36,7 @@ type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; cost: number; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
+type EnrolledStudent = Student & { enrolledInSemester: string };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
 
 type TimetableEntry = {
@@ -73,7 +74,7 @@ export default function StudentEnrollmentPage() {
     // Selection state
     const [selectedIntake, setSelectedIntake] = React.useState('');
     const [activeSession, setActiveSession] = React.useState<TimetableEntry | null>(null);
-    const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
+    const [enrolledStudents, setEnrolledStudents] = React.useState<EnrolledStudent[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
     const [studentIntakeFilter, setStudentIntakeFilter] = React.useState('all');
@@ -107,7 +108,7 @@ export default function StudentEnrollmentPage() {
     });
 
     // Deletion confirmation state
-    const [studentToRemove, setStudentToRemove] = React.useState<Student | null>(null);
+    const [studentToRemove, setStudentToRemove] = React.useState<EnrolledStudent | null>(null);
 
     const { toast } = useToast();
 
@@ -115,19 +116,24 @@ export default function StudentEnrollmentPage() {
         setActionLoading('fetching');
         try {
             const regsSnap = await get(ref(db, 'registrations'));
-            const uids: string[] = [];
+            const enrollmentList: EnrolledStudent[] = [];
             if (regsSnap.exists()) {
                 const regs = regsSnap.val();
                 for (const userId in regs) {
+                    const student = allStudents.find(s => s.uid === userId);
+                    if (!student) continue;
+
                     for (const semId in regs[userId]) {
                         if (regs[userId][semId].courses?.includes(courseId)) {
-                            uids.push(userId);
-                            break;
+                            enrollmentList.push({
+                                ...student,
+                                enrolledInSemester: regs[userId][semId].semesterName || "Unknown Semester"
+                            });
                         }
                     }
                 }
             }
-            setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
+            setEnrolledStudents(enrollmentList);
         } catch (e) {
             console.error(e);
         } finally {
@@ -514,6 +520,9 @@ export default function StudentEnrollmentPage() {
                                             <div className="text-sm">
                                                 <p className="font-bold">{s.name}</p>
                                                 <p className="text-xs text-muted-foreground">{s.id}</p>
+                                                <Badge variant="secondary" className="mt-1 text-[9px] h-4">
+                                                    {s.enrolledInSemester}
+                                                </Badge>
                                             </div>
                                             <Button size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setStudentToRemove(s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
