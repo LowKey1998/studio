@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Mail, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update } from 'firebase/database';
@@ -28,6 +28,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
+import { sendEmail } from '@/ai/flows/send-email-flow';
+import { Textarea } from '@/components/ui/textarea';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -75,7 +77,18 @@ export default function StudentEnrollmentPage() {
     const [searchStudent, setSearchStudent] = React.useState('');
     const [studentIntakeFilter, setStudentIntakeFilter] = React.useState('all');
     
-    // Deletion dialog state
+    // Email Preview Dialog state
+    const [isEmailPreviewOpen, setIsEmailPreviewOpen] = React.useState(false);
+    const [emailPreview, setEmailPreview] = React.useState({ to: '', subject: '', body: '' });
+    const [pendingEmailAction, setPendingEmailAction] = React.useState<{ 
+        type: 'enroll' | 'remove', 
+        uid: string, 
+        name: string, 
+        studentId: string, 
+        email: string 
+    } | null>(null);
+
+    // Deletion confirmation state
     const [studentToRemove, setStudentToRemove] = React.useState<Student | null>(null);
 
     const { toast } = useToast();
@@ -180,8 +193,32 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [fetchData]);
 
-    const handleEnrollStudent = async (uid: string) => {
+    const handlePreActionEmail = (type: 'enroll' | 'remove', student: Student) => {
         if (!activeSession) return;
+        
+        const subject = type === 'enroll' 
+            ? `Class Enrollment Notification: ${activeSession.courseCode}`
+            : `Class Removal Notification: ${activeSession.courseCode}`;
+            
+        const body = `<h2>Class Notification</h2>
+<p>Hello ${student.name},</p>
+<p>You have been <strong>${type === 'enroll' ? 'enrolled in' : 'removed from'}</strong> the following course:</p>
+<p><strong>Course:</strong> ${activeSession.courseName} (${activeSession.courseCode})<br/>
+<strong>Semester:</strong> ${activeSession.semesterName}<br/>
+<strong>Time:</strong> ${activeSession.day} at ${activeSession.startTime}</p>
+<p>You can view your updated classes and timetable on the student portal:<br/>
+<a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></p>
+<p><strong>User ID:</strong> ${student.id}</p>
+<p>Best regards,<br/>The Registrar's Office</p>`;
+
+        setEmailPreview({ to: student.email, subject, body });
+        setPendingEmailAction({ type, uid: student.uid, name: student.name, studentId: student.id, email: student.email });
+        setIsEmailPreviewOpen(true);
+    };
+
+    const handleConfirmEmailAndAction = async () => {
+        if (!pendingEmailAction || !activeSession) return;
+        const { type, uid, name, email } = pendingEmailAction;
         const { courseId, semesterId } = activeSession;
         
         setActionLoading(uid);
@@ -189,60 +226,50 @@ export default function StudentEnrollmentPage() {
             const regRef = ref(db, `registrations/${uid}/${semesterId}`);
             const regSnap = await get(regRef);
             
-            let currentCourses = [];
-            if (regSnap.exists()) {
-                currentCourses = regSnap.val().courses || [];
+            if (type === 'enroll') {
+                let currentCourses = [];
+                if (regSnap.exists()) {
+                    currentCourses = regSnap.val().courses || [];
+                }
+                const updatedCourses = [...new Set([...currentCourses, courseId])];
+                const student = allStudents.find(s => s.uid === uid);
+
+                await update(regRef, { 
+                    courses: updatedCourses,
+                    programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
+                    intakeId: selectedIntake || student?.intakeId || '',
+                    status: regSnap.exists() ? regSnap.val().status : 'Completed',
+                    registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
+                    semesterName: semesters.find(s => s.id === semesterId)?.name || ''
+                });
+                
+                toast({ title: 'Student Enrolled Successfully' });
+                fetchEnrolledStudents(courseId, semesterId);
+            } else {
+                if (regSnap.exists()) {
+                    const currentCourses = regSnap.val().courses || [];
+                    const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
+                    await update(regRef, { courses: updatedCourses });
+                    toast({ title: 'Student Removed' });
+                    setEnrolledStudents(prev => prev.filter(s => s.uid !== uid));
+                }
             }
 
-            if (currentCourses.includes(courseId)) {
-                toast({ title: 'Already enrolled' });
-                setActionLoading(null);
-                return;
-            }
-
-            const updatedCourses = [...currentCourses, courseId];
-            const student = allStudents.find(s => s.uid === uid);
-
-            await update(regRef, { 
-                courses: updatedCourses,
-                programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                intakeId: selectedIntake || student?.intakeId || '',
-                status: regSnap.exists() ? regSnap.val().status : 'Completed',
-                registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
-                semesterName: semesters.find(s => s.id === semesterId)?.name || ''
+            // Send the edited email
+            await sendEmail({
+                to: [email],
+                subject: emailPreview.subject,
+                body: emailPreview.body
             });
-
-            toast({ title: 'Student Enrolled Successfully' });
-            fetchEnrolledStudents(courseId, semesterId);
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Enrollment Failed', description: e.message });
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
-    const handleRemoveStudent = async (uid: string) => {
-        if (!activeSession) return;
-        const { courseId, semesterId } = activeSession;
-
-        setActionLoading(uid);
-        try {
-            const regRef = ref(db, `registrations/${uid}/${semesterId}`);
-            const regSnap = await get(regRef);
-            if (regSnap.exists()) {
-                const currentCourses = regSnap.val().courses || [];
-                const updatedCourses = currentCourses.filter((id: string) => id !== courseId);
-                
-                await update(regRef, { courses: updatedCourses });
-                
-                toast({ title: 'Student Removed' });
-                setEnrolledStudents(prev => prev.filter(s => s.uid !== uid));
-            }
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Removal Failed' });
-        } finally {
-            setActionLoading(null);
+            
+            toast({ title: 'Notification Sent' });
+            setIsEmailPreviewOpen(false);
+            setPendingEmailAction(null);
             setStudentToRemove(null);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -430,7 +457,7 @@ export default function StudentEnrollmentPage() {
                                                 <p className="font-bold">{s.name}</p>
                                                 <p className="text-xs text-muted-foreground">{s.id}</p>
                                             </div>
-                                            <Button size="sm" variant="outline" onClick={() => handleEnrollStudent(s.uid)} disabled={!!actionLoading}>
+                                            <Button size="sm" variant="outline" onClick={() => handlePreActionEmail('enroll', s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}
                                             </Button>
                                         </div>
@@ -467,21 +494,56 @@ export default function StudentEnrollmentPage() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isEmailPreviewOpen} onOpenChange={setIsEmailPreviewOpen}>
+                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Preview Enrollment Notification</DialogTitle>
+                        <DialogDescription>Review and edit the email before it is sent to {pendingEmailAction?.name}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4 space-y-4">
+                        <div className="space-y-1">
+                            <Label>Recipient</Label>
+                            <Input value={emailPreview.to} disabled className="bg-muted"/>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Subject</Label>
+                            <Input value={emailPreview.subject} onChange={e => setEmailPreview(p => ({...p, subject: e.target.value}))}/>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Message Body (HTML Supported)</Label>
+                            <Textarea 
+                                value={emailPreview.body} 
+                                onChange={e => setEmailPreview(p => ({...p, body: e.target.value}))}
+                                rows={15}
+                                className="font-mono text-xs"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Cancel</Button>
+                        <Button onClick={handleConfirmEmailAndAction} disabled={!!actionLoading}>
+                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                            Send & Confirm Action
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <AlertDialog open={!!studentToRemove} onOpenChange={(open) => !open && setStudentToRemove(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Remove Student from Class?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? This action will update their course registration record immediately.
+                            Are you sure you want to remove <strong>{studentToRemove?.name}</strong> from <strong>{activeSession?.courseName}</strong>? You will be prompted to send a notification email next.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction 
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => studentToRemove && handleRemoveStudent(studentToRemove.uid)}
+                            onClick={() => studentToRemove && handlePreActionEmail('remove', studentToRemove)}
                         >
-                            Confirm Removal
+                            Proceed to Notification
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
