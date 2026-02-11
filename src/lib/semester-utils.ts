@@ -18,7 +18,7 @@ export type Anomaly = {
 
 /**
  * Calculates the current year and semester for a given intake.
- * Progression is calculated by counting institutional semester boundaries crossed.
+ * Progression is calculated by counting institutional semester boundaries crossed since intake.
  */
 export function calculateAcademicState(
     intakeDateStr: string,
@@ -31,6 +31,7 @@ export function calculateAcademicState(
 ) {
     if (!intakeDateStr) return { year: 1, semester: 1, isAnomaly: false };
 
+    // Normalize dates to start of month for comparison
     const intakeDate = startOfMonth(parseISO(intakeDateStr));
     const normalizedCurrentDate = startOfMonth(currentDate);
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
@@ -44,12 +45,11 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // 1. Calculate total number of cycles passed since intake
-    // We count how many institutional boundaries have been crossed since the intake date
+    // 1. Calculate how many institutional boundaries have been crossed since the intake date
+    // This handles mid-year starts correctly by counting study cycles.
     let cycleCount = 0;
     let checkDate = new Date(intakeDate);
     
-    // Ensure we start counting from the very first month if it's a boundary
     while (checkDate <= normalizedCurrentDate) {
         const month = checkDate.getMonth();
         if (sortedCycles.some(c => c.startMonth === month)) {
@@ -59,10 +59,11 @@ export function calculateAcademicState(
     }
 
     // 2. Determine Year of study
-    // For 2 semesters per year: 1-2 = Year 1, 3-4 = Year 2, etc.
+    // If there are 2 cycles per year, cycle 1 and 2 are Year 1, cycle 3 and 4 are Year 2, etc.
     const academicYear = Math.ceil(cycleCount / sortedCycles.length);
 
-    // 3. Determine current institutional semester (Jan or July cycle)
+    // 3. Determine current institutional semester (Jan cycle or July cycle)
+    // This is based on the current calendar month relative to institutional start points
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[sortedCycles.length - 1];
 

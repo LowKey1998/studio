@@ -152,7 +152,7 @@ export default function StudentCoursesPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, toast, userProfile]);
+    }, [currentUser, toast]);
 
 
     React.useEffect(() => {

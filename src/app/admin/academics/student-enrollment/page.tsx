@@ -604,7 +604,7 @@ export default function StudentEnrollmentPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={e => setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -617,7 +617,7 @@ export default function StudentEnrollmentPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={removalTemplate.body} onChange={e => setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={removalTemplate.body} onChange={setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
