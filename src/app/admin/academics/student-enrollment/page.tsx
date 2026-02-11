@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, update } from 'firebase/database';
@@ -16,6 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { calculateAcademicState } from '@/lib/semester-utils';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -52,6 +54,7 @@ export default function StudentEnrollmentPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
     const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: daysOfWeek, slots: [] });
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
 
     // Selection state
@@ -66,13 +69,14 @@ export default function StudentEnrollmentPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, timetablesSnap] = await Promise.all([
+            const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, timetablesSnap, calendarSnap] = await Promise.all([
                 get(ref(db, 'intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, 'settings/teachingTimes')),
-                get(ref(db, 'timetables'))
+                get(ref(db, 'timetables')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
 
             const iData = intakeSnap.val() || {};
@@ -81,7 +85,8 @@ export default function StudentEnrollmentPage() {
             const uData = usersSnap.val() || {};
             const tData = timetablesSnap.val() || {};
             const settingsData = settingsSnap.val() || {};
-
+            
+            setCalendarSettings(calendarSnap.val());
             setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name)));
             setSemesters(Object.entries(sData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setAllCourses(cData);
@@ -101,8 +106,8 @@ export default function StudentEnrollmentPage() {
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
-                const semInfo = sData[semId] || { name: 'Manual Entry' };
-                const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
+                const semInfo = sData[semId];
+                if (!semInfo) continue;
 
                 for (const cId in tData[semId]) {
                     const courseInfo = cData[cId];
@@ -116,7 +121,7 @@ export default function StudentEnrollmentPage() {
                             courseCode: courseInfo.code,
                             courseName: courseInfo.name,
                             semesterName: semInfo.name,
-                            intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
+                            intakeName: iData[semInfo.intakeId]?.name || 'N/A',
                             ...entry
                         });
                     });
@@ -186,7 +191,7 @@ export default function StudentEnrollmentPage() {
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
                 intakeId: selectedIntake,
-                status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
+                status: regSnap.exists() ? regSnap.val().status : 'Completed',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''
             });
@@ -222,7 +227,27 @@ export default function StudentEnrollmentPage() {
         }
     };
 
-    const intakeName = intakes.find(i => i.id === selectedIntake)?.name;
+    const selectedIntakeData = intakes.find(i => i.id === selectedIntake);
+    const intakeName = selectedIntakeData?.name;
+    
+    const calculatedState = React.useMemo(() => {
+        if (!intakeName || !calendarSettings) return null;
+        // Simple heuristic: extract year from name if it looks like 2024JAN
+        const yearMatch = intakeName.match(/\d{4}/);
+        const monthMatch = intakeName.match(/[A-Z]{3}/);
+        if (!yearMatch || !monthMatch) return null;
+
+        const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+        const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
+        
+        return calculateAcademicState(
+            intakeStartStr, 
+            new Date(), 
+            calendarSettings.standardCycles, 
+            Object.values(calendarSettings.anomalies || {})
+        );
+    }, [intakeName, calendarSettings]);
+
     const filteredTimetable = React.useMemo(() => {
         if (!selectedIntake) return [];
         return masterTimetable.filter(entry => entry.intakeName === intakeName);
@@ -241,9 +266,12 @@ export default function StudentEnrollmentPage() {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
-                    <CardDescription>Select an Intake to view its schedule grid. Click any class to manage its enrolled students.</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="flex items-center gap-2"><Users /> Student Enrollment Management</CardTitle>
+                        <CardDescription>Select an Intake to view its schedule and manage student classes.</CardDescription>
+                    </div>
+                    <Button variant="outline" asChild><Link href="/admin/academics/semester-setup">Academic Calendar Rules</Link></Button>
                 </CardHeader>
                 <CardContent>
                     <div className="grid md:grid-cols-2 gap-4 max-w-2xl">
@@ -258,6 +286,13 @@ export default function StudentEnrollmentPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        {calculatedState && (
+                            <div className="flex items-end">
+                                <Badge variant="secondary" className="h-10 px-4 text-sm gap-2">
+                                    <CalendarDays className="h-4 w-4"/> Current: Year {calculatedState.year}, Sem {calculatedState.semester}
+                                </Badge>
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -274,7 +309,7 @@ export default function StudentEnrollmentPage() {
 
             {selectedIntake && hasSlots && (
                 <Card>
-                    <CardHeader><CardTitle>{intakeName} Master Schedule Grid</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>{intakeName} Timetable Grid</CardTitle></CardHeader>
                     <CardContent className="overflow-x-auto">
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
                             <Table>

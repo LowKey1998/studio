@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -29,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 
 
 type User = {
@@ -199,7 +201,7 @@ export default function AddStudentPage() {
             console.error("Error fetching data:", error);
              toast({ variant: 'destructive', title: 'Failed to fetch data' });
         } finally {
-            setTableLoading(false);
+            setTableLoading(TableLoading => false);
         }
     }, [toast]);
 
@@ -440,8 +442,7 @@ export default function AddStudentPage() {
     <li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li>
     <li><strong>User ID:</strong> ${user.id}</li>
 </ul>
-<p><strong>Note:</strong> If you have trouble logging in with your previous password, please try using <strong>12345678</strong> as your temporary password.</p>
-<p>If you have forgotten your password entirely, you can use the "Forgot Password" link on the login page to reset it via email.</p>
+<p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p>
 <p>Best regards,<br/>The Administration</p>`);
         setIsCredentialsOpen(true);
     };

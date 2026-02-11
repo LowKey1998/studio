@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, BookOpen, User, Info, Archive } from "lucide-react";
+import { ChevronRight, User, Info, Archive } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -171,7 +172,6 @@ export default function StudentCoursesPage() {
                                                 <User className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
                                                 <span className="line-clamp-2">{course.lecturerName}</span>
                                             </div>
-                                            <Badge variant="outline" className="text-[10px]">{course.semesterName}</Badge>
                                         </CardContent>
                                         <CardFooter>
                                         <Button asChild className="w-full">
