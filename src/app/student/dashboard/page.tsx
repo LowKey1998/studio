@@ -250,7 +250,7 @@ export default function StudentDashboardPage() {
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Your Intake: {intakeName}
+                            Intake: {intakeName}
                         </Badge>
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">

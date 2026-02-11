@@ -2,7 +2,7 @@
  * @fileOverview Utilities for calculating academic year and semester based on intake date and current date.
  */
 
-import { parseISO, format, startOfMonth, addMonths } from 'date-fns';
+import { parseISO, format, startOfMonth, addMonths, differenceInMonths } from 'date-fns';
 
 export type AcademicCycle = {
     semester: number;
@@ -31,9 +31,11 @@ export function calculateAcademicState(
 ) {
     if (!intakeDateStr) return { year: 1, semester: 1, isAnomaly: false };
 
-    // Normalize dates to start of month for comparison
+    // Normalize dates to start of month
     const intakeDate = startOfMonth(parseISO(intakeDateStr));
     const normalizedCurrentDate = startOfMonth(currentDate);
+    
+    // Sort cycles by month
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     
     // Check for specific anomalies first
@@ -45,29 +47,30 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // 1. Count how many institutional boundaries have been hit since the intake month inclusive.
-    // We start the count FROM the month the student actually arrived.
-    let cycleCount = 0;
+    // 1. Identify which cycle the student started in
+    const intakeMonth = intakeDate.getMonth();
+    const startingCycle = [...sortedCycles].reverse().find(c => intakeMonth >= c.startMonth) || sortedCycles[sortedCycles.length - 1];
+
+    // 2. Count boundaries crossed
+    // We count every month from intake to current. If month == a cycle start, count it.
+    let boundariesCrossed = 0;
     let checkDate = new Date(intakeDate);
     
-    // Safety break to prevent infinite loops
     let iterations = 0;
     while (checkDate <= normalizedCurrentDate && iterations < 600) {
-        const month = checkDate.getMonth();
-        // Does this month represent a start of a new institutional semester?
-        if (sortedCycles.some(c => c.startMonth === month)) {
-            cycleCount++;
+        const currentMonth = checkDate.getMonth();
+        if (sortedCycles.some(c => c.startMonth === currentMonth)) {
+            boundariesCrossed++;
         }
         checkDate = addMonths(checkDate, 1);
         iterations++;
     }
 
-    // 2. Determine Year of study
-    // If there are 2 cycles per year, hits 1 and 2 are Year 1, hits 3 and 4 are Year 2, etc.
-    const academicYear = Math.ceil(cycleCount / (sortedCycles.length || 1));
+    // 3. Determine Year
+    // If there are 2 cycles, hit 1 & 2 are Year 1, hit 3 & 4 are Year 2.
+    const academicYear = Math.ceil(boundariesCrossed / (sortedCycles.length || 1));
 
-    // 3. Determine the actual institutional semester (Jan cycle or July cycle)
-    // This is simply the cycle associated with the current month.
+    // 4. Determine current semester type
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[sortedCycles.length - 1];
 
