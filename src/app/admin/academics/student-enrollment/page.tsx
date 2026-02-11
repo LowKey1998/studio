@@ -67,6 +67,29 @@ export default function StudentEnrollmentPage() {
 
     const { toast } = useToast();
 
+    const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
+        setActionLoading('fetching');
+        try {
+            const regsSnap = await get(ref(db, 'registrations'));
+            if (regsSnap.exists()) {
+                const regs = regsSnap.val();
+                const uids: string[] = [];
+                for (const userId in regs) {
+                    if (regs[userId][semesterId]?.courses?.includes(courseId)) {
+                        uids.push(userId);
+                    }
+                }
+                setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
+            } else {
+                setEnrolledStudents([]);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setActionLoading(null);
+        }
+    }, [allStudents]);
+
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
@@ -144,29 +167,6 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [fetchData]);
 
-    const fetchEnrolledStudents = React.useCallback(async (courseId: string, semesterId: string) => {
-        setActionLoading('fetching');
-        try {
-            const regsSnap = await get(ref(db, 'registrations'));
-            if (regsSnap.exists()) {
-                const regs = regsSnap.val();
-                const uids: string[] = [];
-                for (const userId in regs) {
-                    if (regs[userId][semesterId]?.courses?.includes(courseId)) {
-                        uids.push(userId);
-                    }
-                }
-                setEnrolledStudents(allStudents.filter(s => uids.includes(s.uid)));
-            } else {
-                setEnrolledStudents([]);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setActionLoading(null);
-        }
-    }, [allStudents]);
-
     const handleEnrollStudent = async (uid: string) => {
         if (!activeSession) return;
         const { courseId, semesterId } = activeSession;
@@ -193,7 +193,7 @@ export default function StudentEnrollmentPage() {
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                intakeId: selectedIntake,
+                intakeId: student?.intakeId || '',
                 status: regSnap.exists() ? regSnap.val().status : 'Completed',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''
