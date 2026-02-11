@@ -104,7 +104,7 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // STRICT COHORT FILTER: Only show semesters belonging to the student's intake
+                    // Filter only student's own intake
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';

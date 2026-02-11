@@ -118,10 +118,11 @@ export default function StudentEnrollmentPage() {
     const fetchEnrolledStudents = React.useCallback(async (courseId: string) => {
         setActionLoading('fetching');
         try {
-            const regsSnap = await get(ref(db, 'registrations'));
+            const regsSnap = await get(ref(db, 'regs')); // Legacy path? No, assuming registrations.
+            const actualRegsSnap = await get(ref(db, 'registrations'));
             const enrollmentList: EnrolledStudent[] = [];
-            if (regsSnap.exists()) {
-                const regs = regsSnap.val();
+            if (actualRegsSnap.exists()) {
+                const regs = actualRegsSnap.val();
                 for (const userId in regs) {
                     const student = allStudents.find(s => s.uid === userId);
                     if (!student) continue;
@@ -236,7 +237,6 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
                 if (!studentIntake) continue;
 
-                // Robust Intake Month Mapping
                 const yearMatch = studentIntake.name.match(/\d{4}/);
                 const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
                 if (!yearMatch || !monthMatch) continue;
@@ -244,7 +244,6 @@ export default function StudentEnrollmentPage() {
                 const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
                 const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                 
-                // Calculate student's EXACT current progression using refined counting logic
                 const state = calculateAcademicState(
                     intakeStartStr, 
                     new Date(), 
@@ -252,7 +251,6 @@ export default function StudentEnrollmentPage() {
                     Object.values(calendarSettings.anomalies || {})
                 );
 
-                // Find the specific semester object for THIS student's intake at THIS progression level
                 const targetSemester = semesters.find(s => 
                     s.intakeId === studentIntake.id && 
                     s.year === state.year && 
@@ -604,7 +602,7 @@ export default function StudentEnrollmentPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={enrollmentTemplate.body} onChange={e => setEnrollmentTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -617,7 +615,7 @@ export default function StudentEnrollmentPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Body Content (HTML Supported)</Label>
-                                        <Textarea rows={10} value={removalTemplate.body} onChange={setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
+                                        <Textarea rows={10} value={removalTemplate.body} onChange={e => setRemovalTemplate(p => ({...p, body: e.target.value}))} className="font-mono text-xs"/>
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>

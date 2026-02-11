@@ -109,7 +109,6 @@ export default function StudentDashboardPage() {
                 const iName = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
                 setIntakeName(iName);
 
-                // Calculate Standing
                 const yearMatch = iName.match(/\d{4}/);
                 const monthMatch = iName.match(/[A-Z]{3}/);
                 if (yearMatch && monthMatch) {
@@ -251,7 +250,7 @@ export default function StudentDashboardPage() {
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
                         <Badge className="font-bold bg-primary text-primary-foreground">
-                            Your Enrollment Intake: {intakeName}
+                            Intake: {intakeName}
                         </Badge>
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">
