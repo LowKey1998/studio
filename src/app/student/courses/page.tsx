@@ -104,7 +104,7 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // Filter only student's own intake
+                    // STRICT FILTER: Only show courses for the student's own intake path
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';

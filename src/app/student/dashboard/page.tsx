@@ -255,7 +255,7 @@ export default function StudentDashboardPage() {
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">
                                 <CalendarDays className="h-3 w-3" />
-                                Academic Standing: {academicStanding}
+                                Standing: {academicStanding}
                             </Badge>
                         )}
                     </div>

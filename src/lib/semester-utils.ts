@@ -18,7 +18,7 @@ export type Anomaly = {
 
 /**
  * Calculates the current year and semester for a given intake.
- * Progression is calculated by counting institutional semester boundaries crossed since intake.
+ * Progression is calculated by counting institutional semester boundaries crossed starting FROM the intake month.
  */
 export function calculateAcademicState(
     intakeDateStr: string,
@@ -45,13 +45,14 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // 1. Calculate how many institutional boundaries have been hit since the intake date
-    // This counts "study terms" rather than simple calendar years.
+    // 1. Count how many institutional boundaries have been hit since the intake month inclusive.
+    // We start the count FROM the month the student actually arrived.
     let cycleCount = 0;
     let checkDate = new Date(intakeDate);
     
     while (checkDate <= normalizedCurrentDate) {
         const month = checkDate.getMonth();
+        // Does this month represent a start of a new institutional semester?
         if (sortedCycles.some(c => c.startMonth === month)) {
             cycleCount++;
         }
@@ -59,11 +60,11 @@ export function calculateAcademicState(
     }
 
     // 2. Determine Year of study
-    // If there are 2 cycles per year, hit 1 and 2 are Year 1, hit 3 and 4 are Year 2, etc.
+    // If there are 2 cycles per year, hits 1 and 2 are Year 1, hits 3 and 4 are Year 2, etc.
     const academicYear = Math.ceil(cycleCount / sortedCycles.length);
 
-    // 3. Determine current institutional semester slot (Jan cycle or July cycle)
-    // This is based on the current calendar month relative to institutional start points
+    // 3. Determine the actual institutional semester (Jan cycle or July cycle)
+    // This is simply the cycle associated with the current month.
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[sortedCycles.length - 1];
 

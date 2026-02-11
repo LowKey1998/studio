@@ -538,7 +538,7 @@ export default function StudentEnrollmentPage() {
                                     {availableStudents.map(s => (
                                         <div key={s.uid} className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted transition-colors">
                                             <div className="flex items-center gap-3">
-                                                <Checkbox checked={!!selectedUids[s.uid]} onCheckedChange={() => handleToggleSelect(s.uid)} />
+                                                <Checkbox checked={!!selectedUids[s.uid]} onCheckedChange={() => handleToggleSelection(s.uid)} />
                                                 <div className="text-sm">
                                                     <p className="font-bold">{s.name}</p>
                                                     <p className="text-xs text-muted-foreground">{s.id}</p>
