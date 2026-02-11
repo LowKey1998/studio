@@ -31,6 +31,7 @@ import { calculateAcademicState } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -78,6 +79,9 @@ export default function StudentEnrollmentPage() {
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
     const [studentIntakeFilter, setStudentIntakeFilter] = React.useState('all');
+    
+    // Multi-select state
+    const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     
     // Email Template state
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
@@ -218,93 +222,101 @@ export default function StudentEnrollmentPage() {
         fetchData();
     }, [fetchData]);
 
-    const performEnrollmentAction = async (type: 'enroll' | 'remove', student: Student) => {
+    const performEnrollmentAction = async (type: 'enroll' | 'remove', studentOrStudents: Student | Student[]) => {
         if (!activeSession || !calendarSettings) return;
         
-        setActionLoading(student.uid);
+        const students = Array.isArray(studentOrStudents) ? studentOrStudents : [studentOrStudents];
+        if (students.length === 0) return;
+
+        setActionLoading(type === 'enroll' ? 'bulk-enroll' : students[0].uid);
+        
         try {
-            // 1. Calculate student's CURRENT semester based on their intake and institutional calendar
-            const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
-            if (!studentIntake) throw new Error("Student intake not found.");
+            for (const student of students) {
+                // 1. Calculate student's CURRENT semester based on their intake and institutional calendar
+                const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
+                if (!studentIntake) continue;
 
-            const yearMatch = studentIntake.name.match(/\d{4}/);
-            const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
-            if (!yearMatch || !monthMatch) throw new Error("Invalid intake name format.");
+                const yearMatch = studentIntake.name.match(/\d{4}/);
+                const monthMatch = studentIntake.name.match(/[A-Z]{3}/);
+                if (!yearMatch || !monthMatch) continue;
 
-            const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
-            const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
-            
-            const state = calculateAcademicState(
-                intakeStartStr, 
-                new Date(), 
-                calendarSettings.standardCycles, 
-                Object.values(calendarSettings.anomalies || {})
-            );
-
-            // 2. Find the semesterId that matches this year/semester for the student's intake
-            const targetSemester = semesters.find(s => 
-                s.intakeId === (student.intakeId || selectedIntake) && 
-                s.year === state.year && 
-                s.semesterInYear === state.semester
-            );
-
-            if (!targetSemester) throw new Error(`Could not find a defined semester for Year ${state.year}, Sem ${state.semester} in the student's intake.`);
-
-            const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
-            const regSnap = await get(regRef);
-            
-            if (type === 'enroll') {
-                let currentCourses = [];
-                if (regSnap.exists()) {
-                    currentCourses = regSnap.val().courses || [];
-                }
-                const updatedCourses = [...new Set([...currentCourses, activeSession.courseId])];
-
-                await update(regRef, { 
-                    courses: updatedCourses,
-                    programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                    intakeId: student.intakeId || selectedIntake,
-                    status: regSnap.exists() ? regSnap.val().status : 'Completed',
-                    registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
-                    semesterName: targetSemester.name
-                });
+                const startMonth = monthMatch[0] === 'JAN' ? '01' : '07';
+                const intakeStartStr = `${yearMatch[0]}-${startMonth}-01`;
                 
-                toast({ title: 'Student Enrolled', description: `Added to ${targetSemester.name}` });
-            } else {
-                // If removing, scan all semesters for this student and remove the course
-                const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
-                if (allRegsSnap.exists()) {
-                    const allRegs = allRegsSnap.val();
-                    const updates: Record<string, any> = {};
-                    for (const semId in allRegs) {
-                        if (allRegs[semId].courses?.includes(activeSession.courseId)) {
-                            updates[`registrations/${student.uid}/${semId}/courses`] = allRegs[semId].courses.filter((id: string) => id !== activeSession.courseId);
-                        }
+                const state = calculateAcademicState(
+                    intakeStartStr, 
+                    new Date(), 
+                    calendarSettings.standardCycles, 
+                    Object.values(calendarSettings.anomalies || {})
+                );
+
+                // 2. Find the semesterId that matches this year/semester for the student's intake
+                const targetSemester = semesters.find(s => 
+                    s.intakeId === (student.intakeId || selectedIntake) && 
+                    s.year === state.year && 
+                    s.semesterInYear === state.semester
+                );
+
+                if (!targetSemester) continue;
+
+                const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
+                const regSnap = await get(regRef);
+                
+                if (type === 'enroll') {
+                    let currentCourses = [];
+                    if (regSnap.exists()) {
+                        currentCourses = regSnap.val().courses || [];
                     }
-                    await update(ref(db), updates);
-                    toast({ title: 'Student Removed' });
+                    const updatedCourses = [...new Set([...currentCourses, activeSession.courseId])];
+
+                    await update(regRef, { 
+                        courses: updatedCourses,
+                        programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
+                        intakeId: student.intakeId || selectedIntake,
+                        status: regSnap.exists() ? regSnap.val().status : 'Completed',
+                        registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
+                        semesterName: targetSemester.name
+                    });
+                } else {
+                    // If removing, scan all semesters for this student and remove the course
+                    const allRegsSnap = await get(ref(db, `registrations/${student.uid}`));
+                    if (allRegsSnap.exists()) {
+                        const allRegs = allRegsSnap.val();
+                        const updates: Record<string, any> = {};
+                        for (const semId in allRegs) {
+                            if (allRegs[semId].courses?.includes(activeSession.courseId)) {
+                                updates[`registrations/${student.uid}/${semId}/courses`] = allRegs[semId].courses.filter((id: string) => id !== activeSession.courseId);
+                            }
+                        }
+                        await update(ref(db), updates);
+                    }
                 }
+
+                // 3. Send Notification (Immediate)
+                const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
+                const replacePlaceholders = (text: string) => {
+                    return text
+                        .replace(/\[Name\]/g, student.name)
+                        .replace(/\[CourseName\]/g, activeSession.courseName)
+                        .replace(/\[CourseCode\]/g, activeSession.courseCode)
+                        .replace(/\[Day\]/g, activeSession.day)
+                        .replace(/\[Time\]/g, activeSession.startTime)
+                        .replace(/\[UserID\]/g, student.id);
+                };
+
+                await sendEmail({
+                    to: [student.email],
+                    subject: replacePlaceholders(baseTemplate.subject),
+                    body: replacePlaceholders(baseTemplate.body)
+                });
             }
 
-            // 3. Send Notification
-            const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
-            const replacePlaceholders = (text: string) => {
-                return text
-                    .replace(/\[Name\]/g, student.name)
-                    .replace(/\[CourseName\]/g, activeSession.courseName)
-                    .replace(/\[CourseCode\]/g, activeSession.courseCode)
-                    .replace(/\[Day\]/g, activeSession.day)
-                    .replace(/\[Time\]/g, activeSession.startTime)
-                    .replace(/\[UserID\]/g, student.id);
-            };
-
-            await sendEmail({
-                to: [student.email],
-                subject: replacePlaceholders(baseTemplate.subject),
-                body: replacePlaceholders(baseTemplate.body)
+            toast({ 
+                title: type === 'enroll' ? 'Enrollment Complete' : 'Removal Complete', 
+                description: `${students.length} student(s) processed and notified.` 
             });
             
-            toast({ title: 'Notification Sent' });
+            if (type === 'enroll') setSelectedUids({});
             setStudentToRemove(null);
             await fetchEnrolledStudents(activeSession.courseId);
         } catch (e: any) {
@@ -344,6 +356,20 @@ export default function StudentEnrollmentPage() {
         (s.name.toLowerCase().includes(searchStudent.toLowerCase()) || s.id.toLowerCase().includes(searchStudent.toLowerCase())) &&
         (studentIntakeFilter === 'all' || s.intakeId === studentIntakeFilter)
     );
+
+    const handleSelectAll = (checked: boolean) => {
+        const next: Record<string, boolean> = {};
+        if (checked) {
+            availableStudents.forEach(s => next[s.uid] = true);
+        }
+        setSelectedUids(next);
+    };
+
+    const handleToggleSelect = (uid: string) => {
+        setSelectedUids(prev => ({ ...prev, [uid]: !prev[uid] }));
+    };
+
+    const selectedCount = Object.values(selectedUids).filter(Boolean).length;
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -443,6 +469,7 @@ export default function StudentEnrollmentPage() {
                                                                         setActiveSession(entry);
                                                                         fetchEnrolledStudents(entry.courseId);
                                                                         setStudentIntakeFilter(selectedIntake);
+                                                                        setSelectedUids({});
                                                                     }}
                                                                 >
                                                                     <div className="flex flex-col gap-1">
@@ -476,7 +503,13 @@ export default function StudentEnrollmentPage() {
                     <div className="flex-1 overflow-hidden grid md:grid-cols-2 gap-6 py-4">
                         <div className="flex flex-col gap-4 border rounded-lg p-4 bg-muted/10">
                             <div className="flex items-center justify-between">
-                                <h3 className="font-bold flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary"/> Available Students</h3>
+                                <div className="flex items-center gap-2">
+                                    <Checkbox 
+                                        checked={availableStudents.length > 0 && Object.keys(selectedUids).length === availableStudents.length} 
+                                        onCheckedChange={handleSelectAll} 
+                                    />
+                                    <h3 className="font-bold flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary"/> Available</h3>
+                                </div>
                                 <div className="w-32">
                                     <Select value={studentIntakeFilter} onValueChange={setStudentIntakeFilter}>
                                         <SelectTrigger className="h-8 text-xs">
@@ -494,13 +527,24 @@ export default function StudentEnrollmentPage() {
                                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input placeholder="Search students..." className="pl-8 bg-background" value={searchStudent} onChange={e => setSearchStudent(e.target.value)} />
                             </div>
+                            
+                            {selectedCount > 0 && (
+                                <Button size="sm" onClick={() => performEnrollmentAction('enroll', availableStudents.filter(s => selectedUids[s.uid]))} disabled={actionLoading === 'bulk-enroll'}>
+                                    {actionLoading === 'bulk-enroll' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <UserPlus className="h-4 w-4 mr-2"/>}
+                                    Enroll Selected ({selectedCount})
+                                </Button>
+                            )}
+
                             <ScrollArea className="flex-1">
                                 <div className="space-y-2 pr-4">
                                     {availableStudents.map(s => (
                                         <div key={s.uid} className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted transition-colors">
-                                            <div className="text-sm">
-                                                <p className="font-bold">{s.name}</p>
-                                                <p className="text-xs text-muted-foreground">{s.id}</p>
+                                            <div className="flex items-center gap-3">
+                                                <Checkbox checked={!!selectedUids[s.uid]} onCheckedChange={() => handleToggleSelect(s.uid)} />
+                                                <div className="text-sm">
+                                                    <p className="font-bold">{s.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{s.id}</p>
+                                                </div>
                                             </div>
                                             <Button size="sm" variant="outline" onClick={() => performEnrollmentAction('enroll', s)} disabled={!!actionLoading}>
                                                 {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}
