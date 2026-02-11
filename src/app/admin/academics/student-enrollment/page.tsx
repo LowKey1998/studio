@@ -186,7 +186,7 @@ export default function StudentEnrollmentPage() {
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                intakeId: selectedIntake, // Ensure intake is recorded
+                intakeId: selectedIntake,
                 status: regSnap.exists() ? regSnap.val().status : 'Pending Payment',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''

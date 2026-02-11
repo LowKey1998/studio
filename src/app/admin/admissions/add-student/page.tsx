@@ -199,7 +199,6 @@ export default function AddStudentPage() {
             console.error("Error fetching data:", error);
              toast({ variant: 'destructive', title: 'Failed to fetch data' });
         } finally {
-            setTableLoading(tableLoading);
             setTableLoading(false);
         }
     }, [toast]);
@@ -534,7 +533,7 @@ export default function AddStudentPage() {
                         </Accordion>
                     </CardContent>
                     <CardFooter className="justify-end">
-                        <Button type="submit" form="student-form" disabled={loading || tableLoading}>
+                        <Button type="submit" form="student-form" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingUid ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                             {editingUid ? 'Save Changes' : 'Create Student Account'}
                         </Button>
