@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,7 +88,9 @@ export default function StudentEnrollmentPage() {
             const settingsData = settingsSnap.val() || {};
             
             setCalendarSettings(calendarSnap.val());
-            setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name)));
+            
+            const intakeList = Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name));
+            setIntakes(intakeList);
             setSemesters(Object.entries(sData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setAllCourses(cData);
             
@@ -106,8 +109,8 @@ export default function StudentEnrollmentPage() {
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
-                const semInfo = sData[semId];
-                if (!semInfo) continue;
+                const semInfo = sData[semId] || { name: 'Master' };
+                const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : null;
 
                 for (const cId in tData[semId]) {
                     const courseInfo = cData[cId];
@@ -121,7 +124,7 @@ export default function StudentEnrollmentPage() {
                             courseCode: courseInfo.code,
                             courseName: courseInfo.name,
                             semesterName: semInfo.name,
-                            intakeName: iData[semInfo.intakeId]?.name || 'N/A',
+                            intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
                             ...entry
                         });
                     });
@@ -190,7 +193,7 @@ export default function StudentEnrollmentPage() {
             await update(regRef, { 
                 courses: updatedCourses,
                 programmeId: student?.programmeId || regSnap.val()?.programmeId || '',
-                intakeId: selectedIntake, // Explicitly include intake
+                intakeId: selectedIntake,
                 status: regSnap.exists() ? regSnap.val().status : 'Completed',
                 registrationDate: regSnap.exists() ? regSnap.val().registrationDate : new Date().toISOString(),
                 semesterName: semesters.find(s => s.id === semesterId)?.name || ''
@@ -248,7 +251,7 @@ export default function StudentEnrollmentPage() {
     }, [intakeName, calendarSettings]);
 
     const filteredTimetable = React.useMemo(() => {
-        if (!selectedIntake) return [];
+        if (!selectedIntake || !intakeName) return [];
         return masterTimetable.filter(entry => entry.intakeName === intakeName);
     }, [masterTimetable, selectedIntake, intakeName]);
 
