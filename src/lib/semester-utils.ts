@@ -19,6 +19,10 @@ export type Anomaly = {
 /**
  * Calculates the current year and semester for a given intake.
  * Progression is calculated by counting institutional semester boundaries crossed.
+ * 
+ * Logic:
+ * - A "Semester Count" increments every time today's date passes a month defined in the institutional cycle.
+ * - Year = ceil(SemesterCount / number_of_cycles_per_year)
  */
 export function calculateAcademicState(
     intakeDateStr: string,
@@ -33,26 +37,9 @@ export function calculateAcademicState(
 
     const intakeDate = startOfMonth(parseISO(intakeDateStr));
     const normalizedCurrentDate = startOfMonth(currentDate);
-    
-    // 1. Determine Starting Semester
-    const startMonth = intakeDate.getMonth();
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     
-    // Find which cycle the intake started in
-    const startCycle = [...sortedCycles].reverse().find(c => startMonth >= c.startMonth) || sortedCycles[0];
-    
-    // 2. Count months passed
-    const totalMonthsPassed = differenceInMonths(normalizedCurrentDate, intakeDate);
-    
-    // 3. Calculate progression
-    // We determine the current semester based on the month, then calculate the year 
-    // by seeing how many times we've passed the "first" semester of the institutional cycle
-    // relative to where we started.
-    
-    const currentMonth = normalizedCurrentDate.getMonth();
-    const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[0];
-    
-    // Check for specific anomalies
+    // Check for specific anomalies first
     const activeAnomaly = anomalies.find(a => 
         format(parseISO(a.overrideStartDate), 'yyyy-MM') === format(normalizedCurrentDate, 'yyyy-MM')
     );
@@ -61,11 +48,26 @@ export function calculateAcademicState(
         return { year: activeAnomaly.year, semester: activeAnomaly.semester, isAnomaly: true };
     }
 
-    // Year Calculation: 
-    // If we start at Sem 2, and we are now at Sem 1, we are still in Year 1.
-    // If we start at Sem 2, and we are now at Sem 2 (12 months later), we are in Year 2.
-    // Basic formula: Every 12 months from the start date, the year increments.
-    const academicYear = Math.floor(totalMonthsPassed / 12) + 1;
+    // 1. Calculate how many institutional cycle starts have been passed since the intake started
+    let semesterCount = 0;
+    let checkDate = new Date(intakeDate);
+    
+    // Iterate month by month from intake start to current date
+    while (checkDate <= normalizedCurrentDate) {
+        const month = checkDate.getMonth();
+        if (sortedCycles.some(c => c.startMonth === month)) {
+            semesterCount++;
+        }
+        checkDate = addMonths(checkDate, 1);
+    }
+
+    // 2. Calculate Year based on cycles completed
+    // If there are 2 cycles per year, the 1st and 2nd semesters of study are Year 1.
+    const academicYear = Math.ceil(semesterCount / sortedCycles.length);
+
+    // 3. Determine the institutional semester number based on the current month
+    const currentMonth = normalizedCurrentDate.getMonth();
+    const currentCycle = [...sortedCycles].reverse().find(c => currentMonth >= c.startMonth) || sortedCycles[0];
 
     return { 
         year: Math.max(1, academicYear), 
