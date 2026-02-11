@@ -109,7 +109,7 @@ export default function StudentDashboardPage() {
                 setIntakeName(iName);
 
                 const yearMatch = iName.match(/\d{4}/);
-                const monthMatch = iName.match(/[A-Z]{3}/);
+                const monthMatch = iName.match(/[A-Z]{3}/i);
                 if (yearMatch && monthMatch) {
                     const monthsMap: Record<string, string> = {
                         'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',

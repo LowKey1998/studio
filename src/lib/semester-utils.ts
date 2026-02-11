@@ -2,7 +2,7 @@
  * @fileOverview Utilities for calculating academic year and semester based on intake date and current date.
  */
 
-import { parseISO, format, startOfMonth, addMonths, isBefore, isSameMonth } from 'date-fns';
+import { parseISO, format, startOfMonth, addMonths, isSameMonth } from 'date-fns';
 
 export type AcademicCycle = {
     semester: number;
@@ -20,7 +20,7 @@ export type Anomaly = {
 /**
  * Calculates the current year and semester for a given intake.
  * Progression is calculated by identifying institutional semester boundaries (Cycle Starts) 
- * passed since the student's specific intake month.
+ * encountered starting FROM the student's specific intake month.
  */
 export function calculateAcademicState(
     intakeDateStr: string,
@@ -50,7 +50,22 @@ export function calculateAcademicState(
     const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
     const cycleStartMonths = sortedCycles.map(c => c.startMonth);
 
-    // 1. Identify the global institutional cycle for the current month
+    // 1. Count distinct institutional semester boundaries encountered since intake
+    // We count every boundary hit (e.g., Jan or July) starting FROM the intake month
+    let semestersStarted = 0;
+    let checkDate = new Date(intakeDate);
+    
+    // Safety check to prevent infinite loops
+    let iterations = 0;
+    while ((checkDate < normalizedCurrentDate || isSameMonth(checkDate, normalizedCurrentDate)) && iterations < 600) {
+        if (cycleStartMonths.includes(checkDate.getMonth())) {
+            semestersStarted++;
+        }
+        checkDate = addMonths(checkDate, 1);
+        iterations++;
+    }
+
+    // 2. Identify the global institutional cycle for the current month
     const currentMonth = normalizedCurrentDate.getMonth();
     const currentCycle = sortedCycles.find(c => {
         if (c.startMonth <= c.endMonth) {
@@ -61,23 +76,8 @@ export function calculateAcademicState(
         }
     }) || sortedCycles[0];
 
-    // 2. Count distinct institutional semester periods started since intake
-    // We count every boundary hit (e.g., Jan or July) starting FROM the intake month
-    let semestersStarted = 0;
-    let checkDate = new Date(intakeDate);
-    
-    // Safety check to prevent infinite loops (max 50 years)
-    let iterations = 0;
-    while ((checkDate <= normalizedCurrentDate || isSameMonth(checkDate, normalizedCurrentDate)) && iterations < 600) {
-        if (cycleStartMonths.includes(checkDate.getMonth())) {
-            semestersStarted++;
-        }
-        checkDate = addMonths(checkDate, 1);
-        iterations++;
-    }
-
     // 3. Determine Study Year
-    // Standard rule: 1st/2nd institutional cycles started since intake = Year 1, 3rd/4th = Year 2, etc.
+    // Standard rule: Hit 1 & 2 = Year 1, Hit 3 & 4 = Year 2, etc.
     const academicYear = Math.ceil(semestersStarted / (sortedCycles.length || 1));
 
     return { 
