@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare } from "lucide-react";
+import { Loader2, Save, AlertCircle, MessageSquare, Search } from "lucide-react";
 import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -57,6 +57,7 @@ export default function CAEntryPage() {
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
     const [students, setStudents] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
+    const [searchTerm, setSearchTerm] = React.useState('');
     
     const [templateComponents, setTemplateComponents] = React.useState<AssessmentComponent[]>([]);
     
@@ -203,6 +204,13 @@ export default function CAEntryPage() {
         }
     };
 
+    const filteredStudents = React.useMemo(() => {
+        return students.filter(s => 
+            s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            s.id.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [students, searchTerm]);
+
     return (
         <Card>
             <CardHeader>
@@ -219,23 +227,41 @@ export default function CAEntryPage() {
                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+                {selectedCourseId && templateComponents.length > 0 && students.length > 0 && (
+                    <div className="relative max-w-sm mb-4">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Filter students by name or ID..." 
+                            className="pl-8" 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)} 
+                        />
+                    </div>
+                )}
+
                 {loading ? ( <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-                ) : selectedCourseId && templateComponents.length > 0 && students.length > 0 ? (
-                    <div className="overflow-x-auto">
+                ) : selectedCourseId && templateComponents.length > 0 && filteredStudents.length > 0 ? (
+                    <div className="overflow-x-auto rounded-md border">
                         <Table>
-                            <TableHeader><TableRow><TableHead className="min-w-[150px]">Student Name</TableHead><TableHead className="min-w-[100px]">Student ID</TableHead>{templateComponents.map(col => <TableHead key={col.id}>{col.name} ({col.weight}%)</TableHead>)}</TableRow></TableHeader>
+                            <TableHeader className="bg-muted/50">
+                                <TableRow>
+                                    <TableHead className="min-w-[150px]">Student Name</TableHead>
+                                    <TableHead className="min-w-[100px]">Student ID</TableHead>
+                                    {templateComponents.map(col => <TableHead key={col.id}>{col.name} ({col.weight}%)</TableHead>)}
+                                </TableRow>
+                            </TableHeader>
                             <TableBody>
-                                {students.map((student) => (
+                                {filteredStudents.map((student) => (
                                     <TableRow key={student.uid}>
                                         <TableCell className="font-medium">{student.name}</TableCell>
-                                        <TableCell>{student.id}</TableCell>
+                                        <TableCell className="font-mono text-xs uppercase">{student.id}</TableCell>
                                         {templateComponents.map(col => (
                                             <TableCell key={col.id}>
                                                 <div className="flex items-center gap-2">
-                                                <Input type="number" min="0" max="100" className="w-20" value={scores[student.uid]?.[col.id]?.score ?? ''} onChange={(e) => handleScoreChange(student.uid, col.id, e.target.value)} placeholder="-"/>
+                                                <Input type="number" min="0" max="100" className="w-20 h-8" value={scores[student.uid]?.[col.id]?.score ?? ''} onChange={(e) => handleScoreChange(student.uid, col.id, e.target.value)} placeholder="-"/>
                                                 <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MessageSquare className="h-4 w-4" /></Button></PopoverTrigger>
-                                                    <PopoverContent><div className="grid gap-4"><div className="space-y-2"><h4 className="font-medium leading-none">Feedback</h4><p className="text-sm text-muted-foreground">Provide feedback for {student.name} on {col.name}.</p></div><div className="grid gap-2"><Textarea value={scores[student.uid]?.[col.id]?.feedback ?? ''} onChange={(e) => handleFeedbackChange(student.uid, col.id, e.target.value)} /></div></div></PopoverContent>
+                                                    <PopoverContent className="w-80"><div className="grid gap-4"><div className="space-y-2"><h4 className="font-medium leading-none">Feedback</h4><p className="text-sm text-muted-foreground">Provide feedback for {student.name} on {col.name}.</p></div><div className="grid gap-2"><Textarea value={scores[student.uid]?.[col.id]?.feedback ?? ''} onChange={(e) => handleFeedbackChange(student.uid, col.id, e.target.value)} placeholder="Type feedback here..." /></div></div></PopoverContent>
                                                 </Popover>
                                                 </div>
                                             </TableCell>
@@ -246,14 +272,18 @@ export default function CAEntryPage() {
                         </Table>
                     </div>
                 ) : (
-                    <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>No Data to Display</AlertTitle><AlertDescription>
-                        {selectedCourseId ? 'No students are enrolled, or no assessment template is assigned to this course. Please check course settings.' : 'Please select a semester and course to begin.'}
-                    </AlertDescription></Alert>
+                    <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>No Data to Display</AlertTitle>
+                        <AlertDescription>
+                            {selectedCourseId ? (students.length === 0 ? 'No students are enrolled in this course.' : 'No assessment template is assigned to this course. Please check course settings.') : 'Please select a semester and course to begin.'}
+                        </AlertDescription>
+                    </Alert>
                 )}
             </CardContent>
             {students.length > 0 && templateComponents.length > 0 && (
                 <CardFooter className="flex justify-end border-t pt-6">
-                    <Button onClick={handleSaveScores} disabled={saving || loading}><Save className="mr-2 h-4 w-4" />{saving ? 'Saving...' : 'Save All Scores'}</Button>
+                    <Button onClick={handleSaveScores} disabled={saving || loading} className="font-bold"><Save className="mr-2 h-4 w-4" />{saving ? 'Saving...' : 'Save All Scores'}</Button>
                 </CardFooter>
             )}
         </Card>

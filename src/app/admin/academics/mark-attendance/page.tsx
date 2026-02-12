@@ -16,7 +16,7 @@ import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, C
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, startOfMonth, endOfMonth, parseISO, getDay, addMonths, subMonths, isToday } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, startOfMonth, endOfMonth, parseISO, getDay, addMonths, subMonths, isToday, addWeeks, subWeeks } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
@@ -67,6 +67,7 @@ export default function AdminMarkAttendancePage() {
     const [viewMode, setViewMode] = React.useState<'marking' | 'monthly' | 'semester' | 'student'>('marking');
     const [defaultView, setDefaultView] = React.useState('marking');
     const [viewMonth, setViewMonth] = React.useState(new Date());
+    const [viewWeek, setViewWeek] = React.useState(new Date());
     
     // Marking Dialog State
     const [activeSession, setActiveSession] = React.useState<TimetableEntry | null>(null);
@@ -250,12 +251,24 @@ export default function AdminMarkAttendancePage() {
         return { present, absent, late, excused, total, rate };
     };
 
+    const currentWeekInterval = React.useMemo(() => {
+        const start = startOfWeek(viewWeek, { weekStartsOn: 1 }); // Start from Monday
+        const end = addWeeks(start, 0); // Friday is 4 days after Monday
+        const weekDays = eachDayOfInterval({ start, end: addWeeks(start, 0).setDate(start.getDate() + 4) }); 
+        // Manual 5 days because eachDayOfInterval might include weekend
+        const mon = start;
+        return [0,1,2,3,4].map(i => {
+            const d = new Date(mon);
+            d.setDate(mon.getDate() + i);
+            return d;
+        });
+    }, [viewWeek]);
+
     const renderMonthlyTimetable = () => {
         const start = startOfMonth(viewMonth);
         const end = endOfMonth(viewMonth);
         const days = eachDayOfInterval({ start, end });
         
-        // Calculate grid padding for the first day
         const startDayIdx = getDay(start);
         const paddingDays = Array.from({ length: startDayIdx });
 
@@ -370,13 +383,22 @@ export default function AdminMarkAttendancePage() {
                             <TabsTrigger value="student" className="py-2"><UserSearch className="mr-2 h-4 w-4"/>Student Record</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="marking" className="mt-6">
+                        <TabsContent value="marking" className="mt-6 space-y-4">
                             {selectedIntake ? (
+                                <>
+                                <div className="flex items-center justify-between px-2 bg-muted/20 py-2 rounded-lg border">
+                                    <div className="flex items-center gap-4">
+                                        <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
+                                        <div className="font-bold text-sm uppercase tracking-widest">{format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[4], 'MMM dd, yyyy')}</div>
+                                        <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
+                                    </div>
+                                    <Badge variant="secondary" className="font-mono text-[10px]">CURRENTLY VIEWING TIMETABLE WITH DATES</Badge>
+                                </div>
                                 <div className="border rounded-lg overflow-hidden bg-muted/10">
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-muted/50">
-                                                <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                                <TableHead className="w-48 border-r font-bold text-center">DATE & DAY</TableHead>
                                                 {teachingTimes.slots.map((slot, index) => (
                                                     <TableHead key={index} className="text-center font-bold border-r">
                                                         <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
@@ -385,31 +407,59 @@ export default function AdminMarkAttendancePage() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {teachingTimes.days.map(dayName => (
-                                                <TableRow key={dayName}>
-                                                    <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
-                                                    {teachingTimes.slots.map((slot, sIdx) => {
-                                                        const slotStart = timeToMinutes(slot.startTime);
-                                                        const slotEnd = timeToMinutes(slot.endTime);
-                                                        const sessions = filteredTimetable.filter(e => e.day === dayName && timeToMinutes(e.startTime) >= slotStart && timeToMinutes(e.startTime) < slotEnd);
-                                                        return (
-                                                            <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
-                                                                {sessions.map((entry, eIdx) => (
-                                                                    <div key={eIdx} className="cursor-pointer group p-2 rounded-md border bg-background hover:bg-primary/5 mb-2 border-primary/20 shadow-sm" onClick={() => { setAttendanceDate(new Date()); setActiveSession(entry); fetchSessionStudents(entry); }}>
-                                                                        <p className="font-bold text-primary text-[10px] leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
-                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {entry.venue}</div>
-                                                                    </div>
-                                                                ))}
-                                                            </TableCell>
-                                                        );
-                                                    })}
-                                                </TableRow>
-                                            ))}
+                                            {currentWeekInterval.map(date => {
+                                                const dayName = calendarDays[getDay(date)];
+                                                const dateStr = format(date, 'yyyy-MM-dd');
+                                                const isDayToday = isToday(date);
+
+                                                return (
+                                                    <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
+                                                        <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
+                                                            <div className="flex flex-col">
+                                                                <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                                <span className="text-sm font-black">{format(date, 'MMM dd')}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        {teachingTimes.slots.map((slot, sIdx) => {
+                                                            const slotStart = timeToMinutes(slot.startTime);
+                                                            const slotEnd = timeToMinutes(slot.endTime);
+                                                            const sessions = filteredTimetable.filter(e => e.day === dayName && timeToMinutes(e.startTime) >= slotStart && timeToMinutes(e.startTime) < slotEnd);
+                                                            
+                                                            return (
+                                                                <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                                    {sessions.map((entry, eIdx) => {
+                                                                        const isMarked = !!courseAttendanceData[entry.courseId]?.[dateStr];
+                                                                        return (
+                                                                            <div 
+                                                                                key={eIdx} 
+                                                                                className={cn(
+                                                                                    "cursor-pointer group p-2 rounded-md border bg-background hover:bg-primary/5 mb-2 shadow-sm relative transition-all",
+                                                                                    isMarked ? "border-green-500 bg-green-50/30" : "border-primary/20"
+                                                                                )} 
+                                                                                onClick={() => { 
+                                                                                    setAttendanceDate(date); 
+                                                                                    setActiveSession(entry); 
+                                                                                    fetchSessionStudents(entry, date); 
+                                                                                }}
+                                                                            >
+                                                                                <p className="font-bold text-primary text-[10px] leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {entry.venue}</div>
+                                                                                {isMarked && <div className="absolute top-1 right-1"><CheckCircle className="h-3 w-3 text-green-600"/></div>}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </TableCell>
+                                                            );
+                                                        })}
+                                                    </TableRow>
+                                                );
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
+                                </>
                             ) : (
-                                <div className="text-center py-20 text-muted-foreground bg-muted/10 rounded-lg border-2 border-dashed">Select an intake to view the marking grid.</div>
+                                <div className="text-center py-20 text-muted-foreground bg-muted/10 rounded-lg border-2 border-dashed">Select an intake to view the daily marking grid.</div>
                             )}
                         </TabsContent>
 
@@ -452,7 +502,7 @@ export default function AdminMarkAttendancePage() {
                                                         </div>
                                                         <div className="space-y-1">
                                                             <div className="flex justify-between text-sm font-bold"><span>Attendance Reliability</span><span>{stats.rate.toFixed(1)}%</span></div>
-                                                            <Progress value={stats.rate} className={cn(stats.rate < 75 ? "bg-red-100 [&>div]:bg-red-600" : "bg-green-100 [&>div]:bg-green-600")} />
+                                                            <Progress value={stats.rate} className={cn(stats.rate < 75 ? "bg-red-100" : "bg-green-100")} />
                                                         </div>
                                                     </>
                                                 )
