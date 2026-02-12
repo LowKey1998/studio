@@ -27,6 +27,7 @@ type TimetableEntry = {
     courseName: string;
     semesterId: string;
     lecturerNames: string;
+    intakeName?: string;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -38,22 +39,23 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StudentTimetablePage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, userProfile, loading: authLoading } = useAuth();
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [loading, setLoading] = React.useState(true);
 
     const fetchData = React.useCallback(async () => {
-        if (!user?.uid) return;
+        if (!user?.uid || !userProfile) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
                 get(ref(db, 'users')),
                 get(ref(db, 'semesters')),
+                get(ref(db, 'intakes'))
             ]);
 
             if (!regsSnap.exists()) {
@@ -64,6 +66,8 @@ export default function StudentTimetablePage() {
 
             const allSemesters = semestersSnap.val() || {};
             const usersData = usersSnap.val() || {};
+            const allIntakes = intakesSnap.val() || {};
+            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
             
             // Map courseId -> Set of semesterIds student is enrolled in (Excluding Archived)
             const enrolledCourseSemesters = new Map<string, Set<string>>();
@@ -98,25 +102,32 @@ export default function StudentTimetablePage() {
                     const courseInfo = cData[cId];
                     if (!courseInfo) continue;
 
-                    const isEnrolledInThisSemBranch = enrolledCourseSemesters.get(cId)?.has(semId);
-                    const isEnrolledAtAll = enrolledCourseSemesters.has(cId);
-                    
-                    let shouldInclude = false;
-                    if (courseInfo.separateInstance) {
-                        // Separate instances MUST match the semester branch exactly
-                        shouldInclude = isEnrolledInThisSemBranch;
-                    } else {
-                        // Shared courses can be in specific branch OR master branch
-                        shouldInclude = isEnrolledInThisSemBranch || (semId === 'master' && isEnrolledAtAll);
-                    }
-                    
-                    if (shouldInclude) {
-                        const lecturerNames = (courseInfo.lecturerIds || [])
-                            .map((uid: string) => usersData[uid]?.name)
-                            .filter(Boolean)
-                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                    const isEnrolledInThisCourseAtAll = enrolledCourseSemesters.has(cId);
+                    if (!isEnrolledInThisCourseAtAll) continue;
 
-                        Object.values(tData[semId][cId]).forEach((entry: any) => {
+                    const courseTimetable = tData[semId][cId];
+                    Object.values(courseTimetable).forEach((entry: any) => {
+                        let shouldInclude = false;
+
+                        if (semId === 'master') {
+                            if (courseInfo.separateInstance) {
+                                // If separate, only show if the intake name matches the student's intake
+                                shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
+                            } else {
+                                // If shared, show to everyone enrolled in the course
+                                shouldInclude = true;
+                            }
+                        } else {
+                            // If semester-specific branch, only show if student is registered for that specific branch
+                            shouldInclude = enrolledCourseSemesters.get(cId)?.has(semId) || false;
+                        }
+
+                        if (shouldInclude) {
+                            const lecturerNames = (courseInfo.lecturerIds || [])
+                                .map((uid: string) => usersData[uid]?.name)
+                                .filter(Boolean)
+                                .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+
                             entries.push({
                                 ...entry,
                                 courseId: cId,
@@ -125,8 +136,8 @@ export default function StudentTimetablePage() {
                                 semesterId: semId,
                                 lecturerNames
                             });
-                        });
-                    }
+                        }
+                    });
                 }
             }
             setTimetable(entries);
@@ -135,15 +146,15 @@ export default function StudentTimetablePage() {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, userProfile]);
 
     React.useEffect(() => {
-        if (!authLoading && user) {
+        if (!authLoading && user && userProfile) {
             fetchData();
         } else if (!authLoading && !user) {
             setLoading(false);
         }
-    }, [user, authLoading, fetchData]);
+    }, [user, userProfile, authLoading, fetchData]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;

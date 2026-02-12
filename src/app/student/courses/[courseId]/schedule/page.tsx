@@ -2,17 +2,19 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { db } from '@/lib/firebase';
+import { ref, get } from 'firebase/database';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { format, isToday } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 type TimetableEntry = {
     day: string;
     startTime: string;
     endTime: string;
     venue: string;
+    intakeName?: string;
 };
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -20,34 +22,38 @@ const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 export default function CourseSchedulePage() {
     const params = useParams();
     const courseId = params.courseId as string;
-    const { user, loading: authLoading } = useAuth();
+    const { user, userProfile, loading: authLoading } = useAuth();
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [loading, setLoading] = React.useState(true);
 
     const fetchTimetable = React.useCallback(async () => {
-        if (!user?.uid || !courseId) return;
+        if (!user?.uid || !userProfile || !courseId) return;
         setLoading(true);
         try {
-            const [regsSnap, semestersSnap, timetablesSnap, courseSnap] = await Promise.all([
+            const [regsSnap, semestersSnap, timetablesSnap, courseSnap, intakesSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'timetables')),
-                get(ref(db, `courses/${courseId}`))
+                get(ref(db, `courses/${courseId}`)),
+                get(ref(db, 'intakes'))
             ]);
 
             const allSemesters = semestersSnap.val() || {};
             const courseData = courseSnap.val();
+            const allIntakes = intakesSnap.val() || {};
+            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
+
             if (!courseData) { setLoading(false); return; }
 
             const enrolledSemesterIds = new Set<string>();
             if (regsSnap.exists()) {
                 Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                     const semInfo = allSemesters[semId];
-                    // Only consider active/open semesters
                     if (semId !== 'master' && semInfo?.status === 'Archived') return;
 
                     if (reg.courses && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                        if (reg.courses.includes(courseId)) {
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                        if (coursesArr.includes(courseId)) {
                             enrolledSemesterIds.add(semId);
                         }
                     }
@@ -58,26 +64,30 @@ export default function CourseSchedulePage() {
             if (timetablesSnap.exists()) {
                 const allTimetables = timetablesSnap.val();
                 for (const semesterId in allTimetables) {
-                    // Skip archived branches
                     if (semesterId !== 'master' && allSemesters[semesterId]?.status === 'Archived') continue;
 
-                    const isRegisteredForThisSemBranch = enrolledSemesterIds.has(semesterId);
+                    const isRegisteredForThisBranch = enrolledSemesterIds.has(semesterId);
                     const isRegisteredAtAll = enrolledSemesterIds.size > 0;
 
-                    let shouldInclude = false;
-                    if (courseData.separateInstance) {
-                        // Separate instances MUST match the specific semester branch
-                        shouldInclude = isRegisteredForThisSemBranch;
-                    } else {
-                        // Shared instances can be in specific branch OR master branch
-                        shouldInclude = isRegisteredForThisSemBranch || (semesterId === 'master' && isRegisteredAtAll);
-                    }
+                    if (allTimetables[semesterId][courseId]) {
+                        const entries = Object.values(allTimetables[semesterId][courseId]) as any[];
+                        entries.forEach(entry => {
+                            let shouldInclude = false;
+                            
+                            if (semesterId === 'master') {
+                                if (courseData.separateInstance) {
+                                    shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
+                                } else {
+                                    shouldInclude = isRegisteredAtAll;
+                                }
+                            } else {
+                                shouldInclude = isRegisteredForThisBranch;
+                            }
 
-                    if (shouldInclude && allTimetables[semesterId][courseId]) {
-                        const entries = allTimetables[semesterId][courseId];
-                        for (const entryId in entries) {
-                            allEntries.push({ ...entries[entryId] });
-                        }
+                            if (shouldInclude) {
+                                allEntries.push({ ...entry });
+                            }
+                        });
                     }
                 }
             }
@@ -87,21 +97,20 @@ export default function CourseSchedulePage() {
         } finally {
             setLoading(false);
         }
-    }, [user, courseId]);
+    }, [user, userProfile, courseId]);
 
     React.useEffect(() => {
-        if (!authLoading && user) {
+        if (!authLoading && user && userProfile) {
             fetchTimetable();
         } else if (!authLoading && !user) {
             setLoading(false);
         }
-    }, [user, authLoading, fetchTimetable]);
+    }, [user, userProfile, authLoading, fetchTimetable]);
     
     const timeToMinutes = (time: string) => {
         const [hours, minutes] = time.split(':').map(Number);
         return hours * 60 + minutes;
     };
-
 
     return (
         <Card>
