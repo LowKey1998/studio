@@ -1,9 +1,8 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle, PlusCircle } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle, PlusCircle, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, onValue } from 'firebase/database';
@@ -205,9 +204,7 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === sIntakeId);
                 if (!studentIntake) throw new Error(`Intake not found for ${student.name}`);
                 const intakeStartStr = parseIntakeDate(studentIntake.name);
-                if (!sizeStartStr) {
-                    // Fallback to current year/sem if intake name parsing fails
-                }
+                
                 const intakeDateString = intakeStartStr || '2024-01-01';
                 
                 const state = calculateAcademicState(intakeDateString, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
