@@ -1,13 +1,13 @@
-'use client';
+"use client";
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 
@@ -26,6 +26,7 @@ type TimetableEntry = {
     courseCode: string;
     courseName: string;
     lecturerNames: string;
+    studentCount: number;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -50,22 +51,38 @@ export default function StaffTimetablePage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, timetablesSnap, settingsSnap, usersSnap] = await Promise.all([
+            const [coursesSnap, timetablesSnap, settingsSnap, usersSnap, regsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
-                get(ref(db, 'users'))
+                get(ref(db, 'users')),
+                get(ref(db, 'registrations'))
             ]);
 
             const cData = coursesSnap.val() || {};
             const tData = timetablesSnap.val() || {};
             const settingsData = settingsSnap.val() || {};
             const usersData = usersSnap.val() || {};
+            const regsData = regsSnap.val() || {};
 
             setTeachingTimes({
                 days: settingsData.days || defaultDays,
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
+
+            // Calculate student counts
+            const counts: Record<string, Record<string, number>> = {};
+            for (const userId in regsData) {
+                for (const semId in regsData[userId]) {
+                    const reg = regsData[userId][semId];
+                    if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                        if (!counts[semId]) counts[semId] = {};
+                        (reg.courses || []).forEach((cid: string) => {
+                            counts[semId][cid] = (counts[semId][cid] || 0) + 1;
+                        });
+                    }
+                }
+            }
 
             const myCourseIds = new Set<string>();
             Object.entries(cData).forEach(([id, c]: [string, any]) => {
@@ -85,13 +102,16 @@ export default function StaffTimetablePage() {
                             .filter(Boolean)
                             .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
+                        const studentCount = counts[semId]?.[cId] || 0;
+
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
                             entries.push({
                                 ...entry,
                                 courseId: cId,
                                 courseCode: courseInfo.code,
                                 courseName: courseInfo.name,
-                                lecturerNames
+                                lecturerNames,
+                                studentCount
                             });
                         });
                     }
@@ -168,6 +188,9 @@ export default function StaffTimetablePage() {
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5">
                                                                     <UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1">
+                                                                    <Users className="h-2.5 w-2.5" /> {entry.studentCount} Students
                                                                 </div>
                                                                 <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
                                                             </Link>

@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,7 +7,7 @@ import { ref, get } from 'firebase/database';
 import { useAuth } from '@/hooks/use-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 
@@ -28,6 +28,7 @@ type TimetableEntry = {
     semesterId: string;
     lecturerNames: string;
     intakeName?: string;
+    studentCount: number;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -69,6 +70,22 @@ export default function StudentTimetablePage() {
             const allIntakes = intakesSnap.val() || {};
             const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
             
+            // Calculate student counts across all registrations for enrolled students
+            const allRegsSnap = await get(ref(db, 'registrations'));
+            const allRegs = allRegsSnap.val() || {};
+            const counts: Record<string, Record<string, number>> = {};
+            for (const userId in allRegs) {
+                for (const semId in allRegs[userId]) {
+                    const reg = allRegs[userId][semId];
+                    if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                        if (!counts[semId]) counts[semId] = {};
+                        (reg.courses || []).forEach((cid: string) => {
+                            counts[semId][cid] = (counts[semId][cid] || 0) + 1;
+                        });
+                    }
+                }
+            }
+
             // Map courseId -> Set of semesterIds student is enrolled in (Excluding Archived)
             const enrolledCourseSemesters = new Map<string, Set<string>>();
             Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
@@ -111,14 +128,11 @@ export default function StudentTimetablePage() {
 
                         if (semId === 'master') {
                             if (courseInfo.separateInstance) {
-                                // If separate, only show if the intake name matches the student's intake
                                 shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
                             } else {
-                                // If shared, show to everyone enrolled in the course
                                 shouldInclude = true;
                             }
                         } else {
-                            // If semester-specific branch, only show if student is registered for that specific branch
                             shouldInclude = enrolledCourseSemesters.get(cId)?.has(semId) || false;
                         }
 
@@ -128,13 +142,16 @@ export default function StudentTimetablePage() {
                                 .filter(Boolean)
                                 .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
+                            const studentCount = counts[semId]?.[cId] || 0;
+
                             entries.push({
                                 ...entry,
                                 courseId: cId,
                                 courseCode: courseInfo.code,
                                 courseName: courseInfo.name,
                                 semesterId: semId,
-                                lecturerNames
+                                lecturerNames,
+                                studentCount
                             });
                         }
                     });
@@ -158,6 +175,11 @@ export default function StudentTimetablePage() {
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
+
+    const timeToMinutesCell = (time: string) => {
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
+    };
 
     return (
         <Card className="shadow-lg">
@@ -192,12 +214,12 @@ export default function StudentTimetablePage() {
                                     <TableRow key={dayName}>
                                         <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
                                         {teachingTimes.slots.map((slot, sIdx) => {
-                                            const slotStart = timeToMinutes(slot.startTime);
-                                            const slotEnd = timeToMinutes(slot.endTime);
+                                            const slotStart = timeToMinutesCell(slot.startTime);
+                                            const slotEnd = timeToMinutesCell(slot.endTime);
                                             const sessionsInSlot = timetable.filter(e => 
                                                 e.day === dayName && 
-                                                timeToMinutes(e.startTime) >= slotStart && 
-                                                timeToMinutes(e.startTime) < slotEnd
+                                                timeToMinutesCell(e.startTime) >= slotStart && 
+                                                timeToMinutesCell(e.startTime) < slotEnd
                                             );
 
                                             return (
@@ -215,6 +237,9 @@ export default function StudentTimetablePage() {
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5">
                                                                     <UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1">
+                                                                    <Users className="h-2.5 w-2.5" /> {entry.studentCount} Students
                                                                 </div>
                                                                 <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
                                                             </Link>

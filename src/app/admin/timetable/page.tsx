@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 import Link from 'next/link';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import {
@@ -77,6 +77,7 @@ export default function TimetableManagementPage() {
     const [rooms, setRooms] = React.useState<Room[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
+    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); // [semId][courseId]
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
@@ -113,7 +114,8 @@ export default function TimetableManagementPage() {
             ref(db, 'timetables'),
             ref(db, 'users'),
             ref(db, 'settings/teachingTimes'),
-            ref(db, 'settings/academicCalendar')
+            ref(db, 'settings/academicCalendar'),
+            ref(db, 'registrations')
         ];
 
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
@@ -130,7 +132,23 @@ export default function TimetableManagementPage() {
                     slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 }); break;
                 case 7: setCalendarSettings(data); break;
+                case 8: {
+                    const counts: Record<string, Record<string, number>> = {};
+                    for (const userId in data) {
+                        for (const semId in data[userId]) {
+                            const reg = data[userId][semId];
+                            if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                                if (!counts[semId]) counts[semId] = {};
+                                (reg.courses || []).forEach((cid: string) => {
+                                    counts[semId][cid] = (counts[semId][cid] || 0) + 1;
+                                });
+                            }
+                        }
+                    }
+                    setStudentCounts(counts);
+                } break;
             }
+            if(i === 8) setLoading(false);
         }));
 
         const unsubT = onValue(ref(db, 'timetables'), (snapshot) => {
@@ -144,7 +162,7 @@ export default function TimetableManagementPage() {
                         
                         const entries: TimetableEntry[] = [];
                         for (const semId in tData) {
-                            const semInfo = sData[semId] || { name: 'Master' };
+                            const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry', status: 'Active' };
                             const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : null;
 
                             for (const cId in tData[semId]) {
@@ -166,7 +184,6 @@ export default function TimetableManagementPage() {
                             }
                         }
                         setMasterTimetable(entries);
-                        setLoading(false);
                     });
                 });
             });
@@ -271,7 +288,7 @@ export default function TimetableManagementPage() {
     }, [intakeFilter, intakes, calendarSettings]);
 
     const mergedSessions = React.useMemo(() => {
-        const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; participants: { semesterId: string; name: string; standing: string }[] }> = {};
+        const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; totalStudents: number; participants: { semesterId: string; name: string; standing: string; count: number }[] }> = {};
         
         filteredTimetable.forEach(entry => {
             const course = allCourses.find(c => c.id === entry.courseId);
@@ -285,24 +302,27 @@ export default function TimetableManagementPage() {
                     .filter(Boolean)
                     .join(', ') || users[course?.lecturerId || '']?.name || 'Unassigned';
 
-                sessions[key] = { entry, lecturerNames, participants: [] };
+                sessions[key] = { entry, lecturerNames, totalStudents: 0, participants: [] };
             }
             
             const sem = semesters.find(s => s.id === entry.semesterId);
             const intake = intakes.find(i => i.id === sem?.intakeId);
             const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
+            const count = studentCounts[entry.semesterId]?.[entry.courseId] || 0;
             
             if (!sessions[key].participants.find(p => p.semesterId === entry.semesterId)) {
                 sessions[key].participants.push({
                     semesterId: entry.semesterId,
                     name: intake?.name || entry.intakeName || 'N/A',
-                    standing
+                    standing,
+                    count
                 });
+                sessions[key].totalStudents += count;
             }
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes, users]);
+    }, [filteredTimetable, allCourses, semesters, intakes, users, studentCounts]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
@@ -385,13 +405,14 @@ export default function TimetableManagementPage() {
                                                                 <div 
                                                                     key={eIdx} 
                                                                     className="p-2 rounded-md border bg-background border-primary/20 shadow-sm relative"
-                                                                    onClick={(e) => e.stopPropagation()} // Prevent adding when clicking existing session
+                                                                    onClick={(e) => e.stopPropagation()} 
                                                                 >
                                                                     <div className="flex justify-between items-start gap-1">
                                                                         <Link href={`/staff/courses/${s.entry.courseId}`} className="flex-1 group">
                                                                             <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2 group-hover:underline" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {s.entry.venue}</div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2 w-2" /> {s.lecturerNames}</div>
+                                                                            <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2 w-2" /> {s.totalStudents} Students</div>
                                                                         </Link>
                                                                         <Button 
                                                                             variant="ghost" 
@@ -413,7 +434,7 @@ export default function TimetableManagementPage() {
                                                                                 variant="secondary" 
                                                                                 className="text-[8px] h-4"
                                                                             >
-                                                                                {p.name} ({p.standing})
+                                                                                {p.name} ({p.standing}) : {p.count}
                                                                             </Badge>
                                                                         ))}
                                                                     </div>
