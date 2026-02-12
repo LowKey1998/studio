@@ -8,10 +8,12 @@ import { ref, update, get } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Search, X, ChevronDown, UserMinus } from 'lucide-react';
+import { Search, X, ChevronDown, UserMinus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import type { CoursePath } from '@/app/admin/course-paths/page';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 
 type Course = {
     id: string;
@@ -53,7 +55,7 @@ export default function LecturerAllocationPage() {
                 const coursesData = coursesSnapshot.val() || {};
 
                 const lecturerRoleIds = new Set(
-                    Object.keys(subRolesData).filter(roleId => subRolesData[roleId].permissions?.canBeAssignedClass)
+                    Object.keys(subRolesData).filter(roleId => subRolesData[roleId].name === 'Lecturer' || subRolesData[roleId].permissions?.canBeAssignedClass)
                 );
                 const lecturersList: Lecturer[] = [];
                 for (const uid in usersData) {
@@ -98,7 +100,9 @@ export default function LecturerAllocationPage() {
                 } else {
                     for (const id in coursesData) {
                         const course = coursesData[id];
-                        coursesList.push({ id, ...course });
+                        if (course.status !== 'archived') {
+                            coursesList.push({ id, ...course });
+                        }
                     }
                 }
                 
@@ -141,7 +145,7 @@ export default function LecturerAllocationPage() {
 
     const handleClearAssignments = async (courseId: string) => {
         try {
-            await update(ref(db, `courses/${courseId}`), { lecturerIds: null });
+            await update(ref(db, `courses/${courseId}`), { lecturerIds: null, lecturerId: null });
             setCourses(prevCourses => prevCourses.map(c => 
                 c.id === courseId ? { ...c, lecturerIds: [] } : c
             ));
@@ -157,92 +161,106 @@ export default function LecturerAllocationPage() {
         course.code.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    return (
-        <Card>
-            <CardHeader>
-                 {semesterName ? (
-                    <div className="flex justify-between items-center">
-                         <CardTitle>Lecturer Allocation for {semesterName}</CardTitle>
-                         <Button variant="outline" onClick={() => router.push('/admin/academics/lecturer-allocation')}>
-                            <X className="mr-2 h-4 w-4"/>Clear Filter
-                         </Button>
-                    </div>
-                ) : (
-                    <CardTitle>Lecturer Allocation</CardTitle>
-                )}
-                <CardDescription>Assign one or more lecturers to courses. {semesterName ? '' : 'You can filter by semester from the Registration Management page.'}</CardDescription>
-                <div className="relative pt-2">
-                    <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search courses by name or code..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                </div>
-            </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Course Code</TableHead>
-                            <TableHead>Course Name</TableHead>
-                            <TableHead>Assigned Lecturers</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            Array.from({length: 5}).map((_, i) => (
-                                <TableRow key={i}>
-                                    <TableCell colSpan={3}><Skeleton className="h-8 w-full" /></TableCell>
-                                </TableRow>
-                            ))
-                        ) : filteredCourses.map(course => {
-                            const assignedLecturersText = course.lecturerIds?.map(id => lecturers.find(l => l.uid === id)?.name).filter(Boolean).join(', ') || 'Assign lecturers...';
+    const unassignedCount = courses.filter(c => !c.lecturerIds || c.lecturerIds.length === 0).length;
 
-                            return (
-                            <TableRow key={course.id}>
-                                <TableCell>{course.code}</TableCell>
-                                <TableCell>{course.name}</TableCell>
-                                <TableCell>
-                                     <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="outline" className="w-[280px] justify-between">
-                                                <span className="truncate">{assignedLecturersText}</span>
-                                                <ChevronDown className="h-4 w-4 ml-2"/>
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[280px]">
-                                            {course.lecturerIds && course.lecturerIds.length > 0 && (
-                                                <>
-                                                    <DropdownMenuItem 
-                                                        className="text-destructive focus:text-destructive font-medium"
-                                                        onSelect={(e) => {
-                                                            e.preventDefault();
-                                                            handleClearAssignments(course.id);
-                                                        }}
-                                                    >
-                                                        <UserMinus className="mr-2 h-4 w-4" />
-                                                        Unassign All
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                </>
-                                            )}
-                                            {lecturers.length > 0 ? lecturers.map(lec => (
-                                                <DropdownMenuCheckboxItem
-                                                    key={lec.uid}
-                                                    checked={course.lecturerIds?.includes(lec.uid)}
-                                                    onCheckedChange={() => handleLecturerAssignmentChange(course.id, lec.uid)}
-                                                    onSelect={(e) => e.preventDefault()}
-                                                >
-                                                    {lec.name}
-                                                </DropdownMenuCheckboxItem>
-                                            )) : (
-                                                <div className="p-2 text-sm text-muted-foreground text-center">No lecturers found</div>
-                                            )}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </TableCell>
+    return (
+        <div className="space-y-6">
+            {unassignedCount > 0 && !loading && (
+                <Alert variant="destructive" className="bg-orange-50 border-orange-200 text-orange-800">
+                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <AlertTitle className="font-bold">Unassigned Courses Detected</AlertTitle>
+                    <AlertDescription>
+                        There are <strong>{unassignedCount}</strong> active course(s) that currently have no lecturer assigned. Students enrolled in these courses will not have an instructor in their portal.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            <Card>
+                <CardHeader>
+                    {semesterName ? (
+                        <div className="flex justify-between items-center">
+                            <CardTitle>Lecturer Allocation for {semesterName}</CardTitle>
+                            <Button variant="outline" onClick={() => router.push('/admin/academics/lecturer-allocation')}>
+                                <X className="mr-2 h-4 w-4"/>Clear Filter
+                            </Button>
+                        </div>
+                    ) : (
+                        <CardTitle>Lecturer Allocation</CardTitle>
+                    )}
+                    <CardDescription>Assign one or more lecturers to courses. {semesterName ? '' : 'You can filter by semester from the Registration Management page.'}</CardDescription>
+                    <div className="relative pt-2">
+                        <Search className="absolute left-2.5 top-4.5 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="Search courses by name or code..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Course Code</TableHead>
+                                <TableHead>Course Name</TableHead>
+                                <TableHead>Assigned Lecturers</TableHead>
                             </TableRow>
-                        )})}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                Array.from({length: 5}).map((_, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell colSpan={3}><Skeleton className="h-8 w-full" /></TableCell>
+                                    </TableRow>
+                                ))
+                            ) : filteredCourses.map(course => {
+                                const assignedLecturersText = course.lecturerIds?.map(id => lecturers.find(l => l.uid === id)?.name).filter(Boolean).join(', ') || 'Assign lecturers...';
+
+                                return (
+                                <TableRow key={course.id}>
+                                    <TableCell className="font-mono text-xs">{course.code}</TableCell>
+                                    <TableCell className="font-medium">{course.name}</TableCell>
+                                    <TableCell>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" className={cn("w-[280px] justify-between", (!course.lecturerIds || course.lecturerIds.length === 0) && "border-orange-300 text-orange-700 bg-orange-50")}>
+                                                    <span className="truncate">{assignedLecturersText}</span>
+                                                    <ChevronDown className="h-4 w-4 ml-2 opacity-50"/>
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-[280px]">
+                                                {course.lecturerIds && course.lecturerIds.length > 0 && (
+                                                    <>
+                                                        <DropdownMenuItem 
+                                                            className="text-destructive focus:text-destructive font-medium"
+                                                            onSelect={(e) => {
+                                                                e.preventDefault();
+                                                                handleClearAssignments(course.id);
+                                                            }}
+                                                        >
+                                                            <UserMinus className="mr-2 h-4 w-4" />
+                                                            Unassign All
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                    </>
+                                                )}
+                                                {lecturers.length > 0 ? lecturers.map(lec => (
+                                                    <DropdownMenuCheckboxItem
+                                                        key={lec.uid}
+                                                        checked={course.lecturerIds?.includes(lec.uid)}
+                                                        onCheckedChange={() => handleLecturerAssignmentChange(course.id, lec.uid)}
+                                                        onSelect={(e) => e.preventDefault()}
+                                                    >
+                                                        {lec.name}
+                                                    </DropdownMenuCheckboxItem>
+                                                )) : (
+                                                    <div className="p-2 text-sm text-muted-foreground text-center">No lecturers found</div>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </TableCell>
+                                </TableRow>
+                            )})}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
     );
 }

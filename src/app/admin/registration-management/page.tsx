@@ -453,8 +453,32 @@ export default function RegistrationManagementPage() {
         return { summary, isMissing, hasPlans: plans.length > 0 };
     };
 
+    const globalMissingDeadlines = React.useMemo(() => {
+        return semesters.filter(s => {
+            if (s.status === 'Archived') return false;
+            const { isMissing, hasPlans } = getDeadlineSummary(s);
+            return hasPlans && isMissing;
+        });
+    }, [semesters, calendarEvents, allPaymentPlans]);
+
     return (
         <div className="space-y-6">
+            {globalMissingDeadlines.length > 0 && !loading && (
+                <Alert variant="destructive" className="bg-orange-50 border-orange-200 text-orange-800">
+                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <AlertTitle className="font-bold">Missing Payment Deadlines</AlertTitle>
+                    <AlertDescription className="space-y-2">
+                        <p>The following active semesters have linked payment plans but are missing installment deadlines in the Academic Calendar:</p>
+                        <ul className="list-disc pl-5 text-sm">
+                            {globalMissingDeadlines.map(s => <li key={s.id}>{s.name}</li>)}
+                        </ul>
+                        <Button variant="link" asChild className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900">
+                            <Link href="/admin/calendar">Set Deadlines in Calendar &rarr;</Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <Card className="shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div><CardTitle className="font-headline text-2xl">Registration Management</CardTitle><CardDescription>Configure semesters and active registration paths.</CardDescription></div>
@@ -500,7 +524,7 @@ export default function RegistrationManagementPage() {
                                                                         <div className="flex flex-wrap gap-2 pt-1">
                                                                             {hasPlans ? (
                                                                                 isMissing ? (
-                                                                                    <Badge variant="destructive" className="flex items-center gap-1"><AlertCircle className="h-3 w-3"/>Deadlines Not Set</Badge>
+                                                                                    <Badge variant="destructive" className="flex items-center gap-1 bg-orange-100 text-orange-700 border-orange-200"><AlertCircle className="h-3 w-3"/>Deadlines Missing</Badge>
                                                                                 ) : (
                                                                                     <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-600"><CheckCircle2 className="h-3 w-3"/>Deadlines Set</Badge>
                                                                                 )
@@ -536,12 +560,12 @@ export default function RegistrationManagementPage() {
                                                                             const lecturerNames = (course.lecturerIds || []).map(lid => users[lid]?.name).filter(Boolean).join(', ') || users[course.lecturerId || '']?.name || 'Unassigned';
                                                                             const timetable = timetables[semId]?.[cid] ? Object.values(timetables[semId][cid]) : [];
                                                                             return (
-                                                                                <div key={cid} className="p-2 border rounded bg-muted/20 text-xs">
+                                                                                <div key={cid} className={cn("p-2 border rounded text-xs", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "bg-muted/20" : "bg-orange-50 border-orange-200")}>
                                                                                     <div className="flex justify-between font-bold">
                                                                                         <span>{course.code} - {course.name}</span>
                                                                                     </div>
-                                                                                    <div className="flex items-center gap-1 text-muted-foreground mt-1">
-                                                                                        <UserCheck className="h-3 w-3" /> {lecturerNames}
+                                                                                    <div className={cn("flex items-center gap-1 mt-1 font-medium", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "text-muted-foreground" : "text-orange-700")}>
+                                                                                        <UserCheck className="h-3 w-3" /> {lecturerNames === 'Unassigned' ? 'NO LECTURER ASSIGNED' : lecturerNames}
                                                                                     </div>
                                                                                     {timetable.length > 0 && (
                                                                                         <div className="flex items-center gap-1 text-primary mt-1">
