@@ -4,14 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2 } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';

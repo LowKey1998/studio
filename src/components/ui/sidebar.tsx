@@ -123,7 +123,7 @@ const SidebarProvider = React.forwardRef<
       </SidebarContext.Provider>
     )
   }
-)
+);
 SidebarProvider.displayName = "SidebarProvider"
 
 const Sidebar = React.forwardRef<
@@ -217,7 +217,7 @@ const Sidebar = React.forwardRef<
       </aside>
     )
   }
-)
+);
 Sidebar.displayName = "Sidebar"
 
 const SidebarTrigger = React.forwardRef<
@@ -243,7 +243,7 @@ const SidebarTrigger = React.forwardRef<
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
-})
+});
 SidebarTrigger.displayName = "SidebarTrigger"
 
 const SidebarRail = React.forwardRef<
@@ -272,7 +272,7 @@ const SidebarRail = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
@@ -289,7 +289,7 @@ const SidebarInset = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarInset.displayName = "SidebarInset"
 
 const SidebarInput = React.forwardRef<
@@ -307,7 +307,7 @@ const SidebarInput = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarInput.displayName = "SidebarInput"
 
 const SidebarHeader = React.forwardRef<
@@ -322,7 +322,7 @@ const SidebarHeader = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarHeader.displayName = "SidebarHeader"
 
 const SidebarFooter = React.forwardRef<
@@ -337,7 +337,7 @@ const SidebarFooter = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarFooter.displayName = "SidebarFooter"
 
 const SidebarSeparator = React.forwardRef<
@@ -352,7 +352,7 @@ const SidebarSeparator = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarSeparator.displayName = "SidebarSeparator"
 
 const SidebarContent = React.forwardRef<
@@ -370,7 +370,7 @@ const SidebarContent = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarContent.displayName = "SidebarContent"
 
 const SidebarGroup = React.forwardRef<
@@ -385,7 +385,7 @@ const SidebarGroup = React.forwardRef<
       {...props}
     />
   )
-})
+});
 SidebarGroup.displayName = "SidebarGroup"
 
 const SidebarMenu = React.forwardRef<
@@ -398,7 +398,7 @@ const SidebarMenu = React.forwardRef<
     className={cn("flex w-full min-w-0 flex-col gap-1", className)}
     {...props}
   />
-))
+));
 SidebarMenu.displayName = "SidebarMenu"
 
 const SidebarMenuItem = React.forwardRef<
@@ -411,7 +411,7 @@ const SidebarMenuItem = React.forwardRef<
     className={cn("group/menu-item relative", className)}
     {...props}
   />
-))
+));
 SidebarMenuItem.displayName = "SidebarMenuItem"
 
 const sidebarMenuButtonVariants = cva(

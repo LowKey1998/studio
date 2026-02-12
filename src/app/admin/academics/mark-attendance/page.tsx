@@ -138,7 +138,6 @@ export default function AdminMarkAttendancePage() {
             const allRegs = regsSnap.val() || {};
             const list: Student[] = [];
 
-            // Find all students enrolled in this course across all users
             for (const userId in allRegs) {
                 const userRegs = allRegs[userId];
                 const isEnrolled = Object.values(userRegs).some((reg: any) => {
