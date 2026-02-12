@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import { add, format, isSameDay, parseISO } from 'date-fns';
-import { Calendar as CalendarIcon, PlusCircle, Loader2, Download, Trash2, Plus, Info, ListChecks, CheckCircle2, Search, Eye, EyeOff, Upload, Pencil } from 'lucide-react';
+import { Calendar as CalendarIcon, PlusCircle, Loader2, Download, Trash2, Plus, Info, ListChecks, CheckCircle2, Search, Eye, EyeOff, Upload, Pencil, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -458,37 +458,40 @@ export default function AdminCalendarPage() {
         </CardContent>
       </Card>
       
-      <Card className="shadow-lg">
+      <Card className="shadow-lg border-orange-200 bg-orange-50/10">
         <CardHeader>
-            <CardTitle className="font-headline text-2xl">Manage Payment Deadlines</CardTitle>
-            <CardDescription>Quickly set and edit mandatory payment plan deadlines for any semester.</CardDescription>
+            <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                <CardTitle className="font-headline text-2xl">Manage Payment Deadlines</CardTitle>
+            </div>
+            <CardDescription>Quickly set and edit mandatory payment plan deadlines for any semester. These dates determine when academic restrictions apply.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
              <div className="flex items-center gap-4">
-                <Label htmlFor="semester-name" className="font-semibold">Semester:</Label>
+                <Label htmlFor="semester-name" className="font-semibold">Target Semester:</Label>
                 <Select value={deadlineSemester} onValueChange={setDeadlineSemester}>
-                    <SelectTrigger className="max-w-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="max-w-sm bg-background"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         {semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
             </div>
-            {deadlineLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : requiredDeadlines.length > 0 ? (
-                <div className="space-y-4 rounded-md border p-4">
-                    <h4 className="font-medium">Deadlines for {deadlineSemester}:</h4>
+            {deadlineLoading ? <div className="flex items-center gap-2 py-8"><Loader2 className="h-6 w-6 animate-spin"/> Loading requirements...</div> : requiredDeadlines.length > 0 ? (
+                <div className="space-y-4 rounded-md border bg-background p-4 shadow-inner">
+                    <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground border-b pb-2">Required Deadlines for {deadlineSemester}</h4>
                     {requiredDeadlines.map(({title, existingEvent}) => {
                         const isEditingThis = editingDeadlineId === (existingEvent?.id || title);
                         const displayDate = deadlineDates[title] || (existingEvent ? parseISO(existingEvent.date) : undefined);
                         return (
-                        <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="font-medium">{title.replace(` - ${deadlineSemester}`, '')}</p>
+                        <div key={title} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-2 rounded hover:bg-muted/30 transition-colors">
+                            <p className="font-medium text-sm">{title.replace(` - ${deadlineSemester}`, '')}</p>
                             <div className="flex gap-2 items-center">
                                 <Popover>
                                     <PopoverTrigger asChild>
                                         <Button 
                                             variant="outline"
                                             disabled={!isEditingThis && !!existingEvent}
-                                            className="w-full justify-start text-left font-normal sm:w-[240px]">
+                                            className={cn("w-full justify-start text-left font-normal sm:w-[240px]", !displayDate && "text-muted-foreground border-dashed")}>
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                                 {displayDate ? format(displayDate, 'PPP') : <span>Pick a date</span>}
                                         </Button>
@@ -505,11 +508,11 @@ export default function AdminCalendarPage() {
                                             <Button size="sm" variant="ghost" onClick={() => setEditingDeadlineId(null)}>Cancel</Button>
                                         </>
                                     ) : (
-                                         <Button variant="ghost" size="icon" onClick={() => setEditingDeadlineId(existingEvent.id)}><Pencil className="h-4 w-4"/></Button>
+                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setEditingDeadlineId(existingEvent.id)}><Pencil className="h-4 w-4"/></Button>
                                     )
                                 ) : (
-                                     <Button onClick={() => handleSaveDeadline(title)} disabled={formLoading || !deadlineDates[title]}>
-                                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Add"}
+                                     <Button size="sm" onClick={() => handleSaveDeadline(title)} disabled={formLoading || !deadlineDates[title]}>
+                                        {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Set Date"}
                                     </Button>
                                 )}
                             </div>

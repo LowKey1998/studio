@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -8,8 +7,10 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, set } from 'firebase/database';
-import { Loader2, Percent, Save } from 'lucide-react';
+import { Loader2, Percent, Save, Info, ShieldAlert } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
 
 type FinancialSettings = {
     paymentThreshold: number;
@@ -71,37 +72,72 @@ export default function FinancialControlsPage() {
     };
 
     return (
-        <form onSubmit={handleSave}>
+        <form onSubmit={handleSave} className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Financial Controls</CardTitle>
-                    <CardDescription>Set rules for payment defaulters and system access.</CardDescription>
+                    <CardTitle className="font-headline text-2xl">Financial Defaulter Policies</CardTitle>
+                    <CardDescription>Configure how the system handles students with outstanding balances.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                    <Alert className="bg-primary/5 border-primary/20">
+                        <Info className="h-4 w-4 text-primary" />
+                        <AlertTitle className="font-bold">How Defaulter Logic Works</AlertTitle>
+                        <AlertDescription className="text-sm space-y-2">
+                            <p>The system identifies a "Defaulter" based on the following criteria:</p>
+                            <ul className="list-disc pl-5 space-y-1 text-xs">
+                                <li><strong>Trigger:</strong> An installment deadline has passed (+ any allowed grace period).</li>
+                                <li><strong>Condition:</strong> The student's total paid amount is less than the required cumulative percentage (e.g. 75%) of the total due.</li>
+                            </ul>
+                            <p className="font-semibold pt-2">Note: Deadlines and Grace Periods are set per-semester in <Link href="/admin/registration-management" className="text-primary underline">Registration Management</Link>.</p>
+                        </AlertDescription>
+                    </Alert>
+
+                    <Separator />
+
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
-                        <Label htmlFor="payment-threshold">Payment Threshold</Label>
+                        <div className="space-y-1">
+                            <Label htmlFor="payment-threshold" className="text-base font-bold">Global Defaulter Threshold</Label>
+                            <p className="text-xs text-muted-foreground pr-4">The default percentage a student must pay to be considered in good standing. This can be overridden per semester.</p>
+                        </div>
                         <div className="sm:col-span-2">
                             <div className="relative max-w-xs">
                                 <Input id="payment-threshold" type="number" min="0" max="100" value={financialSettings.paymentThreshold} onChange={(e) => setFinancialSettings(p => ({...p, paymentThreshold: Number(e.target.value)}))}/>
                                 <Percent className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">If a student pays less than this percentage of an installment, they will be flagged as a defaulter.</p>
                         </div>
                     </div>
+
+                    <Separator />
+
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start">
-                        <Label>Defaulter Restrictions</Label>
-                        <div className="sm:col-span-2 space-y-3">
-                            <div className="flex items-center space-x-2"><Switch id="restrict-registration" checked={financialSettings.defaulterRestrictions.registration} onCheckedChange={() => handleRestrictionChange('registration')} /><Label htmlFor="restrict-registration">Block New Registrations</Label></div>
-                            <div className="flex items-center space-x-2"><Switch id="restrict-results" checked={financialSettings.defaulterRestrictions.results} onCheckedChange={() => handleRestrictionChange('results')} /><Label htmlFor="restrict-results">Block Access to Results</Label></div>
-                            <div className="flex items-center space-x-2"><Switch id="restrict-library" checked={financialSettings.defaulterRestrictions.library} onCheckedChange={() => handleRestrictionChange('library')} /><Label htmlFor="restrict-library">Block Library Access</Label></div>
-                            <div className="flex items-center space-x-2"><Switch id="restrict-exams" checked={financialSettings.defaulterRestrictions.exams} onCheckedChange={() => handleRestrictionChange('exams')} /><Label htmlFor="restrict-exams">Block Exam Participation</Label></div>
+                        <div className="space-y-1">
+                            <Label className="text-base font-bold">Academic Restrictions</Label>
+                            <p className="text-xs text-muted-foreground pr-4">Enable or disable specific portal blocks for students flagged as defaulters.</p>
+                        </div>
+                        <div className="sm:col-span-2 space-y-4">
+                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
+                                <div className="space-y-0.5"><Label htmlFor="restrict-registration">Block New Registrations</Label><p className="text-[10px] text-muted-foreground">Prevents enrolling in future semesters.</p></div>
+                                <Switch id="restrict-registration" checked={financialSettings.defaulterRestrictions.registration} onCheckedChange={() => handleRestrictionChange('registration')} />
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
+                                <div className="space-y-0.5"><Label htmlFor="restrict-results">Block Access to Results</Label><p className="text-[10px] text-muted-foreground">Hides current and past grades.</p></div>
+                                <Switch id="restrict-results" checked={financialSettings.defaulterRestrictions.results} onCheckedChange={() => handleRestrictionChange('results')} />
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
+                                <div className="space-y-0.5"><Label htmlFor="restrict-library">Block Library Access</Label><p className="text-[10px] text-muted-foreground">Prevents checking out new books.</p></div>
+                                <Switch id="restrict-library" checked={financialSettings.defaulterRestrictions.library} onCheckedChange={() => handleRestrictionChange('library')} />
+                            </div>
+                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
+                                <div className="space-y-0.5"><Label htmlFor="restrict-exams">Block Exam Participation</Label><p className="text-[10px] text-muted-foreground">Flags student as ineligible on exam rosters.</p></div>
+                                <Switch id="restrict-exams" checked={financialSettings.defaulterRestrictions.exams} onCheckedChange={() => handleRestrictionChange('exams')} />
+                            </div>
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="justify-end border-t pt-6">
                     <Button type="submit" disabled={saving || loading}>
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4"/>}
-                        Save Financial Controls
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                        Save Defaulter Policies
                     </Button>
                 </CardFooter>
             </Card>

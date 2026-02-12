@@ -12,7 +12,9 @@ import {
     ChevronRight, 
     CreditCard,
     PlusCircle,
-    CalendarDays
+    CalendarDays,
+    AlertTriangle,
+    ShieldAlert
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -20,11 +22,12 @@ import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Progress } from '@/components/ui/progress';
-import { format, parseISO, startOfDay } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -63,6 +66,7 @@ export default function StudentDashboardPage() {
     const [recentGrades, setRecentGrades] = React.useState<any[]>([]);
     const [intakeName, setIntakeName] = React.useState('');
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
+    const [financialWarning, setFinancialWarning] = React.useState<{ message: string; restriction: boolean } | null>(null);
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -82,14 +86,17 @@ export default function StudentDashboardPage() {
         const transactionsRef = ref(db, 'transactions');
         const attendanceRef = ref(db, 'attendance');
         const calendarSettingsRef = ref(db, 'settings/academicCalendar');
+        const finSettingsRef = ref(db, 'settings/financialSettings');
+        const semestersRef = ref(db, 'semesters');
 
         const unsubRegs = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap, fSnap, semSnap] = await Promise.all([
                 get(coursesRef), get(usersRef), get(intakesRef), get(attendanceRef), 
                 get(timetablesRef), get(calendarRef), get(invoicesRef), 
-                get(transactionsRef), get(assessmentsRef), get(quizzesRef), get(calendarSettingsRef)
+                get(transactionsRef), get(assessmentsRef), get(quizzesRef), get(calendarSettingsRef),
+                get(finSettingsRef), get(semestersRef)
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -103,6 +110,8 @@ export default function StudentDashboardPage() {
             const allAssessments = assSnap.val() || {};
             const allQuizzes = qSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
+            const fSettings = fSnap.val() || { paymentThreshold: 75 };
+            const allSemesters = semSnap.val() || {};
 
             if (userProfile?.intakeId) {
                 const iName = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
@@ -124,10 +133,15 @@ export default function StudentDashboardPage() {
             let totalPresent = 0;
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
+            let activeSemesterId: string | null = null;
 
             for (const semId in allRegistrations) {
                 const reg = allRegistrations[semId];
                 if (reg.courses) {
+                    // Identify the "most recent" active semester
+                    const semInfo = allSemesters[semId];
+                    if (semInfo?.status === 'Open') activeSemesterId = semId;
+
                     reg.courses.forEach((cid: string) => {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
@@ -160,13 +174,39 @@ export default function StudentDashboardPage() {
             setEnrolledCourses(currentCourses);
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
+            // --- Financial Calculation & Rules ---
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
                 totalDue += due;
             });
             const totalPaid = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
-            setFeeBalance(Math.max(0, totalDue - totalPaid));
+            const currentBalance = Math.max(0, totalDue - totalPaid);
+            setFeeBalance(currentBalance);
+
+            // Check for defaulter warning
+            if (activeSemesterId && currentBalance > 0) {
+                const semester = allSemesters[activeSemesterId];
+                const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
+                const grace = semester.gracePeriodDays || 0;
+                
+                // Find latest passed installment deadline for this semester
+                const passedDeadlines = Object.values(allCalendarEvents).filter((ev: any) => 
+                    ev.semester === semester.name && 
+                    ev.title.includes('Deadline') && 
+                    isAfter(new Date(), addDays(parseISO(ev.date), grace))
+                );
+
+                if (passedDeadlines.length > 0) {
+                    const paidPercentage = (totalPaid / totalDue) * 100;
+                    if (paidPercentage < threshold) {
+                        setFinancialWarning({
+                            message: `Your current payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
+                            restriction: true
+                        });
+                    }
+                }
+            }
 
             const todayName = daysOfWeek[new Date().getDay()];
             const schedule: TimetableEntry[] = [];
@@ -266,6 +306,19 @@ export default function StudentDashboardPage() {
                 </div>
             </div>
 
+            {financialWarning && (
+                <Alert variant="destructive" className="border-2 animate-in slide-in-from-left-4">
+                    <ShieldAlert className="h-5 w-5" />
+                    <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3">
+                        <p>{financialWarning.message} To avoid academic restrictions, please visit the finance office or pay online.</p>
+                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive hover:bg-destructive/10" asChild>
+                            <Link href="/student/payments">View Invoice & Pay</Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -305,8 +358,10 @@ export default function StudentDashboardPage() {
                         <UserCheck className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">Good Standing</div>
-                        <Badge variant="secondary" className="mt-1">Active</Badge>
+                        <div className="text-2xl font-bold">{financialWarning ? 'Restricted' : 'Good Standing'}</div>
+                        <Badge variant={financialWarning ? 'destructive' : 'secondary'} className="mt-1">
+                            {financialWarning ? 'Payment Required' : 'Active'}
+                        </Badge>
                     </CardContent>
                 </Card>
             </div>
@@ -391,7 +446,7 @@ export default function StudentDashboardPage() {
                                 <Link href="/student/courses/results">View All Results</Link>
                             </Button>
                         </CardFooter>
-                    </Card>
+                    </div>
                 </div>
             </div>
         </div>
