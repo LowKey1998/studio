@@ -88,9 +88,6 @@ export default function StudentRegistrationPage() {
                     const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
                     const isRegistered = !!(regs[semId]?.courses?.length > 0);
                     
-                    const canView = isOfferingActive || !isRegistered;
-                    if (!canView) continue;
-
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
@@ -160,11 +157,15 @@ export default function StudentRegistrationPage() {
                                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
                                             <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                         </Badge>
-                                    ) : (
+                                    ) : sem.isOpen ? (
                                         <Button asChild>
                                             <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                 Register Now <ChevronRight className="ml-2 h-4 w-4"/>
                                             </Link>
+                                        </Button>
+                                    ) : (
+                                        <Button disabled variant="secondary" className="opacity-50 cursor-not-allowed">
+                                            Registration Closed <ChevronRight className="ml-2 h-4 w-4"/>
                                         </Button>
                                     )}
                                 </div>
