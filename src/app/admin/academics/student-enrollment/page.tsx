@@ -413,7 +413,8 @@ export default function StudentEnrollmentPage() {
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Progression Trace</Label>
                                 <div className="flex flex-wrap gap-2">
                                     <Badge variant="secondary" className="h-10 px-4 text-sm gap-2">
-                                        <CalendarDays className="h-4 w-4"/> Current: Year {calculatedState.year}, Sem {calculatedState.semester}
+                                        <CalendarDays className="h-4 w-4" />
+                                        Current: Year {calculatedState.year}, Sem {calculatedState.semester}
                                     </Badge>
                                     <Popover>
                                         <PopoverTrigger asChild><Button variant="ghost" size="sm" className="h-10 border border-dashed"><Info className="h-4 w-4 mr-2"/>View Logic</Button></PopoverTrigger>
