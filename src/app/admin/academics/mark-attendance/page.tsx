@@ -141,7 +141,6 @@ export default function AdminMarkAttendancePage() {
             for (const userId in allRegs) {
                 const userRegs = allRegs[userId];
                 const isEnrolled = Object.entries(userRegs).some(([semId, reg]: [string, any]) => {
-                    const matchesSemester = semId === session.semesterId || session.semesterId === 'master';
                     return reg.courses?.includes(session.courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment');
                 });
 
@@ -344,7 +343,7 @@ export default function AdminMarkAttendancePage() {
                                                 </RadioGroup>
                                             </TableCell>
                                         </TableRow>
-                                    )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No students enrolled in this session.</TableCell></TableRow>}
+                                    )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No students enrolled in this course.</TableCell></TableRow>}
                                 </TableBody>
                             </Table>
                         </div>

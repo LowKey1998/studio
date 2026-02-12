@@ -23,7 +23,7 @@ import { Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 export default function LoginPage() {
-  const [userId, setUserId] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -31,51 +31,64 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId || !password) {
+    if (!identifier || !password) {
       toast({
         variant: "destructive",
         title: "Missing Fields",
-        description: "Please enter your User ID and password.",
+        description: "Please enter your User ID or Email and password.",
       });
       return;
     }
     setLoading(true);
 
     try {
-      const usersRef = ref(db, 'users');
-      const q = query(usersRef, orderByChild('id'), equalTo(userId.trim()));
-      const snapshot = await get(q);
+      let emailToSign = identifier.trim();
+      let userRole = '';
+      let firebaseUid = '';
 
-      if (!snapshot.exists()) {
-        throw new Error("Invalid User ID or password.");
+      // Check if it's an email (Parent) or User ID (Student/Staff)
+      if (identifier.includes('@')) {
+          // Parent Login Flow
+          await signInWithEmailAndPassword(auth, emailToSign, password);
+          toast({ variant: 'success', title: 'Parent Login Successful' });
+          router.push('/parent/dashboard');
+          return;
+      } else {
+          // Student/Staff/Admin Login Flow via User ID
+          const usersRef = ref(db, 'users');
+          const q = query(usersRef, orderByChild('id'), equalTo(identifier.trim()));
+          const snapshot = await get(q);
+
+          if (!snapshot.exists()) {
+            throw new Error("Invalid User ID or password.");
+          }
+          
+          const usersData = snapshot.val();
+          firebaseUid = Object.keys(usersData)[0];
+          const userRecord = usersData[firebaseUid];
+
+          if (!userRecord || !firebaseUid) {
+              throw new Error("Invalid User ID or password.");
+          }
+
+          if (userRecord.status === 'disabled') {
+            throw new Error("Your account has been disabled. Please contact administration.");
+          }
+
+          emailToSign = userRecord.email;
+          userRole = userRecord.role.toLowerCase();
       }
       
-      const usersData = snapshot.val();
-      const firebaseUid = Object.keys(usersData)[0];
-      const userRecord = usersData[firebaseUid];
-
-      if (!userRecord || !firebaseUid) {
-          throw new Error("Invalid User ID or password.");
-      }
-
-      if (userRecord.status === 'disabled') {
-        throw new Error("Your account has been disabled. Please contact administration.");
-      }
-
-      const userEmail = userRecord.email;
-      const userRole = userRecord.role.toLowerCase();
-
-      if (!userEmail) {
-        throw new Error("User data is incomplete.");
-      }
+      await signInWithEmailAndPassword(auth, emailToSign, password);
       
-      await signInWithEmailAndPassword(auth, userEmail, password);
-      
-      await update(ref(db, `users/${firebaseUid}`), {
-          lastLogin: serverTimestamp()
-      });
+      if (firebaseUid) {
+          await update(ref(db, `users/${firebaseUid}`), {
+              lastLogin: serverTimestamp()
+          });
+      }
 
       toast({ variant: 'success', title: 'Login Successful', description: 'Welcome back!' });
+      
       if (userRole === 'admin') {
         router.push('/admin/dashboard');
       } else if (userRole === 'staff') {
@@ -89,7 +102,7 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: error.message || "Invalid User ID or password. Please try again.",
+        description: error.message || "Invalid credentials. Please try again.",
       });
       setLoading(false);
     }
@@ -105,20 +118,20 @@ export default function LoginPage() {
         </div>
         <Card className="shadow-2xl">
           <CardHeader>
-            <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
-            <CardDescription>Enter your credentials to access your dashboard.</CardDescription>
+            <CardTitle className="font-headline text-2xl">Portal Access</CardTitle>
+            <CardDescription>Enter your User ID or Guardian Email to access your dashboard.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleLogin}>
               <div className="space-y-2">
-                <Label htmlFor="userId">User ID</Label>
+                <Label htmlFor="identifier">User ID or Email</Label>
                 <Input
-                  id="userId"
+                  id="identifier"
                   type="text"
-                  placeholder="e.g., STU-001"
+                  placeholder="e.g., STU-001 or parent@example.com"
                   required
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   disabled={loading}
                 />
               </div>
@@ -139,17 +152,14 @@ export default function LoginPage() {
               </Button>
             </form>
              <Separator className="my-6" />
-             <div className="space-y-4 text-center">
-                <p className="text-sm text-muted-foreground">Are you a parent or guardian?</p>
-                 <Button asChild variant="outline" className="w-full">
-                    <Link href="/parent/dashboard">
-                        Parent Portal Login
-                    </Link>
-                </Button>
+             <div className="space-y-2 text-center">
+                <p className="text-xs text-muted-foreground">
+                    Parents: Use the email address you provided during your child's registration.
+                </p>
              </div>
           </CardContent>
-           <CardFooter className="flex flex-col gap-2 justify-center mt-4">
-             <Button variant="link" asChild>
+           <CardFooter className="flex flex-col gap-2 justify-center mt-4 border-t pt-4">
+             <Button variant="link" size="sm" asChild>
                 <Link href="/contact">
                     Contact Administrator
                 </Link>

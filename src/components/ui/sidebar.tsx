@@ -87,21 +87,6 @@ const SidebarProvider = React.forwardRef<
         : setOpen((prev) => !prev)
     }, [setOpen, setOpenMobile])
 
-    React.useEffect(() => {
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (
-          event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-          (event.metaKey || event.ctrlKey)
-        ) {
-          event.preventDefault()
-          toggleSidebar()
-        }
-      }
-
-      window.addEventListener("keydown", handleKeyDown)
-      return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [toggleSidebar])
-
     const state = open ? "expanded" : "collapsed"
 
     const contextValue = React.useMemo<SidebarContextType>(
