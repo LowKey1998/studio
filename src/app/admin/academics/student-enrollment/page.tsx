@@ -79,7 +79,9 @@ export default function StudentEnrollmentPage() {
     const [activeSession, setActiveSession] = React.useState<TimetableEntry | null>(null);
     const [enrolledStudents, setEnrolledStudents] = React.useState<EnrolledStudent[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+    
     const [searchStudent, setSearchStudent] = React.useState('');
+    const [searchEnrolled, setSearchEnrolled] = React.useState('');
     const [dialogIntakeFilter, setDialogIntakeFilter] = React.useState('');
     
     // Bulk state
@@ -232,6 +234,28 @@ export default function StudentEnrollmentPage() {
         );
     }, [selectedIntake, intakes, calendarSettings]);
 
+    const groupedEnrolled = React.useMemo(() => {
+        const filtered = enrolledStudents.filter(s => 
+            s.name.toLowerCase().includes(searchEnrolled.toLowerCase()) || 
+            s.id.toLowerCase().includes(searchEnrolled.toLowerCase())
+        );
+        
+        const groups: Record<string, EnrolledStudent[]> = {};
+        filtered.forEach(s => {
+            const intakeName = intakes.find(i => i.id === s.intakeId)?.name || 'Unknown Intake';
+            if (!groups[intakeName]) groups[intakeName] = [];
+            groups[intakeName].push(s);
+        });
+        
+        // Sort keys (intake names) descending (typically recent first)
+        return Object.keys(groups)
+            .sort((a, b) => b.localeCompare(a))
+            .reduce((acc, key) => {
+                acc[key] = groups[key].sort((a, b) => a.name.localeCompare(b.name));
+                return acc;
+            }, {} as Record<string, EnrolledStudent[]>);
+    }, [enrolledStudents, searchEnrolled, intakes]);
+
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -277,7 +301,7 @@ export default function StudentEnrollmentPage() {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
                         const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
                         return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => (
-                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); setDialogIntakeFilter(selectedIntake); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); }}>
+                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); setDialogIntakeFilter(selectedIntake); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); setSearchEnrolled(''); }}>
                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
                             </div>
@@ -337,20 +361,42 @@ export default function StudentEnrollmentPage() {
                                 )}
                             </div>
                             <div className="flex items-center gap-2 mb-2">
+                                <Search className="h-4 w-4 text-muted-foreground ml-1" />
+                                <Input 
+                                    placeholder="Search enrolled roster..." 
+                                    value={searchEnrolled} 
+                                    onChange={e => setSearchEnrolled(e.target.value)} 
+                                    className="h-8"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
                                 <Checkbox checked={selectedEnrolledCount === enrolledStudents.length && enrolledStudents.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) enrolledStudents.forEach(s => next[s.uid] = true); setSelectedEnrolledUids(next); }} />
                                 <div className="text-xs text-muted-foreground">Select All Enrolled</div>
                             </div>
                             <ScrollArea className="flex-1">
-                                {enrolledStudents.map(s => (
-                                    <div key={s.uid} className="flex items-center gap-2 p-2 border rounded bg-background mb-2">
-                                        <Checkbox checked={!!selectedEnrolledUids[s.uid]} onCheckedChange={() => setSelectedEnrolledUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold">{s.name}</p>
-                                            <p className="text-xs text-muted-foreground">{s.id} &middot; {s.enrolledInSemester}</p>
+                                {Object.entries(groupedEnrolled).map(([intakeName, students]) => (
+                                    <div key={intakeName} className="mb-6">
+                                        <div className="flex items-center gap-2 mb-2 sticky top-0 bg-background z-10 py-1">
+                                            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-primary/30 bg-primary/5">{intakeName}</Badge>
+                                            <Separator className="flex-1" />
+                                            <span className="text-[10px] text-muted-foreground font-bold">{students.length} Students</span>
                                         </div>
-                                        <Button size="icon" variant="ghost" className="text-destructive" onClick={()=>setStudentToRemove(s)} disabled={!!actionLoading}><Trash2 className="h-4 w-4"/></Button>
+                                        <div className="space-y-2">
+                                            {students.map(s => (
+                                                <div key={s.uid} className="flex items-center gap-2 p-2 border rounded bg-background shadow-sm hover:border-primary/20 transition-colors">
+                                                    <Checkbox checked={!!selectedEnrolledUids[s.uid]} onCheckedChange={() => setSelectedEnrolledUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-bold">{s.name}</p>
+                                                        <p className="text-[10px] text-muted-foreground">{s.id} &middot; {s.enrolledInSemester}</p>
+                                                    </div>
+                                                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={()=>setStudentToRemove(s)} disabled={!!actionLoading}><Trash2 className="h-4 w-4"/></Button>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 ))}
+                                {enrolledStudents.length === 0 && <p className="text-center py-10 text-muted-foreground text-xs italic">No students enrolled yet.</p>}
+                                {enrolledStudents.length > 0 && Object.keys(groupedEnrolled).length === 0 && <p className="text-center py-10 text-muted-foreground text-xs italic">No enrolled students match your search.</p>}
                             </ScrollArea>
                         </div>
                     </div>
