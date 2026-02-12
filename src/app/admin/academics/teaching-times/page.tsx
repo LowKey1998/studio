@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -150,11 +151,11 @@ export default function TeachingTimesPage() {
                                     <div key={slot.id} className="flex items-center gap-4 p-3 border rounded-lg bg-card shadow-sm">
                                         <div className="flex-grow grid grid-cols-2 gap-4">
                                             <div className="space-y-1">
-                                                <Label className="text-[10px] uppercase text-muted-foreground">Start</Label>
+                                                <Label className="text-[10px] uppercase text-muted-foreground">Start (24h)</Label>
                                                 <Input placeholder="e.g. 14:00" value={slot.startTime} onChange={e => handleUpdateSlot(slot.id, 'startTime', e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
-                                                <Label className="text-[10px] uppercase text-muted-foreground">End</Label>
+                                                <Label className="text-[10px] uppercase text-muted-foreground">End (24h)</Label>
                                                 <Input placeholder="e.g. 16:00" value={slot.endTime} onChange={e => handleUpdateSlot(slot.id, 'endTime', e.target.value)} />
                                             </div>
                                         </div>
@@ -196,7 +197,7 @@ export default function TeachingTimesPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Matrix View & AI</AlertTitle>
                             <AlertDescription>
-                                The **Time Slots** defined here will determine the columns in the Master Timetable matrix. The AI Timetable generator will also prioritize these slots during generation.
+                                The **Time Slots** defined here will determine the columns in the Master Timetable matrix. Use 24-hour format (e.g. 14:00) to ensure system consistency.
                             </AlertDescription>
                         </Alert>
                     </>

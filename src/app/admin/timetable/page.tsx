@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -89,6 +90,7 @@ export default function TimetableManagementPage() {
 
     const { toast } = useToast();
 
+    // Reactive data fetching with onValue
     React.useEffect(() => {
         setLoading(true);
         const semestersRef = ref(db, 'semesters');
@@ -99,67 +101,59 @@ export default function TimetableManagementPage() {
         const usersRef = ref(db, 'users');
         const settingsRef = ref(db, 'settings/teachingTimes');
 
-        const unsubSem = onValue(semestersRef, (s) => setSemesters(Object.keys(s.val() || {}).map(id => ({ id, ...s.val()[id] }))));
-        const unsubCourse = onValue(coursesRef, (s) => setAllCourses(Object.keys(s.val() || {}).map(id => ({ id, ...s.val()[id] })).filter(c => c.status === 'active')));
-        const unsubRooms = onValue(roomsRef, (s) => setRooms(Object.entries(s.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }))));
-        const unsubIntakes = onValue(intakesRef, (s) => setIntakes(Object.entries(s.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }))));
-        const unsubUsers = onValue(usersRef, (s) => setUsers(s.val() || {}));
-        const unsubSettings = onValue(settingsRef, (s) => {
-            const settingsData = s.val() || {};
-            setTeachingTimes({
-                days: settingsData.days || defaultDays,
-                slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
-            });
-        });
-
-        const unsubTimetable = onValue(timetablesRef, (snapshot) => {
+        const unsubscribe = onValue(timetablesRef, (snapshot) => {
             const tData = snapshot.val() || {};
-            const entries: TimetableEntry[] = [];
             
-            // We need current values of other state items for mapping, but onValue 
-            // is better served by internal lookups if we want true real-time without closure issues.
-            // However, fetching them inside this callback from the DB is heavy.
-            // Standard reactive approach: the effect depends on those values.
-            
-            get(semestersRef).then(semSnap => {
-                const sData = semSnap.val() || {};
-                get(coursesRef).then(coursesSnap => {
-                    const cData = coursesSnap.val() || {};
-                    get(intakesRef).then(intakeSnap => {
-                        const iData = intakeSnap.val() || {};
+            // Get atomic values for other collections to prevent complex nesting
+            Promise.all([
+                get(semestersRef), get(coursesRef), get(intakesRef), get(usersRef), get(settingsRef), get(roomsRef)
+            ]).then(([sSnap, cSnap, iSnap, uSnap, stSnap, rSnap]) => {
+                const sData = sSnap.val() || {};
+                const cData = cSnap.val() || {};
+                const iData = iSnap.val() || {};
+                const uData = uSnap.val() || {};
+                const stData = stSnap.val() || {};
+                const rmData = rSnap.val() || {};
 
-                        for (const semId in tData) {
-                            const semInfo = sData[semId] || { name: 'Manual Entry' };
-                            const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
-
-                            for (const cId in tData[semId]) {
-                                const courseInfo = cData[cId];
-                                if (!courseInfo) continue;
-
-                                Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
-                                    entries.push({
-                                        id: entryId,
-                                        semesterId: semId,
-                                        courseId: cId,
-                                        courseCode: courseInfo.code,
-                                        courseName: courseInfo.name,
-                                        semesterName: semInfo.name,
-                                        intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
-                                        ...entry
-                                    });
-                                });
-                            }
-                        }
-                        setMasterTimetable(entries);
-                        setLoading(false);
-                    });
+                setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
+                setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
+                setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })));
+                setUsers(uData);
+                setRooms(Object.entries(rmData).map(([id, data]: [string, any]) => ({ id, ...data })));
+                setTeachingTimes({
+                    days: stData.days || defaultDays,
+                    slots: (stData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 });
+
+                const entries: TimetableEntry[] = [];
+                for (const semId in tData) {
+                    const semInfo = sData[semId] || { name: 'Master' };
+                    const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : null;
+
+                    for (const cId in tData[semId]) {
+                        const courseInfo = cData[cId];
+                        if (!courseInfo) continue;
+
+                        Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                            entries.push({
+                                id: entryId,
+                                semesterId: semId,
+                                courseId: cId,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name,
+                                semesterName: semInfo.name,
+                                intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
+                                ...entry
+                            });
+                        });
+                    }
+                }
+                setMasterTimetable(entries);
+                setLoading(false);
             });
         });
 
-        return () => {
-            unsubSem(); unsubCourse(); unsubRooms(); unsubIntakes(); unsubUsers(); unsubSettings(); unsubTimetable();
-        };
+        return () => unsubscribe();
     }, []);
 
     const handleAutoGenerate = async () => {
@@ -174,10 +168,9 @@ export default function TimetableManagementPage() {
         }
     };
 
-    const handleSaveEntry = async (e?: React.FormEvent) => {
-        if(e) e.preventDefault();
+    const handleSaveEntry = async () => {
         if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
-            toast({ variant: 'destructive', title: 'Please fill all required fields' });
+            toast({ variant: 'destructive', title: 'Missing required fields' });
             return;
         }
         setSaving(true);
@@ -365,13 +358,19 @@ export default function TimetableManagementPage() {
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1"><Label>Start Time</Label><Input placeholder="e.g. 14:00" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
-                                        <div className="space-y-1"><Label>End Time</Label><Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
+                                        <div className="space-y-1">
+                                            <Label>Start Time (24h)</Label>
+                                            <Input placeholder="e.g. 14:00" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label>End Time (24h)</Label>
+                                            <Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                                        </div>
                                     </div>
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                    <Button onClick={() => handleSaveEntry()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
+                                    <Button onClick={handleSaveAllDeadlines} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>

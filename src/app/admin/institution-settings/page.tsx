@@ -1,10 +1,11 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, Trash2 } from 'lucide-react';
+import { Loader2, Save, Wand2, Trash2, Palette } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue } from 'firebase/database';
@@ -30,7 +31,13 @@ type Institution = {
 };
 
 export default function InstitutionSettingsPage() {
-    const [institution, setInstitution] = React.useState<Institution>({ name: 'Edutrack360', nameParts: [] });
+    const [institution, setInstitution] = React.useState<Institution>({ 
+        name: 'Edutrack360', 
+        nameParts: [],
+        topBarColor: '#ffffff',
+        sidebarColor: '#ffffff',
+        sidebarTextColor: '#000000'
+    });
     const [logoFile, setLogoFile] = React.useState<File | null>(null);
     const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
     const [logoAction, setLogoAction] = React.useState<'keep' | 'remove' | 'upload'>('keep');
@@ -46,19 +53,11 @@ export default function InstitutionSettingsPage() {
                 setInstitution({
                     name: data.name || 'Edutrack360',
                     logoUrl: data.logoUrl,
-                    color: data.color,
+                    color: data.color || '#4c1d95',
                     topBarColor: data.topBarColor || '#ffffff',
                     sidebarColor: data.sidebarColor || '#ffffff',
                     sidebarTextColor: data.sidebarTextColor || '#000000',
                     nameParts: data.nameParts || (data.name ? data.name.split(' ').map((word: string) => ({ text: word, color: '#000000' })) : [])
-                });
-            } else {
-                 setInstitution({ 
-                    name: 'Edutrack360', 
-                    nameParts: [{text: 'Edutrack360', color: '#000000'}],
-                    topBarColor: '#ffffff',
-                    sidebarColor: '#ffffff',
-                    sidebarTextColor: '#000000'
                 });
             }
             setLoading(false);
@@ -180,7 +179,7 @@ export default function InstitutionSettingsPage() {
     if (loading) return <Skeleton className="h-screen w-full" />;
 
     return (
-        <form onSubmit={handleSaveChanges} className="space-y-6">
+        <form onSubmit={handleSaveChanges} className="space-y-6 pb-12">
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Institution Settings</CardTitle>
@@ -229,11 +228,12 @@ export default function InstitutionSettingsPage() {
                      <Separator />
 
                      <div className="space-y-6">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">Visual Branding & Theme</h3>
+                        <h3 className="text-lg font-semibold flex items-center gap-2"><Palette className="h-5 w-5 text-primary"/> Visual Identity & Theme</h3>
+                        
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
                             <div className="space-y-1">
-                                <Label htmlFor="institution-color">Primary Theme Color</Label>
-                                <p className="text-xs text-muted-foreground">Used for buttons and primary accents.</p>
+                                <Label htmlFor="institution-color">Brand Accent Color</Label>
+                                <p className="text-xs text-muted-foreground">Used for buttons, links, and primary accents.</p>
                             </div>
                             <div className="sm:col-span-2">
                                 <Input id="institution-color" type="color" value={institution.color || '#4c1d95'} onChange={(e) => setInstitution(p => ({...p, color: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
@@ -243,7 +243,7 @@ export default function InstitutionSettingsPage() {
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
                             <div className="space-y-1">
                                 <Label htmlFor="top-bar-color">Top Bar Background</Label>
-                                <p className="text-xs text-muted-foreground">Sets the color of the global header.</p>
+                                <p className="text-xs text-muted-foreground">Customize the global header color.</p>
                             </div>
                             <div className="sm:col-span-2">
                                 <Input id="top-bar-color" type="color" value={institution.topBarColor || '#ffffff'} onChange={(e) => setInstitution(p => ({...p, topBarColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
@@ -253,7 +253,7 @@ export default function InstitutionSettingsPage() {
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
                             <div className="space-y-1">
                                 <Label htmlFor="sidebar-color">Sidebar Background</Label>
-                                <p className="text-xs text-muted-foreground">Sets the background of the navigation menu.</p>
+                                <p className="text-xs text-muted-foreground">Customize the main navigation menu color.</p>
                             </div>
                             <div className="sm:col-span-2">
                                 <Input id="sidebar-color" type="color" value={institution.sidebarColor || '#ffffff'} onChange={(e) => setInstitution(p => ({...p, sidebarColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
@@ -263,7 +263,7 @@ export default function InstitutionSettingsPage() {
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
                             <div className="space-y-1">
                                 <Label htmlFor="sidebar-text-color">Sidebar Text Color</Label>
-                                <p className="text-xs text-muted-foreground">Adjust for contrast against the sidebar background.</p>
+                                <p className="text-xs text-muted-foreground">Ensure contrast against the sidebar background.</p>
                             </div>
                             <div className="sm:col-span-2">
                                 <Input id="sidebar-text-color" type="color" value={institution.sidebarTextColor || '#000000'} onChange={(e) => setInstitution(p => ({...p, sidebarTextColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
@@ -273,7 +273,7 @@ export default function InstitutionSettingsPage() {
                 </CardContent>
                 <CardFooter className="border-t pt-6">
                      <Button type="submit" disabled={saving || loading}>
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2"/>} Save Changes
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2"/>} Save Settings
                     </Button>
                 </CardFooter>
             </Card>

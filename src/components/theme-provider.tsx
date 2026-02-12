@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { db } from '@/lib/firebase';
@@ -24,7 +25,9 @@ const ThemeContext = React.createContext<ThemeContextType>({
     loadingTheme: true,
 });
 
-// Helper function to convert hex to HSL string components (space-separated)
+/**
+ * Converts a hex color string to HSL object.
+ */
 const hexToHSL = (hex: string) => {
     let r = 0, g = 0, b = 0;
     if (hex.length === 4) {
@@ -76,33 +79,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
                 document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
                 const foreground = l > 50 ? '0 0% 10%' : '0 0% 100%';
                 document.documentElement.style.setProperty('--primary-foreground', foreground);
-            } else {
-                document.documentElement.style.removeProperty('--primary');
-                document.documentElement.style.removeProperty('--primary-foreground');
             }
 
             // Top Bar Background
             if (data.topBarColor) {
                 const { h, s, l } = hexToHSL(data.topBarColor);
                 document.documentElement.style.setProperty('--header-background', `${h} ${s}% ${l}%`);
-            } else {
-                document.documentElement.style.removeProperty('--header-background');
             }
 
             // Sidebar Background
             if (data.sidebarColor) {
                 const { h, s, l } = hexToHSL(data.sidebarColor);
                 document.documentElement.style.setProperty('--sidebar-background', `${h} ${s}% ${l}%`);
-            } else {
-                document.documentElement.style.removeProperty('--sidebar-background');
             }
 
             // Sidebar Text
             if (data.sidebarTextColor) {
                 const { h, s, l } = hexToHSL(data.sidebarTextColor);
                 document.documentElement.style.setProperty('--sidebar-foreground', `${h} ${s}% ${l}%`);
-            } else {
-                document.documentElement.style.removeProperty('--sidebar-foreground');
             }
         }
     }, []);
