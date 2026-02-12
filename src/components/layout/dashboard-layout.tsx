@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from 'react';
@@ -13,7 +12,6 @@ import {
   SidebarMenuButton,
   SidebarInput,
   SidebarTrigger,
-  useSidebar,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut } from 'lucide-react';
@@ -49,22 +47,6 @@ const hasStaffPermission = (item: any, profile: UserProfile) => {
     
     return false;
 };
-
-/**
- * Handles closing the mobile sidebar automatically when navigation occurs.
- */
-function SidebarMobileManager() {
-  const { setOpenMobile, isMobile, openMobile } = useSidebar();
-  const pathname = usePathname();
-
-  React.useEffect(() => {
-    if (isMobile && openMobile) {
-      setOpenMobile(false);
-    }
-  }, [pathname, isMobile, setOpenMobile, openMobile]);
-
-  return null;
-}
 
 export default function DashboardLayout({
   children,
@@ -257,13 +239,11 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <SidebarMobileManager />
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar>
           <SidebarHeader>
             <div className="flex items-center justify-between w-full">
                 <Logo />
-                <SidebarTrigger className="md:hidden" />
             </div>
           </SidebarHeader>
           <div className="flex flex-col p-2">

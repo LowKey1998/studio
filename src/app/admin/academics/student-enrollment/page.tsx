@@ -157,7 +157,7 @@ export default function StudentEnrollmentPage() {
             setCalendarSettings(calendarSnap.val());
             
             const intakeList = Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name));
-            setIntakes(input => intakeList);
+            setIntakes(intakeList);
             setSemesters(Object.entries(sData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setAllCourses(cData);
             
