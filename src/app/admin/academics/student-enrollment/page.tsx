@@ -287,7 +287,7 @@ export default function StudentEnrollmentPage() {
                     );
                 }
 
-                if (sendEmails) {
+                if (sendEmails && student.email && student.email.includes('@')) {
                     const baseTemplate = type === 'enroll' ? enrollmentTemplate : removalTemplate;
                     const replacePlaceholders = (text: string) => {
                         return text
@@ -299,17 +299,21 @@ export default function StudentEnrollmentPage() {
                             .replace(/\[UserID\]/g, student.id);
                     };
 
-                    await sendEmail({
-                        to: [student.email],
-                        subject: replacePlaceholders(baseTemplate.subject),
-                        body: replacePlaceholders(baseTemplate.body)
-                    });
+                    try {
+                        await sendEmail({
+                            to: [student.email],
+                            subject: replacePlaceholders(baseTemplate.subject),
+                            body: replacePlaceholders(baseTemplate.body)
+                        });
+                    } catch (emailErr) {
+                        console.error("Email notification failed for student:", student.name, emailErr);
+                    }
                 }
             }
 
             toast({ 
                 title: type === 'enroll' ? 'Enrollment Complete' : 'Removal Complete', 
-                description: `${students.length} student(s) processed.${sendEmails ? ' Notifications sent.' : ' Silently updated.'}` 
+                description: `${students.length} student(s) processed.${sendEmails ? ' Notifications sent (where possible).' : ' Silently updated.'}` 
             });
             
             if (type === 'enroll') setSelectedUids({});
@@ -317,7 +321,8 @@ export default function StudentEnrollmentPage() {
             setStudentToRemove(null);
             await fetchEnrolledStudents(activeSession.courseId);
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+            console.error("Enrollment action failed:", e);
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message || 'An unexpected server error occurred.' });
         } finally {
             setActionLoading(null);
         }
