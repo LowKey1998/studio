@@ -20,7 +20,7 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3.5rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
-type SidebarContextValue = {
+type SidebarContextType = {
   state: "expanded" | "collapsed"
   open: boolean
   setOpen: (open: boolean | ((open: boolean) => boolean)) => void
@@ -30,7 +30,7 @@ type SidebarContextValue = {
   toggleSidebar: () => void
 }
 
-const SidebarContext = React.createContext<SidebarContextValue | null>(null)
+const SidebarContext = React.createContext<SidebarContextType | null>(null)
 
 function useSidebar() {
   const context = React.useContext(SidebarContext)
@@ -104,7 +104,7 @@ const SidebarProvider = React.forwardRef<
 
     const state = open ? "expanded" : "collapsed"
 
-    const contextValue = React.useMemo<SidebarContextValue>(
+    const contextValue = React.useMemo<SidebarContextType>(
       () => ({
         state,
         open,

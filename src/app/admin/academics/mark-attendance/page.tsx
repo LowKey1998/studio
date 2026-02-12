@@ -139,11 +139,18 @@ export default function AdminMarkAttendancePage() {
             const list: Student[] = [];
 
             for (const userId in allRegs) {
-                const semReg = allRegs[userId][session.semesterId];
-                if (semReg?.courses?.includes(session.courseId) && (semReg.status === 'Completed' || semReg.status === 'Pending Payment')) {
-                    if (allUsers[userId]) {
-                        list.push({ uid: userId, id: allUsers[userId].id, name: allUsers[userId].name });
-                    }
+                const userRegs = allRegs[userId];
+                
+                // Robust student lookup: check if the student is registered for this course
+                // in the specific semester ID, or any matching non-archived semester.
+                const isEnrolled = Object.entries(userRegs).some(([semId, reg]: [string, any]) => {
+                    const matchesSemester = semId === session.semesterId || session.semesterId === 'master';
+                    return reg.courses?.includes(session.courseId) && 
+                           (reg.status === 'Completed' || reg.status === 'Pending Payment');
+                });
+
+                if (isEnrolled && allUsers[userId]) {
+                    list.push({ uid: userId, id: allUsers[userId].id, name: allUsers[userId].name });
                 }
             }
             setStudentsInSession(list.sort((a,b) => a.name.localeCompare(b.name)));
