@@ -2,9 +2,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Info, CalendarIcon, Loader2, Save, Users, CheckCircle, XCircle, Clock } from "lucide-react";
+import { ChevronLeft, Info, CalendarIcon, Loader2, Save, Users, CheckCircle, XCircle, Clock, Search } from "lucide-react";
 import { db, auth, createNotification } from '@/lib/firebase';
-import { ref, get, set, child } from 'firebase/database';
+import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
@@ -25,11 +25,14 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useParams } from 'next/navigation';
+import { Input } from '@/components/ui/input';
 
 type Course = {
     id: string;
     name: string;
     code: string;
+    lecturerId: string;
+    lecturerIds?: string[];
 }
 
 type Student = {
@@ -49,6 +52,7 @@ export default function MarkAttendancePage() {
     const [students, setStudents] = React.useState<Student[]>([]);
     const [attendance, setAttendance] = React.useState<AttendanceRecord>({});
     const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
+    const [studentSearch, setStudentSearch] = React.useState('');
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -64,18 +68,12 @@ export default function MarkAttendancePage() {
     const fetchCourseAndStudents = React.useCallback(async () => {
         setLoading(true);
         try {
-            // Fetch Course Details
             const courseRef = ref(db, `courses/${courseId}`);
             const courseSnapshot = await get(courseRef);
             if (!courseSnapshot.exists()) throw new Error("Course not found");
             const courseData = courseSnapshot.val();
-            // Basic security check: ensure current user is the lecturer for this course
-            if (currentUser && courseData.lecturerId !== currentUser.uid && !courseData.lecturerIds?.includes(currentUser.uid)) {
-                 // Check if it's admin? usually layout handles it but for safety
-            }
             setCourse({ id: courseId, ...courseData });
 
-            // Fetch Enrolled Students
             const allUsersSnapshot = await get(ref(db, 'users'));
             const allUsers = allUsersSnapshot.val();
             
@@ -86,8 +84,9 @@ export default function MarkAttendancePage() {
                 for (const userId in allRegistrations) {
                     for (const semester in allRegistrations[userId]) {
                         const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                        if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             enrolledStudentUids.push(userId);
+                            break;
                         }
                     }
                 }
@@ -95,18 +94,18 @@ export default function MarkAttendancePage() {
 
             const studentList: Student[] = enrolledStudentUids.map(uid => ({
                 uid,
-                id: allUsers[uid].id,
-                name: allUsers[uid].name,
+                id: allUsers[uid]?.id || 'N/A',
+                name: allUsers[uid]?.name || 'Unknown',
             })).sort((a, b) => a.name.localeCompare(b.name));
             setStudents(studentList);
 
         } catch (error: any) {
-            console.error("Error fetching data:", error);
-            toast({ variant: 'destructive', title: "Error", description: error.message || "Could not fetch course and student data." });
+            console.error(error);
+            toast({ variant: 'destructive', title: "Error", description: "Could not fetch data." });
         } finally {
             setLoading(false);
         }
-    }, [courseId, toast, currentUser]);
+    }, [courseId, toast]);
 
     const fetchAttendanceForDate = React.useCallback(async (date: Date) => {
         const formattedDate = format(date, 'yyyy-MM-dd');
@@ -115,7 +114,6 @@ export default function MarkAttendancePage() {
         if (snapshot.exists()) {
             setAttendance(snapshot.val());
         } else {
-            // If no record, initialize all fetched students to 'Present'
             const initialAttendance: AttendanceRecord = {};
             students.forEach(student => {
                 initialAttendance[student.uid] = 'Present';
@@ -134,23 +132,9 @@ export default function MarkAttendancePage() {
         if (students.length > 0) {
             fetchAttendanceForDate(selectedDate);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [students, selectedDate]);
+    }, [students, selectedDate, fetchAttendanceForDate]);
 
 
-    const handleDateChange = (date: Date | undefined) => {
-        if (date) {
-            setSelectedDate(date);
-        }
-    };
-
-    const handleStatusChange = (studentUid: string, status: AttendanceStatus) => {
-        setAttendance(prev => ({
-            ...prev,
-            [studentUid]: status,
-        }));
-    };
-    
     const handleSaveAttendance = async () => {
         setSaving(true);
         try {
@@ -158,23 +142,21 @@ export default function MarkAttendancePage() {
             const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
             await set(attendanceRef, attendance);
 
-            // Notify students who were marked Absent or Late
-            const notificationPromises = Object.entries(attendance).map(([uid, status]) => {
+            const promises = Object.entries(attendance).map(([uid, status]) => {
                 if (status === 'Absent' || status === 'Late') {
                     return createNotification(
                         uid,
-                        `Attendance Update: You were marked as ${status} for ${course?.name} on ${format(selectedDate, 'PPP')}.`,
+                        `Attendance Alert: Marked as ${status} for ${course?.name} on ${format(selectedDate, 'PPP')}.`,
                         `/student/courses/${courseId}/attendance`
                     );
                 }
                 return Promise.resolve();
             });
-            await Promise.all(notificationPromises);
+            await Promise.all(promises);
 
-            toast({ title: "Attendance Saved", description: `Attendance for ${format(selectedDate, 'PPP')} has been successfully recorded.` });
+            toast({ title: "Attendance Saved", description: `Roster for ${format(selectedDate, 'PPP')} updated.` });
         } catch (error: any) {
-            console.error("Error saving attendance:", error);
-            toast({ variant: 'destructive', title: "Save Failed", description: error.message || "Could not save attendance." });
+            toast({ variant: 'destructive', title: "Save Failed" });
         } finally {
             setSaving(false);
         }
@@ -189,62 +171,29 @@ export default function MarkAttendancePage() {
         }
     }, [attendance]);
 
+    const filteredStudents = students.filter(s => 
+        s.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
+        s.id.toLowerCase().includes(studentSearch.toLowerCase())
+    );
 
-    if(loading) {
-        return (
-             <div className="space-y-6">
-                <Skeleton className="h-10 w-48" />
-                <Card className="shadow-lg">
-                    <CardHeader>
-                        <Skeleton className="h-8 w-1/2" />
-                        <Skeleton className="h-4 w-1/3 mt-2" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-64 w-full" />
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-    
-    if(!course) {
-        return (
-            <div className="space-y-6">
-                 <Button variant="outline" asChild>
-                    <Link href="/staff/courses"><ChevronLeft className="mr-2 h-4 w-4" /> Back to Courses</Link>
-                </Button>
-                 <Card><CardContent className="pt-6">
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Error</AlertTitle>
-                        <AlertDescription>Course not found or you do not have permission to view this page.</AlertDescription>
-                    </Alert>
-                 </CardContent></Card>
-            </div>
-        )
-    }
+    if(loading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
 
   return (
        <Card>
           <CardHeader>
             <CardTitle>Mark Attendance</CardTitle>
-            <CardDescription>Select a date and mark attendance for this course.</CardDescription>
+            <CardDescription>Enter daily attendance for your class.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                  <Popover>
                     <PopoverTrigger asChild>
-                    <Button
-                        variant={'outline'}
-                        className={cn( 'w-full sm:w-[280px] justify-start text-left font-normal', !selectedDate && 'text-muted-foreground' )}
-                    >
+                    <Button variant={'outline'} className={cn( 'w-full sm:w-[280px] justify-start text-left font-normal', !selectedDate && 'text-muted-foreground' )}>
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {selectedDate ? format(selectedDate, 'PPP') : <span>Pick a date</span>}
                     </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={selectedDate} onSelect={handleDateChange} disabled={(date) => date > new Date()} initialFocus />
-                    </PopoverContent>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={selectedDate} onSelect={(d)=>d && setSelectedDate(d)} disabled={(date) => date > new Date()} initialFocus /></PopoverContent>
                 </Popover>
 
                 <div className="flex items-center gap-4 text-sm font-medium rounded-lg bg-muted p-2">
@@ -254,10 +203,15 @@ export default function MarkAttendancePage() {
                 </div>
               </div>
 
-               {students.length > 0 ? (
-                <div className="border rounded-md">
+              <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Filter students by name or ID..." className="pl-8" value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
+              </div>
+
+               {filteredStudents.length > 0 ? (
+                <div className="border rounded-md overflow-hidden">
                  <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-muted/50">
                         <TableRow>
                             <TableHead className="w-[120px]">Student ID</TableHead>
                             <TableHead>Student Name</TableHead>
@@ -265,31 +219,27 @@ export default function MarkAttendancePage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {students.map((student) => (
+                        {filteredStudents.map((student) => (
                              <TableRow key={student.uid}>
-                                <TableCell className="font-medium">{student.id}</TableCell>
-                                <TableCell>{student.name}</TableCell>
+                                <TableCell className="font-mono text-xs">{student.id}</TableCell>
+                                <TableCell className="font-semibold text-sm">{student.name}</TableCell>
                                 <TableCell className="text-right">
-                                    <RadioGroup
-                                        value={attendance[student.uid] || 'Present'}
-                                        onValueChange={(value) => handleStatusChange(student.uid, value as AttendanceStatus)}
-                                        className="flex justify-end gap-4"
+                                    <RadioGroup 
+                                        value={attendance[student.uid] || 'Present'} 
+                                        onValueChange={(value) => setAttendance(p => ({...p, [student.uid]: value as any}))}
+                                        className="flex justify-end gap-2 sm:gap-4"
                                     >
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="Present" id={`present-${student.uid}`} />
-                                            <Label htmlFor={`present-${student.uid}`}>Present</Label>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <RadioGroupItem value="Present" id={`p-${student.uid}`} className="sr-only" />
+                                            <Label htmlFor={`p-${student.uid}`} className={cn("px-3 py-1 rounded text-[10px] font-bold border cursor-pointer", attendance[student.uid] === 'Present' ? "bg-primary text-primary-foreground border-primary" : "bg-background")}>PRESENT</Label>
                                         </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="Absent" id={`absent-${student.uid}`} />
-                                            <Label htmlFor={`absent-${student.uid}`}>Absent</Label>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <RadioGroupItem value="Absent" id={`a-${student.uid}`} className="sr-only" />
+                                            <Label htmlFor={`a-${student.uid}`} className={cn("px-3 py-1 rounded text-[10px] font-bold border cursor-pointer", attendance[student.uid] === 'Absent' ? "bg-destructive text-destructive-foreground border-destructive" : "bg-background")}>ABSENT</Label>
                                         </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="Late" id={`late-${student.uid}`} />
-                                            <Label htmlFor={`late-${student.uid}`}>Late</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="Excused Absence" id={`excused-${student.uid}`} />
-                                            <Label htmlFor={`excused-${student.uid}`}>Excused</Label>
+                                        <div className="flex flex-col items-center gap-1">
+                                            <RadioGroupItem value="Late" id={`l-${student.uid}`} className="sr-only" />
+                                            <Label htmlFor={`l-${student.uid}`} className={cn("px-3 py-1 rounded text-[10px] font-bold border cursor-pointer", attendance[student.uid] === 'Late' ? "bg-orange-500 text-white border-orange-500" : "bg-background")}>LATE</Label>
                                         </div>
                                     </RadioGroup>
                                 </TableCell>
@@ -299,17 +249,16 @@ export default function MarkAttendancePage() {
                 </Table>
                 </div>
                ) : (
-                    <div className="py-16 text-center text-muted-foreground">
-                        <Users className="mx-auto h-12 w-12" />
-                        <h3 className="mt-4 text-lg font-semibold">No Students Enrolled</h3>
-                        <p className="mt-2 text-sm">There are no students currently enrolled in this course.</p>
+                    <div className="py-16 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                        <Users className="mx-auto h-12 w-12 opacity-20" />
+                        <p className="mt-4">No students found matching your criteria.</p>
                     </div>
                )}
           </CardContent>
           <CardFooter className="flex justify-end border-t pt-6">
-                <Button onClick={handleSaveAttendance} disabled={saving || loading || students.length === 0}>
+                <Button onClick={handleSaveAttendance} disabled={saving || students.length === 0}>
                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Attendance
+                    Save Daily Attendance
                 </Button>
           </CardFooter>
       </Card>
