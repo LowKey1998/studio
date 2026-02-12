@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { useAuth } from '@/hooks/use-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -47,12 +47,13 @@ export default function StudentTimetablePage() {
         if (!user?.uid) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
-                get(ref(db, 'users'))
+                get(ref(db, 'users')),
+                get(ref(db, 'semesters')),
             ]);
 
             if (!regsSnap.exists()) {
@@ -61,9 +62,15 @@ export default function StudentTimetablePage() {
                 return;
             }
 
+            const allSemesters = semestersSnap.val() || {};
             const usersData = usersSnap.val() || {};
+            
+            // Map courseId -> Set of semesterIds student is enrolled in (Excluding Archived)
             const enrolledCourseSemesters = new Map<string, Set<string>>();
             Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
+                const semInfo = allSemesters[semId];
+                if (!semInfo || semInfo.status === 'Archived') return;
+
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
                     coursesArr.forEach((cid: string) => {
@@ -84,29 +91,41 @@ export default function StudentTimetablePage() {
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
+                // Skip if branch is archived
+                if (semId !== 'master' && allSemesters[semId]?.status === 'Archived') continue;
+
                 for (const cId in tData[semId]) {
-                    const isEnrolledInSem = enrolledCourseSemesters.get(cId)?.has(semId);
+                    const courseInfo = cData[cId];
+                    if (!courseInfo) continue;
+
+                    const isEnrolledInThisSemBranch = enrolledCourseSemesters.get(cId)?.has(semId);
                     const isEnrolledAtAll = enrolledCourseSemesters.has(cId);
                     
-                    if (isEnrolledInSem || (semId === 'master' && isEnrolledAtAll)) {
-                        const courseInfo = cData[cId];
-                        if (courseInfo) {
-                            const lecturerNames = (courseInfo.lecturerIds || [])
-                                .map((uid: string) => usersData[uid]?.name)
-                                .filter(Boolean)
-                                .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                    let shouldInclude = false;
+                    if (courseInfo.separateInstance) {
+                        // Separate instances MUST match the semester branch exactly
+                        shouldInclude = isEnrolledInThisSemBranch;
+                    } else {
+                        // Shared courses can be in specific branch OR master branch
+                        shouldInclude = isEnrolledInThisSemBranch || (semId === 'master' && isEnrolledAtAll);
+                    }
+                    
+                    if (shouldInclude) {
+                        const lecturerNames = (courseInfo.lecturerIds || [])
+                            .map((uid: string) => usersData[uid]?.name)
+                            .filter(Boolean)
+                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
-                            Object.values(tData[semId][cId]).forEach((entry: any) => {
-                                entries.push({
-                                    ...entry,
-                                    courseId: cId,
-                                    courseCode: courseInfo.code,
-                                    courseName: courseInfo.name,
-                                    semesterId: semId,
-                                    lecturerNames
-                                });
+                        Object.values(tData[semId][cId]).forEach((entry: any) => {
+                            entries.push({
+                                ...entry,
+                                courseId: cId,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name,
+                                semesterId: semId,
+                                lecturerNames
                             });
-                        }
+                        });
                     }
                 }
             }
