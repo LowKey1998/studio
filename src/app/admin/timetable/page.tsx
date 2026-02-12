@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -370,7 +369,7 @@ export default function TimetableManagementPage() {
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleSaveAllDeadlines} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
+                                    <Button onClick={handleSaveEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>

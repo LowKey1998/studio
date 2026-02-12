@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -158,7 +157,7 @@ export default function StudentEnrollmentPage() {
             setCalendarSettings(calendarSnap.val());
             
             const intakeList = Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a,b) => b.name.localeCompare(a.name));
-            setIntakes(intakeList);
+            setIntakes(input => intakeList);
             setSemesters(Object.entries(sData).map(([id, data]: [string, any]) => ({ id, ...data })));
             setAllCourses(cData);
             

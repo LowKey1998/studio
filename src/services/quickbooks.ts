@@ -1,4 +1,3 @@
-
 import { db } from '@/lib/firebase';
 import { get, ref } from 'firebase/database';
 import QuickBooks from 'node-quickbooks';
