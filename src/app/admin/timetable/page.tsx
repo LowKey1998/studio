@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type TimeSlot = {
     id: string;
@@ -67,6 +68,7 @@ export default function TimetableManagementPage() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
     // Filter states
     const [roomFilter, setRoomFilter] = React.useState('all');
@@ -99,20 +101,28 @@ export default function TimetableManagementPage() {
         const timetablesRef = ref(db, 'timetables');
         const usersRef = ref(db, 'users');
         const settingsRef = ref(db, 'settings/teachingTimes');
+        const calendarSettingsRef = ref(db, 'settings/academicCalendar');
 
         const unsubscribe = onValue(timetablesRef, (snapshot) => {
             const tData = snapshot.val() || {};
             
             // Get atomic values for other collections to prevent complex nesting
             Promise.all([
-                get(semestersRef), get(coursesRef), get(intakesRef), get(usersRef), get(settingsRef), get(roomsRef)
-            ]).then(([sSnap, cSnap, iSnap, uSnap, stSnap, rSnap]) => {
+                get(semestersRef), 
+                get(coursesRef), 
+                get(intakesRef), 
+                get(usersRef), 
+                get(settingsRef), 
+                get(roomsRef),
+                get(calendarSettingsRef)
+            ]).then(([sSnap, cSnap, iSnap, uSnap, stSnap, rSnap, calSnap]) => {
                 const sData = sSnap.val() || {};
                 const cData = cSnap.val() || {};
                 const iData = iSnap.val() || {};
                 const uData = uSnap.val() || {};
                 const stData = stSnap.val() || {};
                 const rmData = rSnap.val() || {};
+                const calData = calSnap.val() || {};
 
                 setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
                 setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
@@ -123,6 +133,7 @@ export default function TimetableManagementPage() {
                     days: stData.days || defaultDays,
                     slots: (stData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 });
+                setCalendarSettings(calData);
 
                 const entries: TimetableEntry[] = [];
                 for (const semId in tData) {
@@ -259,6 +270,20 @@ export default function TimetableManagementPage() {
         const lower = courseSearch.toLowerCase();
         return allCourses.filter(c => c.name.toLowerCase().includes(lower) || c.code.toLowerCase().includes(lower));
     }, [allCourses, courseSearch]);
+
+    const intakeStanding = React.useMemo(() => {
+        if (intakeFilter === 'all' || !calendarSettings) return null;
+        const intake = intakes.find(i => i.id === intakeFilter);
+        if (!intake) return null;
+        const intakeStartStr = parseIntakeDate(intake.name);
+        if (!intakeStartStr) return null;
+        return calculateAcademicState(
+            intakeStartStr,
+            new Date(),
+            calendarSettings.standardCycles,
+            Object.values(calendarSettings.anomalies || {})
+        );
+    }, [intakeFilter, intakes, calendarSettings]);
 
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
@@ -401,6 +426,12 @@ export default function TimetableManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        {intakeFilter !== 'all' && intakeStanding && (
+                            <Badge variant="secondary" className="h-10 px-4 text-sm font-bold border-primary/20 bg-primary/5">
+                                <CalendarDays className="mr-2 h-4 w-4"/>
+                                Standing: Year {intakeStanding.year}, Sem {intakeStanding.semester}
+                            </Badge>
+                        )}
                     </div>
 
                     {!hasSlots ? (
