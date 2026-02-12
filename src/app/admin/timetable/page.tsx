@@ -22,6 +22,16 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type TimeSlot = {
     id: string;
@@ -87,6 +97,9 @@ export default function TimetableManagementPage() {
     
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
+
+    // Deletion State
+    const [entryToDelete, setEntryToDelete] = React.useState<TimetableEntry | null>(null);
 
     const { toast } = useToast();
 
@@ -221,13 +234,15 @@ export default function TimetableManagementPage() {
         }
     };
 
-    const handleDeleteEntry = async (entry: TimetableEntry) => {
-        if (!confirm("Remove this session from the timetable?")) return;
+    const confirmDeleteEntry = async () => {
+        if (!entryToDelete) return;
         try {
-            await remove(ref(db, `timetables/${entry.semesterId}/${entry.courseId}/${entry.id}`));
+            await remove(ref(db, `timetables/${entryToDelete.semesterId}/${entryToDelete.courseId}/${entryToDelete.id}`));
             toast({ title: "Session Removed" });
         } catch (e) {
             toast({ variant: 'destructive', title: "Removal failed" });
+        } finally {
+            setEntryToDelete(null);
         }
     };
 
@@ -378,7 +393,18 @@ export default function TimetableManagementPage() {
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {s.entry.venue}</div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2 w-2" /> {s.lecturerNames}</div>
                                                                         </Link>
-                                                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteEntry(s.entry); }}><X className="h-3 w-3" /></Button>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="icon" 
+                                                                            className="h-5 w-5 text-destructive" 
+                                                                            onClick={(e) => { 
+                                                                                e.preventDefault(); 
+                                                                                e.stopPropagation(); 
+                                                                                setEntryToDelete(s.entry); 
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-3 w-3" />
+                                                                        </Button>
                                                                     </div>
                                                                     <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
                                                                         {s.participants.map(p => (
@@ -410,6 +436,21 @@ export default function TimetableManagementPage() {
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog open={!!entryToDelete} onOpenChange={(o) => !o && setEntryToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove Session from Timetable?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong> in <strong>{entryToDelete?.venue}</strong>. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteEntry} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove Session</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
