@@ -8,8 +8,9 @@ import { ref, get } from 'firebase/database';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info, UserCheck, BookOpen, Users } from 'lucide-react';
+import { Info, UserCheck, BookOpen, Users, BarChart2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 type TeachingLoad = {
     lecturerId: string;
