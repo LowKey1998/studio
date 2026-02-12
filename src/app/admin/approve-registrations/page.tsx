@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
@@ -587,7 +588,7 @@ export default function ApproveRegistrationsPage() {
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="destructive" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Scholarship</Button>
-                        <Button onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
+                        <Button onClick={handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
