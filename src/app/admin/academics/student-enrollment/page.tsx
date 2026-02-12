@@ -163,11 +163,12 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
                 if (!studentIntake) throw new Error(`Intake not found for ${student.name}`);
                 const intakeStartStr = parseIntakeDate(studentIntake.name);
-                if (!intakeStartStr) throw new Error(`Invalid intake date for ${student.name}`);
+                if (!intakeStartStr) throw new Error(`Invalid intake date format for ${student.name} (${studentIntake.name})`);
                 
                 const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
                 const targetSemester = semesters.find(s => s.intakeId === studentIntake.id && s.year === state.year && s.semesterInYear === state.semester);
-                if (!targetSemester) throw new Error(`No semester setup found for ${studentIntake.name}, Year ${state.year}.`);
+                
+                if (!targetSemester) throw new Error(`No semester found for ${student.name} in Year ${state.year}, Sem ${state.semester}. Please set up the target semester first.`);
 
                 const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
                 const regSnap = await get(regRef);
@@ -196,8 +197,11 @@ export default function StudentEnrollmentPage() {
             if (type === 'enroll') setSelectedUids({}); else setSelectedEnrolledUids({});
             setStudentToRemove(null);
             await fetchEnrolledStudents(activeSession.courseId);
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Action Failed', description: e.message || 'Server error' }); }
-        finally { setActionLoading(null); }
+        } catch (e: any) { 
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message || 'Server error' }); 
+        } finally { 
+            setActionLoading(null); 
+        }
     };
 
     if (loading) return <Skeleton className="h-96 w-full" />;

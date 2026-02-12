@@ -16,6 +16,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type IDPrefixes = { 
     student: string; 
@@ -313,7 +315,9 @@ export default function SettingsPage() {
             </Card>
 
             <div className="flex justify-end">
-                <Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save All Changes</Button>
+                <Button type="submit" disabled={saving || loading}>
+                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save All Changes
+                </Button>
             </div>
         </form>
     );

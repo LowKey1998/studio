@@ -260,7 +260,7 @@ export default function AdminMarkAttendancePage() {
                                                             {sessionsInSlot.map((entry, eIdx) => (
                                                                 <div 
                                                                     key={eIdx} 
-                                                                    className="cursor-pointer group relative p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all"
+                                                                    className="cursor-pointer group relative p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:bg-primary/5 transition-all"
                                                                     onClick={() => {
                                                                         setActiveSession(entry);
                                                                         fetchSessionStudents(entry);

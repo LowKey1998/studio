@@ -288,7 +288,7 @@ export default function CourseAssignmentsPage() {
                             </TableBody>
                         </Table>
                      </div>
-                     <DialogFooter className="pt-4"><Button variant="outline" onClick={() => setIsGradingOpen(false)}>Cancel</Button><Button onClick={handleSaveGrades} disabled={formLoading}>{formLoading && <Loader2 className="animate-spin mr-2 h-4 w-4"/>}Save All Grades</Button></DialogFooter>
+                     <DialogFooter className="pt-4"><Button variant="outline" onClick={() => setIsGradingOpen(false)}>Cancel</Button><Button onClick={handleSaveGrades} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin mr-2"/>}Save All Grades</Button></DialogFooter>
                 </DialogContent>
              </Dialog>
         </div>
