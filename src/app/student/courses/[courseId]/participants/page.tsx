@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,9 +115,15 @@ export default function CourseParticipantsPage() {
     
     return (
         <Card>
-            <CardHeader>
-                <CardTitle>Class Participants</CardTitle>
-                <CardDescription>Your lecturer and fellow classmates enrolled in this session.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div className="space-y-1">
+                    <CardTitle>Class Participants</CardTitle>
+                    <CardDescription>Your lecturer and fellow classmates enrolled in this session.</CardDescription>
+                </div>
+                <Badge variant="secondary" className="text-base px-3 py-1">
+                    <Users className="mr-2 h-4 w-4" />
+                    {participants.length} Total
+                </Badge>
             </CardHeader>
             <CardContent>
                 {participants.length > 0 ? (
