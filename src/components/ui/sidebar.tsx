@@ -133,7 +133,7 @@ const SidebarProvider = React.forwardRef<
               "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
               className
             )}
-            {...(props as any)}
+            {...props}
           >
             {children}
           </div>
@@ -194,7 +194,7 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
-            <SheetHeader className="p-4 border-b">
+            <SheetHeader className="p-4 border-b text-left">
                 <div className="flex items-center justify-between">
                     <SheetTitle>Navigation Menu</SheetTitle>
                     <Button variant="ghost" size="icon" onClick={() => setOpenMobile(false)}>

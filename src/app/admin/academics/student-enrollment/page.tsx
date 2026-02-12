@@ -630,6 +630,7 @@ export default function StudentEnrollmentPage() {
                             </ScrollArea>
                         </div>
                     </div>
+                    <Separator />
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Done</Button></DialogClose>
                     </DialogFooter>

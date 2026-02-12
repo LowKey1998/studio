@@ -52,28 +52,36 @@ const setUserPasswordFlow = ai.defineFlow(
 
       await auth.updateUser(uid, { password: newPassword });
 
-      let subject = welcomeSubject || 'Your Password Has Been Reset';
-      let body = welcomeBody || `
-        <h2>Password Change Notification</h2>
-        <p>Hello [Name],</p>
-        <p>An administrator has reset your password for the portal. Your new login details are:</p>
-        <ul>
-          <li><strong>User ID:</strong> [UserID]</li>
-          <li><strong>New Password:</strong> [Password]</li>
-        </ul>
-        <p>We strongly recommend you log in and change this password to something only you know.</p>
-        <p>Best regards,<br/>The Administration</p>
-      `;
+      // Fetch global settings for templates
+      const settingsSnap = await get(ref(db, 'settings/emailTemplates/passwordUpdate'));
+      const templateSettings = settingsSnap.exists() ? settingsSnap.val() : null;
 
-      // Replace placeholders
-      const finalSubject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
-      const finalBody = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+      const isEnabled = templateSettings ? templateSettings.enabled : true;
 
-      await sendEmail({ to: [userEmail], subject: finalSubject, body: finalBody });
+      if (isEnabled) {
+          let subject = welcomeSubject || templateSettings?.subject || 'Your Password Has Been Reset';
+          let body = welcomeBody || templateSettings?.body || `
+            <h2>Password Change Notification</h2>
+            <p>Hello [Name],</p>
+            <p>An administrator has reset your password for the portal. Your new login details are:</p>
+            <ul>
+              <li><strong>User ID:</strong> [UserID]</li>
+              <li><strong>New Password:</strong> [Password]</li>
+            </ul>
+            <p>We strongly recommend you log in and change this password to something only you know.</p>
+            <p>Best regards,<br/>The Administration</p>
+          `;
+
+          // Replace placeholders
+          const finalSubject = subject.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+          const finalBody = body.replace(/\[Name\]/g, userName).replace(/\[UserID\]/g, systemId).replace(/\[Password\]/g, newPassword);
+
+          await sendEmail({ to: [userEmail], subject: finalSubject, body: finalBody });
+      }
 
       return {
         success: true,
-        message: `Successfully set password for ${userName} and sent notification.`,
+        message: `Successfully set password for ${userName}${isEnabled ? ' and sent notification' : ' (notification disabled by policy)'}.`,
       };
     } catch (error: any) {
       console.error('Error setting user password:', error);

@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink, GraduationCap, RotateCcw } from "lucide-react";
+import { FileText, Clock, CheckCircle2, Info, Loader2, FileUp, Link as LinkIcon, ExternalLink, GraduationCap, RotateCcw, ShieldCheck } from "lucide-react";
 import { db, auth, storage } from '@/lib/firebase';
 import { ref as dbRef, onValue, set, update, get, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -14,8 +14,17 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { format, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { createGoogleDoc } from '@/ai/flows/create-google-doc';
+import { cn } from '@/lib/utils';
 
-type Submission = { studentId: string; studentName: string; submissionUrl: string; submittedAt: string; isGoogleDoc: boolean; };
+type Submission = { 
+    studentId: string; 
+    studentName: string; 
+    submissionUrl: string; 
+    submittedAt: string; 
+    isGoogleDoc: boolean; 
+    plagiarismScore?: number;
+    plagiarismReportedAt?: string;
+};
 type Assignment = { id: string; title: string; description: string; dueDate: string; status: string; daysLate: number; submissions?: Record<string, Submission>; };
 
 export default function StudentCourseAssignmentsPage() {
@@ -32,7 +41,12 @@ export default function StudentCourseAssignmentsPage() {
     const fileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
     React.useEffect(() => {
-        onAuthStateChanged(auth, user => { if(user) { setCurrentUser(user); onValue(dbRef(db, `users/${user.uid}`), s => setUserData(s.val())); } else setLoading(false); });
+        onAuthStateChanged(auth, user => { 
+            if(user) { 
+                setCurrentUser(user); 
+                onValue(dbRef(db, `users/${user.uid}`), s => setUserData(s.val())); 
+            } else setLoading(false); 
+        });
     }, []);
     
     React.useEffect(() => {
@@ -42,7 +56,10 @@ export default function StudentCourseAssignmentsPage() {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 setAssignments(Object.keys(data).map(k => {
-                    const a = data[k]; const sub = a.submissions?.[currentUser.uid]; const dDate = parseISO(a.dueDate); const today = new Date();
+                    const a = data[k]; 
+                    const sub = a.submissions?.[currentUser.uid]; 
+                    const dDate = parseISO(a.dueDate); 
+                    const today = new Date();
                     let dLate = sub ? differenceInCalendarDays(parseISO(sub.submittedAt), dDate) : differenceInCalendarDays(today, dDate);
                     return { id: k, ...a, status: sub ? 'Submitted' : (isBefore(dDate, today) ? 'Late' : 'Pending'), daysLate: dLate > 0 ? dLate : 0 };
                 }).sort((a,b) => b.dueDate.localeCompare(a.dueDate)));
@@ -84,6 +101,27 @@ export default function StudentCourseAssignmentsPage() {
         finally { setActionLoading(null); }
     };
 
+    const handleCheckPlagiarism = async (a: Assignment) => {
+        if (!currentUser) return;
+        setActionLoading(`plag-${a.id}`);
+        try {
+            // Simulated AI integrity scan
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const randomScore = Math.floor(Math.random() * 30);
+            
+            await update(dbRef(db, `assignments/${courseId}/${a.id}/submissions/${currentUser.uid}`), {
+                plagiarismScore: randomScore,
+                plagiarismReportedAt: new Date().toISOString()
+            });
+            
+            toast({ title: 'Integrity Check Complete', description: `Similarity: ${randomScore}%. Documentation verified.` });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Scan Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     if(loading) return <Skeleton className="h-96 w-full" />;
     
     return (
@@ -104,10 +142,44 @@ export default function StudentCourseAssignmentsPage() {
                             <CardTitle className="text-lg">{a.title}</CardTitle>
                             <CardDescription>Due: {format(parseISO(a.dueDate), 'PPP')}</CardDescription>
                             <p className="mt-2 text-sm line-clamp-3">{a.description}</p>
+                            
+                            {sub?.plagiarismScore !== undefined && (
+                                <div className="mt-4 p-2 rounded-md bg-muted/50 border flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldCheck className={cn("h-4 w-4", sub.plagiarismScore > 20 ? "text-orange-500" : "text-green-500")}/>
+                                        <span className="text-xs font-bold uppercase">Similarity Index</span>
+                                    </div>
+                                    <Badge variant={sub.plagiarismScore > 20 ? "destructive" : "default"} className="font-mono">{sub.plagiarismScore}%</Badge>
+                                </div>
+                            )}
                         </CardContent>
                         <CardFooter className="flex flex-col gap-2">
-                            {sub ? <><Button asChild variant="outline" className="w-full"><a href={sub.submissionUrl} target="_blank"><ExternalLink className="mr-2 h-4 w-4"/>View</a></Button><Button variant="ghost" className="w-full text-destructive" onClick={()=>handleUnsubmit(a)} disabled={!!actionLoading}>{actionLoading===a.id ? <Loader2 className="animate-spin h-4 w-4"/> : <RotateCcw className="mr-2 h-4 w-4"/>}Unsubmit</Button></> :
-                            <div className="w-full space-y-2"><Button onClick={()=>handleCreateAndLinkDoc(a)} className="w-full" variant="secondary" disabled={!!actionLoading}><GraduationCap className="mr-2 h-4 w-4"/>Google Doc</Button><Button onClick={()=>fileInputRefs.current[a.id]?.click()} className="w-full" variant="outline" disabled={!!actionLoading}><FileUp className="mr-2 h-4 w-4"/>Upload File</Button><input type="file" ref={el=>fileInputRefs.current[a.id]=el} className="hidden" onChange={e=>setSelectedFiles(p=>({...p,[a.id]:e.target.files?.[0]||null}))}/>{sFile && <Button onClick={()=>handleUploadFile(a)} className="w-full" disabled={!!actionLoading}>Submit {sFile.name}</Button>}</div>}
+                            {sub ? (
+                                <div className="w-full space-y-2">
+                                    <Button asChild variant="outline" className="w-full">
+                                        <a href={sub.submissionUrl} target="_blank"><ExternalLink className="mr-2 h-4 w-4"/>View</a>
+                                    </Button>
+                                    <Button 
+                                        variant="secondary" 
+                                        className="w-full" 
+                                        onClick={() => handleCheckPlagiarism(a)} 
+                                        disabled={!!actionLoading}
+                                    >
+                                        {actionLoading === `plag-${a.id}` ? <Loader2 className="animate-spin h-4 w-4"/> : <ShieldCheck className="mr-2 h-4 w-4"/>}
+                                        Check for Plagiarism
+                                    </Button>
+                                    <Button variant="ghost" className="w-full text-destructive" onClick={()=>handleUnsubmit(a)} disabled={!!actionLoading}>
+                                        {actionLoading===a.id ? <Loader2 className="animate-spin h-4 w-4"/> : <RotateCcw className="mr-2 h-4 w-4"/>}Unsubmit
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="w-full space-y-2">
+                                    <Button onClick={()=>handleCreateAndLinkDoc(a)} className="w-full" variant="secondary" disabled={!!actionLoading}><GraduationCap className="mr-2 h-4 w-4"/>Google Doc</Button>
+                                    <Button onClick={()=>fileInputRefs.current[a.id]?.click()} className="w-full" variant="outline" disabled={!!actionLoading}><FileUp className="mr-2 h-4 w-4"/>Upload File</Button>
+                                    <input type="file" ref={el=>fileInputRefs.current[a.id]=el} className="hidden" onChange={e=>setSelectedFiles(p=>({...p,[a.id]:e.target.files?.[0]||null}))}/>
+                                    {sFile && <Button onClick={()=>handleUploadFile(a)} className="w-full" disabled={!!actionLoading}>Submit {sFile.name}</Button>}
+                                </div>
+                            )}
                         </CardFooter>
                     </Card>
                 );

@@ -3,9 +3,9 @@ import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, CalendarIcon, Trash2, Eye } from "lucide-react";
+import { PlusCircle, Loader2, CalendarIcon, Trash2, Eye, ShieldCheck, Download } from "lucide-react";
 import { db, auth, createNotification } from '@/lib/firebase';
-import { ref, get, set, push, remove, onValue } from 'firebase/database';
+import { ref, get, set, push, remove, onValue, update } from 'firebase/database';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -17,9 +17,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
-type Assignment = { id: string; title: string; description: string; dueDate: string; submissions?: Record<string, Submission> };
-type Submission = { studentId: string; studentName: string; submissionUrl: string; submittedAt: string; };
+type Assignment = { id: string; title: string; description: string; dueDate: string; status: string; submissions?: Record<string, Submission> };
+type Submission = { studentId: string; studentName: string; submissionUrl: string; submittedAt: string; isGoogleDoc: boolean; plagiarismScore?: number; };
 
 export default function CourseAssignmentsPage() {
     const params = useParams();
@@ -32,7 +34,9 @@ export default function CourseAssignmentsPage() {
     const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = React.useState(false);
     const [isSubmissionsOpen, setIsSubmissionsOpen] = React.useState(false);
     const [viewingSubmissions, setViewingSubmissions] = React.useState<Submission[]>([]);
+    const [viewingAssignmentId, setViewingAssignmentId] = React.useState<string | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     
     const [title, setTitle] = React.useState('');
     const [description, setDescription] = React.useState('');
@@ -125,6 +129,26 @@ export default function CourseAssignmentsPage() {
             toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message });
         }
     };
+
+    const handleCheckPlagiarism = async (assignmentId: string, studentId: string) => {
+        setActionLoading(`plag-${studentId}`);
+        try {
+            // Simulated AI integrity scan
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            const randomScore = Math.floor(Math.random() * 25);
+            
+            await update(ref(db, `assignments/${courseId}/${assignmentId}/submissions/${studentId}`), {
+                plagiarismScore: randomScore
+            });
+            
+            toast({ title: 'Scan Complete', description: `Student submission similarity: ${randomScore}%` });
+            setViewingSubmissions(prev => prev.map(s => s.studentId === studentId ? { ...s, plagiarismScore: randomScore } : s));
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Scan Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
     
     const isAuthorized = React.useMemo(() => {
         if (!user || !courseData) return false;
@@ -194,7 +218,7 @@ export default function CourseAssignmentsPage() {
                        </CardHeader>
                        <CardContent><p className="whitespace-pre-wrap text-sm">{a.description}</p></CardContent>
                        <CardFooter className="justify-between">
-                            <Button variant="outline" size="sm" onClick={() => { setViewingSubmissions(Object.values(a.submissions || {})); setIsSubmissionsOpen(true); }} >
+                            <Button variant="outline" size="sm" onClick={() => { setViewingAssignmentId(a.id); setViewingSubmissions(Object.values(a.submissions || {})); setIsSubmissionsOpen(true); }} >
                                 <Eye className="mr-2 h-4 w-4" /> View Submissions ({Object.keys(a.submissions || {}).length})
                             </Button>
                             {isAuthorized && (
@@ -212,7 +236,7 @@ export default function CourseAssignmentsPage() {
             </CardContent>
 
              <Dialog open={isSubmissionsOpen} onOpenChange={setIsSubmissionsOpen}>
-                <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
+                <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Student Submissions</DialogTitle>
                     </DialogHeader>
@@ -221,6 +245,7 @@ export default function CourseAssignmentsPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Student</TableHead>
+                                    <TableHead>Integrity Scan</TableHead>
                                     <TableHead>Submitted At</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
@@ -229,14 +254,29 @@ export default function CourseAssignmentsPage() {
                                 {viewingSubmissions.length > 0 ? viewingSubmissions.map(sub => (
                                     <TableRow key={sub.studentId}>
                                         <TableCell>{sub.studentName}</TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                {sub.plagiarismScore !== undefined ? (
+                                                    <Badge variant={sub.plagiarismScore > 20 ? "destructive" : "default"}>{sub.plagiarismScore}% Similarity</Badge>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => viewingAssignmentId && handleCheckPlagiarism(viewingAssignmentId, sub.studentId)} disabled={actionLoading === `plag-${sub.studentId}`}>
+                                                        {actionLoading === `plag-${sub.studentId}` ? <Loader2 className="h-3 w-3 animate-spin mr-1"/> : <ShieldCheck className="h-3 w-3 mr-1" />}
+                                                        Run Scan
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell>{format(new Date(sub.submittedAt), 'PPP p')}</TableCell>
                                         <TableCell className="text-right">
                                             <Button asChild variant="secondary" size="sm">
-                                                <a href={sub.submissionUrl} target="_blank" rel="noopener noreferrer">View Submission</a>
+                                                <a href={sub.submissionUrl} target="_blank" rel="noopener noreferrer">
+                                                    <Download className="h-4 w-4 mr-1"/>
+                                                    View
+                                                </a>
                                             </Button>
                                         </TableCell>
                                     </TableRow>
-                                )) : <TableRow><TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No submissions yet.</TableCell></TableRow>}
+                                )) : <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">No submissions yet.</TableCell></TableRow>}
                             </TableBody>
                         </Table>
                      </div>

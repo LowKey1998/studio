@@ -73,6 +73,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 type UserProfile = {
     uid: string;
@@ -152,7 +153,7 @@ export default function UserManagementPage() {
     const [settingPasswordUser, setSettingPasswordUser] = React.useState<UserProfile | null>(null);
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
-    const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your credentials have been updated. You can access the portal using the link below:</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p><strong>Note:</strong> If you have trouble logging in, please try using <strong>12345678</strong> as your temporary password.</p><p>Best regards,<br/>The Administration</p>`);
+    const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your credentials have been updated. You can access the portal using the link below:</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Best regards,<br/>The Administration</p>`);
 
     const [bulkUsersToCreate, setBulkUsersToCreate] = React.useState<any[]>([]);
     const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
@@ -250,6 +251,9 @@ export default function UserManagementPage() {
         if (!editingUser) return;
         setLoading(true);
         try {
+            const settingsSnap = await get(ref(db, 'settings/emailTemplates'));
+            const templates = settingsSnap.val() || {};
+
             const dbData: any = {
                 role: role.charAt(0).toUpperCase() + role.slice(1),
                 phoneNumber,
@@ -264,6 +268,13 @@ export default function UserManagementPage() {
                 dbData.year = Number(year);
                 dbData.semesterId = semesterId;
                 dbData.guardian = { name: guardianName, email: guardianEmail, contact: guardianContact, relationship: guardianRelationship };
+            }
+
+            // Check for Email change notification
+            if (editingUser.email !== email && templates.emailChange?.enabled) {
+                const tpl = templates.emailChange;
+                const body = tpl.body.replace(/\[Name\]/g, name).replace(/\[NewEmail\]/g, email);
+                await sendEmail({ to: [email], subject: tpl.subject, body });
             }
 
             await updateUserAccount({
@@ -362,11 +373,22 @@ export default function UserManagementPage() {
         if (!settingPasswordUser || !newPassword) return;
         setLoading(true);
         try {
+            const settingsSnap = await get(ref(db, 'settings/emailTemplates/passwordUpdate'));
+            const template = settingsSnap.exists() ? settingsSnap.val() : null;
+
+            let subject = passwordEmailSubject;
+            let body = passwordEmailBody;
+
+            if (template && template.enabled) {
+                subject = template.subject;
+                body = template.body;
+            }
+
             await setUserPassword({ 
                 uid: settingPasswordUser.uid, 
                 newPassword,
-                welcomeSubject: passwordEmailSubject,
-                welcomeBody: passwordEmailBody
+                welcomeSubject: subject,
+                welcomeBody: body
             });
             toast({ title: 'Password Updated Successfully' });
             setIsSetPasswordOpen(false); 
@@ -683,8 +705,8 @@ export default function UserManagementPage() {
                                 <Button variant="outline" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
                                 <Button variant="outline" onClick={() => {
                                     const ws = XLSX.utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', password: '', subRoles: '', department: '', phone: '' }]);
-                                    const wb = XLSX.utils.book_new();
-                                    XLSX.utils.book_append_sheet(wb, ws, "Users");
+                                    const wb = XLSX.book_new();
+                                    XLSX.book_append_sheet(wb, ws, "Users");
                                     XLSX.writeFile(wb, "bulk_user_template.xlsx");
                                 }}><Download className="mr-2 h-4 w-4"/>Template</Button>
                             </div>

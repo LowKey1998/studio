@@ -140,13 +140,9 @@ export default function AdminMarkAttendancePage() {
 
             for (const userId in allRegs) {
                 const userRegs = allRegs[userId];
-                
-                // Robust student lookup: check if the student is registered for this course
-                // in the specific semester ID, or any matching non-archived semester.
                 const isEnrolled = Object.entries(userRegs).some(([semId, reg]: [string, any]) => {
                     const matchesSemester = semId === session.semesterId || session.semesterId === 'master';
-                    return reg.courses?.includes(session.courseId) && 
-                           (reg.status === 'Completed' || reg.status === 'Pending Payment');
+                    return reg.courses?.includes(session.courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment');
                 });
 
                 if (isEnrolled && allUsers[userId]) {
@@ -155,7 +151,6 @@ export default function AdminMarkAttendancePage() {
             }
             setStudentsInSession(list.sort((a,b) => a.name.localeCompare(b.name)));
             
-            // Load existing attendance
             const dateStr = format(attendanceDate, 'yyyy-MM-dd');
             const attendanceSnap = await get(ref(db, `attendance/${session.courseId}/${dateStr}`));
             if (attendanceSnap.exists()) {
@@ -177,7 +172,6 @@ export default function AdminMarkAttendancePage() {
             const dateStr = format(attendanceDate, 'yyyy-MM-dd');
             await set(ref(db, `attendance/${activeSession.courseId}/${dateStr}`), attendance);
             
-            // Notify absent/late students
             const promises = Object.entries(attendance).map(([uid, status]) => {
                 if (status === 'Absent' || status === 'Late') {
                     return createNotification(
