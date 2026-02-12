@@ -41,7 +41,6 @@ type TimetableEntry = {
     startTime: string;
     endTime: string;
     venue: string;
-    excludedIntakeIds?: Record<string, boolean>;
 };
 
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
@@ -70,7 +69,6 @@ export default function TimetableManagementPage() {
     const [users, setUsers] = React.useState<Record<string, any>>({});
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
-    const [activePaths, setActivePaths] = React.useState<Record<string, any>>({});
 
     // Filter states
     const [roomFilter, setRoomFilter] = React.useState('all');
@@ -87,13 +85,11 @@ export default function TimetableManagementPage() {
     const [endTime, setEndTime] = React.useState('');
     const [venue, setVenue] = React.useState('');
     
-    // Searchable Course Select state
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
 
     const { toast } = useToast();
 
-    // Reactive data fetching
     React.useEffect(() => {
         setLoading(true);
         const refs = [
@@ -104,8 +100,7 @@ export default function TimetableManagementPage() {
             ref(db, 'timetables'),
             ref(db, 'users'),
             ref(db, 'settings/teachingTimes'),
-            ref(db, 'settings/academicCalendar'),
-            ref(db, 'semesterOfferings')
+            ref(db, 'settings/academicCalendar')
         ];
 
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
@@ -122,7 +117,6 @@ export default function TimetableManagementPage() {
                     slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 }); break;
                 case 7: setCalendarSettings(data); break;
-                case 8: setActivePaths(data); break;
             }
         }));
 
@@ -236,41 +230,6 @@ export default function TimetableManagementPage() {
             toast({ variant: 'destructive', title: "Removal failed" });
         }
     };
-    
-    const handleToggleIntakeVisibility = async (entry: TimetableEntry, semesterId: string, active: boolean) => {
-        const course = allCourses.find(c => c.id === entry.courseId);
-        if (course?.separateInstance) {
-            toast({ variant: 'warning', title: 'Separate Instance', description: 'This course is set to be separate per intake. Please manage sessions individually.' });
-            return;
-        }
-
-        try {
-            if (active) {
-                const newEntryRef = push(ref(db, `timetables/${semesterId}/${entry.courseId}`));
-                await set(newEntryRef, {
-                    day: entry.day,
-                    startTime: entry.startTime,
-                    endTime: entry.endTime,
-                    venue: entry.venue,
-                    intakeName: intakes.find(i => i.id === semesters.find(s => s.id === semesterId)?.intakeId)?.name || 'N/A'
-                });
-            } else {
-                const entryToDelete = masterTimetable.find(e => 
-                    e.semesterId === semesterId && 
-                    e.courseId === entry.courseId && 
-                    e.day === entry.day && 
-                    e.startTime === entry.startTime && 
-                    e.venue === entry.venue
-                );
-                if (entryToDelete) {
-                    await remove(ref(db, `timetables/${semesterId}/${entry.courseId}/${entryToDelete.id}`));
-                }
-            }
-            toast({ title: "Visibility Updated" });
-        } catch (e) {
-            toast({ variant: 'destructive', title: "Update Failed" });
-        }
-    };
 
     const resetAddForm = () => {
         setEditingEntry(null); setSelectedCourseId(''); setSelectedIntakeId(''); setDay(''); setStartTime(''); setEndTime(''); setVenue(''); setCourseSearch('');
@@ -286,7 +245,7 @@ export default function TimetableManagementPage() {
     }, [intakeFilter, intakes, calendarSettings]);
 
     const mergedSessions = React.useMemo(() => {
-        const sessions: Record<string, { entry: TimetableEntry; participants: { semesterId: string; name: string; standing: string; active: boolean }[] }> = {};
+        const sessions: Record<string, { entry: TimetableEntry; participants: { semesterId: string; name: string; standing: string }[] }> = {};
         
         filteredTimetable.forEach(entry => {
             const course = allCourses.find(c => c.id === entry.courseId);
@@ -295,36 +254,24 @@ export default function TimetableManagementPage() {
                 : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
 
             if (!sessions[key]) {
-                const participants: any[] = [];
-                semesters.forEach(sem => {
-                    const intake = intakes.find(i => i.id === sem.intakeId);
-                    const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
-                    if (intakeStartStr && calendarSettings) {
-                        const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                        if (sem.year === state.year && sem.semesterInYear === state.semester) {
-                            const hasEntry = masterTimetable.some(e => 
-                                e.semesterId === sem.id && 
-                                e.courseId === entry.courseId && 
-                                e.day === entry.day && 
-                                e.startTime === entry.startTime && 
-                                e.venue === entry.venue
-                            );
-                            
-                            participants.push({
-                                semesterId: sem.id,
-                                name: intake?.name || 'N/A',
-                                standing: `Y${sem.year}S${sem.semesterInYear}`,
-                                active: hasEntry
-                            });
-                        }
-                    }
+                sessions[key] = { entry, participants: [] };
+            }
+            
+            const sem = semesters.find(s => s.id === entry.semesterId);
+            const intake = intakes.find(i => i.id === sem?.intakeId);
+            const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
+            
+            if (!sessions[key].participants.find(p => p.semesterId === entry.semesterId)) {
+                sessions[key].participants.push({
+                    semesterId: entry.semesterId,
+                    name: intake?.name || entry.intakeName || 'N/A',
+                    standing
                 });
-                sessions[key] = { entry, participants };
             }
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes, calendarSettings, masterTimetable]);
+    }, [filteredTimetable, allCourses, semesters, intakes]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
@@ -412,9 +359,8 @@ export default function TimetableManagementPage() {
                                                                         {s.participants.map(p => (
                                                                             <Badge 
                                                                                 key={p.semesterId} 
-                                                                                variant={p.active ? "secondary" : "outline"} 
-                                                                                className={cn("text-[8px] h-4 cursor-pointer hover:bg-muted", !p.active && "line-through opacity-50")}
-                                                                                onClick={(e) => { e.stopPropagation(); handleToggleIntakeVisibility(s.entry, p.semesterId, !p.active); }}
+                                                                                variant="secondary" 
+                                                                                className="text-[8px] h-4"
                                                                             >
                                                                                 {p.name} ({p.standing})
                                                                             </Badge>
