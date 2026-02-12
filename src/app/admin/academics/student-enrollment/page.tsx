@@ -232,7 +232,12 @@ export default function StudentEnrollmentPage() {
                     <CardContent className="overflow-x-auto"><div className="border rounded-lg min-w-[800px]"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>{teachingTimes.slots.map((s, i) => <TableHead key={i} className="text-center font-bold border-r text-xs">{s.startTime}-{s.endTime}</TableHead>)}</TableRow></TableHeader><TableBody>{displayDays.map(day => (<TableRow key={day}><TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{day}</TableCell>{teachingTimes.slots.map((slot, sIdx) => {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
                         const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
-                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => (<div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); }}><p className="font-bold text-[10px] text-primary">{entry.courseCode}</p><p className="text-[9px] text-muted-foreground">{entry.venue}</p></div>))}</TableCell>);
+                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => (
+                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); }}>
+                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
+                                <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
+                            </div>
+                        ))}</TableCell>);
                     })}</TableRow>))}</TableBody></Table></div></CardContent></Card>
             )}
 
