@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,12 +6,16 @@ import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Users } from 'lucide-react';
+import { Users, Mail, Phone, Hash } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
 
 type Participant = { 
     uid: string;
+    id: string;
     name: string;
+    email: string;
+    phoneNumber?: string;
     role: 'Lecturer' | 'Student';
     profilePictureUrl?: string;
 };
@@ -46,50 +49,53 @@ export default function CourseParticipantsPage() {
                 const allUsers = usersSnap.val();
                 const userList: Participant[] = [];
 
-                // Add lecturer
-                if (courseData.lecturerId && allUsers[courseData.lecturerId]) {
-                    const lecturerData = allUsers[courseData.lecturerId];
-                    userList.push({
-                        uid: courseData.lecturerId,
-                        name: lecturerData.name,
-                        role: 'Lecturer',
-                        profilePictureUrl: lecturerData.profilePictureUrl
-                    });
-                     onValue(ref(db, `users/${courseData.lecturerId}`), (snapshot) => {
-                        if(snapshot.exists()) {
-                            const updatedData = snapshot.val();
-                             setParticipants(prev => prev.map(p => p.uid === courseData.lecturerId ? {...p, ...updatedData} : p));
+                // 1. Add Lecturers
+                const addLecturer = (lid: string) => {
+                    if (allUsers[lid]) {
+                        const lData = allUsers[lid];
+                        if (!userList.find(u => u.uid === lid)) {
+                            userList.push({
+                                uid: lid,
+                                id: lData.id,
+                                name: lData.name,
+                                email: lData.email,
+                                phoneNumber: lData.phoneNumber,
+                                role: 'Lecturer',
+                                profilePictureUrl: lData.profilePictureUrl
+                            });
                         }
-                    });
-                }
+                    }
+                };
+
+                if (courseData.lecturerId) addLecturer(courseData.lecturerId);
+                if (courseData.lecturerIds) courseData.lecturerIds.forEach(addLecturer);
                 
-                // Add students
+                // 2. Add Students
                 for (const userId in allRegistrations) {
                     for (const semester in allRegistrations[userId]) {
                         const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                        if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             if (allUsers[userId]) {
-                                userList.push({
-                                    uid: userId,
-                                    name: allUsers[userId].name,
-                                    role: 'Student',
-                                    profilePictureUrl: allUsers[userId].profilePictureUrl
-                                });
-                                onValue(ref(db, `users/${userId}`), (snapshot) => {
-                                    if(snapshot.exists()) {
-                                        const updatedData = snapshot.val();
-                                        setParticipants(prev => prev.map(p => p.uid === userId ? {...p, ...updatedData} : p));
-                                    }
-                                });
+                                const sData = allUsers[userId];
+                                if (!userList.find(u => u.uid === userId)) {
+                                    userList.push({
+                                        uid: userId,
+                                        id: sData.id,
+                                        name: sData.name,
+                                        email: sData.email,
+                                        phoneNumber: sData.phoneNumber,
+                                        role: 'Student',
+                                        profilePictureUrl: sData.profilePictureUrl
+                                    });
+                                }
                             }
                         }
                     }
                 }
                 
-                // Sort with lecturer first, then alphabetically
                 const sortedList = userList.sort((a, b) => {
-                    if (a.role === 'Lecturer') return -1;
-                    if (b.role === 'Lecturer') return 1;
+                    if (a.role === 'Lecturer' && b.role !== 'Lecturer') return -1;
+                    if (a.role !== 'Lecturer' && b.role === 'Lecturer') return 1;
                     return a.name.localeCompare(b.name);
                 });
 
@@ -107,15 +113,10 @@ export default function CourseParticipantsPage() {
     if(loading) {
         return (
             <Card>
-                <CardHeader>
-                    <Skeleton className="h-6 w-1/3" />
-                </CardHeader>
+                <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
                 <CardContent className="space-y-4">
                     {Array.from({ length: 5 }).map((_, index) => (
-                        <div key={index} className="flex items-center gap-4 p-2">
-                             <Skeleton className="h-10 w-10 rounded-full" />
-                             <Skeleton className="h-5 w-48" />
-                        </div>
+                        <div key={index} className="flex items-center gap-4 p-2"><Skeleton className="h-10 w-10 rounded-full" /><Skeleton className="h-5 w-48" /></div>
                     ))}
                 </CardContent>
             </Card>
@@ -125,21 +126,38 @@ export default function CourseParticipantsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Participants</CardTitle>
-                <CardDescription>The lecturer and all students enrolled in this course.</CardDescription>
+                <CardTitle>Participants List</CardTitle>
+                <CardDescription>A comprehensive list of faculty and students enrolled in this session.</CardDescription>
             </CardHeader>
             <CardContent>
                 {participants.length > 0 ? (
                      <div className="space-y-2">
                         {participants.map((p) => (
-                            <div key={p.uid} className="flex items-center gap-4 rounded-md border p-2">
-                                <Avatar>
-                                    <AvatarImage src={p.profilePictureUrl} data-ai-hint="person avatar" />
-                                    <AvatarFallback>{p.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1">
-                                    <p className="font-semibold">{p.name}</p>
-                                    <p className="text-xs text-muted-foreground">{p.role}</p>
+                            <div key={p.uid} className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+                                <div className="flex items-center gap-4">
+                                    <Avatar>
+                                        <AvatarImage src={p.profilePictureUrl} data-ai-hint="person avatar" />
+                                        <AvatarFallback>{p.name.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-bold">{p.name}</p>
+                                            <Badge variant={p.role === 'Lecturer' ? 'default' : 'outline'}>{p.role}</Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                                            <Hash className="h-3 w-3" /> {p.id}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Mail className="h-4 w-4" /> {p.email}
+                                    </div>
+                                    {p.phoneNumber && (
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Phone className="h-4 w-4" /> {p.phoneNumber}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -148,9 +166,7 @@ export default function CourseParticipantsPage() {
                     <Alert>
                         <Users className="h-4 w-4" />
                         <AlertTitle>No Participants Found</AlertTitle>
-                        <AlertDescription>
-                            There are currently no students enrolled in this course.
-                        </AlertDescription>
+                        <AlertDescription>This course does not currently have any participants listed.</AlertDescription>
                     </Alert>
                 )}
             </CardContent>

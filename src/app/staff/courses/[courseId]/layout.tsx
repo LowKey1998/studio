@@ -6,10 +6,11 @@ import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand } from 'lucide-react';
+import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand, Users, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 type Course = {
     name: string;
@@ -57,6 +58,7 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         { name: 'Lesson Plans', href: `/staff/courses/${courseId}/lesson-plans`, icon: <Route/> },
         { name: 'Attendance', href: `/staff/courses/${courseId}/attendance`, icon: <Hand /> },
         { name: 'Assessment', href: `/staff/courses/${courseId}/assessment`, icon: <ClipboardEdit/> },
+        { name: 'Participants', href: `/staff/courses/${courseId}/participants`, icon: <Users/> },
         { name: 'Messages', href: `/staff/courses/${courseId}/messages`, icon: <MessageSquare/> },
     ];
     
@@ -114,7 +116,7 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
                     return (
                         <Link key={item.name} href={item.href} passHref>
                             <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap ${isActive ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-                                {React.cloneElement(item.icon, { className: 'h-4 w-4' })}
+                                {React.cloneElement(item.icon as React.ReactElement, { className: 'h-4 w-4' })}
                                 {item.name}
                             </button>
                         </Link>
@@ -126,6 +128,3 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         </div>
     );
 }
-
-import { ShieldAlert } from 'lucide-react';
-import { Alert } from '@/components/ui/alert';
