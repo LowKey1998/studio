@@ -411,7 +411,7 @@ export const staffBaseMenuItems = [
            { href: '/staff/onboarding', label: 'My Onboarding' },
            { href: '/staff/payroll', label: 'Payroll', permission: 'Accountant' },
       ]
-  },
+    },
     {
       label: 'General',
       icon: Settings,

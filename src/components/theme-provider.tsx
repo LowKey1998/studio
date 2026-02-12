@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { db } from '@/lib/firebase';
@@ -7,10 +6,6 @@ import { ref, onValue } from 'firebase/database';
 type NamePart = {
   text: string;
   color: string;
-};
-
-type ThemeProviderProps = {
-    children: React.ReactNode;
 };
 
 type ThemeContextType = {
@@ -29,7 +24,7 @@ const ThemeContext = React.createContext<ThemeContextType>({
     loadingTheme: true,
 });
 
-// Helper function to convert hex to HSL
+// Helper function to convert hex to HSL string components (space-separated)
 const hexToHSL = (hex: string) => {
     let r = 0, g = 0, b = 0;
     if (hex.length === 4) {
@@ -55,10 +50,10 @@ const hexToHSL = (hex: string) => {
         }
         h /= 6;
     }
-    return { h: h * 360, s: s * 100, l: l * 100 };
+    return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-export function ThemeProvider({ children }: ThemeProviderProps) {
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const [institutionName, setInstitutionName] = React.useState('Edutrack360');
     const [institutionLogo, setInstitutionLogo] = React.useState<string | null>(null);
     const [institutionColor, setInstitutionColor] = React.useState<string | null>(null);
@@ -74,6 +69,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
         if (typeof window !== 'undefined') {
             document.title = name;
+            
+            // Primary Brand Color
             if (data.color) {
                 const { h, s, l } = hexToHSL(data.color);
                 document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
@@ -83,6 +80,30 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
                 document.documentElement.style.removeProperty('--primary');
                 document.documentElement.style.removeProperty('--primary-foreground');
             }
+
+            // Top Bar Background
+            if (data.topBarColor) {
+                const { h, s, l } = hexToHSL(data.topBarColor);
+                document.documentElement.style.setProperty('--header-background', `${h} ${s}% ${l}%`);
+            } else {
+                document.documentElement.style.removeProperty('--header-background');
+            }
+
+            // Sidebar Background
+            if (data.sidebarColor) {
+                const { h, s, l } = hexToHSL(data.sidebarColor);
+                document.documentElement.style.setProperty('--sidebar-background', `${h} ${s}% ${l}%`);
+            } else {
+                document.documentElement.style.removeProperty('--sidebar-background');
+            }
+
+            // Sidebar Text
+            if (data.sidebarTextColor) {
+                const { h, s, l } = hexToHSL(data.sidebarTextColor);
+                document.documentElement.style.setProperty('--sidebar-foreground', `${h} ${s}% ${l}%`);
+            } else {
+                document.documentElement.style.removeProperty('--sidebar-foreground');
+            }
         }
     }, []);
 
@@ -91,27 +112,19 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
         const unsubscribe = onValue(settingsRef, (snapshot) => {
             if (snapshot.exists()) {
                 applyTheme(snapshot.val());
-            } else {
-                 if (typeof window !== 'undefined') {
-                    document.title = 'Edutrack360';
-                }
             }
-             setLoadingTheme(false);
+            setLoadingTheme(false);
         }, () => {
             setLoadingTheme(false);
         });
         return () => unsubscribe();
     }, [applyTheme]);
 
-    const value = { institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme };
-
     return (
-        <ThemeContext.Provider value={value}>
+        <ThemeContext.Provider value={{ institutionName, institutionLogo, institutionColor, institutionNameParts, loadingTheme }}>
             {children}
         </ThemeContext.Provider>
     );
 }
 
-export const useTheme = () => {
-    return React.useContext(ThemeContext);
-};
+export const useTheme = () => React.useContext(ThemeContext);

@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -13,6 +12,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import { removeBackground } from '@/ai/flows/remove-background-flow';
+import { Separator } from '@/components/ui/separator';
 
 type NamePart = {
   text: string;
@@ -23,6 +23,9 @@ type Institution = {
   name: string;
   logoUrl?: string | null;
   color?: string;
+  topBarColor?: string;
+  sidebarColor?: string;
+  sidebarTextColor?: string;
   nameParts?: NamePart[];
 };
 
@@ -44,10 +47,19 @@ export default function InstitutionSettingsPage() {
                     name: data.name || 'Edutrack360',
                     logoUrl: data.logoUrl,
                     color: data.color,
+                    topBarColor: data.topBarColor || '#ffffff',
+                    sidebarColor: data.sidebarColor || '#ffffff',
+                    sidebarTextColor: data.sidebarTextColor || '#000000',
                     nameParts: data.nameParts || (data.name ? data.name.split(' ').map((word: string) => ({ text: word, color: '#000000' })) : [])
                 });
             } else {
-                 setInstitution({ name: 'Edutrack360', nameParts: [{text: 'Edutrack360', color: '#000000'}] });
+                 setInstitution({ 
+                    name: 'Edutrack360', 
+                    nameParts: [{text: 'Edutrack360', color: '#000000'}],
+                    topBarColor: '#ffffff',
+                    sidebarColor: '#ffffff',
+                    sidebarTextColor: '#000000'
+                });
             }
             setLoading(false);
         });
@@ -87,22 +99,20 @@ export default function InstitutionSettingsPage() {
         if (window.confirm("Are you sure you want to remove the logo? This will be finalized when you save changes.")) {
             setLogoFile(null);
             setLogoPreview(null);
-            setInstitution(prev => ({ ...prev, logoUrl: null })); // Clear the current logo URL from state
+            setInstitution(prev => ({ ...prev, logoUrl: null }));
             setLogoAction('remove');
-            toast({ title: 'Logo Marked for Removal', description: 'Click "Save Changes" to confirm.' });
+            toast({ title: 'Logo Marked for Removal' });
         }
     };
 
     const handleRemoveBackground = async () => {
         const imageUrl = logoPreview || institution.logoUrl;
         if (!imageUrl) {
-            toast({ variant: 'destructive', title: 'No logo selected', description: 'Please upload a logo first.' });
+            toast({ variant: 'destructive', title: 'No logo selected' });
             return;
         }
 
         setSaving(true);
-        toast({ title: 'AI Magic in Progress...', description: 'Removing the logo background. This may take a moment.' });
-        
         try {
             const response = await fetch(imageUrl);
             const blob = await response.blob();
@@ -116,18 +126,16 @@ export default function InstitutionSettingsPage() {
                     const newFile = new File([newBlob], "logo_transparent.png", { type: "image/png" });
                     setLogoFile(newFile);
                     setLogoAction('upload');
-                    toast({ variant: 'success', title: 'Background Removed!', description: 'The logo now has a transparent background. Don\'t forget to save.' });
+                    toast({ variant: 'success', title: 'Background Removed!' });
                 } catch (aiError: any) {
-                    console.error("Background removal error:", aiError);
-                    toast({ variant: 'destructive', title: 'AI Failed', description: aiError.message || 'Could not remove background. The image might be too complex or in an unsupported format.' });
+                    toast({ variant: 'destructive', title: 'AI Failed', description: aiError.message });
                 } finally {
                     setSaving(false);
                 }
             };
             reader.readAsDataURL(blob);
         } catch (fetchError: any) {
-             console.error("Error fetching image for background removal:", fetchError);
-             toast({ variant: 'destructive', title: 'Image Fetch Failed', description: 'Could not load the image to process it.'});
+             toast({ variant: 'destructive', title: 'Image Fetch Failed' });
              setSaving(false);
         }
     };
@@ -151,12 +159,14 @@ export default function InstitutionSettingsPage() {
                 name: institution.name,
                 logoUrl: finalLogoUrl,
                 color: institution.color,
+                topBarColor: institution.topBarColor,
+                sidebarColor: institution.sidebarColor,
+                sidebarTextColor: institution.sidebarTextColor,
                 nameParts: institution.nameParts,
             };
 
             await update(settingsRef, updates);
-            setLogoAction('keep'); // Reset action state after saving
-            
+            setLogoAction('keep');
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
@@ -167,48 +177,99 @@ export default function InstitutionSettingsPage() {
 
     const currentLogoUrl = logoAction === 'remove' ? null : logoPreview || institution.logoUrl;
 
+    if (loading) return <Skeleton className="h-screen w-full" />;
+
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Institution Settings</CardTitle>
-                    <CardDescription>Set your institution's name, logo, and primary color for branding on documents and the portal.</CardDescription>
+                    <CardDescription>Set your institution's name, logo, and theme colors for consistent branding.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start">
-                        <Label htmlFor="institution-name">Institution Name</Label>
+                <CardContent className="space-y-8">
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label htmlFor="institution-name" className="pt-2">Institution Name</Label>
                         <div className="sm:col-span-2 space-y-4">
                             <Input id="institution-name" value={institution.name} onChange={(e) => handleNameChange(e.target.value)} className="max-w-sm" disabled={saving} />
                             <div className="space-y-2">
                                 {institution.nameParts?.map((part, index) => (
                                     <div key={index} className="flex items-center gap-2">
                                         <Input value={part.text} onChange={(e) => handlePartTextChange(index, e.target.value)} disabled={saving} />
-                                        <Input type="color" value={part.color} onChange={(e) => handlePartColorChange(index, e.target.value)} className="w-12 h-10 p-1" disabled={saving}/>
+                                        <Input type="color" value={part.color} onChange={(e) => handlePartColorChange(index, e.target.value)} className="w-12 h-10 p-1 shrink-0" disabled={saving}/>
                                     </div>
                                 ))}
                             </div>
                         </div>
                      </div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start"><Label htmlFor="institution-logo">Institution Logo</Label><div className="sm:col-span-2 flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
-                            {currentLogoUrl ? (<Image src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <Input id="institution-logo" type="file" onChange={handleFileSelect} accept="image/*" className="max-w-xs"/>
-                             <div className="flex gap-2">
-                                <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || !currentLogoUrl}>
-                                    <Wand2 className="mr-2 h-4 w-4"/>
-                                    Remove Background (AI)
-                                </Button>
-                                 <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLogo} disabled={saving || !currentLogoUrl}>
-                                    <Trash2 className="mr-2 h-4 w-4"/>
-                                    Remove Logo
-                                </Button>
-                             </div>
-                        </div>
+
+                     <Separator />
+
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2">Institution Logo</Label>
+                        <div className="sm:col-span-2 flex items-center gap-4">
+                            <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
+                                {currentLogoUrl ? (<Image src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <Input id="institution-logo" type="file" onChange={handleFileSelect} accept="image/*" className="max-w-xs"/>
+                                <div className="flex gap-2">
+                                    <Button type="button" variant="outline" size="sm" onClick={handleRemoveBackground} disabled={saving || !currentLogoUrl}>
+                                        <Wand2 className="mr-2 h-4 w-4"/>
+                                        Remove Background (AI)
+                                    </Button>
+                                    <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLogo} disabled={saving || !currentLogoUrl}>
+                                        <Trash2 className="mr-2 h-4 w-4"/>
+                                        Remove Logo
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                      </div>
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Label htmlFor="institution-color">Primary Theme Color</Label><div className="sm:col-span-2"><Input id="institution-color" type="color" value={institution.color || '#4c1d95'} onChange={(e) => setInstitution(p => ({...p, color: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/></div></div>
+
+                     <Separator />
+
+                     <div className="space-y-6">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">Visual Branding & Theme</h3>
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
+                            <div className="space-y-1">
+                                <Label htmlFor="institution-color">Primary Theme Color</Label>
+                                <p className="text-xs text-muted-foreground">Used for buttons and primary accents.</p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <Input id="institution-color" type="color" value={institution.color || '#4c1d95'} onChange={(e) => setInstitution(p => ({...p, color: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
+                            <div className="space-y-1">
+                                <Label htmlFor="top-bar-color">Top Bar Background</Label>
+                                <p className="text-xs text-muted-foreground">Sets the color of the global header.</p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <Input id="top-bar-color" type="color" value={institution.topBarColor || '#ffffff'} onChange={(e) => setInstitution(p => ({...p, topBarColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
+                            <div className="space-y-1">
+                                <Label htmlFor="sidebar-color">Sidebar Background</Label>
+                                <p className="text-xs text-muted-foreground">Sets the background of the navigation menu.</p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <Input id="sidebar-color" type="color" value={institution.sidebarColor || '#ffffff'} onChange={(e) => setInstitution(p => ({...p, sidebarColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-center">
+                            <div className="space-y-1">
+                                <Label htmlFor="sidebar-text-color">Sidebar Text Color</Label>
+                                <p className="text-xs text-muted-foreground">Adjust for contrast against the sidebar background.</p>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <Input id="sidebar-text-color" type="color" value={institution.sidebarTextColor || '#000000'} onChange={(e) => setInstitution(p => ({...p, sidebarTextColor: e.target.value}))} className="w-24 h-12 p-1" disabled={saving}/>
+                            </div>
+                        </div>
+                     </div>
                 </CardContent>
                 <CardFooter className="border-t pt-6">
                      <Button type="submit" disabled={saving || loading}>
