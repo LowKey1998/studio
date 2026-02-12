@@ -6,7 +6,7 @@ import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, 
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, set, push, onValue, remove } from 'firebase/database';
+import { ref, get, set, push, onValue, remove, update } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -73,8 +73,9 @@ export default function TimetableManagementPage() {
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
 
-    // Add Entry state
+    // Add/Edit Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
+    const [editingEntry, setEditingEntry] = React.useState<TimetableEntry | null>(null);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [day, setDay] = React.useState('');
@@ -168,7 +169,7 @@ export default function TimetableManagementPage() {
         }
     };
 
-    const handleAddEntry = async () => {
+    const handleSaveEntry = async () => {
         if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
             toast({ variant: 'destructive', title: 'Please fill all required fields' });
             return;
@@ -176,19 +177,27 @@ export default function TimetableManagementPage() {
         setSaving(true);
         try {
             const intakeName = intakes.find(i => i.id === selectedIntakeId)?.name || 'Master';
-            const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
-            await set(entryRef, { 
+            const data = { 
                 day, 
                 startTime, 
                 endTime, 
                 venue: venue || 'TBA',
                 intakeName 
-            });
-            toast({ title: "Entry Added" });
+            };
+
+            if (editingEntry) {
+                const entryRef = ref(db, `timetables/${editingEntry.semesterId}/${editingEntry.courseId}/${editingEntry.id}`);
+                await update(entryRef, data);
+                toast({ title: "Entry Updated" });
+            } else {
+                const entryRef = push(ref(db, `timetables/master/${selectedCourseId}`));
+                await set(entryRef, data);
+                toast({ title: "Entry Added" });
+            }
             setIsAddOpen(false);
             resetAddForm();
         } catch (e: any) {
-            toast({ variant: 'destructive', title: "Failed to add entry" });
+            toast({ variant: 'destructive', title: "Failed to save entry" });
         } finally {
             setSaving(false);
         }
@@ -205,6 +214,7 @@ export default function TimetableManagementPage() {
     };
 
     const resetAddForm = () => {
+        setEditingEntry(null);
         setSelectedCourseId('');
         setSelectedIntakeId('');
         setDay('');
@@ -215,12 +225,25 @@ export default function TimetableManagementPage() {
     };
 
     const handleCellClick = (selectedDay: string, slot: TimeSlot) => {
+        setEditingEntry(null);
         setDay(selectedDay);
         setStartTime(slot.startTime);
         setEndTime(slot.endTime);
         if (intakeFilter !== 'all') {
             setSelectedIntakeId(intakeFilter);
         }
+        setIsAddOpen(true);
+    };
+
+    const handleEditClick = (entry: TimetableEntry) => {
+        setEditingEntry(entry);
+        setSelectedCourseId(entry.courseId);
+        const intake = intakes.find(i => i.name === entry.intakeName);
+        setSelectedIntakeId(intake?.id || '');
+        setDay(entry.day);
+        setStartTime(entry.startTime);
+        setEndTime(entry.endTime);
+        setVenue(entry.venue);
         setIsAddOpen(true);
     };
 
@@ -260,7 +283,7 @@ export default function TimetableManagementPage() {
                         <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
                             <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
                             <DialogContent className="sm:max-w-lg">
-                                <DialogHeader><DialogTitle>Manual Schedule Entry</DialogTitle></DialogHeader>
+                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : 'Manual Schedule Entry'}</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
                                     <div className="space-y-1">
                                         <Label>Target Intake</Label>
@@ -336,7 +359,7 @@ export default function TimetableManagementPage() {
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleAddEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
+                                    <Button onClick={handleSaveEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -415,7 +438,11 @@ export default function TimetableManagementPage() {
                                                     >
                                                         <div className="space-y-2">
                                                             {sessionsInSlot.map((entry, eIdx) => (
-                                                                <div key={`${entry.id}-${eIdx}`} className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm">
+                                                                <div 
+                                                                    key={`${entry.id}-${eIdx}`} 
+                                                                    className="group relative p-2 rounded-md border bg-background hover:bg-primary/5 transition-colors border-primary/20 shadow-sm"
+                                                                    onClick={(e) => { e.stopPropagation(); handleEditClick(entry); }}
+                                                                >
                                                                     <Button 
                                                                         variant="ghost" 
                                                                         size="icon" 

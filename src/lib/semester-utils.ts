@@ -98,7 +98,6 @@ export function calculateAcademicState(
     const cyclesPerYear = sortedCycles.length || 1;
 
     // 2. Determine Study Year
-    // A Study Year increments after every full rotation of institutional cycles relative to the start.
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     // 3. Determine Study Semester (Progressive relative to student start)

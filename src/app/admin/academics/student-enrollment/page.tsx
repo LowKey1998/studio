@@ -579,7 +579,7 @@ export default function StudentEnrollmentPage() {
                                                 </div>
                                             </div>
                                             <Button size="sm" variant="outline" onClick={() => performEnrollmentAction('enroll', s)} disabled={!!actionLoading}>
-                                                {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}
+                                                {actionLoading === s.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}
                                             </Button>
                                         </div>
                                     ))}
