@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle } from 'lucide-react';
+import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, set } from 'firebase/database';
@@ -35,6 +35,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
@@ -310,7 +311,7 @@ export default function StudentEnrollmentPage() {
                             <div className="space-y-1"><Label>Body (HTML)</Label><Textarea rows={10} value={removalTemplate.body} onChange={e=>setRemovalTemplate(p=>({...p, body: e.target.value}))}/></div>
                         </TabsContent>
                     </Tabs>
-                    <DialogFooter><Button onClick={()=>setIsConfigOpen(false)}>Save Templates</Button></DialogFooter>
+                    <DialogFooter><Button onClick={() => setIsConfigOpen(false)}>Save Templates</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
