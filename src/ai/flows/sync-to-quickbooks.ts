@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -7,7 +6,23 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll, voidQbInvoice as voidQbInvoiceService, createQbPayment as createQbPaymentService } from '@/services/quickbooks';
+import { createQbInvoice, createQbExpense, createQbJournalEntryForPayroll, voidQbInvoice as voidQbInvoiceService, createQbPayment as createQbPaymentService, getQbInvoices } from '@/services/quickbooks';
+
+// --- Fetch Invoices ---
+export async function fetchInvoicesFromQuickbooks(): Promise<any[]> {
+    return await fetchInvoicesFlow();
+}
+
+const fetchInvoicesFlow = ai.defineFlow(
+    {
+        name: 'fetchInvoicesFlow',
+        inputSchema: z.void(),
+        outputSchema: z.array(z.any()),
+    },
+    async () => {
+        return await getQbInvoices();
+    }
+);
 
 // --- Invoice Sync ---
 
@@ -37,6 +52,7 @@ const syncInvoiceFlow = ai.defineFlow(
       CustomerRef: { name: input.studentName, value: input.studentId }, // Using studentId
       Line: [{
         Amount: input.amount,
+        Description: input.description,
         DetailType: 'SalesItemLineDetail',
         SalesItemLineDetail: {
           ItemRef: { value: '1' } // Assuming a generic service item with ID '1'

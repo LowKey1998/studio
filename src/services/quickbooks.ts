@@ -76,6 +76,24 @@ const findOrCreateCustomer = async (qbo: any, studentName: string, studentId: st
 // --- REAL API FUNCTIONS ---
 
 /**
+ * Fetches the most recent invoices from QuickBooks.
+ */
+export async function getQbInvoices(): Promise<any[]> {
+    const qbo = await getQuickBooksClient();
+    const findInvoicesAsync = promisify(qbo, qbo.findInvoices);
+    try {
+        const response: any = await findInvoicesAsync({
+            limit: 10,
+            sort: 'MetaData.CreateTime DESC'
+        });
+        return response.QueryResponse.Invoice || [];
+    } catch (error) {
+        console.error('Error in QuickBooks findInvoices:', error);
+        throw error;
+    }
+}
+
+/**
  * Synchronizes a system invoice to QuickBooks as a new Invoice entity.
  */
 export async function createQbInvoice(invoiceData: { 
