@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -191,8 +190,9 @@ export default function ProgrammesPage() {
     
      const handleCreateCourse = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!courseName || !courseCode || !selectedLecturerId || !courseCost || !courseYear) {
-            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out all fields to add a course.' });
+        // Updated validation: only Name and Code are mandatory
+        if (!courseName || !courseCode) {
+            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out Name and Code to add a course.' });
             return;
         }
         setCourseFormLoading(true);
@@ -200,9 +200,9 @@ export default function ProgrammesPage() {
             const courseData = {
                 name: courseName,
                 code: courseCode,
-                cost: Number(courseCost),
-                year: Number(courseYear),
-                lecturerId: selectedLecturerId,
+                cost: courseCost ? Number(courseCost) : 0,
+                year: courseYear ? Number(courseYear) : 1,
+                lecturerId: selectedLecturerId || null,
                 status: 'active' as 'active',
             };
             const newCourseRef = push(ref(db, 'courses'));
@@ -238,7 +238,7 @@ export default function ProgrammesPage() {
         );
 
         return filtered.reduce((acc, course) => {
-            const yearKey = `Year ${course.year}`;
+            const yearKey = `Year ${course.year || 'Not Set'}`;
             if (!acc[yearKey]) acc[yearKey] = [];
             acc[yearKey].push(course);
             return acc;
@@ -302,7 +302,7 @@ export default function ProgrammesPage() {
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <Label htmlFor="programme-name">Programme Name</Label>
+                                <Label htmlFor="programme-name">Programme Name *</Label>
                                 <Input
                                     id="programme-name"
                                     value={programmeName}
@@ -311,7 +311,7 @@ export default function ProgrammesPage() {
                                 />
                             </div>
                              <div className="space-y-1">
-                                <Label htmlFor="programme-tuition">Programme Tuition Fee (per Semester)</Label>
+                                <Label htmlFor="programme-tuition">Programme Tuition Fee (per Semester) (Optional)</Label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">ZMW</span>
                                     <Input
@@ -343,28 +343,29 @@ export default function ProgrammesPage() {
                                         </DialogHeader>
                                          <div className="grid gap-4 py-4">
                                             <div className="space-y-1">
-                                                <Label htmlFor="courseName">Name</Label>
+                                                <Label htmlFor="courseName">Name *</Label>
                                                 <Input id="courseName" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={courseFormLoading} />
                                             </div>
                                             <div className="space-y-1">
-                                                <Label htmlFor="courseCode">Code</Label>
+                                                <Label htmlFor="courseCode">Code *</Label>
                                                 <Input id="courseCode" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={courseFormLoading} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1">
-                                                    <Label htmlFor="courseCost">Cost (ZMW)</Label>
+                                                    <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
                                                     <Input id="courseCost" type="number" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={courseFormLoading}/>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label htmlFor="courseYear">Year</Label>
+                                                    <Label htmlFor="courseYear">Year (Optional)</Label>
                                                     <Input id="courseYear" type="number" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={courseFormLoading}/>
                                                 </div>
                                             </div>
                                             <div className="space-y-1">
-                                                <Label htmlFor="lecturer">Lecturer</Label>
+                                                <Label htmlFor="lecturer">Lecturer (Optional)</Label>
                                                 <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={courseFormLoading}>
                                                     <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
                                                     <SelectContent>
+                                                        <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
                                                         {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
                                                     </SelectContent>
                                                 </Select>

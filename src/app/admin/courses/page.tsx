@@ -250,10 +250,10 @@ export default function CoursesPage() {
         setEditingCourse(course);
         setCourseName(course.name);
         setCourseCode(course.code);
-        setCourseCost(String(course.cost));
-        setCourseYear(String(course.year));
+        setCourseCost(String(course.cost || ''));
+        setCourseYear(String(course.year || ''));
         setCourseCredits(String(course.credits || ''));
-        setSelectedLecturerId(course.lecturerId);
+        setSelectedLecturerId(course.lecturerId || '');
         
         const initialSelectedProgrammes: Record<string, boolean> = {};
         programmes.forEach(prog => {
@@ -267,11 +267,12 @@ export default function CoursesPage() {
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!courseName || !courseCode || !selectedLecturerId || !courseCost || !courseYear) {
+        // Updated validation: Only Name and Code are mandatory
+        if (!courseName || !courseCode) {
             toast({
                 variant: 'destructive',
                 title: 'Missing Fields',
-                description: 'Please fill out all fields to add or update a course.',
+                description: 'Please provide at least a Course Name and Course Code.',
             });
             return;
         }
@@ -281,9 +282,9 @@ export default function CoursesPage() {
             name: courseName,
             code: courseCode,
             credits: courseCredits ? Number(courseCredits) : null,
-            cost: Number(courseCost),
-            year: Number(courseYear),
-            lecturerId: selectedLecturerId,
+            cost: courseCost ? Number(courseCost) : 0,
+            year: courseYear ? Number(courseYear) : 1,
+            lecturerId: selectedLecturerId || null,
             status: 'active' as 'active',
         };
 
@@ -430,7 +431,7 @@ export default function CoursesPage() {
         });
 
         return filtered.reduce((acc, course) => {
-            const yearKey = `Year ${course.year}`;
+            const yearKey = `Year ${course.year || 'Not Set'}`;
             if (!acc[yearKey]) {
                 acc[yearKey] = [];
             }
@@ -458,47 +459,46 @@ export default function CoursesPage() {
                             <DialogHeader>
                                 <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
                                 <DialogDescription>
-                                    Define academic parameters and assign a primary lecturer.
+                                    Define academic parameters and assign a lecturer.
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseName">Course Name</Label>
+                                        <Label htmlFor="courseName">Course Name *</Label>
                                         <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
                                     </div>
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseCode">Course Code</Label>
+                                        <Label htmlFor="courseCode">Course Code *</Label>
                                         <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseCredits">Credits</Label>
+                                        <Label htmlFor="courseCredits">Credits (Optional)</Label>
                                         <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseCost">Cost (ZMW)</Label>
+                                        <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
                                         <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label htmlFor="courseYear">Academic Year</Label>
+                                        <Label htmlFor="courseYear">Academic Year (Optional)</Label>
                                         <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label htmlFor="lecturer">Primary Lecturer</Label>
+                                    <Label htmlFor="lecturer">Lecturer (Optional)</Label>
                                     <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
                                         <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
                                         <SelectContent>
-                                            {lecturers.length > 0 ? (
-                                                lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))
-                                            ) : ( <SelectItem value="none" disabled>No lecturers found</SelectItem> )}
+                                            <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
+                                            {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Assign to Programmes</Label>
+                                    <Label>Assign to Programmes (Optional)</Label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
                                         {programmes.map(prog => (
                                             <div key={prog.id} className="flex items-center gap-2">
@@ -560,7 +560,13 @@ export default function CoursesPage() {
                         {loading ? (
                             Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>)
                         ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
-                           Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => parseInt(a.replace('Year ', '')) - parseInt(b.replace('Year ', ''))).map(([year, courses]) => (
+                           Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => {
+                               const numA = parseInt(a.replace('Year ', ''));
+                               const numB = parseInt(b.replace('Year ', ''));
+                               if (isNaN(numA)) return 1;
+                               if (isNaN(numB)) return -1;
+                               return numA - numB;
+                           }).map(([year, courses]) => (
                                <AccordionItem value={year} key={year} className="border rounded-lg bg-card overflow-hidden">
                                    <AccordionTrigger className="font-bold text-lg px-4 hover:no-underline">{year} Courses <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
                                    <AccordionContent className="px-0">
