@@ -19,7 +19,8 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileDialog } from "../profile-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { onValue, ref } from 'firebase/database';
+import { onValue, ref, update, serverTimestamp } from 'firebase/database';
+import { signOut } from 'firebase/auth';
 
 export function UserNav() {
   const { user, userProfile: initialProfile, loading } = useAuth();
@@ -48,7 +49,10 @@ export function UserNav() {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      if (user) {
+        await update(ref(db, `users/${user.uid}`), { isOnline: false, lastSeen: serverTimestamp() });
+      }
+      await signOut(auth);
       toast({
         title: "Logged Out",
         description: "You have been successfully logged out.",
@@ -84,19 +88,38 @@ export function UserNav() {
 
   return (
     <>
-    <div className="flex items-center gap-2">
-        <span className="text-sm font-medium hidden md:inline-block">{userProfile?.name}</span>
-        <Button
-            variant="ghost"
-            className="relative h-10 w-10 rounded-full"
-            onClick={() => setIsProfileOpen(true)}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+            className="relative h-10 w-10 rounded-full focus:outline-none transition-transform hover:scale-105 active:scale-95"
         >
             <Avatar className="h-10 w-10 border-2 border-transparent hover:border-primary transition-colors">
             <AvatarImage src={userProfile?.profilePictureUrl || undefined} alt={userProfile?.name || 'User'} data-ai-hint="profile picture" />
             <AvatarFallback>{userProfile?.name ? getInitials(userProfile.name) : user.email ? getInitials(user.email) : 'U'}</AvatarFallback>
             </Avatar>
-        </Button>
-    </div>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56" align="end" forceMount>
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-1">
+            <p className="text-sm font-medium leading-none">{userProfile?.name}</p>
+            <p className="text-xs leading-none text-muted-foreground truncate">{user.email}</p>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => setIsProfileOpen(true)} className="cursor-pointer">
+            <UserIcon className="mr-2 h-4 w-4" />
+            <span>Profile Settings</span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive cursor-pointer">
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Log out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
 
     {user && (
       <ProfileDialog
