@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -87,9 +88,7 @@ const SidebarProvider = React.forwardRef<
     )
 
     const toggleSidebar = React.useCallback(() => {
-      // Robust check for mobile view to ensure the correct state is toggled
-      const isActuallyMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : isMobile;
-      return isActuallyMobile
+      return isMobile
         ? setOpenMobile((open) => !open)
         : setOpen((open) => !open)
     }, [isMobile, setOpen, setOpenMobile])

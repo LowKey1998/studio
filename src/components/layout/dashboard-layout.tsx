@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from 'react';
@@ -11,6 +12,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInput,
+  SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
@@ -259,7 +261,10 @@ export default function DashboardLayout({
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar>
           <SidebarHeader>
-            <Logo />
+            <div className="flex items-center justify-between w-full">
+                <Logo />
+                <SidebarTrigger className="md:hidden" />
+            </div>
           </SidebarHeader>
           <div className="flex flex-col p-2">
               <SidebarInput placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
