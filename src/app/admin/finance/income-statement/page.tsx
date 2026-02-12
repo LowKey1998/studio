@@ -6,9 +6,10 @@ import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type IncomeItem = { category: string; amount: number };
 
@@ -61,7 +62,7 @@ export default function IncomeStatementPage() {
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                         <CardTitle>Income Statement (P&L)</CardTitle>
                         <CardDescription>Summary of revenue and expenses for the selected period.</CardDescription>
