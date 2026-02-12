@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -195,7 +194,7 @@ export default function ApproveRegistrationsPage() {
                                      if(prevSemesterId === semesterId) continue;
                                      const prevReg = userRegistrations[prevSemesterId];
                                      if(prevReg.status === 'Completed') {
-                                         prevReg.courses.forEach((courseId: string) => {
+                                         (prevReg.courses || []).forEach((courseId: string) => {
                                              const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
                                              academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
                                          });
@@ -209,7 +208,7 @@ export default function ApproveRegistrationsPage() {
                                     studentName: userData.name,
                                     studentId: userData.id,
                                     studentIntakeId: userData.intakeId,
-                                    courseIds: registration.courses,
+                                    courseIds: registration.courses || [],
                                     invoiceId: registration.invoiceId,
                                     registrationDate: registration.registrationDate,
                                     status: registration.status,
