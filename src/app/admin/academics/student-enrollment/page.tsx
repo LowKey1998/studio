@@ -81,12 +81,13 @@ export default function StudentEnrollmentPage() {
     const [enrolledStudents, setEnrolledStudents] = React.useState<EnrolledStudent[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
-    const [studentIntakeFilter, setIntakeFilter] = React.useState('all');
     
+    // Bulk state
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
     const [selectedEnrolledUids, setSelectedEnrolledUids] = React.useState<Record<string, boolean>>({});
     const [sendEmails, setSendEmails] = React.useState(true);
     
+    // Template state
     const [isConfigOpen, setIsConfigOpen] = React.useState(false);
     const [enrollmentTemplate, setEnrollmentTemplate] = React.useState({
         subject: 'Class Enrollment Notification: [CourseCode]',
@@ -169,7 +170,7 @@ export default function StudentEnrollmentPage() {
                 const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
                 const targetSemester = semesters.find(s => s.intakeId === studentIntake.id && s.year === state.year && s.semesterInYear === state.semester);
                 
-                if (!targetSemester) throw new Error(`No semester found for ${student.name} in Year ${state.year}, Sem ${state.semester}. Please set up the target semester first.`);
+                if (!targetSemester) throw new Error(`No semester found for ${student.name} in Year ${state.year}, Sem ${state.semester}.`);
 
                 const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
                 const regSnap = await get(regRef);
@@ -219,7 +220,7 @@ export default function StudentEnrollmentPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div><CardTitle>Enrollment Management</CardTitle><CardDescription>Manage class lists by intake schedule.</CardDescription></div>
-                    <Button variant="outline" onClick={() => setIsConfigOpen(true)}><Settings2 className="mr-2 h-4 w-4"/>Email Templates</Button>
+                    <Button variant="outline" onClick={() => setIsConfigOpen(true)}><Settings2 className="mr-2 h-4 w-4"/>Email Settings</Button>
                 </CardHeader>
                 <CardContent>
                     <div className="max-w-sm"><Label>Select Intake</Label><Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
@@ -300,7 +301,11 @@ export default function StudentEnrollmentPage() {
             
             <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
                 <DialogContent className="max-w-2xl">
-                    <DialogHeader><DialogTitle>Email Notification Templates</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Email Notification Settings</DialogTitle></DialogHeader>
+                    <div className="flex items-center space-x-2 p-4 bg-muted/20 rounded-md mb-4">
+                        <Switch id="send-emails" checked={sendEmails} onCheckedChange={setSendEmails} />
+                        <Label htmlFor="send-emails">Enable Enrollment/Removal Emails</Label>
+                    </div>
                     <Tabs defaultValue="enroll"><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="enroll">Enrollment</TabsTrigger><TabsTrigger value="remove">Removal</TabsTrigger></TabsList>
                         <TabsContent value="enroll" className="space-y-4 pt-4">
                             <div className="space-y-1"><Label>Subject</Label><Input value={enrollmentTemplate.subject} onChange={e=>setEnrollmentTemplate(p=>({...p, subject: e.target.value}))}/></div>
@@ -311,7 +316,7 @@ export default function StudentEnrollmentPage() {
                             <div className="space-y-1"><Label>Body (HTML)</Label><Textarea rows={10} value={removalTemplate.body} onChange={e=>setRemovalTemplate(p=>({...p, body: e.target.value}))}/></div>
                         </TabsContent>
                     </Tabs>
-                    <DialogFooter><Button onClick={() => setIsConfigOpen(false)}>Save Templates</Button></DialogFooter>
+                    <DialogFooter><Button onClick={() => setIsConfigOpen(false)}>Save Settings</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

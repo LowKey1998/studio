@@ -249,7 +249,7 @@ export default function SettingsPage() {
                             <AccordionTrigger className="font-bold flex gap-2"><Facebook className="h-4 w-4"/>Facebook Leads API</AccordionTrigger>
                             <AccordionContent className="space-y-4 pt-4">
                                 <div className="space-y-1"><Label>Page Access Token</Label><Input type="password" value={integrations.facebook?.pageAccessToken} onChange={e => handleIntegrationChange('facebook', 'pageAccessToken', e.target.value)}/></div>
-                                <div className="space-y-1"><Label>Lead Form ID</Label><Input value={integrations.facebook?.formId} onChange={e => handleIntegrationChange('facebook', 'formId', e.target.value)}/></div>
+                                <div className="space-y-1"><Label>Lead Form ID</Label><Input type="password" value={integrations.facebook?.formId} onChange={e => handleIntegrationChange('facebook', 'formId', e.target.value)}/></div>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
@@ -306,7 +306,7 @@ export default function SettingsPage() {
                                     <Switch checked={emailTemplates.passwordUpdate.enabled} onCheckedChange={val => handleTemplateChange('passwordUpdate', 'enabled', val)} />
                                 </div>
                                 <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.passwordUpdate.subject} onChange={e => handleTemplateChange('passwordUpdate', 'subject', e.target.value)} /></div>
-                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={8} className="font-mono text-xs" /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={12} className="font-mono text-xs" /></div>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
