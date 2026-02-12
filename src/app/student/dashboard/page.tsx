@@ -388,7 +388,7 @@ export default function StudentDashboardPage() {
                         </CardContent>
                         <CardFooter>
                             <Button variant="ghost" size="sm" className="w-full text-xs" asChild>
-                                <Link href="/student/courses">View All Results</Link>
+                                <Link href="/student/courses/results">View All Results</Link>
                             </Button>
                         </CardFooter>
                     </Card>
