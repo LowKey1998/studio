@@ -18,7 +18,6 @@ async function getQuickBooksClient() {
     }
 
     // Initialize QuickBooks Client
-    // process.env.NODE_ENV === 'production' determines if we use Sandbox or Production
     const qbo = new QuickBooks(
         settings.clientId,
         settings.clientSecret,
