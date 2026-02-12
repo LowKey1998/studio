@@ -12,11 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, Calendar as CalendarIcon, Search, LayoutGrid, CalendarDays, ListFilter, UserSearch, Settings2 } from 'lucide-react';
+import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, Calendar as CalendarIcon, Search, LayoutGrid, CalendarDays, ListFilter, UserSearch, Settings2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, startOfMonth, endOfMonth, parseISO, getDay, addMonths, subMonths, isToday } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
@@ -46,6 +46,7 @@ type AttendanceStatus = "Present" | "Absent" | "Late" | "Excused Absence";
 type AttendanceRecord = Record<string, AttendanceStatus>;
 
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const timeToMinutes = (time: string) => {
     if (!time) return 0;
@@ -63,8 +64,9 @@ export default function AdminMarkAttendancePage() {
 
     // Filter/View State
     const [selectedIntake, setSelectedIntake] = React.useState<string>('');
-    const [viewMode, setViewMode] = React.useState<'marking' | 'weekly' | 'monthly' | 'semester' | 'student'>('marking');
+    const [viewMode, setViewMode] = React.useState<'marking' | 'monthly' | 'semester' | 'student'>('marking');
     const [defaultView, setDefaultView] = React.useState('marking');
+    const [viewMonth, setViewMonth] = React.useState(new Date());
     
     // Marking Dialog State
     const [activeSession, setActiveSession] = React.useState<TimetableEntry | null>(null);
@@ -112,7 +114,7 @@ export default function AdminMarkAttendancePage() {
             });
             setCourseAttendanceData(aData);
             setDefaultView(prefData.defaultView);
-            setViewMode(prefData.defaultView);
+            if (!selectedIntake) setViewMode(prefData.defaultView);
 
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
@@ -142,13 +144,14 @@ export default function AdminMarkAttendancePage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [selectedIntake]);
 
     React.useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    const fetchSessionStudents = async (session: TimetableEntry) => {
+    const fetchSessionStudents = async (session: TimetableEntry, date?: Date) => {
+        const targetDate = date || attendanceDate;
         try {
             const regsSnap = await get(ref(db, 'registrations'));
             const allRegs = regsSnap.val() || {};
@@ -167,7 +170,7 @@ export default function AdminMarkAttendancePage() {
             }
             setStudentsInSession(list.sort((a,b) => a.name.localeCompare(b.name)));
             
-            const dateStr = format(attendanceDate, 'yyyy-MM-dd');
+            const dateStr = format(targetDate, 'yyyy-MM-dd');
             const attendanceSnap = await get(ref(db, `attendance/${session.courseId}/${dateStr}`));
             if (attendanceSnap.exists()) {
                 setAttendance(attendanceSnap.val());
@@ -247,6 +250,87 @@ export default function AdminMarkAttendancePage() {
         return { present, absent, late, excused, total, rate };
     };
 
+    const renderMonthlyTimetable = () => {
+        const start = startOfMonth(viewMonth);
+        const end = endOfMonth(viewMonth);
+        const days = eachDayOfInterval({ start, end });
+        
+        // Calculate grid padding for the first day
+        const startDayIdx = getDay(start);
+        const paddingDays = Array.from({ length: startDayIdx });
+
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold font-headline">{format(viewMonth, 'MMMM yyyy')}</h3>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="icon" onClick={() => setViewMonth(subMonths(viewMonth, 1))}><ChevronLeft className="h-4 w-4"/></Button>
+                        <Button variant="outline" size="icon" onClick={() => setViewMonth(addMonths(viewMonth, 1))}><ChevronRight className="h-4 w-4"/></Button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-7 gap-px border bg-border rounded-lg overflow-hidden shadow-sm">
+                    {calendarDays.map(d => (
+                        <div key={d} className="bg-muted/50 p-2 text-center text-xs font-bold uppercase tracking-wider">{d}</div>
+                    ))}
+                    {paddingDays.map((_, i) => (
+                        <div key={`pad-${i}`} className="bg-background min-h-[120px] opacity-50" />
+                    ))}
+                    {days.map(day => {
+                        const dayName = calendarDays[getDay(day)];
+                        const sessions = filteredTimetable.filter(e => e.day === dayName).sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+                        const isCurrentDay = isToday(day);
+
+                        return (
+                            <div key={day.toString()} className={cn("bg-background min-h-[120px] p-2 space-y-1 border-t", isCurrentDay && "bg-primary/5 ring-1 ring-primary/20 ring-inset")}>
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className={cn("text-xs font-bold p-1 rounded-full w-6 h-6 flex items-center justify-center", isCurrentDay && "bg-primary text-white")}>{format(day, 'd')}</span>
+                                </div>
+                                <div className="space-y-1">
+                                    {sessions.map(s => {
+                                        const dateStr = format(day, 'yyyy-MM-dd');
+                                        const attendanceRecord = courseAttendanceData[s.courseId]?.[dateStr];
+                                        const isMarked = !!attendanceRecord;
+                                        
+                                        const presentCount = isMarked ? Object.values(attendanceRecord).filter(v => v === 'Present' || v === 'Late' || v === 'Excused Absence').length : 0;
+                                        const totalCount = isMarked ? Object.keys(attendanceRecord).length : 0;
+
+                                        return (
+                                            <div 
+                                                key={s.id} 
+                                                className={cn(
+                                                    "text-[9px] p-1.5 rounded border border-primary/10 cursor-pointer hover:bg-primary/5 transition-all",
+                                                    isMarked ? "bg-green-50 border-green-200" : "bg-card"
+                                                )}
+                                                onClick={() => {
+                                                    setAttendanceDate(day);
+                                                    setActiveSession(s);
+                                                    fetchSessionStudents(s, day);
+                                                }}
+                                            >
+                                                <div className="font-bold text-primary flex justify-between items-start">
+                                                    <span className="truncate pr-1">{s.courseCode}</span>
+                                                    {isMarked && <Check className="h-2 w-2 text-green-600"/>}
+                                                </div>
+                                                <div className="text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                    <Clock className="h-2 w-2"/> {s.startTime}
+                                                </div>
+                                                {isMarked && (
+                                                    <div className="mt-1 flex items-center justify-between font-medium text-green-700">
+                                                        <span>{presentCount}/{totalCount} Present</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
     if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-96 w-full"/></div>;
 
     return (
@@ -254,7 +338,7 @@ export default function AdminMarkAttendancePage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle>Attendance Portal</CardTitle>
+                        <CardTitle className="text-2xl font-headline">Attendance Portal</CardTitle>
                         <CardDescription>Comprehensive attendance tracking and management across all cohorts.</CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
@@ -263,8 +347,7 @@ export default function AdminMarkAttendancePage() {
                             <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="marking">Mark Daily</SelectItem>
-                                <SelectItem value="weekly">Weekly</SelectItem>
-                                <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="monthly">Monthly Grid</SelectItem>
                                 <SelectItem value="semester">Semester</SelectItem>
                             </SelectContent>
                         </Select>
@@ -280,10 +363,9 @@ export default function AdminMarkAttendancePage() {
                     </div>
 
                     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
+                        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
                             <TabsTrigger value="marking" className="py-2"><PlusCircle className="mr-2 h-4 w-4"/>Mark Daily</TabsTrigger>
-                            <TabsTrigger value="weekly" className="py-2"><LayoutGrid className="mr-2 h-4 w-4"/>Weekly Grid</TabsTrigger>
-                            <TabsTrigger value="monthly" className="py-2"><CalendarIcon className="mr-2 h-4 w-4"/>Monthly Grid</TabsTrigger>
+                            <TabsTrigger value="monthly" className="py-2"><CalendarIcon className="mr-2 h-4 w-4"/>Monthly Timetable</TabsTrigger>
                             <TabsTrigger value="semester" className="py-2"><ListFilter className="mr-2 h-4 w-4"/>Semester Stats</TabsTrigger>
                             <TabsTrigger value="student" className="py-2"><UserSearch className="mr-2 h-4 w-4"/>Student Record</TabsTrigger>
                         </TabsList>
@@ -313,7 +395,7 @@ export default function AdminMarkAttendancePage() {
                                                         return (
                                                             <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
                                                                 {sessions.map((entry, eIdx) => (
-                                                                    <div key={eIdx} className="cursor-pointer group p-2 rounded-md border bg-background hover:bg-primary/5 mb-2 border-primary/20 shadow-sm" onClick={() => { setActiveSession(entry); fetchSessionStudents(entry); }}>
+                                                                    <div key={eIdx} className="cursor-pointer group p-2 rounded-md border bg-background hover:bg-primary/5 mb-2 border-primary/20 shadow-sm" onClick={() => { setAttendanceDate(new Date()); setActiveSession(entry); fetchSessionStudents(entry); }}>
                                                                         <p className="font-bold text-primary text-[10px] leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
                                                                         <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {entry.venue}</div>
                                                                     </div>
@@ -331,26 +413,10 @@ export default function AdminMarkAttendancePage() {
                             )}
                         </TabsContent>
 
-                        <TabsContent value="weekly" className="space-y-4 mt-6">
-                            <Alert><Info className="h-4 w-4"/><AlertTitle>Weekly Overview</AlertTitle><AlertDescription>This grid displays all classes held this week. You can view patterns of attendance for the intake cohort.</AlertDescription></Alert>
-                            <div className="rounded-md border overflow-hidden">
-                                <Table>
-                                    <TableHeader className="bg-muted/50">
-                                        <TableRow>
-                                            <TableHead>Student</TableHead>
-                                            {teachingTimes.days.map(day => <TableHead key={day} className="text-center">{day.substring(0,3)}</TableHead>)}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {allStudents.filter(s => !selectedIntake || s.uid === 'dummy' /* Placeholder for filtered list */).map(student => (
-                                            <TableRow key={student.uid}>
-                                                <TableCell className="font-medium">{student.name}</TableCell>
-                                                {teachingTimes.days.map(day => <TableCell key={day} className="text-center"><Badge variant="outline" className="h-4 w-4 rounded-full p-0"/></TableCell>)}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                        <TabsContent value="monthly" className="mt-6">
+                            {selectedIntake ? renderMonthlyTimetable() : (
+                                <div className="text-center py-20 text-muted-foreground bg-muted/10 rounded-lg border-2 border-dashed">Select an intake to view the monthly timetable.</div>
+                            )}
                         </TabsContent>
 
                         <TabsContent value="student" className="mt-6 space-y-6">
@@ -451,7 +517,7 @@ export default function AdminMarkAttendancePage() {
                                         <Calendar 
                                             mode="single" 
                                             selected={attendanceDate} 
-                                            onSelect={(d) => { if(d) { setAttendanceDate(d); if(activeSession) fetchSessionStudents(activeSession); } }} 
+                                            onSelect={(d) => { if(d) { setAttendanceDate(d); if(activeSession) fetchSessionStudents(activeSession, d); } }} 
                                             disabled={(date) => date > new Date()} 
                                             initialFocus 
                                         />
