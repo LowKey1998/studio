@@ -27,7 +27,6 @@ import {
     AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import Link from 'next/link';
 import { sendEmail } from '@/ai/flows/send-email-flow';
@@ -81,6 +80,7 @@ export default function StudentEnrollmentPage() {
     const [enrolledStudents, setEnrolledStudents] = React.useState<EnrolledStudent[]>([]);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [searchStudent, setSearchStudent] = React.useState('');
+    const [dialogIntakeFilter, setDialogIntakeFilter] = React.useState('');
     
     // Bulk state
     const [selectedUids, setSelectedUids] = React.useState<Record<string, boolean>>({});
@@ -131,7 +131,8 @@ export default function StudentEnrollmentPage() {
                 get(ref(db, 'intakes')), get(ref(db, 'semesters')), get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'settings/teachingTimes')), get(ref(db, 'timetables')), get(ref(db, 'settings/academicCalendar'))
             ]);
             setCalendarSettings(calendarSnap.val());
-            setIntakes(Object.entries(intakeSnap.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data })));
+            const intakeList = Object.entries(intakeSnap.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }));
+            setIntakes(intakeList);
             setSemesters(Object.entries(semSnap.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data })));
             setAllCourses(coursesSnap.val() || {});
             setAllStudents(Object.entries(usersSnap.val() || {}).filter(([uid, user]: [string, any]) => user.role === 'Student').map(([uid, user]: [string, any]) => ({ uid, ...user })));
@@ -162,7 +163,8 @@ export default function StudentEnrollmentPage() {
         
         try {
             for (const student of students) {
-                const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
+                const sIntakeId = student.intakeId || dialogIntakeFilter;
+                const studentIntake = intakes.find(i => i.id === sIntakeId);
                 if (!studentIntake) throw new Error(`Intake not found for ${student.name}`);
                 const intakeStartStr = parseIntakeDate(studentIntake.name);
                 if (!intakeStartStr) throw new Error(`Invalid intake date format for ${student.name} (${studentIntake.name})`);
@@ -178,7 +180,7 @@ export default function StudentEnrollmentPage() {
                 if (type === 'enroll') {
                     const currentCourses = regSnap.exists() ? regSnap.val().courses || [] : [];
                     const updatedCourses = [...new Set([...currentCourses, activeSession.courseId])];
-                    await update(regRef, { courses: updatedCourses, programmeId: student.programmeId || '', intakeId: student.intakeId || selectedIntake, status: regSnap.exists() ? regSnap.val().status : 'Completed', semesterName: targetSemester.name });
+                    await update(regRef, { courses: updatedCourses, programmeId: student.programmeId || '', intakeId: sIntakeId, status: regSnap.exists() ? regSnap.val().status : 'Completed', semesterName: targetSemester.name });
                 } else {
                     const enrolledS = student as EnrolledStudent;
                     const specificRegRef = ref(db, `registrations/${student.uid}/${enrolledS.semesterId}`);
@@ -207,8 +209,8 @@ export default function StudentEnrollmentPage() {
     };
 
     const getStudentStanding = (student: Student) => {
-        if (!calendarSettings || !student.intakeId) return null;
-        const intake = intakes.find(i => i.id === student.intakeId);
+        if (!calendarSettings) return null;
+        const intake = intakes.find(i => i.id === (student.intakeId || dialogIntakeFilter));
         if (!intake) return null;
         const intakeStartStr = parseIntakeDate(intake.name);
         if (!intakeStartStr) return null;
@@ -222,7 +224,7 @@ export default function StudentEnrollmentPage() {
     const hasSlots = teachingTimes.slots.length > 0;
 
     const availableToEnroll = allStudents.filter(s => 
-        s.intakeId === selectedIntake &&
+        s.intakeId === dialogIntakeFilter &&
         !enrolledStudents.some(e => e.uid === s.uid) && 
         s.name.toLowerCase().includes(searchStudent.toLowerCase())
     );
@@ -237,7 +239,7 @@ export default function StudentEnrollmentPage() {
                     <Button variant="outline" onClick={() => setIsConfigOpen(true)}><Settings2 className="mr-2 h-4 w-4"/>Email Settings</Button>
                 </CardHeader>
                 <CardContent>
-                    <div className="max-w-sm"><Label>Select Intake</Label><Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="max-w-sm"><Label>Select Schedule Intake</Label><Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setDialogIntakeFilter(val); }}><SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                 </CardContent>
             </Card>
 
@@ -247,7 +249,7 @@ export default function StudentEnrollmentPage() {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
                         const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
                         return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => (
-                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); }}>
+                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); setDialogIntakeFilter(selectedIntake); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); }}>
                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
                             </div>
@@ -261,16 +263,22 @@ export default function StudentEnrollmentPage() {
                     <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden py-4">
                         <div className="flex flex-col gap-2 border p-4 rounded-lg bg-muted/10 overflow-hidden">
                             <div className="flex justify-between items-center mb-2">
-                                <h3 className="font-bold">Available</h3>
+                                <h3 className="font-bold">Available Students</h3>
                                 {selectedAvailableCount > 0 && (
                                     <Button size="sm" onClick={() => performEnrollmentAction('enroll', availableToEnroll.filter(s => selectedUids[s.uid]))} disabled={!!actionLoading}>
                                         Enroll {selectedAvailableCount}
                                     </Button>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <Checkbox checked={selectedAvailableCount === availableToEnroll.length && availableToEnroll.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) availableToEnroll.forEach(s => next[s.uid] = true); setSelectedUids(next); }} />
-                                <Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)} className="h-8"/>
+                            <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox checked={selectedAvailableCount === availableToEnroll.length && availableToEnroll.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) availableToEnroll.forEach(s => next[s.uid] = true); setSelectedUids(next); }} />
+                                    <Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)} className="h-8"/>
+                                </div>
+                                <Select value={dialogIntakeFilter} onValueChange={setDialogIntakeFilter}>
+                                    <SelectTrigger className="h-8"><SelectValue placeholder="Intake Filter"/></SelectTrigger>
+                                    <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                </Select>
                             </div>
                             <ScrollArea className="flex-1">
                                 {availableToEnroll.map(s => {
@@ -288,6 +296,7 @@ export default function StudentEnrollmentPage() {
                                         <Button size="sm" variant="ghost" onClick={()=>performEnrollmentAction('enroll', s)} disabled={!!actionLoading}><PlusCircle className="h-4 w-4 text-primary"/></Button>
                                     </div>
                                 )})}
+                                {availableToEnroll.length === 0 && <p className="text-center py-10 text-muted-foreground text-xs italic">No students found for this intake.</p>}
                             </ScrollArea>
                         </div>
                         <div className="flex flex-col gap-2 border p-4 rounded-lg overflow-hidden">
