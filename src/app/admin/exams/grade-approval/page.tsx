@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, CheckCircle2, Search, CalendarDays } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Search, CalendarDays, User, ChevronsUpDown } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,8 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Badge } from "@/components/ui/badge";
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-type Student = { uid: string; id: string; name: string; programmeId: string; };
+type Student = { uid: string; id: string; name: string; programmeId?: string; intakeId?: string; };
 type Programme = { id: string; name: string; gradingScale?: Record<string, any>; };
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
@@ -23,10 +27,15 @@ type Course = { id: string; name: string; code: string; assessmentTemplateId?: s
 type GradeResult = { student: Student; caScore: number | null; finalExamScore: number | null; finalMark: number | null; grade: string; };
 
 export default function GradeApprovalPage() {
+    const [allStudents, setAllStudents] = React.useState<Student[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
-    const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
+    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
+    
+    const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
+    const [selectedYear, setSelectedYear] = React.useState('');
+    const [selectedSemesterInYear, setSelectedSemesterInYear] = React.useState('');
     
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
@@ -34,9 +43,9 @@ export default function GradeApprovalPage() {
     const [gradeResults, setGradeResults] = React.useState<GradeResult[]>([]);
     const [gradeStatus, setGradeStatus] = React.useState<'Pending' | 'Approved'>('Pending');
     
-    const [academicStanding, setAcademicStanding] = React.useState<any>(null);
-    const [targetSemesterId, setTargetSemesterId] = React.useState<string | null>(null);
-    
+    const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+    const [studentSearchInput, setStudentSearchInput] = React.useState('');
+
     const [loading, setLoading] = React.useState(true);
     const [loadingGrades, setLoadingGrades] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
@@ -47,34 +56,61 @@ export default function GradeApprovalPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [pSnap, iSnap] = await Promise.all([ get(ref(db, 'programmes')), get(ref(db, 'intakes')) ]);
+                const [pSnap, iSnap, uSnap, sSnap] = await Promise.all([
+                    get(ref(db, 'programmes')),
+                    get(ref(db, 'intakes')),
+                    get(ref(db, 'users')),
+                    get(ref(db, 'semesters'))
+                ]);
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
                 if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
+                if (uSnap.exists()) setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
+                if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
     }, []);
 
-    // Calc Standing
+    const handleSelectStudentFromSearch = (student: Student) => {
+        if (student.programmeId) setSelectedProgrammeId(student.programmeId);
+        if (student.intakeId) {
+            setSelectedIntakeId(student.intakeId);
+            const intake = intakes.find(i => i.id === student.intakeId);
+            if (intake) {
+                get(ref(db, 'settings/academicCalendar')).then(calSnap => {
+                    const startStr = parseIntakeDate(intake.name);
+                    if (calSnap.exists() && startStr) {
+                        const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+                        setSelectedYear(String(state.year));
+                        setSelectedSemesterInYear(String(state.semester));
+                    }
+                });
+            }
+        }
+        setIsSearchOpen(false);
+        setStudentSearchInput('');
+    };
+
+    // Auto-Standing
     React.useEffect(() => {
-        if (!selectedIntakeId) { setAcademicStanding(null); setTargetSemesterId(null); return; }
-        const fetchStanding = async () => {
-            const intake = intakes.find(i => i.id === selectedIntakeId);
-            if (!intake) return;
-            const [calSnap, semSnap] = await Promise.all([ get(ref(db, 'settings/academicCalendar')), get(ref(db, 'semesters')) ]);
+        if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
+        const intake = intakes.find(i => i.id === selectedIntakeId);
+        if (!intake) return;
+        get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
             if (calSnap.exists() && startStr) {
                 const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                setAcademicStanding(state);
-                if (semSnap.exists()) {
-                    const found = Object.entries(semSnap.val() as Record<string, Semester>).find(([id, sem]) => sem.intakeId === selectedIntakeId && sem.year === state.year && sem.semesterInYear === state.semester);
-                    setTargetSemesterId(found ? found[0] : null);
-                }
+                setSelectedYear(String(state.year));
+                setSelectedSemesterInYear(String(state.semester));
             }
-        };
-        fetchStanding();
+        });
     }, [selectedIntakeId, intakes]);
+
+    const targetSemesterId = React.useMemo(() => {
+        if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
+        return allSemesters.find(s => s.intakeId === selectedIntakeId && s.year === Number(selectedYear) && s.semesterInYear === Number(selectedSemesterInYear))?.id || null;
+    }, [allSemesters, selectedIntakeId, selectedYear, selectedSemesterInYear]);
 
     // Filter Courses
     React.useEffect(() => {
@@ -162,18 +198,48 @@ export default function GradeApprovalPage() {
         finally { setSaving(false); }
     };
 
+    const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase())).slice(0, 10);
+
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Grade Approval Workflow</CardTitle>
-                <CardDescription>Select programme and intake to review results for the active semester.</CardDescription>
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
-                    <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue placeholder="Select programme..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                    {academicStanding && (
-                        <div className="space-y-1"><Label>Standing</Label><div className="flex h-10 items-center px-3 border rounded-md bg-muted/50 text-sm font-bold gap-2"><CalendarDays className="h-4 w-4 text-primary" /> Year {academicStanding.year}, Sem {academicStanding.semester}</div></div>
-                    )}
-                    <div className="space-y-1"><Label>Course</Label><Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+        <Card className="shadow-lg border-0">
+            <CardHeader className="space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <CardTitle className="text-2xl font-headline">Grade Approval Workflow</CardTitle>
+                        <CardDescription>Review and finalize grades before publication.</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Find Student</Label>
+                        <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal">
+                                    <div className="flex items-center gap-2"><User className="h-4 w-4 text-primary" /><span>Search Student...</span></div>
+                                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[300px] p-0" align="end">
+                                <div className="p-2"><Input placeholder="Search name or ID..." className="h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
+                                <Separator />
+                                <ScrollArea className="h-64">
+                                    <div className="p-1">
+                                        {searchableStudents.map(student => (
+                                            <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}>
+                                                <div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div>
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                </div>
+                <Separator />
+                <div className="grid md:grid-cols-5 gap-4">
+                    <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Course</Label><Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -181,14 +247,14 @@ export default function GradeApprovalPage() {
                  selectedCourseId && gradeResults.length > 0 ? (
                     <div className="space-y-4">
                         <div className="flex justify-between items-center"><h3 className="font-bold">Final Grades Preview</h3><Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge></div>
-                        <div className="border rounded-md"><Table>
+                        <div className="border rounded-lg shadow-sm"><Table>
                             <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
                             <TableBody>{gradeResults.map(res => (
                                 <TableRow key={res.student.uid}><TableCell className="font-medium">{res.student.name}</TableCell><TableCell className="font-mono text-xs">{res.student.id}</TableCell><TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.grade}</TableCell></TableRow>
                             ))}</TableBody>
                         </Table></div>
                     </div>
-                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select criteria to load results." : "No results found for this course selection."}</AlertDescription></Alert>}
+                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select criteria or search for a student to load results." : "No results found for this course selection."}</AlertDescription></Alert>}
             </CardContent>
             {gradeResults.length > 0 && gradeStatus === 'Pending' && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleApprove} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Approve & Publish Grades</Button></CardFooter>
