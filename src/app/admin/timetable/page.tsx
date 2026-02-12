@@ -273,7 +273,7 @@ export default function TimetableManagementPage() {
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <CardTitle className="font-headline text-2xl">Master Timetable Management</CardTitle>
-                        <CardDescription>View and manage schedules across all intakes and rooms. Rows represent days, columns represent time slots.</CardDescription>
+                        <CardDescription>View and manage schedules across all intakes and rooms.</CardDescription>
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={handleAutoGenerate} disabled={generating}>
@@ -349,7 +349,13 @@ export default function TimetableManagementPage() {
                                         </div>
                                         <div className="space-y-1">
                                             <Label>Room/Venue (Optional)</Label>
-                                            <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Select Room (Optional)"/></SelectTrigger><SelectContent>{rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
+                                            <Select value={venue} onValueChange={setVenue}>
+                                                <SelectTrigger><SelectValue placeholder="Select Room (Optional)"/></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="TBA">None / TBA</SelectItem>
+                                                    {rooms.map(r => <SelectItem key={r.id || r.name} value={r.name}>{r.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">

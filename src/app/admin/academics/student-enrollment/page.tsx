@@ -639,7 +639,7 @@ export default function StudentEnrollmentPage() {
                 <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Notification Template Settings</DialogTitle>
-                        <DialogDescription>Define the messages sent automatically when students are enrolled or removed from a class (when alerts are enabled).</DialogDescription>
+                        <DialogDescription>Define the messages sent automatically when students are enrolled or removed.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-auto py-4 pr-2">
                         <Accordion type="multiple" defaultValue={['enrollment', 'removal']} className="w-full">
