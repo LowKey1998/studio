@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, Search, Trash2, Check, Info, Users, MapPin, CalendarDays, Filter, Settings2, X, AlertCircle, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, createNotification } from '@/lib/firebase';
-import { ref, get, update, set } from 'firebase/database';
+import { ref, get, update, set, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -116,7 +116,6 @@ export default function StudentEnrollmentPage() {
                     const student = allStudents.find(s => s.uid === userId);
                     if (!student) continue;
                     
-                    // If course is a separate instance, we only care about students in the specific intake session
                     if (filterIntakeId && student.intakeId !== filterIntakeId) continue;
 
                     for (const semId in regs[userId]) {
@@ -134,9 +133,17 @@ export default function StudentEnrollmentPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, timetablesSnap, calendarSnap] = await Promise.all([
-                get(ref(db, 'intakes')), get(ref(db, 'semesters')), get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'settings/teachingTimes')), get(ref(db, 'timetables')), get(ref(db, 'settings/academicCalendar'))
+            const [intakeSnap, semSnap, coursesSnap, usersSnap, settingsSnap, timetablesSnap, calendarSnap, emailSettingsSnap] = await Promise.all([
+                get(ref(db, 'intakes')), 
+                get(ref(db, 'semesters')), 
+                get(ref(db, 'courses')), 
+                get(ref(db, 'users')), 
+                get(ref(db, 'settings/teachingTimes')), 
+                get(ref(db, 'timetables')), 
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'settings/enrollmentEmails'))
             ]);
+            
             setCalendarSettings(calendarSnap.val());
             const intakeList = Object.entries(intakeSnap.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }));
             setIntakes(intakeList);
@@ -145,6 +152,13 @@ export default function StudentEnrollmentPage() {
             setAllStudents(Object.entries(usersSnap.val() || {}).filter(([uid, user]: [string, any]) => user.role === 'Student').map(([uid, user]: [string, any]) => ({ uid, ...user })));
             setTeachingTimes({ days: settingsSnap.val()?.days || daysOfWeek, slots: (settingsSnap.val()?.slots || []).sort((a: any, b: any) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)) });
             
+            if (emailSettingsSnap.exists()) {
+                const eData = emailSettingsSnap.val();
+                if (eData.enabled !== undefined) setSendEmails(eData.enabled);
+                if (eData.enrollment) setEnrollmentTemplate(eData.enrollment);
+                if (eData.removal) setRemovalTemplate(eData.removal);
+            }
+
             const entries: TimetableEntry[] = [];
             const tData = timetablesSnap.val() || {};
             const sData = semSnap.val() || {};
@@ -163,6 +177,23 @@ export default function StudentEnrollmentPage() {
 
     React.useEffect(() => { fetchData(); }, [fetchData]);
 
+    const handleSaveEmailSettings = async () => {
+        setActionLoading('saving-email-settings');
+        try {
+            await set(ref(db, 'settings/enrollmentEmails'), {
+                enabled: sendEmails,
+                enrollment: enrollmentTemplate,
+                removal: removalTemplate
+            });
+            toast({ title: 'Email Settings Saved' });
+            setIsConfigOpen(false);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const performEnrollmentAction = async (type: 'enroll' | 'remove', studentOrStudents: Student | Student[]) => {
         if (!activeSession || !calendarSettings) return;
         const students = Array.isArray(studentOrStudents) ? studentOrStudents : [studentOrStudents];
@@ -174,12 +205,15 @@ export default function StudentEnrollmentPage() {
                 const studentIntake = intakes.find(i => i.id === sIntakeId);
                 if (!studentIntake) throw new Error(`Intake not found for ${student.name}`);
                 const intakeStartStr = parseIntakeDate(studentIntake.name);
-                if (!intakeStartStr) throw new Error(`Invalid intake date format for ${student.name} (${studentIntake.name})`);
+                if (!sizeStartStr) {
+                    // Fallback to current year/sem if intake name parsing fails
+                }
+                const intakeDateString = intakeStartStr || '2024-01-01';
                 
-                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+                const state = calculateAcademicState(intakeDateString, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
                 const targetSemester = semesters.find(s => s.intakeId === studentIntake.id && s.year === state.year && s.semesterInYear === state.semester);
                 
-                if (!targetSemester) throw new Error(`No semester found for ${student.name} in Year ${state.year}, Sem ${state.semester}.`);
+                if (!targetSemester) throw new Error(`No active semester found for ${student.name} in Year ${state.year}, Sem ${state.semester}.`);
 
                 const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
                 const regSnap = await get(regRef);
@@ -313,8 +347,6 @@ export default function StudentEnrollmentPage() {
                             return (
                             <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
                                 setActiveSession(entry); 
-                                // Determine the strict intake filter if it's a separate instance
-                                const currentIntake = intakes.find(i => i.id === selectedIntake);
                                 setDialogIntakeFilter(selectedIntake); 
                                 fetchEnrolledStudents(entry.courseId, course?.separateInstance ? selectedIntake : undefined); 
                                 setSelectedUids({}); 
@@ -456,7 +488,13 @@ export default function StudentEnrollmentPage() {
                             <div className="space-y-1"><Label>Body (HTML)</Label><Textarea rows={10} value={removalTemplate.body} onChange={e=>setRemovalTemplate(p=>({...p, body: e.target.value}))}/></div>
                         </TabsContent>
                     </Tabs>
-                    <DialogFooter><Button onClick={() => setIsConfigOpen(false)}>Save Settings</Button></DialogFooter>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsConfigOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveEmailSettings} disabled={actionLoading === 'saving-email-settings'}>
+                            {actionLoading === 'saving-email-settings' ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                            Save Settings
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
