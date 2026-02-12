@@ -26,6 +26,7 @@ import { allMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Badge } from '../ui/badge';
+import { cn } from '@/lib/utils';
 
 const warningKeys = new Set(['missingDeadlines', 'unassignedCourses']);
 
