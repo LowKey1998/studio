@@ -11,6 +11,7 @@ import { Loader2, Percent, Save, Info, ShieldAlert } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
+import Link from 'next/link';
 
 type FinancialSettings = {
     paymentThreshold: number;
@@ -82,13 +83,16 @@ export default function FinancialControlsPage() {
                     <Alert className="bg-primary/5 border-primary/20">
                         <Info className="h-4 w-4 text-primary" />
                         <AlertTitle className="font-bold">How Defaulter Logic Works</AlertTitle>
-                        <AlertDescription className="text-sm space-y-2">
-                            <p>The system identifies a "Defaulter" based on the following criteria:</p>
+                        <AlertDescription className="text-sm space-y-2 leading-relaxed">
+                            <p>The system identifies a "Defaulter" using these criteria:</p>
                             <ul className="list-disc pl-5 space-y-1 text-xs">
-                                <li><strong>Trigger:</strong> An installment deadline has passed (+ any allowed grace period).</li>
-                                <li><strong>Condition:</strong> The student's total paid amount is less than the required cumulative percentage (e.g. 75%) of the total due.</li>
+                                <li><strong>Deadlines:</strong> An installment deadline has passed (+ any allowed grace period).</li>
+                                <li><strong>Threshold:</strong> The student's total paid amount is less than the required cumulative percentage (e.g. 75%) of the total due.</li>
                             </ul>
-                            <p className="font-semibold pt-2">Note: Deadlines and Grace Periods are set per-semester in <Link href="/admin/registration-management" className="text-primary underline">Registration Management</Link>.</p>
+                            <div className="bg-background p-3 rounded border mt-4">
+                                <p className="font-bold text-xs mb-1">PRO-TIP: CUSTOMIZE PER SEMESTER</p>
+                                <p className="text-[10px] text-muted-foreground">Deadlines, Thresholds, and Grace Periods are set per-semester in <Link href="/admin/registration-management" className="text-primary font-bold underline">Registration Management</Link> (Edit Semester &gt; Controls tab).</p>
+                            </div>
                         </AlertDescription>
                     </Alert>
 
@@ -96,8 +100,8 @@ export default function FinancialControlsPage() {
 
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
                         <div className="space-y-1">
-                            <Label htmlFor="payment-threshold" className="text-base font-bold">Global Defaulter Threshold</Label>
-                            <p className="text-xs text-muted-foreground pr-4">The default percentage a student must pay to be considered in good standing. This can be overridden per semester.</p>
+                            <Label htmlFor="payment-threshold" className="text-base font-bold">Default Payment Threshold (%)</Label>
+                            <p className="text-xs text-muted-foreground pr-4">The global default percentage a student must pay by a deadline to stay in good standing.</p>
                         </div>
                         <div className="sm:col-span-2">
                             <div className="relative max-w-xs">
@@ -111,8 +115,8 @@ export default function FinancialControlsPage() {
 
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start">
                         <div className="space-y-1">
-                            <Label className="text-base font-bold">Academic Restrictions</Label>
-                            <p className="text-xs text-muted-foreground pr-4">Enable or disable specific portal blocks for students flagged as defaulters.</p>
+                            <Label className="text-base font-bold">Restrict Portal Access for Defaulters</Label>
+                            <p className="text-xs text-muted-foreground pr-4">Enable specific restrictions that automatically apply when a student is flagged as a defaulter.</p>
                         </div>
                         <div className="sm:col-span-2 space-y-4">
                             <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
