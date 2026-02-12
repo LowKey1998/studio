@@ -89,73 +89,78 @@ export default function TimetableManagementPage() {
 
     const { toast } = useToast();
 
-    const fetchData = React.useCallback(async () => {
+    React.useEffect(() => {
         setLoading(true);
-        try {
-            const [semSnap, coursesSnap, roomsSnap, intakesSnap, timetablesSnap, usersSnap, settingsSnap] = await Promise.all([
-                get(ref(db, 'semesters')),
-                get(ref(db, 'courses')),
-                get(ref(db, 'settings/rooms')),
-                get(ref(db, 'intakes')),
-                get(ref(db, 'timetables')),
-                get(ref(db, 'users')),
-                get(ref(db, 'settings/teachingTimes'))
-            ]);
+        const semestersRef = ref(db, 'semesters');
+        const coursesRef = ref(db, 'courses');
+        const roomsRef = ref(db, 'settings/rooms');
+        const intakesRef = ref(db, 'intakes');
+        const timetablesRef = ref(db, 'timetables');
+        const usersRef = ref(db, 'users');
+        const settingsRef = ref(db, 'settings/teachingTimes');
 
-            const sData = semSnap.val() || {};
-            const cData = coursesSnap.val() || {};
-            const rData = roomsSnap.val() || {};
-            const iData = intakesSnap.val() || {};
-            const tData = timetablesSnap.val() || {};
-            const uData = usersSnap.val() || {};
-            const settingsData = settingsSnap.val() || {};
-
-            setSemesters(Object.keys(sData).map(id => ({ id, ...sData[id] })));
-            setAllCourses(Object.keys(cData).map(id => ({ id, ...cData[id] })).filter(c => c.status === 'active'));
-            setRooms(Object.entries(rData).map(([id, data]: [string, any]) => ({ id, ...data })));
-            setIntakes(Object.entries(iData).map(([id, data]: [string, any]) => ({ id, ...data })));
-            setUsers(uData);
+        const unsubSem = onValue(semestersRef, (s) => setSemesters(Object.keys(s.val() || {}).map(id => ({ id, ...s.val()[id] }))));
+        const unsubCourse = onValue(coursesRef, (s) => setAllCourses(Object.keys(s.val() || {}).map(id => ({ id, ...s.val()[id] })).filter(c => c.status === 'active')));
+        const unsubRooms = onValue(roomsRef, (s) => setRooms(Object.entries(s.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }))));
+        const unsubIntakes = onValue(intakesRef, (s) => setIntakes(Object.entries(s.val() || {}).map(([id, data]: [string, any]) => ({ id, ...data }))));
+        const unsubUsers = onValue(usersRef, (s) => setUsers(s.val() || {}));
+        const unsubSettings = onValue(settingsRef, (s) => {
+            const settingsData = s.val() || {};
             setTeachingTimes({
                 days: settingsData.days || defaultDays,
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
+        });
 
+        const unsubTimetable = onValue(timetablesRef, (snapshot) => {
+            const tData = snapshot.val() || {};
             const entries: TimetableEntry[] = [];
-            for (const semId in tData) {
-                const semInfo = sData[semId] || { name: 'Manual Entry' };
-                const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
+            
+            // We need current values of other state items for mapping, but onValue 
+            // is better served by internal lookups if we want true real-time without closure issues.
+            // However, fetching them inside this callback from the DB is heavy.
+            // Standard reactive approach: the effect depends on those values.
+            
+            get(semestersRef).then(semSnap => {
+                const sData = semSnap.val() || {};
+                get(coursesRef).then(coursesSnap => {
+                    const cData = coursesSnap.val() || {};
+                    get(intakesRef).then(intakeSnap => {
+                        const iData = intakeSnap.val() || {};
 
-                for (const cId in tData[semId]) {
-                    const courseInfo = cData[cId];
-                    if (!courseInfo) continue;
+                        for (const semId in tData) {
+                            const semInfo = sData[semId] || { name: 'Manual Entry' };
+                            const intakeInfo = semInfo.intakeId ? iData[semInfo.intakeId] : { name: 'Master' };
 
-                    Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
-                        entries.push({
-                            id: entryId,
-                            semesterId: semId,
-                            courseId: cId,
-                            courseCode: courseInfo.code,
-                            courseName: courseInfo.name,
-                            semesterName: semInfo.name,
-                            intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
-                            ...entry
-                        });
+                            for (const cId in tData[semId]) {
+                                const courseInfo = cData[cId];
+                                if (!courseInfo) continue;
+
+                                Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                                    entries.push({
+                                        id: entryId,
+                                        semesterId: semId,
+                                        courseId: cId,
+                                        courseCode: courseInfo.code,
+                                        courseName: courseInfo.name,
+                                        semesterName: semInfo.name,
+                                        intakeName: entry.intakeName || intakeInfo?.name || 'N/A',
+                                        ...entry
+                                    });
+                                });
+                            }
+                        }
+                        setMasterTimetable(entries);
+                        setLoading(false);
                     });
-                }
-            }
-            setMasterTimetable(entries);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+                });
+            });
+        });
 
-    React.useEffect(() => {
-        fetchData();
-        const unsub = onValue(ref(db, 'timetables'), () => fetchData());
-        return () => unsub();
-    }, [fetchData]);
+        return () => {
+            unsubSem(); unsubCourse(); unsubRooms(); unsubIntakes(); unsubUsers(); unsubSettings(); unsubTimetable();
+        };
+    }, []);
 
     const handleAutoGenerate = async () => {
         setGenerating(true);
@@ -169,7 +174,8 @@ export default function TimetableManagementPage() {
         }
     };
 
-    const handleSaveEntry = async () => {
+    const handleSaveEntry = async (e?: React.FormEvent) => {
+        if(e) e.preventDefault();
         if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
             toast({ variant: 'destructive', title: 'Please fill all required fields' });
             return;
@@ -365,7 +371,7 @@ export default function TimetableManagementPage() {
                                 </div>
                                 <DialogFooter>
                                     <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleSaveEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
+                                    <Button onClick={() => handleSaveEntry()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Entry</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
