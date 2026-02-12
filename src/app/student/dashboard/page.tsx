@@ -391,7 +391,7 @@ export default function StudentDashboardPage() {
                                 <Link href="/student/courses">View All Results</Link>
                             </Button>
                         </CardFooter>
-                    </div>
+                    </Card>
                 </div>
             </div>
         </div>
