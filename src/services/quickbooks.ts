@@ -204,3 +204,17 @@ export async function voidQbInvoice(invoiceId: string): Promise<any> {
         throw error;
     }
 }
+
+/**
+ * Creates a Journal Entry in QuickBooks, typically used for payroll synchronization.
+ */
+export async function createQbJournalEntryForPayroll(journalData: any): Promise<any> {
+    const qbo = await getQuickBooksClient();
+    const createJournalEntryAsync = promisify(qbo, qbo.createJournalEntry);
+    try {
+        return await createJournalEntryAsync(journalData);
+    } catch (error) {
+        console.error('Error in QuickBooks createJournalEntry:', error);
+        throw error;
+    }
+}
