@@ -209,6 +209,10 @@ export default function StudentEnrollmentPage() {
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const hasSlots = teachingTimes.slots.length > 0;
 
+    const availableToEnroll = allStudents.filter(s => !enrolledStudents.some(e => e.uid === s.uid) && s.name.toLowerCase().includes(searchStudent.toLowerCase()));
+    const selectedAvailableCount = Object.values(selectedUids).filter(Boolean).length;
+    const selectedEnrolledCount = Object.values(selectedEnrolledUids).filter(Boolean).length;
+
     return (
         <div className="space-y-6">
             <Card>
@@ -231,17 +235,84 @@ export default function StudentEnrollmentPage() {
             )}
 
             <Dialog open={!!activeSession} onOpenChange={(o) => !o && setActiveSession(null)}>
-                <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
+                <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
                     <DialogHeader><DialogTitle>Enrollment: {activeSession?.courseName}</DialogTitle></DialogHeader>
                     <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden py-4">
-                        <div className="flex flex-col gap-2 border p-4 rounded-lg bg-muted/10 overflow-hidden"><h3 className="font-bold">Available</h3><Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)}/><ScrollArea className="flex-1 mt-2">{allStudents.filter(s => !enrolledStudents.some(e=>e.uid===s.uid) && s.name.toLowerCase().includes(searchStudent.toLowerCase())).map(s => (<div key={s.uid} className="flex items-center justify-between p-2 border rounded bg-background mb-2"><div><p className="text-sm font-bold">{s.name}</p><p className="text-xs text-muted-foreground">{s.id}</p></div><Button size="sm" variant="outline" onClick={()=>performEnrollmentAction('enroll', s)} disabled={!!actionLoading}>Enroll</Button></div>))}</ScrollArea></div>
-                        <div className="flex flex-col gap-2 border p-4 rounded-lg overflow-hidden"><h3 className="font-bold">Enrolled ({enrolledStudents.length})</h3><ScrollArea className="flex-1 mt-2">{enrolledStudents.map(s => (<div key={s.uid} className="flex items-center justify-between p-2 border rounded bg-background mb-2"><div><p className="text-sm font-bold">{s.name}</p><p className="text-xs text-muted-foreground">{s.id}</p></div><Button size="icon" variant="ghost" className="text-destructive" onClick={()=>setStudentToRemove(s)} disabled={!!actionLoading}><Trash2 className="h-4 w-4"/></Button></div>))}</ScrollArea></div>
+                        <div className="flex flex-col gap-2 border p-4 rounded-lg bg-muted/10 overflow-hidden">
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="font-bold">Available</h3>
+                                {selectedAvailableCount > 0 && (
+                                    <Button size="sm" onClick={() => performEnrollmentAction('enroll', availableToEnroll.filter(s => selectedUids[s.uid]))} disabled={!!actionLoading}>
+                                        Enroll {selectedAvailableCount}
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Checkbox checked={selectedAvailableCount === availableToEnroll.length && availableToEnroll.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) availableToEnroll.forEach(s => next[s.uid] = true); setSelectedUids(next); }} />
+                                <Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)} className="h-8"/>
+                            </div>
+                            <ScrollArea className="flex-1">
+                                {availableToEnroll.map(s => (
+                                    <div key={s.uid} className="flex items-center gap-2 p-2 border rounded bg-background mb-2">
+                                        <Checkbox checked={!!selectedUids[s.uid]} onCheckedChange={() => setSelectedUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold">{s.name}</p>
+                                            <p className="text-xs text-muted-foreground">{s.id}</p>
+                                        </div>
+                                        <Button size="sm" variant="ghost" onClick={()=>performEnrollmentAction('enroll', s)} disabled={!!actionLoading}><PlusCircle className="h-4 w-4 text-primary"/></Button>
+                                    </div>
+                                ))}
+                            </ScrollArea>
+                        </div>
+                        <div className="flex flex-col gap-2 border p-4 rounded-lg overflow-hidden">
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="font-bold">Enrolled ({enrolledStudents.length})</h3>
+                                {selectedEnrolledCount > 0 && (
+                                    <Button size="sm" variant="destructive" onClick={() => performEnrollmentAction('remove', enrolledStudents.filter(s => selectedEnrolledUids[s.uid]))} disabled={!!actionLoading}>
+                                        Remove {selectedEnrolledCount}
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Checkbox checked={selectedEnrolledCount === enrolledStudents.length && enrolledStudents.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) enrolledStudents.forEach(s => next[s.uid] = true); setSelectedEnrolledUids(next); }} />
+                                <div className="text-xs text-muted-foreground">Select All Enrolled</div>
+                            </div>
+                            <ScrollArea className="flex-1">
+                                {enrolledStudents.map(s => (
+                                    <div key={s.uid} className="flex items-center gap-2 p-2 border rounded bg-background mb-2">
+                                        <Checkbox checked={!!selectedEnrolledUids[s.uid]} onCheckedChange={() => setSelectedEnrolledUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold">{s.name}</p>
+                                            <p className="text-xs text-muted-foreground">{s.id}</p>
+                                        </div>
+                                        <Button size="icon" variant="ghost" className="text-destructive" onClick={()=>setStudentToRemove(s)} disabled={!!actionLoading}><Trash2 className="h-4 w-4"/></Button>
+                                    </div>
+                                ))}
+                            </ScrollArea>
+                        </div>
                     </div>
                     <DialogFooter><Button variant="outline" onClick={()=>setActiveSession(null)}>Done</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <AlertDialog open={!!studentToRemove} onOpenChange={o=>!o && setStudentToRemove(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Removal</AlertDialogTitle><AlertDialogDescription>Remove {studentToRemove?.name} from this class?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive" onClick={()=>studentToRemove && performEnrollmentAction('remove', studentToRemove)}>Remove</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+            
+            <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader><DialogTitle>Email Notification Templates</DialogTitle></DialogHeader>
+                    <Tabs defaultValue="enroll"><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="enroll">Enrollment</TabsTrigger><TabsTrigger value="remove">Removal</TabsTrigger></TabsList>
+                        <TabsContent value="enroll" className="space-y-4 pt-4">
+                            <div className="space-y-1"><Label>Subject</Label><Input value={enrollmentTemplate.subject} onChange={e=>setEnrollmentTemplate(p=>({...p, subject: e.target.value}))}/></div>
+                            <div className="space-y-1"><Label>Body (HTML)</Label><Textarea rows={10} value={enrollmentTemplate.body} onChange={e=>setEnrollmentTemplate(p=>({...p, body: e.target.value}))}/></div>
+                        </TabsContent>
+                        <TabsContent value="remove" className="space-y-4 pt-4">
+                            <div className="space-y-1"><Label>Subject</Label><Input value={removalTemplate.subject} onChange={e=>setRemovalTemplate(p=>({...p, subject: e.target.value}))}/></div>
+                            <div className="space-y-1"><Label>Body (HTML)</Label><Textarea rows={10} value={removalTemplate.body} onChange={e=>setRemovalTemplate(p=>({...p, body: e.target.value}))}/></div>
+                        </TabsContent>
+                    </Tabs>
+                    <DialogFooter><Button onClick={()=>setIsConfigOpen(false)}>Save Templates</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
