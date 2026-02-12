@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import {
 } from '@/components/ui/table';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 
 type Course = {
@@ -33,6 +34,7 @@ type Course = {
     code: string;
     lecturerId: string;
     lecturerIds?: string[];
+    separateInstance?: boolean;
 }
 
 type Student = {
@@ -47,7 +49,10 @@ type AttendanceRecord = Record<string, AttendanceStatus>;
 
 export default function MarkAttendancePage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
+    
     const [course, setCourse] = React.useState<Course | null>(null);
     const [students, setStudents] = React.useState<Student[]>([]);
     const [attendance, setAttendance] = React.useState<AttendanceRecord>({});
@@ -82,8 +87,12 @@ export default function MarkAttendancePage() {
             if(registrationsSnapshot.exists()){
                 const allRegistrations = registrationsSnapshot.val();
                 for (const userId in allRegistrations) {
-                    for (const semester in allRegistrations[userId]) {
-                        const reg = allRegistrations[userId][semester];
+                    const userRegs = allRegistrations[userId];
+                    const semesterIdsToCheck = (courseData.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+                    for (const semId of semesterIdsToCheck) {
+                        const reg = userRegs[semId];
+                        if (!reg) continue;
                         if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             enrolledStudentUids.push(userId);
                             break;
@@ -105,11 +114,18 @@ export default function MarkAttendancePage() {
         } finally {
             setLoading(false);
         }
-    }, [courseId, toast]);
+    }, [courseId, semesterIdFilter, toast]);
 
     const fetchAttendanceForDate = React.useCallback(async (date: Date) => {
         const formattedDate = format(date, 'yyyy-MM-dd');
-        const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
+        // Attendance logic remains the same - we store it by courseId/date. 
+        // Note: For separate instances, we might want separate attendance paths if multiple cohorts share a day.
+        // However, usually attendance is unique to the session.
+        const path = (course?.separateInstance && semesterIdFilter) 
+            ? `attendance/${courseId}_${semesterIdFilter}/${formattedDate}` 
+            : `attendance/${courseId}/${formattedDate}`;
+            
+        const attendanceRef = ref(db, path);
         const snapshot = await get(attendanceRef);
         if (snapshot.exists()) {
             setAttendance(snapshot.val());
@@ -120,7 +136,7 @@ export default function MarkAttendancePage() {
             });
             setAttendance(initialAttendance);
         }
-    }, [courseId, students]);
+    }, [courseId, course?.separateInstance, semesterIdFilter, students]);
 
     React.useEffect(() => {
         if(currentUser) {
@@ -139,7 +155,11 @@ export default function MarkAttendancePage() {
         setSaving(true);
         try {
             const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-            const attendanceRef = ref(db, `attendance/${courseId}/${formattedDate}`);
+            const path = (course?.separateInstance && semesterIdFilter) 
+                ? `attendance/${courseId}_${semesterIdFilter}/${formattedDate}` 
+                : `attendance/${courseId}/${formattedDate}`;
+                
+            const attendanceRef = ref(db, path);
             await set(attendanceRef, attendance);
 
             const promises = Object.entries(attendance).map(([uid, status]) => {
@@ -182,7 +202,9 @@ export default function MarkAttendancePage() {
        <Card>
           <CardHeader>
             <CardTitle>Mark Attendance</CardTitle>
-            <CardDescription>Enter daily attendance for your class.</CardDescription>
+            <CardDescription>
+                {semesterIdFilter ? "Entering attendance for a specific class group." : "Enter daily attendance for your class."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

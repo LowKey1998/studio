@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -26,11 +27,13 @@ type CourseInstance = {
     endTime: string;
     venue: string;
     scheduleKey: string; // Used for merging: courseId + day + time + venue
+    separateInstance: boolean;
 };
 
 type MergedCourse = {
     key: string; 
     courseId: string;
+    semesterId: string; // For linking
     name: string;
     code: string;
     totalStudentCount: number;
@@ -40,6 +43,7 @@ type MergedCourse = {
     venue: string;
     instances: CourseInstance[];
     isMerged: boolean;
+    separateInstance: boolean;
 };
 
 export default function StaffCoursesPage() {
@@ -123,7 +127,8 @@ export default function StaffCoursesPage() {
                                 startTime: entry.startTime,
                                 endTime: entry.endTime,
                                 venue: entry.venue,
-                                scheduleKey
+                                scheduleKey,
+                                separateInstance: !!courseData.separateInstance
                             });
                         });
                     }
@@ -135,15 +140,13 @@ export default function StaffCoursesPage() {
             if (showMerged) {
                 const mergedMap = new Map<string, MergedCourse>();
                 instances.forEach(instance => {
-                    if (mergedMap.has(instance.scheduleKey)) {
-                        const existing = mergedMap.get(instance.scheduleKey)!;
-                        existing.instances.push(instance);
-                        existing.totalStudentCount += instance.studentCount;
-                        existing.isMerged = true;
-                    } else {
-                        mergedMap.set(instance.scheduleKey, {
-                            key: instance.scheduleKey,
+                    // Separate instances are NEVER merged into a single view card
+                    if (instance.separateInstance) {
+                        const key = `${instance.semesterId}-${instance.scheduleKey}`;
+                        mergedMap.set(key, {
+                            key,
                             courseId: instance.id,
+                            semesterId: instance.semesterId,
                             name: instance.name,
                             code: instance.code,
                             totalStudentCount: instance.studentCount,
@@ -152,7 +155,29 @@ export default function StaffCoursesPage() {
                             endTime: instance.endTime,
                             venue: instance.venue,
                             instances: [instance],
-                            isMerged: false
+                            isMerged: false,
+                            separateInstance: true
+                        });
+                    } else if (mergedMap.has(instance.scheduleKey)) {
+                        const existing = mergedMap.get(instance.scheduleKey)!;
+                        existing.instances.push(instance);
+                        existing.totalStudentCount += instance.studentCount;
+                        existing.isMerged = true;
+                    } else {
+                        mergedMap.set(instance.scheduleKey, {
+                            key: instance.scheduleKey,
+                            courseId: instance.id,
+                            semesterId: instance.semesterId,
+                            name: instance.name,
+                            code: instance.code,
+                            totalStudentCount: instance.studentCount,
+                            day: instance.day,
+                            startTime: instance.startTime,
+                            endTime: instance.endTime,
+                            venue: instance.venue,
+                            instances: [instance],
+                            isMerged: false,
+                            separateInstance: false
                         });
                     }
                 });
@@ -161,6 +186,7 @@ export default function StaffCoursesPage() {
                 displayList = instances.map(instance => ({
                     key: `${instance.semesterId}-${instance.scheduleKey}`,
                     courseId: instance.id,
+                    semesterId: instance.semesterId,
                     name: instance.name,
                     code: instance.code,
                     totalStudentCount: instance.studentCount,
@@ -169,7 +195,8 @@ export default function StaffCoursesPage() {
                     endTime: instance.endTime,
                     venue: instance.venue,
                     instances: [instance],
-                    isMerged: false
+                    isMerged: false,
+                    separateInstance: instance.separateInstance
                 }));
             }
 
@@ -225,6 +252,7 @@ export default function StaffCoursesPage() {
                                     <CardDescription className="font-mono font-bold mt-1">{course.code}</CardDescription>
                                 </div>
                                 {course.isMerged && <Badge variant="secondary" className="bg-primary/10 text-primary whitespace-nowrap"><Layers className="h-3 w-3 mr-1"/> Merged</Badge>}
+                                {course.separateInstance && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Separate</Badge>}
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -255,7 +283,7 @@ export default function StaffCoursesPage() {
                         </CardContent>
                         <CardFooter>
                             <Button asChild className="w-full shadow-md group">
-                                <Link href={`/staff/courses/${course.courseId}/assignments`}>
+                                <Link href={`/staff/courses/${course.courseId}/assignments?semesterId=${course.semesterId}`}>
                                     Manage Class <ChevronRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                 </Link>
                             </Button>

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -214,7 +215,7 @@ export default function StudentCoursesPage() {
                                     </CardContent>
                                     <CardFooter>
                                     <Button asChild className="w-full">
-                                        <Link href={`/student/courses/${course.id}`}>
+                                        <Link href={`/student/courses/${course.id}/assignments?semesterId=${group.semesterId}`}>
                                             Enter Classroom <ChevronRight className="ml-2 h-4 w-4" />
                                         </Link>
                                     </Button>
@@ -257,7 +258,7 @@ export default function StudentCoursesPage() {
                                         </CardHeader>
                                         <CardFooter>
                                         <Button asChild className="w-full" variant="secondary" size="sm">
-                                            <Link href={`/student/courses/${course.id}`}>
+                                            <Link href={`/student/courses/${course.id}/assignments?semesterId=${group.semesterId}`}>
                                                 View Records <ChevronRight className="ml-2 h-4 w-4" />
                                             </Link>
                                         </Button>

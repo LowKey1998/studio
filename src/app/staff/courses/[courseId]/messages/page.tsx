@@ -1,6 +1,7 @@
+
 'use client';
 import * as React from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,8 +55,12 @@ type EnrolledUser = {
 
 export default function CourseMessagesPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
+    
     const [messages, setMessages] = React.useState<Message[]>([]);
+    const [courseData, setCourseData] = React.useState<any>(null);
     
     // Form state
     const [activeTab, setActiveTab] = React.useState('discussion');
@@ -93,22 +98,34 @@ export default function CourseMessagesPage() {
     React.useEffect(() => {
         if (!courseId) return;
         setLoading(true);
-        const messagesRef = ref(db, `courseMessages/${courseId}`);
-        const unsubscribe = onValue(messagesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const messagesList: Message[] = Object.keys(data)
-                    .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
-                    .sort((a, b) => b.timestamp - a.timestamp);
-                setMessages(messagesList);
-            } else {
-                setMessages([]);
-            }
-            setLoading(false);
-        });
 
-        // Fetch enrolled users for mentions
-        const fetchUsers = async () => {
+        const fetchData = async () => {
+            const courseSnap = await get(ref(db, `courses/${courseId}`));
+            let cData = null;
+            if(courseSnap.exists()) {
+                cData = courseSnap.val();
+                setCourseData(cData);
+            }
+
+            const dbPath = (cData?.separateInstance && semesterIdFilter) 
+                ? `courseMessages/${courseId}_${semesterIdFilter}` 
+                : `courseMessages/${courseId}`;
+
+            const messagesRef = ref(db, dbPath);
+            onValue(messagesRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const messagesList: Message[] = Object.keys(data)
+                        .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
+                        .sort((a, b) => b.timestamp - a.timestamp);
+                    setMessages(messagesList);
+                } else {
+                    setMessages([]);
+                }
+                setLoading(false);
+            });
+
+            // Fetch enrolled users for mentions
             const usersRef = ref(db, 'users');
             const registrationsRef = ref(db, `registrations`);
             const [usersSnap, regsSnap] = await Promise.all([get(usersRef), get(registrationsRef)]);
@@ -118,29 +135,27 @@ export default function CourseMessagesPage() {
 
             if (regsData) {
                 Object.keys(regsData).forEach(userId => {
-                    Object.keys(regsData[userId]).forEach(semester => {
-                        if (regsData[userId][semester].courses?.includes(courseId)) {
+                    const userRegs = regsData[userId];
+                    const semesterIdsToCheck = (cData?.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+                    for (const semId of semesterIdsToCheck) {
+                        if (userRegs[semId]?.courses?.includes(courseId)) {
                             studentUids.add(userId);
+                            break;
                         }
-                    });
+                    }
                 });
             }
             
-            const courseRef = ref(db, `courses/${courseId}`);
-            const courseSnap = await get(courseRef);
-            if(courseSnap.exists()){
-                const cData = courseSnap.val();
-                studentUids.add(cData.lecturerId);
-                if (cData.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
-            }
+            studentUids.add(cData?.lecturerId);
+            if (cData?.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
 
             const enrolled = Array.from(studentUids).map(uid => ({ uid, name: usersData[uid]?.name || 'Unknown' })).filter(u => u.name !== 'Unknown');
             setEnrolledUsers(enrolled);
         };
-        fetchUsers();
 
-        return () => unsubscribe();
-    }, [courseId]);
+        fetchData();
+    }, [courseId, semesterIdFilter]);
     
     const handlePollOptionChange = (index: number, value: string) => {
         const newOptions = [...pollOptions];
@@ -160,10 +175,14 @@ export default function CourseMessagesPage() {
 
 
     const handlePostMessage = async () => {
-        if (!currentUser || !currentUserData) return;
+        if (!currentUser || !currentUserData || !courseData) return;
         setFormLoading(true);
 
-        const messagesRef = ref(db, `courseMessages/${courseId}`);
+        const dbPath = (courseData.separateInstance && semesterIdFilter) 
+            ? `courseMessages/${courseId}_${semesterIdFilter}` 
+            : `courseMessages/${courseId}`;
+
+        const messagesRef = ref(db, dbPath);
         const newMessageRef = push(messagesRef);
         let postData: Partial<Message> = {};
         
@@ -207,11 +226,15 @@ export default function CourseMessagesPage() {
     
     const handlePostComment = async (messageId: string) => {
         const commentText = comments[messageId];
-        if (!commentText?.trim() || !currentUser || !currentUserData) return;
+        if (!commentText?.trim() || !currentUser || !currentUserData || !courseData) return;
 
         setCommentLoading(messageId);
         try {
-            const commentsRef = ref(db, `courseMessages/${courseId}/${messageId}/comments`);
+            const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                ? `courseMessages/${courseId}_${semesterIdFilter}/${messageId}/comments` 
+                : `courseMessages/${courseId}/${messageId}/comments`;
+
+            const commentsRef = ref(db, dbPath);
             const newCommentRef = push(commentsRef);
             await set(newCommentRef, {
                 senderId: currentUser.uid,
@@ -228,7 +251,7 @@ export default function CourseMessagesPage() {
                 await createNotification(
                     originalPost.senderId,
                     `${currentUserData.name} commented on your post in ${originalPost.title.substring(0, 20)}...`,
-                    `/student/courses/${courseId}/messages`
+                    `/student/courses/${courseId}/messages?semesterId=${semesterIdFilter}`
                 );
             }
 
@@ -243,10 +266,9 @@ export default function CourseMessagesPage() {
                 }
             }
 
-            const courseSnap = await get(ref(db, `courses/${courseId}`));
-            const courseName = courseSnap.exists() ? courseSnap.val().name : "a course";
+            const courseName = courseData.name || "a course";
             const notificationPromises = Array.from(mentionedUids).map(uid =>
-                createNotification(uid, `${currentUserData.name} mentioned you in ${courseName}`, `/student/courses/${courseId}/messages`)
+                createNotification(uid, `${currentUserData.name} mentioned you in ${courseName}`, `/student/courses/${courseId}/messages?semesterId=${semesterIdFilter}`)
             );
             await Promise.all(notificationPromises);
 
@@ -320,8 +342,10 @@ export default function CourseMessagesPage() {
         <div className="space-y-6">
             <Card>
                  <CardHeader>
-                    <CardTitle>New Post</CardTitle>
-                    <CardDescription>Start a discussion or create a poll for the class.</CardDescription>
+                    <CardTitle>Group Announcements</CardTitle>
+                    <CardDescription>
+                        {semesterIdFilter ? "This discussion board is unique to this cohort instance." : "Start a discussion or create a poll for the class."}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -378,7 +402,7 @@ export default function CourseMessagesPage() {
                             {message.type === 'discussion' ? (
                                 <p className="whitespace-pre-wrap">{renderContent(message.content)}</p>
                             ) : (
-                                <p>Poll functionality is not available in staff view.</p>
+                                <p>Poll results are being calculated...</p>
                             )}
                         </CardContent>
                         <CardFooter className="flex-col items-start gap-4">
@@ -441,7 +465,7 @@ export default function CourseMessagesPage() {
                     <CardContent className="py-16 text-center text-muted-foreground">
                         <MessageSquare className="mx-auto h-12 w-12"/>
                         <h3 className="mt-4 text-lg font-semibold">No Messages Yet</h3>
-                        <p className="mt-2 text-sm">Be the first to post an announcement!</p>
+                        <p className="mt-2 text-sm">Be the first to start a conversation in this group!</p>
                     </CardContent>
                 </Card>
             )}

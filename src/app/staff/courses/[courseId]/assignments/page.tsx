@@ -1,6 +1,7 @@
+
 'use client';
 import * as React from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, CalendarIcon, Trash2, Eye, ShieldCheck, Download, ClipboardCheck, Save } from "lucide-react";
@@ -53,7 +54,10 @@ type AssessmentComponent = {
 
 export default function CourseAssignmentsPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
+    
     const [assignments, setAssignments] = React.useState<Assignment[]>([]);
     const [enrolledStudents, setEnrolledStudents] = React.useState<Student[]>([]);
     const [assessmentComponents, setAssessmentComponents] = React.useState<AssessmentComponent[]>([]);
@@ -80,24 +84,28 @@ export default function CourseAssignmentsPage() {
         if (!courseId) return;
         setLoading(true);
         try {
-            const [assignmentsSnap, courseSnap, usersSnap, regsSnap, templatesSnap] = await Promise.all([
-                get(ref(db, `assignments/${courseId}`)),
-                get(ref(db, `courses/${courseId}`)),
+            const courseSnap = await get(ref(db, `courses/${courseId}`));
+            let cData = null;
+            if (courseSnap.exists()) {
+                cData = courseSnap.val();
+                setCourseData(cData);
+            }
+
+            const dbPath = (cData?.separateInstance && semesterIdFilter) 
+                ? `assignments/${courseId}_${semesterIdFilter}` 
+                : `assignments/${courseId}`;
+
+            const [assignmentsSnap, usersSnap, regsSnap, templatesSnap] = await Promise.all([
+                get(ref(db, dbPath)),
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'settings/assessmentTemplates'))
             ]);
             
-            let cData = null;
-            if (courseSnap.exists()) {
-                cData = courseSnap.val();
-                setCourseData(cData);
-                
-                if (cData.assessmentTemplateId && templatesSnap.exists()) {
-                    const template = templatesSnap.val()[cData.assessmentTemplateId];
-                    if (template && template.components) {
-                        setAssessmentComponents(Object.entries(template.components).map(([id, data]: [string, any]) => ({ id, name: data.name })));
-                    }
+            if (cData && cData.assessmentTemplateId && templatesSnap.exists()) {
+                const template = templatesSnap.val()[cData.assessmentTemplateId];
+                if (template && template.components) {
+                    setAssessmentComponents(Object.entries(template.components).map(([id, data]: [string, any]) => ({ id, name: data.name })));
                 }
             }
             
@@ -106,8 +114,12 @@ export default function CourseAssignmentsPage() {
             const enrolledList: Student[] = [];
             for (const uid in allRegs) {
                 const userRegs = allRegs[uid];
-                for (const semId in userRegs) {
-                    if (userRegs[semId].courses?.includes(courseId) && (userRegs[semId].status === 'Completed' || userRegs[semId].status === 'Pending Payment')) {
+                const semesterIdsToCheck = (cData?.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+                for (const semId of semesterIdsToCheck) {
+                    const reg = userRegs[semId];
+                    if (!reg) continue;
+                    if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                         if (allUsers[uid]) enrolledList.push({ uid, id: allUsers[uid].id, name: allUsers[uid].name });
                         break;
                     }
@@ -120,7 +132,7 @@ export default function CourseAssignmentsPage() {
         } finally { 
             setLoading(false); 
         }
-    }, [courseId]);
+    }, [courseId, semesterIdFilter]);
 
     React.useEffect(() => {
         if(user) fetchData();
@@ -152,13 +164,17 @@ export default function CourseAssignmentsPage() {
     };
 
     const handleSaveGrades = async () => {
-        if (!selectedAssignment) return;
+        if (!selectedAssignment || !courseData) return;
         setFormLoading(true);
         try {
             const updates: Record<string, any> = {};
             const scoresRef = ref(db, `assessments/${courseId}`);
             const snapshot = await get(scoresRef);
             const currentScores = snapshot.exists() ? snapshot.val() : {};
+
+            const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                ? `assignments/${courseId}_${semesterIdFilter}` 
+                : `assignments/${courseId}`;
 
             for (const uid in assignmentScores) {
                 const scoreData = assignmentScores[uid];
@@ -167,7 +183,7 @@ export default function CourseAssignmentsPage() {
                         if (!currentScores[uid]) currentScores[uid] = {};
                         currentScores[uid][selectedAssignment.linkedComponentId] = scoreData;
                     }
-                    updates[`assignments/${courseId}/${selectedAssignment.id}/grades/${uid}`] = scoreData;
+                    updates[`${dbPath}/${selectedAssignment.id}/grades/${uid}`] = scoreData;
                 }
             }
 
@@ -193,10 +209,14 @@ export default function CourseAssignmentsPage() {
 
     const handleAddAssignment = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title || !description || !dueDate) { toast({ variant: 'destructive', title: 'Missing Fields' }); return; }
+        if (!title || !description || !dueDate || !courseData) { toast({ variant: 'destructive', title: 'Missing Fields' }); return; }
         setFormLoading(true);
         try {
-            const newRef = push(ref(db, `assignments/${courseId}`));
+            const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                ? `assignments/${courseId}_${semesterIdFilter}` 
+                : `assignments/${courseId}`;
+
+            const newRef = push(ref(db, dbPath));
             await set(newRef, { title, description, dueDate: format(dueDate, 'yyyy-MM-dd'), linkedComponentId: linkedComponentId || null });
             toast({ title: 'Assignment Added' });
             fetchData(); setIsAssignmentDialogOpen(false);
@@ -205,12 +225,16 @@ export default function CourseAssignmentsPage() {
     };
 
     const handleCheckPlagiarism = async (a: Assignment, studentUid: string) => {
-        if (!user) return;
+        if (!user || !courseData) return;
         setActionLoading(`plag-${a.id}-${studentUid}`);
         try {
+            const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                ? `assignments/${courseId}_${semesterIdFilter}` 
+                : `assignments/${courseId}`;
+
             await new Promise(resolve => setTimeout(resolve, 2000));
             const randomScore = Math.floor(Math.random() * 30);
-            await update(ref(db, `assignments/${courseId}/${a.id}/submissions/${studentUid}`), { plagiarismScore: randomScore, plagiarismReportedAt: new Date().toISOString() });
+            await update(ref(db, `${dbPath}/${a.id}/submissions/${studentUid}`), { plagiarismScore: randomScore, plagiarismReportedAt: new Date().toISOString() });
             toast({ title: 'Integrity Check Complete' });
             fetchData();
         } catch (e) { toast({ variant: 'destructive', title: 'Scan Failed' }); } finally { setActionLoading(null); }
@@ -229,7 +253,12 @@ export default function CourseAssignmentsPage() {
         <div className="space-y-6">
             <Card>
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1"><CardTitle>Assignments</CardTitle><CardDescription>Manage coursework and student submissions.</CardDescription></div>
+                    <div className="space-y-1">
+                        <CardTitle>Assignments</CardTitle>
+                        <CardDescription>
+                            {semesterIdFilter ? "Cohort-specific coursework dropboxes." : "Manage coursework and student submissions."}
+                        </CardDescription>
+                    </div>
                     {isAuthorized && (
                         <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
                             <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</Button></DialogTrigger>
@@ -256,16 +285,21 @@ export default function CourseAssignmentsPage() {
                         <CardHeader><CardTitle className="text-lg">{a.title}</CardTitle><CardDescription>Due: {format(new Date(a.dueDate), 'PPP')}</CardDescription></CardHeader>
                         <CardFooter className="justify-between">
                                 <Button variant="outline" size="sm" onClick={() => handleOpenGrading(a)} disabled={actionLoading === `grading-${a.id}`}>{actionLoading === `grading-${a.id}` ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <ClipboardCheck className="mr-2 h-4 w-4" />} Grade & Submissions ({Object.keys(a.submissions || {}).length})</Button>
-                                {isAuthorized && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => remove(ref(db, `assignments/${courseId}/${a.id}`)) }><Trash2 className="h-4 w-4"/></Button>}
+                                {isAuthorized && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => {
+                                    const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                                        ? `assignments/${courseId}_${semesterIdFilter}/${a.id}` 
+                                        : `assignments/${courseId}/${a.id}`;
+                                    remove(ref(db, dbPath)); 
+                                }}><Trash2 className="h-4 w-4"/></Button>}
                         </CardFooter>
                     </Card>
-                )) : <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg"><p>No assignments created yet.</p></div>}
+                )) : <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg"><p>No assignments created yet for this instance.</p></div>}
                 </CardContent>
             </Card>
 
              <Dialog open={isGradingOpen} onOpenChange={setIsGradingOpen}>
                 <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Grade Assignment: {selectedAssignment?.title}</DialogTitle><DialogDescription>Enter scores and feedback for all enrolled students.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle>Grade Assignment: {selectedAssignment?.title}</DialogTitle><DialogDescription>Enter scores and feedback for students in this instance.</DialogDescription></DialogHeader>
                      <div className="flex-1 overflow-auto mt-4 border rounded-md">
                         <Table>
                             <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead>Student</TableHead><TableHead>Submission / Plagiarism</TableHead><TableHead className="w-[120px]">Score (100)</TableHead><TableHead>Feedback</TableHead></TableRow></TableHeader>

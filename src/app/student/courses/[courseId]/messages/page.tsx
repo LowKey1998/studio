@@ -1,6 +1,7 @@
+
 'use client';
 import * as React from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,8 +50,12 @@ type EnrolledUser = {
 
 export default function CourseMessagesPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
+    
     const [messages, setMessages] = React.useState<Message[]>([]);
+    const [courseData, setCourseData] = React.useState<any>(null);
     
     // Form state
     const [activeTab, setActiveTab] = React.useState('discussion');
@@ -88,29 +93,39 @@ export default function CourseMessagesPage() {
         if (!courseId) return;
         setLoading(true);
 
-        const fetchUsers = async () => {
+        const fetchData = async () => {
+            const courseSnap = await get(ref(db, `courses/${courseId}`));
+            let cData = null;
+            if(courseSnap.exists()) {
+                cData = courseSnap.val();
+                setCourseData(cData);
+            }
+
+            const dbPath = (cData?.separateInstance && semesterIdFilter) 
+                ? `courseMessages/${courseId}_${semesterIdFilter}` 
+                : `courseMessages/${courseId}`;
+
             const usersRef = ref(db, 'users');
-            const registrationsRef = ref(db, 'registrations');
+            const registrationsRef = ref(db, `registrations`);
             const [usersSnap, regsSnap] = await Promise.all([get(usersRef), get(registrationsRef)]);
             const usersData = usersSnap.val() || {};
             const regsData = regsSnap.val() || {};
             const studentUids = new Set<string>();
 
             Object.keys(regsData).forEach(userId => {
-                Object.keys(regsData[userId]).forEach(semester => {
-                    if (regsData[userId][semester].courses?.includes(courseId)) {
+                const userRegs = regsData[userId];
+                const semesterIdsToCheck = (cData?.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+                for (const semId of semesterIdsToCheck) {
+                    if (userRegs[semId]?.courses?.includes(courseId)) {
                         studentUids.add(userId);
+                        break;
                     }
-                });
+                }
             });
             
-            const courseRef = ref(db, `courses/${courseId}`);
-            const courseSnap = await get(courseRef);
-            if(courseSnap.exists()){
-                const cData = courseSnap.val();
-                studentUids.add(cData.lecturerId);
-                if (cData.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
-            }
+            studentUids.add(cData?.lecturerId);
+            if (cData?.lecturerIds) cData.lecturerIds.forEach((id: string) => studentUids.add(id));
 
             const enrolled: Record<string, EnrolledUser> = {};
             Array.from(studentUids).forEach(uid => {
@@ -119,25 +134,24 @@ export default function CourseMessagesPage() {
                 }
             });
             setEnrolledUsers(enrolled);
+
+            const messagesRef = ref(db, dbPath);
+            onValue(messagesRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const messagesList: Message[] = Object.keys(data)
+                        .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
+                        .sort((a, b) => b.timestamp - a.timestamp);
+                    setMessages(messagesList);
+                } else {
+                    setMessages([]);
+                }
+                setLoading(false);
+            });
         };
-        fetchUsers();
 
-        const messagesRef = ref(db, `courseMessages/${courseId}`);
-        const unsubscribe = onValue(messagesRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const messagesList: Message[] = Object.keys(data)
-                    .map(key => ({ id: key, ...data[key], comments: data[key].comments || {} }))
-                    .sort((a, b) => b.timestamp - a.timestamp);
-                setMessages(messagesList);
-            } else {
-                setMessages([]);
-            }
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [courseId]);
+        fetchData();
+    }, [courseId, semesterIdFilter]);
     
     const handlePollOptionChange = (index: number, value: string) => {
         const newOptions = [...pollOptions];
@@ -154,10 +168,14 @@ export default function CourseMessagesPage() {
     };
 
     const handlePostMessage = async () => {
-        if (!currentUser || !currentUserData) return;
+        if (!currentUser || !currentUserData || !courseData) return;
         setFormLoading(true);
 
-        const messagesRef = ref(db, `courseMessages/${courseId}`);
+        const dbPath = (courseData.separateInstance && semesterIdFilter) 
+            ? `courseMessages/${courseId}_${semesterIdFilter}` 
+            : `courseMessages/${courseId}`;
+
+        const messagesRef = ref(db, dbPath);
         const newMessageRef = push(messagesRef);
         let postData: Partial<Omit<Message, 'id' | 'senderId' | 'timestamp' | 'comments'>> = {};
         
@@ -194,10 +212,14 @@ export default function CourseMessagesPage() {
     
     const handlePostComment = async (messageId: string) => {
         const commentText = comments[messageId];
-        if (!commentText?.trim() || !currentUser || !currentUserData) return;
+        if (!commentText?.trim() || !currentUser || !currentUserData || !courseData) return;
         setCommentLoading(messageId);
         try {
-            const newCommentRef = push(ref(db, `courseMessages/${courseId}/${messageId}/comments`));
+            const dbPath = (courseData.separateInstance && semesterIdFilter) 
+                ? `courseMessages/${courseId}_${semesterIdFilter}/${messageId}/comments` 
+                : `courseMessages/${courseId}/${messageId}/comments`;
+
+            const newCommentRef = push(ref(db, dbPath));
             await set(newCommentRef, {
                 senderId: currentUser.uid,
                 content: commentText,
@@ -209,7 +231,7 @@ export default function CourseMessagesPage() {
                 await createNotification(
                     originalPost.senderId,
                     `${currentUserData.name} commented on your post in the course group.`,
-                    `/student/courses/${courseId}/messages`
+                    `/student/courses/${courseId}/messages?semesterId=${semesterIdFilter}`
                 );
             }
 
@@ -220,10 +242,9 @@ export default function CourseMessagesPage() {
                 if (match[2] !== currentUser.uid) mentionedUids.add(match[2]);
             }
 
-            const courseSnap = await get(ref(db, `courses/${courseId}`));
-            const courseName = courseSnap.exists() ? courseSnap.val().name : "a course";
+            const courseName = courseData.name || "a course";
             const notificationPromises = Array.from(mentionedUids).map(uid =>
-                createNotification(uid, `${currentUserData.name} mentioned you in ${courseName}`, `/student/courses/${courseId}/messages`)
+                createNotification(uid, `${currentUserData.name} mentioned you in ${courseName}`, `/student/courses/${courseId}/messages?semesterId=${semesterIdFilter}`)
             );
             await Promise.all(notificationPromises);
 
@@ -269,8 +290,12 @@ export default function CourseMessagesPage() {
     };
     
     const handleVote = (messageId: string, optionIndex: number) => {
-        if (!currentUser) return;
-        const voteRef = ref(db, `courseMessages/${courseId}/${messageId}/options/${optionIndex}/votes/${currentUser.uid}`);
+        if (!currentUser || !courseData) return;
+        const dbPath = (courseData.separateInstance && semesterIdFilter) 
+            ? `courseMessages/${courseId}_${semesterIdFilter}/${messageId}/options/${optionIndex}/votes/${currentUser.uid}` 
+            : `courseMessages/${courseId}/${messageId}/options/${optionIndex}/votes/${currentUser.uid}`;
+
+        const voteRef = ref(db, dbPath);
         runTransaction(voteRef, () => true);
     };
     
@@ -295,7 +320,9 @@ export default function CourseMessagesPage() {
             <Card>
                  <CardHeader>
                     <CardTitle>New Post</CardTitle>
-                    <CardDescription>Start a discussion or create a poll for the class.</CardDescription>
+                    <CardDescription>
+                        {semesterIdFilter ? "Discussion unique to this cohort session." : "Start a discussion or create a poll for the class."}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

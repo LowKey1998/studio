@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -28,27 +28,17 @@ type AssessmentScore = {
     feedback?: string;
 }
 
-type AssessmentScores = {
-    assignment1?: AssessmentScore;
-    quiz1?: AssessmentScore;
-    midterm?: AssessmentScore;
-    finalExam?: AssessmentScore;
-};
-
-type AllScores = Record<string, AssessmentScores>; // studentUid -> scores
-
-const assessmentColumns: { key: keyof AssessmentScores, label: string }[] = [
-    { key: 'assignment1', label: 'Assignment 1' },
-    { key: 'quiz1', label: 'Quiz 1' },
-    { key: 'midterm', label: 'Midterm' },
-    { key: 'finalExam', label: 'Final Exam' },
-];
+type AllScores = Record<string, Record<string, AssessmentScore>>; // studentUid -> componentId -> score
 
 export default function CourseAssessmentPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
+    
     const [students, setStudents] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
+    const [templateComponents, setTemplateComponents] = React.useState<any[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -65,7 +55,19 @@ export default function CourseAssessmentPage() {
         if (!currentUser || !courseId) return;
         setLoading(true);
         try {
-            // Fetch Enrolled Students
+            const courseSnap = await get(ref(db, `courses/${courseId}`));
+            const courseData = courseSnap.exists() ? courseSnap.val() : null;
+            if (!courseData) throw new Error("Course not found");
+
+            // Load assessment template
+            if (courseData.assessmentTemplateId) {
+                const templateSnap = await get(ref(db, `settings/assessmentTemplates/${courseData.assessmentTemplateId}`));
+                if (templateSnap.exists()) {
+                    setTemplateComponents(Object.entries(templateSnap.val().components).map(([id, c]: [string, any]) => ({ id, ...c })));
+                }
+            }
+
+            // Fetch Enrolled Students for this instance
             const allUsersSnapshot = await get(ref(db, 'users'));
             const allUsers = allUsersSnapshot.val();
             const registrationsSnapshot = await get(ref(db, 'registrations'));
@@ -74,10 +76,15 @@ export default function CourseAssessmentPage() {
             if (registrationsSnapshot.exists()) {
                 const allRegistrations = registrationsSnapshot.val();
                 for (const userId in allRegistrations) {
-                    for (const semester in allRegistrations[userId]) {
-                        const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && reg.status === 'Completed') {
+                    const userRegs = allRegistrations[userId];
+                    const semesterIdsToCheck = (courseData.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+                    for (const semId of semesterIdsToCheck) {
+                        const reg = userRegs[semId];
+                        if (!reg) continue;
+                        if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
                             enrolledStudentUids.push(userId);
+                            break;
                         }
                     }
                 }
@@ -105,38 +112,37 @@ export default function CourseAssessmentPage() {
         } finally {
             setLoading(false);
         }
-    }, [courseId, currentUser, toast]);
+    }, [courseId, semesterIdFilter, currentUser, toast]);
 
     React.useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    const handleScoreChange = (studentUid: string, field: keyof AssessmentScores, value: string) => {
+    const handleScoreChange = (studentUid: string, componentId: string, value: string) => {
         const numericValue = value === '' ? undefined : Number(value);
         if (numericValue !== undefined && (isNaN(numericValue) || numericValue < 0 || numericValue > 100)) {
-            toast({ variant: 'destructive', title: "Invalid Score", description: "Score must be between 0 and 100." });
             return;
         }
 
         setScores(prev => ({
             ...prev,
             [studentUid]: {
-                ...prev[studentUid],
-                [field]: {
-                    ...prev[studentUid]?.[field],
+                ...(prev[studentUid] || {}),
+                [componentId]: {
+                    ...(prev[studentUid]?.[componentId] || {}),
                     score: numericValue
                 }
             },
         }));
     };
 
-    const handleFeedbackChange = (studentUid: string, field: keyof AssessmentScores, feedback: string) => {
+    const handleFeedbackChange = (studentUid: string, componentId: string, feedback: string) => {
         setScores(prev => ({
             ...prev,
             [studentUid]: {
-                ...prev[studentUid],
-                [field]: {
-                    ...prev[studentUid]?.[field],
+                ...(prev[studentUid] || {}),
+                [componentId]: {
+                    ...(prev[studentUid]?.[componentId] || {}),
                     feedback: feedback
                 }
             }
@@ -149,7 +155,7 @@ export default function CourseAssessmentPage() {
         try {
             const scoresRef = ref(db, `assessments/${courseId}`);
             await set(scoresRef, scores);
-            toast({ title: "Scores Saved", description: "Continuous assessment scores have been updated." });
+            toast({ title: "Scores Saved", description: "Gradebook updated for this instance." });
         } catch (error: any) {
             console.error("Error saving scores:", error);
             toast({ variant: 'destructive', title: "Save Failed", description: error.message });
@@ -161,22 +167,25 @@ export default function CourseAssessmentPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Continuous Assessment</CardTitle>
-                <CardDescription>Enter and manage student scores for this course. All scores are out of 100.</CardDescription>
+                <CardTitle>Instance Assessment</CardTitle>
+                <CardDescription>
+                    {semesterIdFilter ? "Grading students enrolled in this specific group." : "Enter and manage student scores for this course."}
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 {loading ? (
                     <div className="space-y-2">
                         {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
                     </div>
-                ) : students.length > 0 ? (
+                ) : students.length > 0 && templateComponents.length > 0 ? (
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="min-w-[150px]">Student Name</TableHead>
                                     <TableHead className="min-w-[100px]">Student ID</TableHead>
-                                    {assessmentColumns.map(col => <TableHead key={col.key}>{col.label}</TableHead>)}
+                                    {templateComponents.map(col => <TableHead key={col.id}>{col.name} ({col.weight}%)</TableHead>)}
+                                    <TableHead>Final Exam</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -184,44 +193,44 @@ export default function CourseAssessmentPage() {
                                     <TableRow key={student.uid}>
                                         <TableCell className="font-medium">{student.name}</TableCell>
                                         <TableCell>{student.id}</TableCell>
-                                        {assessmentColumns.map(col => (
-                                            <TableCell key={col.key}>
+                                        {templateComponents.map(col => (
+                                            <TableCell key={col.id}>
                                                 <div className="flex items-center gap-2">
                                                     <Input
                                                         type="number"
-                                                        min="0"
-                                                        max="100"
-                                                        className="w-20"
-                                                        value={scores[student.uid]?.[col.key]?.score ?? ''}
-                                                        onChange={(e) => handleScoreChange(student.uid, col.key, e.target.value)}
+                                                        className="w-20 h-8 text-xs"
+                                                        value={scores[student.uid]?.[col.id]?.score ?? ''}
+                                                        onChange={(e) => handleScoreChange(student.uid, col.id, e.target.value)}
                                                         placeholder="-"
                                                     />
                                                     <Popover>
                                                         <PopoverTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                                <MessageSquare className="h-4 w-4" />
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                                                                <MessageSquare className="h-3 w-3" />
                                                             </Button>
                                                         </PopoverTrigger>
                                                         <PopoverContent>
-                                                            <div className="grid gap-4">
-                                                                <div className="space-y-2">
-                                                                    <h4 className="font-medium leading-none">Feedback</h4>
-                                                                    <p className="text-sm text-muted-foreground">
-                                                                        Provide feedback for {student.name} on {col.label}.
-                                                                    </p>
-                                                                </div>
-                                                                <div className="grid gap-2">
-                                                                    <Textarea 
-                                                                        value={scores[student.uid]?.[col.key]?.feedback ?? ''}
-                                                                        onChange={(e) => handleFeedbackChange(student.uid, col.key, e.target.value)}
-                                                                    />
-                                                                </div>
+                                                            <div className="grid gap-2">
+                                                                <Label className="text-xs font-bold uppercase">Feedback: {col.name}</Label>
+                                                                <Textarea 
+                                                                    className="text-xs"
+                                                                    value={scores[student.uid]?.[col.id]?.feedback ?? ''}
+                                                                    onChange={(e) => handleFeedbackChange(student.uid, col.id, e.target.value)}
+                                                                />
                                                             </div>
                                                         </PopoverContent>
                                                     </Popover>
                                                 </div>
                                             </TableCell>
                                         ))}
+                                        <TableCell>
+                                            <Input 
+                                                type="number" 
+                                                className="w-20 h-8 text-xs font-bold" 
+                                                value={scores[student.uid]?.finalExam?.score ?? ''} 
+                                                onChange={(e) => handleScoreChange(student.uid, 'finalExam', e.target.value)}
+                                            />
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -230,14 +239,16 @@ export default function CourseAssessmentPage() {
                 ) : (
                     <Alert>
                         <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>No Students Enrolled</AlertTitle>
+                        <AlertTitle>{templateComponents.length === 0 ? "Template Required" : "No Students"}</AlertTitle>
                         <AlertDescription>
-                            There are no students with completed registrations for this course yet.
+                            {templateComponents.length === 0 
+                                ? "This course requires an Assessment Template to be assigned by an Admin before grades can be entered." 
+                                : "There are no students with completed registrations for this specific class group yet."}
                         </AlertDescription>
                     </Alert>
                 )}
             </CardContent>
-            {students.length > 0 && (
+            {students.length > 0 && templateComponents.length > 0 && (
                 <CardFooter className="flex justify-end border-t pt-6">
                     <Button onClick={handleSaveScores} disabled={saving || loading}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}

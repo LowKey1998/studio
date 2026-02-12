@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Users, Mail, Phone, Hash } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 
 type Participant = { 
@@ -22,7 +23,9 @@ type Participant = {
 
 export default function CourseParticipantsPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterIdFilter = searchParams.get('semesterId');
     const [participants, setParticipants] = React.useState<Participant[]>([]);
     const [loading, setLoading] = React.useState(true);
 
@@ -74,8 +77,12 @@ export default function CourseParticipantsPage() {
                 // 2. Add Students
                 for (const userId in allRegistrations) {
                     const userRegs = allRegistrations[userId];
-                    for (const semesterId in userRegs) {
-                        const reg = userRegs[semesterId];
+                    const semesterIdsToCheck = semesterIdFilter ? [semesterIdFilter] : Object.keys(userRegs);
+
+                    for (const semId of semesterIdsToCheck) {
+                        const reg = userRegs[semId];
+                        if (!reg) continue;
+
                         const enrolledCourses = reg.courses ? (Array.isArray(reg.courses) ? reg.courses : Object.values(reg.courses)) : [];
                         
                         if (enrolledCourses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
@@ -100,7 +107,7 @@ export default function CourseParticipantsPage() {
         };
 
         fetchData();
-    }, [courseId]);
+    }, [courseId, semesterIdFilter]);
     
     if(loading) {
         return (
@@ -123,7 +130,9 @@ export default function CourseParticipantsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="space-y-1">
                     <CardTitle>Participants List</CardTitle>
-                    <CardDescription>A comprehensive list of faculty and students enrolled in this session.</CardDescription>
+                    <CardDescription>
+                        {semesterIdFilter ? "Filtered roster for this specific class instance." : "A comprehensive list of faculty and students enrolled in all sessions."}
+                    </CardDescription>
                 </div>
                 <Badge variant="secondary" className="text-base px-3 py-1">
                     <Users className="mr-2 h-4 w-4" />
@@ -167,7 +176,7 @@ export default function CourseParticipantsPage() {
                     <Alert>
                         <Users className="h-4 w-4" />
                         <AlertTitle>No Participants Found</AlertTitle>
-                        <AlertDescription>This course does not currently have any participants listed.</AlertDescription>
+                        <AlertDescription>This course instance does not currently have any participants listed.</AlertDescription>
                     </Alert>
                 )}
             </CardContent>
