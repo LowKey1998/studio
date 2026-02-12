@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, Calendar as CalendarIcon, Search, LayoutGrid, CalendarDays, ListFilter, UserSearch, Settings2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, Calendar as CalendarIcon, Search, LayoutGrid, CalendarDays, ListFilter, UserSearch, Settings2, ChevronLeft, ChevronRight, Check, User, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -27,7 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 type Intake = { id: string; name: string; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
 type Course = { id: string; name: string; code: string; };
-type Student = { uid: string; id: string; name: string; email: string; };
+type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; };
 
 type TimetableEntry = {
     id: string;
@@ -80,6 +80,7 @@ export default function AdminMarkAttendancePage() {
     // Views Data
     const [courseAttendanceData, setCourseAttendanceData] = React.useState<Record<string, Record<string, AttendanceRecord>>>({});
     const [selectedStudentHistory, setSelectedStudentHistory] = React.useState<string | null>(null);
+    const [studentListSearch, setStudentListSearch] = React.useState('');
 
     const { toast } = useToast();
 
@@ -251,11 +252,17 @@ export default function AdminMarkAttendancePage() {
         return { present, absent, late, excused, total, rate };
     };
 
+    const semesterStats = React.useMemo(() => {
+        if (!selectedIntake) return [];
+        
+        return allStudents.filter(s => s.intakeId === selectedIntake).map(student => {
+            const stats = getStudentAttendanceStats(student.uid);
+            return { ...student, ...stats };
+        }).sort((a, b) => a.rate - b.rate);
+    }, [selectedIntake, allStudents, courseAttendanceData]);
+
     const currentWeekInterval = React.useMemo(() => {
         const start = startOfWeek(viewWeek, { weekStartsOn: 1 }); // Start from Monday
-        const end = addWeeks(start, 0); // Friday is 4 days after Monday
-        const weekDays = eachDayOfInterval({ start, end: addWeeks(start, 0).setDate(start.getDate() + 4) }); 
-        // Manual 5 days because eachDayOfInterval might include weekend
         const mon = start;
         return [0,1,2,3,4].map(i => {
             const d = new Date(mon);
@@ -469,77 +476,154 @@ export default function AdminMarkAttendancePage() {
                             )}
                         </TabsContent>
 
-                        <TabsContent value="student" className="mt-6 space-y-6">
-                            <div className="max-w-md mx-auto space-y-4">
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input placeholder="Find student record..." className="pl-8" onChange={e => {
-                                        const found = allStudents.find(s => s.name.toLowerCase().includes(e.target.value.toLowerCase()) || s.id.toLowerCase() === e.target.value.toLowerCase());
-                                        if(found) setSelectedStudentHistory(found.uid);
-                                    }}/>
-                                </div>
-                            </div>
-                            {selectedStudentHistory ? (
-                                <div className="grid gap-6 md:grid-cols-2">
-                                    <Card className="border-primary/20 shadow-sm">
-                                        <CardHeader><CardTitle>Academic Summary</CardTitle></CardHeader>
-                                        <CardContent className="space-y-4">
-                                            {(() => {
-                                                const stats = getStudentAttendanceStats(selectedStudentHistory);
-                                                const student = allStudents.find(s => s.uid === selectedStudentHistory);
-                                                return (
-                                                    <>
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl">{student?.name.charAt(0)}</div>
-                                                            <div><p className="font-bold text-xl">{student?.name}</p><p className="text-sm text-muted-foreground">{student?.id}</p></div>
-                                                        </div>
-                                                        <Separator />
-                                                        <div className="grid grid-cols-2 gap-4 pt-2">
-                                                            <div className="p-2 bg-green-50 rounded border border-green-100"><p className="text-xs font-bold text-green-700">PRESENT</p><p className="text-2xl font-bold">{stats.present}</p></div>
-                                                            <div className="p-2 bg-red-50 rounded border border-red-100"><p className="text-xs font-bold text-red-700">ABSENT</p><p className="text-2xl font-bold">{stats.absent}</p></div>
-                                                            <div className="p-2 bg-orange-50 rounded border border-orange-100"><p className="text-xs font-bold text-orange-700">LATE</p><p className="text-2xl font-bold">{stats.late}</p></div>
-                                                            <div className="p-2 bg-blue-50 rounded border border-blue-100"><p className="text-xs font-bold text-blue-700">TOTAL</p><p className="text-2xl font-bold">{stats.total}</p></div>
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between text-sm font-bold"><span>Attendance Reliability</span><span>{stats.rate.toFixed(1)}%</span></div>
-                                                            <Progress value={stats.rate} className={cn(stats.rate < 75 ? "bg-red-100" : "bg-green-100")} />
-                                                        </div>
-                                                    </>
-                                                )
-                                            })()}
-                                        </CardContent>
-                                    </Card>
-                                    <Card>
-                                        <CardHeader><CardTitle>Detailed Logs</CardTitle></CardHeader>
-                                        <CardContent>
-                                            <ScrollArea className="h-[400px] pr-4">
-                                                {Object.entries(courseAttendanceData).map(([courseId, dates]) => {
-                                                    const course = allCourses[courseId];
-                                                    const myLogs = Object.entries(dates).filter(([_, log]) => !!log[selectedStudentHistory!]);
-                                                    if(myLogs.length === 0) return null;
-                                                    return (
-                                                        <div key={courseId} className="mb-6">
-                                                            <h4 className="font-bold text-sm mb-2 border-b pb-1 flex justify-between">
-                                                                <span>{course?.name}</span>
-                                                                <span className="text-[10px] text-muted-foreground">{course?.code}</span>
-                                                            </h4>
-                                                            <div className="space-y-1">
-                                                                {myLogs.map(([date, log]) => (
-                                                                    <div key={date} className="flex justify-between items-center text-xs p-1 hover:bg-muted rounded transition-colors">
-                                                                        <span>{format(parseISO(date), 'MMM dd, yyyy')}</span>
-                                                                        <Badge variant={log[selectedStudentHistory!] === 'Present' ? 'default' : 'destructive'} className="text-[9px] h-4">{log[selectedStudentHistory!]}</Badge>
-                                                                    </div>
-                                                                ))}
+                        <TabsContent value="semester" className="mt-6">
+                            {selectedIntake ? (
+                                <div className="space-y-4">
+                                    <Alert className="bg-primary/5 border-primary/20">
+                                        <Info className="h-4 w-4" />
+                                        <AlertTitle>Aggregated Semester Statistics</AlertTitle>
+                                        <AlertDescription>Overview of attendance reliability across all courses for the current intake cohort.</AlertDescription>
+                                    </Alert>
+                                    <div className="rounded-md border overflow-hidden shadow-sm">
+                                        <Table>
+                                            <TableHeader className="bg-muted/50">
+                                                <TableRow>
+                                                    <TableHead>Student</TableHead>
+                                                    <TableHead>System ID</TableHead>
+                                                    <TableHead className="text-center">Total Sessions</TableHead>
+                                                    <TableHead className="text-center">Present</TableHead>
+                                                    <TableHead className="w-[200px]">Attendance Rate</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {semesterStats.length > 0 ? semesterStats.map(student => (
+                                                    <TableRow key={student.uid}>
+                                                        <TableCell className="font-bold">{student.name}</TableCell>
+                                                        <TableCell className="font-mono text-xs uppercase">{student.id}</TableCell>
+                                                        <TableCell className="text-center">{student.total}</TableCell>
+                                                        <TableCell className="text-center font-bold text-green-600">{student.present}</TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-2">
+                                                                <Progress value={student.rate} className={cn("h-2", student.rate < 75 ? "bg-red-100" : "bg-green-100")} />
+                                                                <span className={cn("text-[10px] font-bold", student.rate < 75 ? "text-red-600" : "text-green-600")}>{student.rate.toFixed(0)}%</span>
                                                             </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </ScrollArea>
-                                        </CardContent>
-                                    </Card>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )) : <TableRow><TableCell colSpan={5} className="text-center h-32 text-muted-foreground italic">No student data found for this intake.</TableCell></TableRow>}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-20 text-muted-foreground border border-dashed rounded-lg"><UserSearch className="mx-auto mb-4 h-12 w-12 opacity-20"/><p>Search for a student above to see their detailed attendance history.</p></div>
+                                <div className="text-center py-20 text-muted-foreground bg-muted/10 rounded-lg border-2 border-dashed">Select an intake to view semester-wide attendance stats.</div>
+                            )}
+                        </TabsContent>
+
+                        <TabsContent value="student" className="mt-6 space-y-6">
+                            {!selectedStudentHistory ? (
+                                <div className="space-y-4">
+                                    <div className="max-w-md mx-auto space-y-4">
+                                        <div className="relative">
+                                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input 
+                                                placeholder="Filter student roster..." 
+                                                className="pl-8" 
+                                                value={studentListSearch}
+                                                onChange={e => setStudentListSearch(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {allStudents
+                                            .filter(s => (!selectedIntake || s.intakeId === selectedIntake) && s.name.toLowerCase().includes(studentListSearch.toLowerCase()))
+                                            .map(student => (
+                                                <Card 
+                                                    key={student.uid} 
+                                                    className="cursor-pointer hover:bg-primary/5 transition-all border-primary/10 shadow-sm group"
+                                                    onClick={() => setSelectedStudentHistory(student.uid)}
+                                                >
+                                                    <CardHeader className="p-4 flex flex-row items-center gap-3">
+                                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold group-hover:bg-primary group-hover:text-white transition-colors">{student.name.charAt(0)}</div>
+                                                        <div>
+                                                            <p className="font-bold text-sm leading-tight">{student.name}</p>
+                                                            <p className="text-[10px] text-muted-foreground uppercase">{student.id}</p>
+                                                        </div>
+                                                    </CardHeader>
+                                                </Card>
+                                            ))
+                                        }
+                                        {allStudents.filter(s => !selectedIntake || s.intakeId === selectedIntake).length === 0 && (
+                                            <div className="col-span-full text-center py-20 text-muted-foreground border-2 border-dashed rounded-lg">
+                                                <UserSearch className="mx-auto mb-2 opacity-20"/>
+                                                <p>No students found for this intake.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <Button variant="ghost" onClick={() => setSelectedStudentHistory(null)} className="font-bold">
+                                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Student List
+                                    </Button>
+                                    <div className="grid gap-6 md:grid-cols-2">
+                                        <Card className="border-primary/20 shadow-sm h-fit">
+                                            <CardHeader><CardTitle>Academic Summary</CardTitle></CardHeader>
+                                            <CardContent className="space-y-4">
+                                                {(() => {
+                                                    const stats = getStudentAttendanceStats(selectedStudentHistory);
+                                                    const student = allStudents.find(s => s.uid === selectedStudentHistory);
+                                                    return (
+                                                        <>
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl">{student?.name.charAt(0)}</div>
+                                                                <div><p className="font-bold text-xl">{student?.name}</p><p className="text-sm text-muted-foreground">{student?.id}</p></div>
+                                                            </div>
+                                                            <Separator />
+                                                            <div className="grid grid-cols-2 gap-4 pt-2">
+                                                                <div className="p-2 bg-green-50 rounded border border-green-100"><p className="text-xs font-bold text-green-700">PRESENT</p><p className="text-2xl font-bold">{stats.present}</p></div>
+                                                                <div className="p-2 bg-red-50 rounded border border-red-100"><p className="text-xs font-bold text-red-700">ABSENT</p><p className="text-2xl font-bold">{stats.absent}</p></div>
+                                                                <div className="p-2 bg-orange-50 rounded border border-orange-100"><p className="text-xs font-bold text-orange-700">LATE</p><p className="text-2xl font-bold">{stats.late}</p></div>
+                                                                <div className="p-2 bg-blue-50 rounded border border-blue-100"><p className="text-xs font-bold text-blue-700">TOTAL</p><p className="text-2xl font-bold">{stats.total}</p></div>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <div className="flex justify-between text-sm font-bold"><span>Attendance Reliability</span><span>{stats.rate.toFixed(1)}%</span></div>
+                                                                <Progress value={stats.rate} className={cn(stats.rate < 75 ? "bg-red-100" : "bg-green-100")} />
+                                                            </div>
+                                                        </>
+                                                    )
+                                                })()}
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardHeader><CardTitle>Detailed Logs</CardTitle></CardHeader>
+                                            <CardContent>
+                                                <ScrollArea className="h-[450px] pr-4">
+                                                    {Object.entries(courseAttendanceData).map(([courseId, dates]) => {
+                                                        const course = allCourses[courseId];
+                                                        const myLogs = Object.entries(dates).filter(([_, log]) => !!log[selectedStudentHistory!]);
+                                                        if(myLogs.length === 0) return null;
+                                                        return (
+                                                            <div key={courseId} className="mb-6">
+                                                                <h4 className="font-bold text-sm mb-2 border-b pb-1 flex justify-between">
+                                                                    <span>{course?.name}</span>
+                                                                    <span className="text-[10px] text-muted-foreground">{course?.code}</span>
+                                                                </h4>
+                                                                <div className="space-y-1">
+                                                                    {myLogs.map(([date, log]) => (
+                                                                        <div key={date} className="flex justify-between items-center text-xs p-1 hover:bg-muted rounded transition-colors">
+                                                                            <span>{format(parseISO(date), 'MMM dd, yyyy')}</span>
+                                                                            <Badge variant={log[selectedStudentHistory!] === 'Present' ? 'default' : 'destructive'} className="text-[9px] h-4">{log[selectedStudentHistory!]}</Badge>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </ScrollArea>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                </div>
                             )}
                         </TabsContent>
                     </Tabs>
