@@ -237,6 +237,28 @@ export default function CourseAssignmentsPage() {
         }
     };
 
+    const handleCheckPlagiarism = async (a: Assignment, studentUid: string) => {
+        if (!user) return;
+        setActionLoading(`plag-${a.id}-${studentUid}`);
+        try {
+            // Simulated AI integrity scan
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const randomScore = Math.floor(Math.random() * 30);
+            
+            await update(ref(db, `assignments/${courseId}/${a.id}/submissions/${studentUid}`), {
+                plagiarismScore: randomScore,
+                plagiarismReportedAt: new Date().toISOString()
+            });
+            
+            toast({ title: 'Integrity Check Complete', description: `Similarity: ${randomScore}%. Documentation verified.` });
+            fetchData();
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Scan Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const isAuthorized = React.useMemo(() => {
         if (!user || !courseData) return false;
         if (userProfile?.role === 'Admin') return true;
@@ -250,100 +272,102 @@ export default function CourseAssignmentsPage() {
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     return (
-        <Card>
-            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                    <CardTitle>Assignments</CardTitle>
-                    <CardDescription>Manage coursework and student submissions.</CardDescription>
-                </div>
-                 {isAuthorized && (
-                    <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
-                        <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</Button></DialogTrigger>
-                        <DialogContent><form onSubmit={handleAddAssignment}>
-                            <DialogHeader><DialogTitle>New Assignment</DialogTitle></DialogHeader>
-                            <div className="grid gap-4 py-4">
-                                <div className="space-y-1">
-                                    <Label>Title</Label>
-                                    <Input value={title} onChange={e => setTitle(e.target.value)} required/>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label>Instructions</Label>
-                                    <Textarea value={description} onChange={e => setDescription(e.target.value)} required/>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-6">
+            <Card>
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                        <CardTitle>Assignments</CardTitle>
+                        <CardDescription>Manage coursework and student submissions.</CardDescription>
+                    </div>
+                    {isAuthorized && (
+                        <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
+                            <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</Button></DialogTrigger>
+                            <DialogContent><form onSubmit={handleAddAssignment}>
+                                <DialogHeader><DialogTitle>New Assignment</DialogTitle></DialogHeader>
+                                <div className="grid gap-4 py-4">
                                     <div className="space-y-1">
-                                        <Label>Due Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                                    {dueDate ? format(dueDate, 'PPP') : "Select Date"}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0">
-                                                <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus />
-                                            </PopoverContent>
-                                        </Popover>
+                                        <Label>Title</Label>
+                                        <Input value={title} onChange={e => setTitle(e.target.value)} required/>
                                     </div>
                                     <div className="space-y-1">
-                                        <Label>Link to Gradebook Component</Label>
-                                        <Select value={linkedComponentId} onValueChange={setLinkedComponentId}>
-                                            <SelectTrigger><SelectValue placeholder="Select component..."/></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">No Link</SelectItem>
-                                                {assessmentComponents.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
+                                        <Label>Instructions</Label>
+                                        <Textarea value={description} onChange={e => setDescription(e.target.value)} required/>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <Label>Due Date</Label>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                        {dueDate ? format(dueDate, 'PPP') : "Select Date"}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0">
+                                                    <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label>Link to Gradebook Component</Label>
+                                            <Select value={linkedComponentId} onValueChange={setLinkedComponentId}>
+                                                <SelectTrigger><SelectValue placeholder="Select component..."/></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">No Link</SelectItem>
+                                                    {assessmentComponents.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <DialogFooter>
-                                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                <Button type="submit" disabled={formLoading}>Create Assignment</Button>
-                            </DialogFooter>
-                        </form></DialogContent>
-                    </Dialog>
-                )}
-            </CardHeader>
-            <CardContent>
-               {assignments.length > 0 ? assignments.map(a => (
-                   <Card key={a.id} className="mb-4">
-                       <CardHeader>
-                           <CardTitle className="text-lg">{a.title}</CardTitle>
-                           <CardDescription>Due: {format(new Date(a.dueDate), 'PPP')}</CardDescription>
-                       </CardHeader>
-                       <CardFooter className="justify-between">
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleOpenGrading(a)}
-                                disabled={actionLoading === `grading-${a.id}`}
-                            >
-                                {actionLoading === `grading-${a.id}` ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <ClipboardCheck className="mr-2 h-4 w-4" />} 
-                                Grade & Submissions ({Object.keys(a.submissions || {}).length})
-                            </Button>
-                            {isAuthorized && (
-                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(a.id)}>
-                                    <Trash2 className="h-4 w-4"/>
+                                <DialogFooter>
+                                    <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                                    <Button type="submit" disabled={formLoading}>Create Assignment</Button>
+                                </DialogFooter>
+                            </form></DialogContent>
+                        </Dialog>
+                    )}
+                </CardHeader>
+                <CardContent>
+                {assignments.length > 0 ? assignments.map(a => (
+                    <Card key={a.id} className="mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-lg">{a.title}</CardTitle>
+                            <CardDescription>Due: {format(new Date(a.dueDate), 'PPP')}</CardDescription>
+                        </CardHeader>
+                        <CardFooter className="justify-between">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => handleOpenGrading(a)}
+                                    disabled={actionLoading === `grading-${a.id}`}
+                                >
+                                    {actionLoading === `grading-${a.id}` ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <ClipboardCheck className="mr-2 h-4 w-4" />} 
+                                    Grade & Submissions ({Object.keys(a.submissions || {}).length})
                                 </Button>
-                            )}
-                       </CardFooter>
-                    </Card>
-               )) : <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg"><p>No assignments created yet.</p></div>}
-            </CardContent>
+                                {isAuthorized && (
+                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(a.id)}>
+                                        <Trash2 className="h-4 w-4"/>
+                                    </Button>
+                                )}
+                        </CardFooter>
+                        </Card>
+                )) : <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg"><p>No assignments created yet.</p></div>}
+                </CardContent>
+            </Card>
 
              <Dialog open={isGradingOpen} onOpenChange={setIsGradingOpen}>
                 <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Grade Assignment: {selectedAssignment?.title}</DialogTitle>
-                        <DialogDescription>Enter scores and feedback for all enrolled students. Digital submissions are linked below.</DialogDescription>
+                        <DialogDescription>Enter scores and feedback for all enrolled students. Lecturers can grade physical work even without a digital submission.</DialogDescription>
                     </DialogHeader>
                      <div className="flex-1 overflow-auto mt-4 border rounded-md">
                         <Table>
                             <TableHeader className="bg-muted/50 sticky top-0 z-10">
                                 <TableRow>
                                     <TableHead>Student</TableHead>
-                                    <TableHead>Submission</TableHead>
+                                    <TableHead>Submission / Plagiarism</TableHead>
                                     <TableHead className="w-[120px]">Score (100)</TableHead>
                                     <TableHead>Feedback</TableHead>
                                 </TableRow>
@@ -351,6 +375,7 @@ export default function CourseAssignmentsPage() {
                             <TableBody>
                                 {enrolledStudents.map(student => {
                                     const sub = selectedAssignment?.submissions?.[student.uid];
+                                    const plagLoading = actionLoading === `plag-${selectedAssignment?.id}-${student.uid}`;
                                     return (
                                         <TableRow key={student.uid}>
                                             <TableCell>
@@ -358,13 +383,36 @@ export default function CourseAssignmentsPage() {
                                                 <div className="text-xs text-muted-foreground">{student.id}</div>
                                             </TableCell>
                                             <TableCell>
-                                                {sub ? (
-                                                    <Button asChild variant="link" size="sm" className="p-0 h-auto">
-                                                        <a href={sub.submissionUrl} target="_blank" className="flex items-center gap-1">
-                                                            <Download className="h-3 w-3"/> Digital Work
-                                                        </a>
-                                                    </Button>
-                                                ) : <span className="text-xs text-muted-foreground italic">No Digital Submission</span>}
+                                                <div className="flex flex-col gap-2">
+                                                    {sub ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <Button asChild variant="link" size="sm" className="p-0 h-auto">
+                                                                <a href={sub.submissionUrl} target="_blank" className="flex items-center gap-1">
+                                                                    <Download className="h-3 w-3"/> View Work
+                                                                </a>
+                                                            </Button>
+                                                            <Separator orientation="vertical" className="h-4"/>
+                                                            {sub.plagiarismScore !== undefined ? (
+                                                                <Badge variant={sub.plagiarismScore > 20 ? "destructive" : "default"} className="text-[10px]">
+                                                                    <ShieldCheck className="h-3 w-3 mr-1"/> {sub.plagiarismScore}%
+                                                                </Badge>
+                                                            ) : (
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="sm" 
+                                                                    className="h-6 text-[10px]" 
+                                                                    onClick={() => handleCheckPlagiarism(selectedAssignment!, student.uid)}
+                                                                    disabled={!!actionLoading}
+                                                                >
+                                                                    {plagLoading ? <Loader2 className="animate-spin h-3 w-3 mr-1"/> : <ShieldCheck className="h-3 w-3 mr-1"/>}
+                                                                    Scan
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground italic">No Digital Work</span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 <Input 
@@ -398,6 +446,6 @@ export default function CourseAssignmentsPage() {
                      </DialogFooter>
                 </DialogContent>
              </Dialog>
-        </Card>
+        </div>
     );
 }

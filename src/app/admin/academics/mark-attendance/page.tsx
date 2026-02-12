@@ -138,10 +138,11 @@ export default function AdminMarkAttendancePage() {
             const allRegs = regsSnap.val() || {};
             const list: Student[] = [];
 
-            // Find all students enrolled in this course in any active semester
+            // Find all students enrolled in this course across all users
             for (const userId in allRegs) {
                 const userRegs = allRegs[userId];
-                const isEnrolled = Object.entries(userRegs).some(([semId, reg]: [string, any]) => {
+                // Check if any registration entry for this user contains this course ID
+                const isEnrolled = Object.values(userRegs).some((reg: any) => {
                     return reg.courses?.includes(session.courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment');
                 });
 

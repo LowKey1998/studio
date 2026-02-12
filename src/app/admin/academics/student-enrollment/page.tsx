@@ -222,10 +222,14 @@ export default function StudentEnrollmentPage() {
         try {
             for (const student of students) {
                 const studentIntake = intakes.find(i => i.id === (student.intakeId || selectedIntake));
-                if (!studentIntake) continue;
+                if (!studentIntake) {
+                    throw new Error(`Could not find intake for student: ${student.name}`);
+                }
 
                 const intakeStartStr = parseIntakeDate(studentIntake.name);
-                if (!intakeStartStr) continue;
+                if (!intakeStartStr) {
+                    throw new Error(`Invalid intake date format for student: ${student.name}`);
+                }
                 
                 const state = calculateAcademicState(
                     intakeStartStr, 
@@ -241,8 +245,7 @@ export default function StudentEnrollmentPage() {
                 );
 
                 if (!targetSemester) {
-                    console.warn(`No target semester found for ${studentIntake.name}, Year ${state.year}, Sem ${state.semester}`);
-                    continue;
+                    throw new Error(`No target semester defined for ${studentIntake.name}, Year ${state.year}, Sem ${state.semester}. Please set up the semester first.`);
                 }
 
                 const regRef = ref(db, `registrations/${student.uid}/${targetSemester.id}`);
@@ -305,8 +308,9 @@ export default function StudentEnrollmentPage() {
                             subject: replacePlaceholders(baseTemplate.subject),
                             body: replacePlaceholders(baseTemplate.body)
                         });
-                    } catch (emailErr) {
+                    } catch (emailErr: any) {
                         console.error("Email notification failed for student:", student.name, emailErr);
+                        // We don't throw here to allow the DB update to persist
                     }
                 }
             }
