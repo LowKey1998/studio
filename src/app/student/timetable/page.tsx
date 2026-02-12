@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { useAuth } from '@/hooks/use-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Info, MapPin } from 'lucide-react';
@@ -36,21 +35,17 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StudentTimetablePage() {
+    const { user, loading: authLoading } = useAuth();
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-
-    React.useEffect(() => {
-        onAuthStateChanged(auth, user => setCurrentUser(user));
-    }, []);
 
     const fetchData = React.useCallback(async () => {
-        if (!currentUser?.uid) return;
+        if (!user?.uid) return;
         setLoading(true);
         try {
             const [regsSnap, coursesSnap, timetablesSnap, settingsSnap] = await Promise.all([
-                get(ref(db, `registrations/${currentUser.uid}`)),
+                get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes'))
@@ -66,7 +61,8 @@ export default function StudentTimetablePage() {
             const enrolledCourseSemesters = new Map<string, Set<string>>(); // courseId -> Set of semesterIds
             Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    (reg.courses || []).forEach((cid: string) => {
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                    coursesArr.forEach((cid: string) => {
                         if (!enrolledCourseSemesters.has(cid)) enrolledCourseSemesters.set(cid, new Set());
                         enrolledCourseSemesters.get(cid)!.add(semId);
                     });
@@ -88,7 +84,11 @@ export default function StudentTimetablePage() {
                 // Iterate through courses in that semester's timetable
                 for (const cId in tData[semId]) {
                     // Check if the student is registered for this specific course in this specific semester
-                    if (enrolledCourseSemesters.get(cId)?.has(semId)) {
+                    // OR if it's a 'master' entry and the student is enrolled in the course at all
+                    const isEnrolledInSem = enrolledCourseSemesters.get(cId)?.has(semId);
+                    const isEnrolledAtAll = enrolledCourseSemesters.has(cId);
+                    
+                    if (isEnrolledInSem || (semId === 'master' && isEnrolledAtAll)) {
                         const courseInfo = cData[cId];
                         if (courseInfo) {
                             Object.values(tData[semId][cId]).forEach((entry: any) => {
@@ -109,11 +109,15 @@ export default function StudentTimetablePage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser]);
+    }, [user]);
 
     React.useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        if (!authLoading && user) {
+            fetchData();
+        } else if (!authLoading && !user) {
+            setLoading(false);
+        }
+    }, [user, authLoading, fetchData]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;

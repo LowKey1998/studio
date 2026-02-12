@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +6,7 @@ import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useParams } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
 
 type TimetableEntry = {
     day: string;
@@ -20,29 +20,32 @@ const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 export default function CourseSchedulePage() {
     const params = useParams();
     const courseId = params.courseId as string;
+    const { user, loading: authLoading } = useAuth();
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
 
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            setCurrentUser(user);
-        });
-        return () => unsubscribe();
-    }, []);
+    const fetchTimetable = React.useCallback(async () => {
+        if (!user?.uid || !courseId) return;
+        setLoading(true);
+        try {
+            const regsSnap = await get(ref(db, `registrations/${user.uid}`));
+            const enrolledSemesterIds = new Set<string>();
+            if (regsSnap.exists()) {
+                Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
+                    if (reg.courses && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                        if (reg.courses.includes(courseId)) {
+                            enrolledSemesterIds.add(semId);
+                        }
+                    }
+                });
+            }
 
-    React.useEffect(() => {
-        if (!currentUser || !courseId) return;
-
-        const fetchTimetable = async () => {
-            setLoading(true);
-            try {
-                const timetablesRef = ref(db, 'timetables');
-                const timetablesSnap = await get(timetablesRef);
-                const allEntries: TimetableEntry[] = [];
-                if (timetablesSnap.exists()) {
-                    const allTimetables = timetablesSnap.val();
-                    for (const semesterId in allTimetables) {
+            const timetablesSnap = await get(ref(db, 'timetables'));
+            const allEntries: TimetableEntry[] = [];
+            if (timetablesSnap.exists()) {
+                const allTimetables = timetablesSnap.val();
+                for (const semesterId in allTimetables) {
+                    if (enrolledSemesterIds.has(semesterId) || semesterId === 'master') {
                         if (allTimetables[semesterId][courseId]) {
                             const entries = allTimetables[semesterId][courseId];
                             for (const entryId in entries) {
@@ -51,16 +54,22 @@ export default function CourseSchedulePage() {
                         }
                     }
                 }
-                setTimetable(allEntries);
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setLoading(false);
             }
-        };
+            setTimetable(allEntries);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    }, [user, courseId]);
 
-        fetchTimetable();
-    }, [currentUser, courseId]);
+    React.useEffect(() => {
+        if (!authLoading && user) {
+            fetchTimetable();
+        } else if (!authLoading && !user) {
+            setLoading(false);
+        }
+    }, [user, authLoading, fetchTimetable]);
     
     const timeToMinutes = (time: string) => {
         const [hours, minutes] = time.split(':').map(Number);
