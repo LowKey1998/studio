@@ -44,6 +44,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Registrar'],
       items: [
         { href: '/admin/registration-management', label: 'Registration Management', icon: Settings },
+        { href: '/admin/academics/mark-attendance', label: 'Mark Attendance', icon: ClipboardCheck },
         { href: '/admin/academics/student-absences', label: 'Student Absence Approvals', icon: ClipboardCheck },
         { href: '/admin/academics/semester-setup', label: 'Academic Calendar Rules', icon: CalendarDays },
         { href: '/admin/programmes', label: 'Programmes', icon: GanttChart },
