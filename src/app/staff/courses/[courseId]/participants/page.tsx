@@ -1,9 +1,10 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Users, Mail, Phone, Hash } from 'lucide-react';
@@ -49,46 +50,38 @@ export default function CourseParticipantsPage() {
                 const allUsers = usersSnap.val();
                 const userList: Participant[] = [];
 
-                // 1. Add Lecturers
-                const addLecturer = (lid: string) => {
-                    if (allUsers[lid]) {
-                        const lData = allUsers[lid];
-                        if (!userList.find(u => u.uid === lid)) {
-                            userList.push({
-                                uid: lid,
-                                id: lData.id,
-                                name: lData.name,
-                                email: lData.email,
-                                phoneNumber: lData.phoneNumber,
-                                role: 'Lecturer',
-                                profilePictureUrl: lData.profilePictureUrl
-                            });
-                        }
+                // Helper to add a user to the list
+                const addUserToList = (uid: string, role: 'Lecturer' | 'Student') => {
+                    const userData = allUsers[uid];
+                    if (userData && !userList.find(u => u.uid === uid)) {
+                        userList.push({
+                            uid,
+                            id: userData.id || 'N/A',
+                            name: userData.name || 'Unknown',
+                            email: userData.email || 'N/A',
+                            phoneNumber: userData.phoneNumber,
+                            role: role,
+                            profilePictureUrl: userData.profilePictureUrl
+                        });
                     }
                 };
 
-                if (courseData.lecturerId) addLecturer(courseData.lecturerId);
-                if (courseData.lecturerIds) courseData.lecturerIds.forEach(addLecturer);
+                // 1. Add Lecturers
+                if (courseData.lecturerId) addUserToList(courseData.lecturerId, 'Lecturer');
+                
+                const coLecturerIds = courseData.lecturerIds ? (Array.isArray(courseData.lecturerIds) ? courseData.lecturerIds : Object.values(courseData.lecturerIds)) : [];
+                (coLecturerIds as string[]).forEach(id => addUserToList(id, 'Lecturer'));
                 
                 // 2. Add Students
                 for (const userId in allRegistrations) {
-                    for (const semester in allRegistrations[userId]) {
-                        const reg = allRegistrations[userId][semester];
-                        if (reg.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                            if (allUsers[userId]) {
-                                const sData = allUsers[userId];
-                                if (!userList.find(u => u.uid === userId)) {
-                                    userList.push({
-                                        uid: userId,
-                                        id: sData.id,
-                                        name: sData.name,
-                                        email: sData.email,
-                                        phoneNumber: sData.phoneNumber,
-                                        role: 'Student',
-                                        profilePictureUrl: sData.profilePictureUrl
-                                    });
-                                }
-                            }
+                    const userRegs = allRegistrations[userId];
+                    for (const semesterId in userRegs) {
+                        const reg = userRegs[semesterId];
+                        const enrolledCourses = reg.courses ? (Array.isArray(reg.courses) ? reg.courses : Object.values(reg.courses)) : [];
+                        
+                        if (enrolledCourses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                            addUserToList(userId, 'Student');
+                            break; // Move to next user once enrollment is found
                         }
                     }
                 }
@@ -116,7 +109,10 @@ export default function CourseParticipantsPage() {
                 <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
                 <CardContent className="space-y-4">
                     {Array.from({ length: 5 }).map((_, index) => (
-                        <div key={index} className="flex items-center gap-4 p-2"><Skeleton className="h-10 w-10 rounded-full" /><Skeleton className="h-5 w-48" /></div>
+                        <div key={index} className="flex items-center gap-4 p-2">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <Skeleton className="h-5 w-48" />
+                        </div>
                     ))}
                 </CardContent>
             </Card>

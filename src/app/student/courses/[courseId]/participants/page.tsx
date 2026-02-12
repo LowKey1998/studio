@@ -4,14 +4,16 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Users } from 'lucide-react';
+import { Users, Mail, Hash } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
 
 type Participant = { 
     uid: string;
+    id: string;
     name: string;
     role: 'Lecturer' | 'Student';
     profilePictureUrl?: string;
@@ -46,47 +48,39 @@ export default function CourseParticipantsPage() {
                 const allUsers = usersSnap.val();
                 const userList: Participant[] = [];
 
-                // Add lecturer
-                if (courseData.lecturerId && allUsers[courseData.lecturerId]) {
-                    const lecturerData = allUsers[courseData.lecturerId];
-                    userList.push({
-                        uid: courseData.lecturerId,
-                        name: lecturerData.name,
-                        role: 'Lecturer',
-                        profilePictureUrl: lecturerData.profilePictureUrl
-                    });
-                     onValue(ref(db, `users/${courseData.lecturerId}`), (snapshot) => {
-                        if(snapshot.exists()) {
-                            const updatedData = snapshot.val();
-                             setParticipants(prev => prev.map(p => p.uid === courseData.lecturerId ? {...p, ...updatedData} : p));
-                        }
-                    });
-                }
+                const addUserToList = (uid: string, role: 'Lecturer' | 'Student') => {
+                    const userData = allUsers[uid];
+                    if (userData && !userList.find(u => u.uid === uid)) {
+                        userList.push({
+                            uid,
+                            id: userData.id || 'N/A',
+                            name: userData.name || 'Unknown',
+                            role: role,
+                            profilePictureUrl: userData.profilePictureUrl
+                        });
+                    }
+                };
+
+                // 1. Add Lecturers
+                if (courseData.lecturerId) addUserToList(courseData.lecturerId, 'Lecturer');
                 
-                // Add students
+                const coLecturerIds = courseData.lecturerIds ? (Array.isArray(courseData.lecturerIds) ? courseData.lecturerIds : Object.values(courseData.lecturerIds)) : [];
+                (coLecturerIds as string[]).forEach(id => addUserToList(id, 'Lecturer'));
+                
+                // 2. Add Students
                 for (const userId in allRegistrations) {
-                    for (const semester in allRegistrations[userId]) {
-                        const reg = allRegistrations[userId][semester];
-                        if (reg.courses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                            if (allUsers[userId]) {
-                                userList.push({
-                                    uid: userId,
-                                    name: allUsers[userId].name,
-                                    role: 'Student',
-                                    profilePictureUrl: allUsers[userId].profilePictureUrl
-                                });
-                                onValue(ref(db, `users/${userId}`), (snapshot) => {
-                                    if(snapshot.exists()) {
-                                        const updatedData = snapshot.val();
-                                        setParticipants(prev => prev.map(p => p.uid === userId ? {...p, ...updatedData} : p));
-                                    }
-                                });
-                            }
+                    const userRegs = allRegistrations[userId];
+                    for (const semesterId in userRegs) {
+                        const reg = userRegs[semesterId];
+                        const enrolledCourses = reg.courses ? (Array.isArray(reg.courses) ? reg.courses : Object.values(reg.courses)) : [];
+                        
+                        if (enrolledCourses.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                            addUserToList(userId, 'Student');
+                            break;
                         }
                     }
                 }
                 
-                // Sort with lecturer first, then alphabetically
                 const sortedList = userList.sort((a, b) => {
                     if (a.role === 'Lecturer') return -1;
                     if (b.role === 'Lecturer') return 1;
@@ -107,9 +101,7 @@ export default function CourseParticipantsPage() {
     if(loading) {
         return (
             <Card>
-                <CardHeader>
-                    <Skeleton className="h-6 w-1/3" />
-                </CardHeader>
+                <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
                 <CardContent className="space-y-4">
                     {Array.from({ length: 5 }).map((_, index) => (
                         <div key={index} className="flex items-center gap-4 p-2">
@@ -125,21 +117,24 @@ export default function CourseParticipantsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Participants</CardTitle>
-                <CardDescription>The lecturer and all students enrolled in this course.</CardDescription>
+                <CardTitle>Class Participants</CardTitle>
+                <CardDescription>Your lecturer and fellow classmates enrolled in this session.</CardDescription>
             </CardHeader>
             <CardContent>
                 {participants.length > 0 ? (
                      <div className="space-y-2">
                         {participants.map((p) => (
-                            <div key={p.uid} className="flex items-center gap-4 rounded-md border p-2">
+                            <div key={p.uid} className="flex items-center gap-4 rounded-md border p-3 hover:bg-muted/50 transition-colors">
                                 <Avatar>
                                     <AvatarImage src={p.profilePictureUrl} data-ai-hint="person avatar" />
                                     <AvatarFallback>{p.name.charAt(0)}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1">
-                                    <p className="font-semibold">{p.name}</p>
-                                    <p className="text-xs text-muted-foreground">{p.role}</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-semibold text-sm">{p.name}</p>
+                                        <Badge variant={p.role === 'Lecturer' ? 'default' : 'outline'} className="text-[10px] h-4">{p.role}</Badge>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">{p.id}</p>
                                 </div>
                             </div>
                         ))}
@@ -148,9 +143,7 @@ export default function CourseParticipantsPage() {
                     <Alert>
                         <Users className="h-4 w-4" />
                         <AlertTitle>No Participants Found</AlertTitle>
-                        <AlertDescription>
-                            There are currently no students enrolled in this course.
-                        </AlertDescription>
+                        <AlertDescription>There are currently no students enrolled in this course.</AlertDescription>
                     </Alert>
                 )}
             </CardContent>
