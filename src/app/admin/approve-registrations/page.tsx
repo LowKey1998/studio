@@ -40,6 +40,7 @@ type RegistrationRequest = {
   programmeName: string;
   optionalFees: string[];
   academicHistory: Record<string, 'Passed' | 'Failed'>; // courseId -> status
+  amountPaid: number;
 };
 
 type GroupedRequests = Record<string, RegistrationRequest[]>;
@@ -127,7 +128,7 @@ export default function ApproveRegistrationsPage() {
     const fetchRequests = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap] = await Promise.all([
+            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'optionalFees')),
@@ -138,6 +139,7 @@ export default function ApproveRegistrationsPage() {
                 get(ref(db, 'intakes')),
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'assessments')),
+                get(ref(db, 'transactions')),
             ]);
             
             if (settingsSnap.exists()) {
@@ -173,6 +175,7 @@ export default function ApproveRegistrationsPage() {
             setAllMandatoryFees(mandatoryFeesData);
             
             const assessmentsData = assessmentsSnap.exists() ? assessmentsSnap.val() : {};
+            const allTransactions = transactionsSnap.exists() ? Object.values(transactionsSnap.val() as Record<string, any>) : [];
 
             if (!registrationsSnap.exists()) { setLoading(false); return; }
 
@@ -189,7 +192,7 @@ export default function ApproveRegistrationsPage() {
                              if(userSnapshot.exists()){
                                  const userData = userSnapshot.val();
                                  const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
-                                 // Simplified pass/fail logic
+                                 
                                  for (const prevSemesterId in userRegistrations) {
                                      if(prevSemesterId === semesterId) continue;
                                      const prevReg = userRegistrations[prevSemesterId];
@@ -200,6 +203,10 @@ export default function ApproveRegistrationsPage() {
                                          });
                                      }
                                  }
+
+                                 const amountPaid = allTransactions
+                                    .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
+                                    .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
                                  const requestData: RegistrationRequest = {
                                     userId,
@@ -218,6 +225,7 @@ export default function ApproveRegistrationsPage() {
                                     programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
                                     optionalFees: registration.optionalFees || [],
                                     academicHistory,
+                                    amountPaid
                                 };
                                 if (registration.status === 'Pending Approval') pending.push(requestData);
                                 else if (registration.status === 'Pending Payment') approved.push(requestData);
@@ -470,7 +478,7 @@ export default function ApproveRegistrationsPage() {
                                 const coursePath = allCoursePaths.find(p => p.intakeId === request.studentIntakeId && p.programmeId === request.programmeId);
 
                                 return (
-                                <Card key={reqId} className="overflow-hidden">
+                                <Card key={reqId} className="overflow-hidden shadow-md">
                                     <CardHeader className="bg-muted/50 p-4">
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div className="space-y-1">
@@ -487,30 +495,60 @@ export default function ApproveRegistrationsPage() {
                                                         <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
                                                     )}</div>
                                             ) : (
-                                                <Badge variant={statusVariant[request.status]}>{statusText[request.status]}</Badge>
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <Badge variant={statusVariant[request.status]}>{statusText[request.status]}</Badge>
+                                                    {type === 'approved' && (
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild><Button size="xs" variant="link" className="h-auto p-0 text-[10px]">Force Enroll</Button></AlertDialogTrigger>
+                                                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Bypass Payment Policy?</AlertDialogTitle><AlertDialogDescription>This will manually enroll the student regardless of payment status. Use only for cash-verified students.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleForceEnroll(request)}>Enroll Student</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                                                        </AlertDialog>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     </CardHeader>
-                                    {type !== 'completed' && (<CardContent className="p-4"><ul className="space-y-2">
-                                        {currentSelection.map(courseId => allCourses.get(courseId)).filter(Boolean).map(course => {
-                                            const history = request.academicHistory[course.id];
-                                            const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course.id)) : false;
-                                            return(
-                                            <li key={course.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course.id) && !currentSelection.includes(course.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course.id) && currentSelection.includes(course.id) && "bg-green-100 border-green-200")}>
-                                                <Checkbox id={`${reqId}-${course.id}`} checked={type === 'pending' ? currentSelection.includes(course.id) : request.courseIds.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
-                                                <label htmlFor={`${reqId}-${course.id}`} className="flex-1 flex flex-col">
-                                                    <div><span className="font-medium">{course.code}</span><span className="text-muted-foreground"> - {course.name}</span></div>
-                                                    <div className='flex gap-2 items-center'>
-                                                        {history && (<Popover><PopoverTrigger asChild><Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='cursor-pointer'><History className="mr-1 h-3 w-3"/>{history}</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>Previously {history.toLowerCase()}.</PopoverContent></Popover>)}
-                                                        {isPathDeviation && (<Popover><PopoverTrigger asChild><Badge variant='destructive' className='cursor-pointer'><AlertTriangle className="mr-1 h-3 w-3"/>Path Deviation</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>This course is not in the defined path.</PopoverContent></Popover>)}
-                                                    </div>
-                                                </label>
-                                                <span className="font-mono text-right">ZMW {course.cost.toFixed(2)}</span>
-                                            </li>
-                                        )})}</ul>
-                                        <Separator className="my-4" />
-                                        <div className="flex justify-end items-center gap-4 font-bold"><span>Updated Tuition Cost</span><span className="font-mono text-lg">ZMW {totalCost.toFixed(2)}</span></div>
-                                    </CardContent>)}
+                                    <CardContent className="p-4 space-y-4">
+                                        <div className="flex flex-col gap-2">
+                                            <Label className="text-xs uppercase text-muted-foreground font-bold tracking-widest">Course Selection</Label>
+                                            <ul className="space-y-2">
+                                                {currentSelection.map(courseId => allCourses.get(courseId)).filter(Boolean).map(course => {
+                                                    const history = request.academicHistory[course.id];
+                                                    const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course.id)) : false;
+                                                    return(
+                                                    <li key={course.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course.id) && !currentSelection.includes(course.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course.id) && currentSelection.includes(course.id) && "bg-green-100 border-green-200")}>
+                                                        <Checkbox id={`${reqId}-${course.id}`} checked={type === 'pending' ? currentSelection.includes(course.id) : request.courseIds.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
+                                                        <label htmlFor={`${reqId}-${course.id}`} className="flex-1 flex flex-col">
+                                                            <div><span className="font-medium">{course.code}</span><span className="text-muted-foreground"> - {course.name}</span></div>
+                                                            <div className='flex gap-2 items-center'>
+                                                                {history && (<Popover><PopoverTrigger asChild><Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='cursor-pointer h-4 px-1 text-[9px]'><History className="mr-1 h-3 w-3"/>{history}</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>Previously {history.toLowerCase()}.</PopoverContent></Popover>)}
+                                                                {isPathDeviation && (<Popover><PopoverTrigger asChild><Badge variant='destructive' className='cursor-pointer h-4 px-1 text-[9px]'><AlertTriangle className="mr-1 h-3 w-3"/>Path Deviation</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>This course is not in the defined path.</PopoverContent></Popover>)}
+                                                            </div>
+                                                        </label>
+                                                        <span className="font-mono text-right">ZMW {course.cost.toFixed(2)}</span>
+                                                    </li>
+                                                )})}
+                                            </ul>
+                                        </div>
+                                        
+                                        <Separator />
+                                        
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Total Invoiced</span>
+                                                    <span className="font-mono font-bold">ZMW {totalCost.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Amount Paid</span>
+                                                    <span className={cn("font-mono font-bold", request.amountPaid > 0 ? "text-green-600" : "text-muted-foreground")}>ZMW {request.amountPaid.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-[10px] uppercase font-bold text-muted-foreground">Outstanding Balance</span>
+                                                <span className={cn("text-lg font-bold", (totalCost - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalCost - request.amountPaid).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </CardContent>
                                 </Card>
                             )})}
                         </AccordionContent>
@@ -522,21 +560,21 @@ export default function ApproveRegistrationsPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Manage Course Registrations</CardTitle>
-                    <CardDescription>Review, approve, or decline student course selections for the upcoming semester.</CardDescription>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><ClipboardCheck className="text-primary"/> Manage Course Registrations</CardTitle>
+                    <CardDescription>Review student course selections and financial status. Approval follows institutional payment thresholds.</CardDescription>
                 </CardHeader>
                 <CardContent>
                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="pending">Pending ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(pendingRequests).flat().length})</TabsTrigger>
-                            <TabsTrigger value="approved">Awaiting Payment ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(approvedRequests).flat().length})</TabsTrigger>
-                            <TabsTrigger value="completed">Enrolled ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(completedRequests).flat().length})</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3 h-auto py-1">
+                            <TabsTrigger value="pending" className="py-2">Pending ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(pendingRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="approved" className="py-2">Awaiting Payment ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(approvedRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="completed" className="py-2">Enrolled ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(completedRequests).flat().length})</TabsTrigger>
                         </TabsList>
-                        <TabsContent value="pending" className="mt-4">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
-                        <TabsContent value="approved" className="mt-4">{renderRequestList(approvedRequests, 'approved')}</TabsContent>
-                        <TabsContent value="completed" className="mt-4">{renderRequestList(completedRequests, 'completed')}</TabsContent>
+                        <TabsContent value="pending" className="mt-6">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
+                        <TabsContent value="approved" className="mt-6">{renderRequestList(approvedRequests, 'approved')}</TabsContent>
+                        <TabsContent value="completed" className="mt-6">{renderRequestList(completedRequests, 'completed')}</TabsContent>
                     </Tabs>
                 </CardContent>
             </Card>
@@ -548,8 +586,8 @@ export default function ApproveRegistrationsPage() {
                         <DialogDescription>Reviewing scholarship application for <span className="font-bold">{scholarshipReviewRequest?.studentName}</span> ({scholarshipReviewRequest?.studentId}). Approving the scholarship will waive 100% of the tuition fees for this registration.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="destructive" onClick={() => handleScholarshipDecision('deny')} disabled={actionLoading}>Deny Scholarship</Button>
-                        <Button onClick={() => handleScholarshipDecision('approve')} disabled={actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
+                        <Button variant="destructive" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Scholarship</Button>
+                        <Button onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

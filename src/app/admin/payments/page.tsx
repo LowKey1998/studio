@@ -1,11 +1,12 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -20,10 +21,11 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth as firebaseAuth } from '@/lib/firebase';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -214,6 +216,7 @@ export default function PaymentsManagementPage() {
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
@@ -240,7 +243,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap, coursesSnap, institutionSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap, coursesSnap, institutionSnap, calendarSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -251,6 +254,7 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'intakes')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/institution')),
+                get(ref(db, 'settings/academicCalendar')),
             ]);
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
@@ -258,6 +262,7 @@ export default function PaymentsManagementPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
             if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
+            if (calendarSnap.exists()) setCalendarSettings(calendarSnap.val());
 
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
@@ -358,7 +363,7 @@ export default function PaymentsManagementPage() {
     }, [toast]);
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
             if (user) {
                 setCurrentUser(user);
                 const userRef = ref(db, `users/${user.uid}`);
@@ -392,11 +397,30 @@ export default function PaymentsManagementPage() {
                 newRow.totalDue = undefined;
                 newRow.invoiceId = undefined;
                 newRow.totalPaid = undefined;
+                
                 if (value === '__UNLINKED__') {
                     newRow.isUnlinked = true;
                     newRow.userId = undefined;
                 } else {
                     newRow.isUnlinked = false;
+                    // Logic to default the semester based on student standing
+                    const student = allStudents.find(s => s.uid === value);
+                    if (student?.intakeId && calendarSettings) {
+                        const intake = allIntakes.find(i => i.id === student.intakeId);
+                        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+                        if (intakeStartStr) {
+                            const state = calculateAcademicState(
+                                intakeStartStr,
+                                new Date(),
+                                calendarSettings.standardCycles,
+                                Object.values(calendarSettings.anomalies || {})
+                            );
+                            const matchedSemester = semesters.find(s => s.intakeId === student.intakeId && s.year === state.year && s.semesterInYear === state.semester);
+                            if (matchedSemester) {
+                                newRow.semesterId = matchedSemester.id;
+                            }
+                        }
+                    }
                 }
             }
     
@@ -407,6 +431,7 @@ export default function PaymentsManagementPage() {
                     newRow.totalPaid = info.totalPaid;
                     newRow.invoiceId = info.invoiceId;
                 } else {
+                    // Try to find if a registration exists at all even if not invoiced
                     newRow.totalDue = '';
                     newRow.totalPaid = 0;
                     newRow.invoiceId = undefined;
@@ -688,11 +713,6 @@ export default function PaymentsManagementPage() {
         { groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }
     ];
 
-    const semesterMap = semesters.reduce((acc, sem) => {
-        acc[sem.id] = sem.name;
-        return acc;
-    }, {} as Record<string, string>);
-
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -916,7 +936,7 @@ export default function PaymentsManagementPage() {
                         </TabsContent>
                          <TabsContent value="unlinkedPayments">
                              <Table>
-                                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Comment</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                                <TableHeader><TableRow><TableHead>Date</TableHead>                                <TableHead>Reference</TableHead><TableHead>Comment</TableHead><TableHead className="text-right">Amount (ZMW)</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                                 <TableBody>
                                     {unlinkedPayments.length > 0 ? unlinkedPayments.map(p => (
                                         <TableRow key={p.id}>

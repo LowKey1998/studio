@@ -33,7 +33,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -53,6 +53,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type Lecturer = {
     uid: string;
@@ -101,6 +103,7 @@ export default function CoursesPage() {
     const [formLoading, setFormLoading] = React.useState(false);
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [isStudentListOpen, setIsStudentListOpen] = React.useState(false);
+    const [selectedCourseForList, setSelectedCourseForList] = React.useState<Course | null>(null);
     const [viewingStudents, setViewingStudents] = React.useState<StudentEnrollment[]>([]);
     const [activeTab, setActiveTab] = React.useState('active');
     const [isArchiveDialogOpen, setIsArchiveDialogOpen] = React.useState(false);
@@ -151,7 +154,7 @@ export default function CoursesPage() {
             
             const userMap = new Map<string, any>();
             if (usersSnap.exists()) {
-                Object.entries(usersSnap.val()).forEach(([uid, userData]) => userMap.set(uid, userData));
+                Object.entries(usersSnap.val() as Record<string, any>).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
             // Fetch Lecturers
@@ -392,9 +395,29 @@ export default function CoursesPage() {
         });
     };
 
-    const handleViewStudents = (students: StudentEnrollment[]) => {
-        setViewingStudents(students.sort((a,b) => a.semesterName.localeCompare(b.semesterName) || a.name.localeCompare(b.name)));
+    const handleViewStudents = (course: Course) => {
+        setSelectedCourseForList(course);
+        setViewingStudents((course.enrolledStudents || []).sort((a,b) => a.semesterName.localeCompare(b.semesterName) || a.name.localeCompare(b.name)));
         setIsStudentListOpen(true);
+    };
+
+    const handleDownloadClassList = () => {
+        if (!selectedCourseForList) return;
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`Class List: ${selectedCourseForList.name} (${selectedCourseForList.code})`, 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Total Enrolled: ${viewingStudents.length}`, 14, 30);
+        
+        autoTable(doc, {
+            startY: 35,
+            head: [['Student ID', 'Full Name', 'Active Semester']],
+            body: viewingStudents.map(s => [s.id, s.name, s.semesterName]),
+            theme: 'striped',
+            headStyles: { fillColor: [34, 34, 34] }
+        });
+        
+        doc.save(`ClassList_${selectedCourseForList.code}_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     const filteredAndGroupedCourses = React.useMemo(() => {
@@ -564,7 +587,7 @@ export default function CoursesPage() {
                                                        </TableCell>
                                                        <TableCell className="text-sm">{course.lecturerName}</TableCell>
                                                        <TableCell>
-                                                           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course.enrolledStudents || [])}>
+                                                           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course)}>
                                                                <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
                                                            </Button>
                                                        </TableCell>
@@ -576,7 +599,7 @@ export default function CoursesPage() {
                                                                     {activeTab === 'active' ? (
                                                                         <>
                                                                         <DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit Details</DropdownMenuItem>
-                                                                        <DropdownMenuItem onClick={() => handleViewStudents(course.enrolledStudents || [])}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
+                                                                        <DropdownMenuItem onClick={() => handleViewStudents(course)}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
                                                                         <DropdownMenuSeparator />
                                                                         <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}>
                                                                             <Trash2 className="mr-2 h-4 w-4"/>Archive Course
@@ -629,18 +652,23 @@ export default function CoursesPage() {
                 </AlertDialog>
 
                 <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
                         <DialogHeader>
-                            <DialogTitle>Enrolled Students</DialogTitle>
-                            <DialogDescription>A list of students currently enrolled or pending payment for this course.</DialogDescription>
+                            <div className="flex justify-between items-center pr-8">
+                                <div>
+                                    <DialogTitle>Enrolled Students</DialogTitle>
+                                    <DialogDescription>List of students currently enrolled in {selectedCourseForList?.name}.</DialogDescription>
+                                </div>
+                                <Button onClick={handleDownloadClassList} size="sm" variant="outline" className="shrink-0"><Download className="mr-2 h-4 w-4"/>Download List</Button>
+                            </div>
                         </DialogHeader>
-                        <div className="max-h-[60vh] overflow-y-auto rounded-md border">
+                        <div className="flex-1 overflow-auto rounded-md border mt-4">
                             <Table>
-                                <TableHeader className="bg-muted/50">
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
                                     <TableRow>
                                         <TableHead className="pl-4">Student ID</TableHead>
                                         <TableHead>Full Name</TableHead>
-                                        <TableHead className="pr-4">Active Semester</TableHead>
+                                        <TableHead className="pr-4 text-right">Active Semester</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -648,11 +676,11 @@ export default function CoursesPage() {
                                         <TableRow key={s.uid}>
                                             <TableCell className="font-mono text-xs pl-4">{s.id}</TableCell>
                                             <TableCell className="font-medium text-sm">{s.name}</TableCell>
-                                            <TableCell className="text-xs pr-4">{s.semesterName}</TableCell>
+                                            <TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell>
                                         </TableRow>
                                     )) : (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">No students enrolled.</TableCell>
+                                            <TableCell colSpan={3} className="h-32 text-center text-muted-foreground italic">No students enrolled.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>

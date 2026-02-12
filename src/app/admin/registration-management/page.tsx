@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, BookCopy, UserPlus } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, BookCopy, UserPlus, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -39,7 +38,7 @@ type CoursePath = { id: string; intakeId: string; programmeId: string; semesters
 type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
-type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; };
+type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; paymentThreshold?: number; gracePeriodDays?: number; };
 type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
 
 
@@ -66,6 +65,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>({});
     const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
     const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
+    const [paymentThreshold, setPaymentThreshold] = React.useState(75);
+    const [gracePeriodDays, setGracePeriodDays] = React.useState(7);
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
     const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
@@ -85,6 +86,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setSelectedPaymentPlans(editingSemester.paymentPlanIds || {});
             setMandatoryFees(editingSemester.mandatoryFees || {});
             setOptionalFees(editingSemester.optionalFees || {});
+            setPaymentThreshold(editingSemester.paymentThreshold ?? 75);
+            setGracePeriodDays(editingSemester.gracePeriodDays ?? 7);
         }
     }, [editingSemester]);
 
@@ -147,6 +150,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 paymentPlanIds: selectedPaymentPlans,
                 mandatoryFees,
                 optionalFees,
+                paymentThreshold,
+                gracePeriodDays
             };
 
             if (editingSemester) {
@@ -224,7 +229,11 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         <div className="space-y-4">
             <DialogHeader><DialogTitle>{editingSemester ? 'Edit' : 'Create'} Semester</DialogTitle></DialogHeader>
             <Tabs defaultValue="details" className="w-full">
-                <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="details">Details & Plans</TabsTrigger><TabsTrigger value="fees">Fees</TabsTrigger></TabsList>
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="details">Details & Plans</TabsTrigger>
+                    <TabsTrigger value="fees">Fees</TabsTrigger>
+                    <TabsTrigger value="controls">Controls</TabsTrigger>
+                </TabsList>
                 <TabsContent value="details">
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1"><Label htmlFor="semester-name">Semester Name</Label><Input id="semester-name" value={semesterNameInput} onChange={(e) => setSemesterNameInput(e.target.value)} /></div>
@@ -232,13 +241,33 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                             <Popover><PopoverTrigger asChild><Button id="semester-dates" variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}><CalendarIcon className="mr-2 h-4 w-4" />{semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent></Popover>
                         </div>
                         <div className="space-y-2"><Label>Available Payment Plans</Label>
-                            <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto">
+                            <div className="space-y-2 rounded-md border p-4 max-h-40 overflow-y-auto bg-muted/20">
                                 {allPaymentPlans.filter(p => !p.archived).map(plan => (<div key={plan.id} className="flex items-center gap-2"><Checkbox id={`plan-${plan.id}`} checked={!!selectedPaymentPlans[plan.id]} onCheckedChange={() => handlePlanSelection(plan.id)}/><Label htmlFor={`plan-${plan.id}`} className="font-normal">{plan.name}</Label></div>))}
                             </div>
                         </div>
                     </div>
                 </TabsContent>
                 <TabsContent value="fees"><div className="space-y-4 py-4">{renderFeeContent(true)}{renderFeeContent(false)}</div></TabsContent>
+                <TabsContent value="controls">
+                    <div className="grid gap-6 py-4">
+                        <div className="space-y-2">
+                            <Label>Payment Threshold (%)</Label>
+                            <div className="relative">
+                                <Input type="number" min="0" max="100" value={paymentThreshold} onChange={(e) => setPaymentThreshold(Number(e.target.value))} className="pr-10" />
+                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Percentage of installment due student MUST have paid to avoid academic restrictions.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Grace Period (Days)</Label>
+                            <div className="relative">
+                                <Input type="number" min="0" value={gracePeriodDays} onChange={(e) => setGracePeriodDays(Number(e.target.value))} className="pr-10" />
+                                <Clock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Number of days allowed after deadline before penalties or restrictions apply.</p>
+                        </div>
+                    </div>
+                </TabsContent>
             </Tabs>
             <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}{editingSemester ? 'Save Changes' : 'Create Semester'}</Button></DialogFooter>
         </div>
@@ -478,6 +507,9 @@ export default function RegistrationManagementPage() {
                                                                             ) : (
                                                                                 <Badge variant="secondary">No Payment Plans</Badge>
                                                                             )}
+                                                                            {semDetails.paymentThreshold !== undefined && (
+                                                                                <Badge variant="secondary" className="text-[10px]">Threshold: {semDetails.paymentThreshold}%</Badge>
+                                                                            )}
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-4">
@@ -488,7 +520,10 @@ export default function RegistrationManagementPage() {
                                                                         {historyItems.length > 0 && (
                                                                             <Button variant="ghost" size="icon" onClick={() => openHistoryDialog(historyItems)} title="View History"><History className="h-4 w-4 text-blue-600"/></Button>
                                                                         )}
-                                                                        <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
+                                                                        <div className="flex gap-1">
+                                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingSemester(semDetails); setIsEditDialogOpen(true); }} title="Edit Semester Settings"><Pencil className="h-4 w-4"/></Button>
+                                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
 
@@ -543,6 +578,12 @@ export default function RegistrationManagementPage() {
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                 <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="sm:max-w-xl">
+                    <CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} />
                 </DialogContent>
             </Dialog>
             
