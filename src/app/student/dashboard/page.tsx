@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -14,7 +15,8 @@ import {
     PlusCircle,
     CalendarDays,
     AlertTriangle,
-    ShieldAlert
+    ShieldAlert,
+    Wallet
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -28,6 +30,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { PaymentCountdown } from '@/components/payment-countdown';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -63,6 +66,7 @@ export default function StudentDashboardPage() {
     const [feeBalance, setFeeBalance] = React.useState(0);
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
+    const [paymentDeadline, setPaymentDeadline] = React.useState<{ title: string; date: string } | null>(null);
     const [recentGrades, setRecentGrades] = React.useState<any[]>([]);
     const [intakeName, setIntakeName] = React.useState('');
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
@@ -74,29 +78,15 @@ export default function StudentDashboardPage() {
 
         setLoading(true);
         
-        const coursesRef = ref(db, 'courses');
-        const usersRef = ref(db, 'users');
-        const intakesRef = ref(db, 'intakes');
-        const calendarRef = ref(db, 'calendarEvents');
-        const timetablesRef = ref(db, 'timetables');
-        const assessmentsRef = ref(db, 'assessments');
-        const quizzesRef = ref(db, 'quizzes');
         const registrationsRef = ref(db, `registrations/${user.uid}`);
-        const invoicesRef = ref(db, `invoices/${user.uid}`);
-        const transactionsRef = ref(db, 'transactions');
-        const attendanceRef = ref(db, 'attendance');
-        const calendarSettingsRef = ref(db, 'settings/academicCalendar');
-        const finSettingsRef = ref(db, 'settings/financialSettings');
-        const semestersRef = ref(db, 'semesters');
-
-        const unsubRegs = onValue(registrationsRef, async (regSnap) => {
+        const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
             const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap, fSnap, semSnap] = await Promise.all([
-                get(coursesRef), get(usersRef), get(intakesRef), get(attendanceRef), 
-                get(timetablesRef), get(calendarRef), get(invoicesRef), 
-                get(transactionsRef), get(assessmentsRef), get(quizzesRef), get(calendarSettingsRef),
-                get(finSettingsRef), get(semestersRef)
+                get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
+                get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
+                get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'quizzes')), get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -134,13 +124,18 @@ export default function StudentDashboardPage() {
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
             let activeSemesterId: string | null = null;
+            let activeSemesterName = '';
 
             for (const semId in allRegistrations) {
                 const reg = allRegistrations[semId];
+                const semInfo = allSemesters[semId];
+                if (!semInfo || semInfo.status === 'Archived') continue;
+
                 if (reg.courses) {
-                    // Identify the "most recent" active semester
-                    const semInfo = allSemesters[semId];
-                    if (semInfo?.status === 'Open') activeSemesterId = semId;
+                    if (semInfo.status === 'Open') {
+                        activeSemesterId = semId;
+                        activeSemesterName = semInfo.name;
+                    }
 
                     reg.courses.forEach((cid: string) => {
                         enrolledIds.add(cid);
@@ -174,7 +169,7 @@ export default function StudentDashboardPage() {
             setEnrolledCourses(currentCourses);
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
-            // --- Financial Calculation & Rules ---
+            // --- Financial & Deadline Countdown ---
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
@@ -184,21 +179,26 @@ export default function StudentDashboardPage() {
             const currentBalance = Math.max(0, totalDue - totalPaid);
             setFeeBalance(currentBalance);
 
-            // Check for defaulter warning
             if (activeSemesterId && currentBalance > 0) {
                 const semester = allSemesters[activeSemesterId];
                 const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
                 const grace = semester.gracePeriodDays || 0;
                 
-                // Find latest passed installment deadline for this semester
-                const passedDeadlines = Object.values(allCalendarEvents).filter((ev: any) => 
-                    ev.semester === semester.name && 
-                    ev.title.includes('Deadline') && 
-                    isAfter(new Date(), addDays(parseISO(ev.date), grace))
-                );
+                // Find all deadlines for this specific semester
+                const semDeadlines = Object.values(allCalendarEvents)
+                    .filter((ev: any) => ev.semester === semester.name && ev.title.includes('Deadline'))
+                    .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
+                // Find next upcoming deadline
+                const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), new Date()));
+                if (nextDeadline) {
+                    setPaymentDeadline({ title: nextDeadline.title.split(' - ')[0], date: nextDeadline.date });
+                }
+
+                // Check for defaulter warning
+                const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
                 if (passedDeadlines.length > 0) {
-                    const paidPercentage = (totalPaid / totalDue) * 100;
+                    const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
                     if (paidPercentage < threshold) {
                         setFinancialWarning({
                             message: `Your current payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
@@ -230,7 +230,7 @@ export default function StudentDashboardPage() {
                 }
             });
             Object.entries(allQuizzes).forEach(([id, q]: [string, any]) => {
-                if (q.startTime && new Date(q.startTime) >= startOfDay(new Date())) {
+                if (q.startTime && isAfter(parseISO(q.startTime), new Date())) {
                     deadlines.push({ title: `Quiz: ${q.title}`, date: q.startTime, type: 'quiz', link: `/student/quizzes/${id}` });
                 }
             });
@@ -255,7 +255,7 @@ export default function StudentDashboardPage() {
             setLoading(false);
         });
 
-        return () => unsubRegs();
+        return () => unsub();
     }, [user, userProfile, toast]);
 
     if (authLoading || loading) {
@@ -268,8 +268,8 @@ export default function StudentDashboardPage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
                 </div>
-                <div className="grid gap-6 md:grid-cols-2">
-                    <Skeleton className="h-96 w-full" />
+                <div className="grid gap-6 md:grid-cols-3">
+                    <Skeleton className="lg:col-span-2 h-96 w-full" />
                     <Skeleton className="h-96 w-full" />
                 </div>
             </div>
@@ -277,11 +277,11 @@ export default function StudentDashboardPage() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
+                <div className="space-y-1">
                     <h1 className="text-3xl font-bold tracking-tight font-headline text-primary">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">
                             {userProfile?.programmeName || 'Academic Portal'}
                         </Badge>
@@ -291,7 +291,7 @@ export default function StudentDashboardPage() {
                         {academicStanding && (
                             <Badge variant="secondary" className="gap-1.5 font-bold">
                                 <CalendarDays className="h-3 w-3" />
-                                Standing: {academicStanding}
+                                {academicStanding}
                             </Badge>
                         )}
                     </div>
@@ -306,100 +306,108 @@ export default function StudentDashboardPage() {
                 </div>
             </div>
 
-            {financialWarning && (
-                <Alert variant="destructive" className="border-2 animate-in slide-in-from-left-4">
-                    <ShieldAlert className="h-5 w-5" />
-                    <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
-                    <AlertDescription className="flex flex-col gap-3">
-                        <p>{financialWarning.message} To avoid academic restrictions, please visit the finance office or pay online.</p>
-                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive hover:bg-destructive/10" asChild>
-                            <Link href="/student/payments">View Invoice & Pay</Link>
-                        </Button>
-                    </AlertDescription>
-                </Alert>
-            )}
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                {/* Countdown Card */}
+                {paymentDeadline && feeBalance > 0 && (
+                    <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                <Clock className="h-4 w-4"/> Next Payment Due
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <PaymentCountdown deadlineDate={paymentDeadline.date} title={paymentDeadline.title} />
+                        </CardContent>
+                    </Card>
+                )}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card className={cn("shadow-md", !paymentDeadline || feeBalance <= 0 ? "lg:col-span-1" : "")}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Balance</CardTitle>
+                        <Wallet className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>
+                            ZMW {feeBalance.toFixed(2)}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-wider">Outstanding Dues</p>
+                    </CardContent>
+                </Card>
+
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Courses</CardTitle>
                         <BookOpen className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{enrolledCourses.length}</div>
-                        <p className="text-xs text-muted-foreground mt-1">Enrolled</p>
+                        <div className="text-2xl font-black">{enrolledCourses.length}</div>
+                        <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-wider">Active Enrollment</p>
                     </CardContent>
                 </Card>
+
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Attendance</CardTitle>
                         <Hand className="h-4 w-4 text-primary" />
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        <div className="text-2xl font-bold">{attendanceRate.toFixed(0)}%</div>
+                        <div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div>
                         <Progress value={attendanceRate} className="h-1.5" />
-                    </CardContent>
-                </Card>
-                <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Fee Balance</CardTitle>
-                        <Banknote className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className={cn("text-2xl font-bold", feeBalance > 0 ? "text-destructive" : "text-green-600")}>
-                            ZMW {feeBalance.toFixed(2)}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">Outstanding</p>
-                    </CardContent>
-                </Card>
-                <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Status</CardTitle>
-                        <UserCheck className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{financialWarning ? 'Restricted' : 'Good Standing'}</div>
-                        <Badge variant={financialWarning ? 'destructive' : 'secondary'} className="mt-1">
-                            {financialWarning ? 'Payment Required' : 'Active'}
-                        </Badge>
                     </CardContent>
                 </Card>
             </div>
 
+            {financialWarning && (
+                <Alert variant="destructive" className="border-2 shadow-md animate-in slide-in-from-left-4">
+                    <ShieldAlert className="h-5 w-5" />
+                    <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3">
+                        <p>{financialWarning.message} To avoid academic restrictions, please pay online or contact the finance office.</p>
+                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive hover:bg-destructive/10" asChild>
+                            <Link href="/student/payments">View Invoices & Pay</Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="grid gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2 shadow-lg">
-                    <CardHeader className="flex flex-row items-center justify-between">
+                <Card className="lg:col-span-2 shadow-lg border-0 bg-muted/10">
+                    <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
                         <div>
-                            <CardTitle>Today's Schedule</CardTitle>
+                            <CardTitle className="font-headline">Daily Schedule</CardTitle>
                             <CardDescription>{format(new Date(), 'EEEE, MMMM do')}</CardDescription>
                         </div>
-                        <Link href="/student/timetable" className="text-sm text-primary hover:underline flex items-center gap-1">
-                            Full Timetable <ChevronRight className="h-4 w-4"/>
-                        </Link>
+                        <Button variant="ghost" size="sm" asChild className="text-primary font-bold">
+                            <Link href="/student/timetable" className="flex items-center gap-1">
+                                Full View <ChevronRight className="h-4 w-4"/>
+                            </Link>
+                        </Button>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="pt-6">
                         {todaySchedule.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySchedule.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-4 p-4 rounded-lg border bg-muted/20">
-                                        <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r pr-4">
-                                            <span className="text-sm font-bold text-primary">{entry.startTime}</span>
-                                            <span className="text-[10px] text-muted-foreground uppercase">{entry.endTime}</span>
+                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r border-primary/10 pr-4">
+                                            <span className="text-sm font-black text-primary">{entry.startTime}</span>
+                                            <span className="text-[9px] text-muted-foreground font-bold uppercase">{entry.endTime}</span>
                                         </div>
                                         <div className="flex-1">
-                                            <p className="font-bold">{entry.courseCode}: {entry.courseName}</p>
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                                                <CalendarIcon className="h-3 w-3" /> {entry.venue}
+                                            <p className="font-bold text-sm">{entry.courseCode}: {entry.courseName}</p>
+                                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
+                                                <MapPin className="h-3 w-3 text-primary/60" /> {entry.venue}
                                             </div>
                                         </div>
-                                        <Button variant="ghost" size="icon" asChild><Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4"/></Link></Button>
+                                        <Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10" asChild>
+                                            <Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4 text-primary"/></Link>
+                                        </Button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-12 text-muted-foreground border border-dashed rounded-lg">
-                                <Clock className="mx-auto h-12 w-12 opacity-20 mb-2" />
-                                <p>No classes scheduled for today.</p>
+                            <div className="text-center py-16 text-muted-foreground border-2 border-dashed rounded-xl bg-card">
+                                <Clock className="mx-auto h-12 w-12 opacity-10 mb-2" />
+                                <p className="font-medium">No classes scheduled for today.</p>
                             </div>
                         )}
                     </CardContent>
@@ -407,46 +415,53 @@ export default function StudentDashboardPage() {
 
                 <div className="space-y-6">
                     <Card className="shadow-lg border-l-4 border-l-primary">
-                        <CardHeader>
-                            <CardTitle className="text-lg">Upcoming Deadlines</CardTitle>
+                        <CardHeader className="pb-3 border-b">
+                            <CardTitle className="text-base font-bold">Upcoming Deadlines</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="pt-4 space-y-4">
                             {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((deadline, i) => (
-                                <div key={i} className="flex flex-col gap-1 p-2 rounded-md border">
+                                <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm transition-all hover:border-primary/30">
                                     <div className="flex justify-between items-start">
-                                        <span className="text-xs font-semibold uppercase text-primary tracking-wider">{deadline.type}</span>
-                                        <span className="text-xs text-muted-foreground">{format(parseISO(deadline.date), 'MMM dd')}</span>
+                                        <Badge variant="outline" className={cn(
+                                            "text-[8px] font-black uppercase tracking-widest px-1.5 h-4",
+                                            deadline.type === 'payment' ? "text-orange-600 border-orange-200 bg-orange-50" : "text-blue-600 border-blue-200 bg-blue-50"
+                                        )}>
+                                            {deadline.type}
+                                        </Badge>
+                                        <span className="text-[10px] font-bold text-muted-foreground">{format(parseISO(deadline.date), 'MMM dd')}</span>
                                     </div>
-                                    <p className="text-sm font-medium line-clamp-1">{deadline.title}</p>
+                                    <p className="text-xs font-bold mt-1 line-clamp-1">{deadline.title}</p>
                                     {deadline.link && (
-                                        <Link href={deadline.link} className="text-[10px] text-primary hover:underline mt-1">Open Task</Link>
+                                        <Link href={deadline.link} className="text-[10px] font-black text-primary hover:underline mt-1 flex items-center gap-1 uppercase">
+                                            Open Task <ChevronRight className="h-2 w-2"/>
+                                        </Link>
                                     )}
                                 </div>
-                            )) : <p className="text-sm text-muted-foreground text-center py-4">No major deadlines.</p>}
+                            )) : <p className="text-xs text-muted-foreground text-center py-8 italic">No urgent deadlines.</p>}
                         </CardContent>
                     </Card>
 
                     <Card className="shadow-lg border-l-4 border-l-green-500">
-                        <CardHeader>
-                            <CardTitle className="text-lg">Recent Results</CardTitle>
+                        <CardHeader className="pb-3 border-b">
+                            <CardTitle className="text-base font-bold">Recent Academic Results</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="pt-4 space-y-4">
                             {recentGrades.length > 0 ? recentGrades.map((grade, i) => (
-                                <div key={i} className="flex justify-between items-center p-2 rounded-md border bg-green-50/30">
+                                <div key={i} className="flex justify-between items-center p-3 rounded-lg border bg-green-50/20">
                                     <div>
-                                        <p className="text-xs font-bold text-green-700">{grade.courseCode}</p>
-                                        <p className="text-[10px] text-muted-foreground">{grade.label}</p>
+                                        <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">{grade.courseCode}</p>
+                                        <p className="text-xs font-medium text-muted-foreground">{grade.label}</p>
                                     </div>
-                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'}>{grade.score}%</Badge>
+                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'} className="font-mono text-sm shadow-sm">{grade.score}%</Badge>
                                 </div>
-                            )) : <p className="text-sm text-muted-foreground text-center py-4">No recent grades posted.</p>}
+                            )) : <p className="text-xs text-muted-foreground text-center py-8 italic">No recent results posted.</p>}
                         </CardContent>
-                        <CardFooter>
-                            <Button variant="ghost" size="sm" className="w-full text-xs" asChild>
-                                <Link href="/student/courses/results">View All Results</Link>
+                        <CardFooter className="pt-0 border-t bg-muted/5 p-2">
+                            <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase tracking-widest" asChild>
+                                <Link href="/student/courses/results">Full Transcript <ChevronRight className="ml-1 h-3 w-3"/></Link>
                             </Button>
                         </CardFooter>
-                    </div>
+                    </Card>
                 </div>
             </div>
         </div>
