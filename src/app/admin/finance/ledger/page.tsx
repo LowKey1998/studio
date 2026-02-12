@@ -1,10 +1,9 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db } from '@/lib/firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 
@@ -21,69 +20,69 @@ export default function GeneralLedgerPage() {
     const [loading, setLoading] = React.useState(true);
     
     React.useEffect(() => {
-        const ledgerEntries: Transaction[] = [];
+        const fetchLedger = async () => {
+            setLoading(true);
+            try {
+                const [txSnap, expSnap, usersSnap] = await Promise.all([
+                    get(ref(db, 'transactions')),
+                    get(ref(db, 'expenses')),
+                    get(ref(db, 'users'))
+                ]);
 
-        const txRef = ref(db, 'transactions');
-        const unsubTx = onValue(txRef, (snapshot) => {
-            if(snapshot.exists()) {
-                const data = snapshot.val();
-                Object.keys(data).forEach(id => {
-                    const tx = data[id];
-                    if (tx.status === 'successful') {
-                        ledgerEntries.push({
-                            id: `tx-${id}`,
-                            date: tx.paymentDate,
-                            description: `Payment from ${tx.userId} for Invoice ${tx.invoiceId}`,
-                            debit: tx.amount,
-                            credit: 0,
-                        });
-                    }
-                });
-            }
-            updateLedger();
-        });
+                const users = usersSnap.val() || {};
+                const ledgerEntries: Transaction[] = [];
 
-        const expRef = ref(db, 'expenses');
-        const unsubExp = onValue(expRef, (snapshot) => {
-            if(snapshot.exists()){
-                const data = snapshot.val();
-                Object.keys(data).forEach(id => {
-                    const exp = data[id];
-                     ledgerEntries.push({
-                        id: `exp-${id}`,
-                        date: exp.date,
-                        description: `Expense: ${exp.description} (${exp.category})`,
-                        debit: 0,
-                        credit: exp.amount,
+                if (txSnap.exists()) {
+                    Object.entries(txSnap.val()).forEach(([id, tx]: [string, any]) => {
+                        if (tx.status === 'successful') {
+                            const studentName = users[tx.userId]?.name || tx.userId;
+                            ledgerEntries.push({
+                                id: `tx-${id}`,
+                                date: tx.paymentDate,
+                                description: `Payment: ${studentName} (Inv: ${tx.invoiceId || 'N/A'})`,
+                                debit: tx.amount,
+                                credit: 0,
+                            });
+                        }
                     });
+                }
+
+                if (expSnap.exists()) {
+                    Object.entries(expSnap.val()).forEach(([id, exp]: [string, any]) => {
+                        ledgerEntries.push({
+                            id: `exp-${id}`,
+                            date: exp.date,
+                            description: `Expense: ${exp.description} (${exp.category})`,
+                            debit: 0,
+                            credit: exp.amount,
+                        });
+                    });
+                }
+
+                const sorted = ledgerEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                
+                let runningBalance = 0;
+                const withBalance = sorted.map(entry => {
+                    runningBalance += (entry.debit - entry.credit);
+                    return { ...entry, balance: runningBalance };
                 });
+
+                setTransactions(withBalance.reverse());
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
             }
-            updateLedger();
-        });
-
-        const updateLedger = () => {
-             setTransactions(ledgerEntries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-             setLoading(false);
-        }
-
-        return () => {
-            unsubTx();
-            unsubExp();
         };
+
+        fetchLedger();
     }, []);
-
-    let balance = 0;
-    const ledgerWithBalance = transactions.slice().reverse().map(tx => {
-        balance += tx.debit - tx.credit;
-        return {...tx, balance};
-    }).reverse();
-
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>General Ledger</CardTitle>
-                <CardDescription>A complete, consolidated record of all financial transactions.</CardDescription>
+                <CardDescription>Consolidated chronological record of all institutional revenue and expenses.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -91,22 +90,27 @@ export default function GeneralLedgerPage() {
                         <TableRow>
                             <TableHead>Date</TableHead>
                             <TableHead>Description</TableHead>
-                            <TableHead className="text-right">Debit</TableHead>
-                            <TableHead className="text-right">Credit</TableHead>
+                            <TableHead className="text-right">Debit (+)</TableHead>
+                            <TableHead className="text-right">Credit (-)</TableHead>
                             <TableHead className="text-right">Balance</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {loading ? <TableRow><TableCell colSpan={5}><Skeleton className="h-24"/></TableCell></TableRow> :
-                         ledgerWithBalance.map(tx => (
-                            <TableRow key={tx.id}>
-                                <TableCell>{format(new Date(tx.date), 'PPP')}</TableCell>
+                        {loading ? Array.from({length: 5}).map((_, i) => (
+                            <TableRow key={i}><TableCell colSpan={5}><Skeleton className="h-10 w-full"/></TableCell></TableRow>
+                        )) : transactions.length > 0 ? (
+                         transactions.map((tx, idx) => (
+                            <TableRow key={tx.id || idx}>
+                                <TableCell className="whitespace-nowrap">{format(new Date(tx.date), 'MMM dd, yyyy')}</TableCell>
                                 <TableCell>{tx.description}</TableCell>
-                                <TableCell className="text-right text-green-600">{tx.debit > 0 ? tx.debit.toFixed(2) : '-'}</TableCell>
-                                <TableCell className="text-right text-red-600">{tx.credit > 0 ? tx.credit.toFixed(2) : '-'}</TableCell>
-                                <TableCell className="text-right font-semibold">{tx.balance.toFixed(2)}</TableCell>
+                                <TableCell className="text-right text-green-600 font-medium">{tx.debit > 0 ? `ZMW ${tx.debit.toFixed(2)}` : '-'}</TableCell>
+                                <TableCell className="text-right text-red-600 font-medium">{tx.credit > 0 ? `ZMW ${tx.credit.toFixed(2)}` : '-'}</TableCell>
+                                <TableCell className="text-right font-bold">ZMW {(tx as any).balance.toFixed(2)}</TableCell>
                             </TableRow>
-                         ))}
+                         ))
+                        ) : (
+                            <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">No ledger entries found.</TableCell></TableRow>
+                        )}
                     </TableBody>
                 </Table>
             </CardContent>

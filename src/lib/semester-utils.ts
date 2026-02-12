@@ -98,9 +98,11 @@ export function calculateAcademicState(
     const cyclesPerYear = sortedCycles.length || 1;
 
     // 2. Determine Study Year
+    // Study year is relative to the start. After 2 boundaries, the student enters Year 2.
     const academicYear = Math.ceil(cyclesCounted / cyclesPerYear);
 
     // 3. Determine Study Semester (Relative to student start)
+    // 1st cycle encountered = Semester 1, 2nd = Semester 2, etc.
     const studySemester = ((cyclesCounted - 1) % cyclesPerYear) + 1;
 
     return { 

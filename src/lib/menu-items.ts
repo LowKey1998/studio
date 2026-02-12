@@ -1,4 +1,4 @@
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Construction, ImageIcon, Building2, Terminal, Info, Folder, History, ClipboardPen, Utensils, Zap, Monitor, FileBadge, CalendarDays, FileCheck } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Construction, ImageIcon, Building2, Terminal, Info, Folder, History, ClipboardPen, Utensils, Zap, Monitor, FileBadge, CalendarDays, FileCheck, ReceiptText, Calculator, Balance } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -132,17 +132,20 @@ export const allMenuItems = [
         { href: '/admin/payments', label: 'Student Invoicing', icon: FileText },
         { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
+        { href: '/admin/finance/income-statement', label: 'Income Statement', icon: ReceiptText },
+        { href: '/admin/finance/balance-sheet', label: 'Balance Sheet', icon: Balance },
+        { href: '/admin/finance/trial-balance', label: 'Trial Balance', icon: Calculator },
+        { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/mobile-money', label: 'Mobile Money Integration', icon: Link },
         { href: '/admin/finance/reconciliation', label: 'Bank Reconciliation', icon: RefreshCw },
         { href: '/admin/finance/scholarships', label: 'Scholarship Management', icon: GraduationCap },
-        { href: '/admin/finance/reporting', label: 'Finance Reporting', icon: FileText },
+        { href: '/admin/finance/reporting', label: 'Reporting Hub', icon: FileText },
         { href: '/admin/finance/expenses', label: 'Expense Tracking', icon: TrendingDown },
         { href: '/admin/fees', label: 'Fee Templates', icon: HandCoins },
         { href: '/admin/finance/fees/hostels', label: 'Hostel Fees', icon: Home },
         { href: '/admin/finance/fees/meals', label: 'Meal Fees', icon: Utensils },
         { href: '/admin/finance/receivables', label: 'Receivables', icon: TrendingUp },
         { href: '/admin/finance/payables', label: 'Payables', icon: TrendingDown },
-        { href: '/admin/finance/ledger', label: 'General Ledger', icon: Book },
         { href: '/admin/finance/budgeting', label: 'Budget Forecasting', icon: Telescope },
         { href: '/admin/finance/donors', label: 'Donor Fund Tracking', icon: Heart },
         { href: '/admin/finance/bank-integration', label: 'Bank Details', icon: Banknote },
