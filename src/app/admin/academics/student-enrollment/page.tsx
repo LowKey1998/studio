@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -38,7 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; intakeId: string; year: number; semesterInYear: number; };
-type Course = { id: string; name: string; code: string; cost: number; };
+type Course = { id: string; name: string; code: string; cost: number; separateInstance?: boolean; };
 type Student = { uid: string; id: string; name: string; email: string; intakeId?: string; programmeId?: string; };
 type EnrolledStudent = Student & { enrolledInSemester: string; semesterId: string; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
@@ -104,7 +105,7 @@ export default function StudentEnrollmentPage() {
 
     const { toast } = useToast();
 
-    const fetchEnrolledStudents = React.useCallback(async (courseId: string) => {
+    const fetchEnrolledStudents = React.useCallback(async (courseId: string, filterIntakeId?: string) => {
         setActionLoading('fetching');
         try {
             const actualRegsSnap = await get(ref(db, 'registrations'));
@@ -114,6 +115,10 @@ export default function StudentEnrollmentPage() {
                 for (const userId in regs) {
                     const student = allStudents.find(s => s.uid === userId);
                     if (!student) continue;
+                    
+                    // If course is a separate instance, we only care about students in the specific intake session
+                    if (filterIntakeId && student.intakeId !== filterIntakeId) continue;
+
                     for (const semId in regs[userId]) {
                         if (regs[userId][semId].courses?.includes(courseId)) {
                             const semInfo = semesters.find(s => s.id === semId);
@@ -202,7 +207,9 @@ export default function StudentEnrollmentPage() {
             toast({ title: 'Success', description: `${students.length} student(s) processed.` });
             if (type === 'enroll') setSelectedUids({}); else setSelectedEnrolledUids({});
             setStudentToRemove(null);
-            await fetchEnrolledStudents(activeSession.courseId);
+            
+            const course = allCourses[activeSession.courseId];
+            await fetchEnrolledStudents(activeSession.courseId, course?.separateInstance ? dialogIntakeFilter : undefined);
         } catch (e: any) { 
             toast({ variant: 'destructive', title: 'Action Failed', description: e.message || 'Server error' }); 
         } finally { 
@@ -247,7 +254,6 @@ export default function StudentEnrollmentPage() {
             groups[intakeName].push(s);
         });
         
-        // Sort keys (intake names) descending (typically recent first)
         return Object.keys(groups)
             .sort((a, b) => b.localeCompare(a))
             .reduce((acc, key) => {
@@ -268,6 +274,8 @@ export default function StudentEnrollmentPage() {
     );
     const selectedAvailableCount = Object.values(selectedUids).filter(Boolean).length;
     const selectedEnrolledCount = Object.values(selectedEnrolledUids).filter(Boolean).length;
+
+    const activeCourse = activeSession ? allCourses[activeSession.courseId] : null;
 
     return (
         <div className="space-y-6">
@@ -300,18 +308,43 @@ export default function StudentEnrollmentPage() {
                     <CardContent className="overflow-x-auto"><div className="border rounded-lg min-w-[800px]"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>{teachingTimes.slots.map((s, i) => <TableHead key={i} className="text-center font-bold border-r text-xs">{s.startTime}-{s.endTime}</TableHead>)}</TableRow></TableHeader><TableBody>{displayDays.map(day => (<TableRow key={day}><TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{day}</TableCell>{teachingTimes.slots.map((slot, sIdx) => {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
                         const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
-                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => (
-                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { setActiveSession(entry); setDialogIntakeFilter(selectedIntake); fetchEnrolledStudents(entry.courseId); setSelectedUids({}); setSelectedEnrolledUids({}); setSearchEnrolled(''); }}>
+                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => {
+                            const course = allCourses[entry.courseId];
+                            return (
+                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
+                                setActiveSession(entry); 
+                                // Determine the strict intake filter if it's a separate instance
+                                const currentIntake = intakes.find(i => i.id === selectedIntake);
+                                setDialogIntakeFilter(selectedIntake); 
+                                fetchEnrolledStudents(entry.courseId, course?.separateInstance ? selectedIntake : undefined); 
+                                setSelectedUids({}); 
+                                setSelectedEnrolledUids({}); 
+                                setSearchEnrolled(''); 
+                            }}>
                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
+                                {course?.separateInstance && <Badge className="text-[8px] h-3.5 px-1 mt-1 bg-blue-100 text-blue-700 border-blue-200">Separate Instance</Badge>}
                             </div>
-                        ))}</TableCell>);
+                        )})}</TableCell>);
                     })}</TableRow>))}</TableBody></Table></div></CardContent></Card>
             )}
 
             <Dialog open={!!activeSession} onOpenChange={(o) => !o && setActiveSession(null)}>
                 <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Enrollment: {activeSession?.courseName}</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <DialogTitle>Enrollment: {activeSession?.courseName}</DialogTitle>
+                                <DialogDescription>{activeSession?.courseCode} &middot; {activeSession?.day} {activeSession?.startTime}</DialogDescription>
+                            </div>
+                            {activeCourse?.separateInstance && (
+                                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1">
+                                    <Info className="h-3 w-3" />
+                                    Filtering students by intake: {intakes.find(i => i.id === dialogIntakeFilter)?.name}
+                                </Badge>
+                            )}
+                        </div>
+                    </DialogHeader>
                     <div className="flex-1 grid md:grid-cols-2 gap-6 overflow-hidden py-4">
                         <div className="flex flex-col gap-2 border p-4 rounded-lg bg-muted/10 overflow-hidden">
                             <div className="flex justify-between items-center mb-2">
@@ -327,7 +360,7 @@ export default function StudentEnrollmentPage() {
                                     <Checkbox checked={selectedAvailableCount === availableToEnroll.length && availableToEnroll.length > 0} onCheckedChange={(checked) => { const next: any = {}; if (checked) availableToEnroll.forEach(s => next[s.uid] = true); setSelectedUids(next); }} />
                                     <Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)} className="h-8"/>
                                 </div>
-                                <Select value={dialogIntakeFilter} onValueChange={setDialogIntakeFilter}>
+                                <Select value={dialogIntakeFilter} onValueChange={setDialogIntakeFilter} disabled={activeCourse?.separateInstance}>
                                     <SelectTrigger className="h-8"><SelectValue placeholder="Intake Filter"/></SelectTrigger>
                                     <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                                 </Select>

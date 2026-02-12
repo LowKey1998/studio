@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,7 @@ type TimetableEntry = {
     venue: string;
     courseCode: string;
     courseName: string;
+    semesterId: string;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -60,10 +62,14 @@ export default function StudentTimetablePage() {
                 return;
             }
 
-            const enrolledCourseIds = new Set<string>();
-            Object.values(regsSnap.val()).forEach((reg: any) => {
+            // Map enrolled course IDs to their specific registration semesterId
+            const enrolledCourseSemesters = new Map<string, Set<string>>(); // courseId -> Set of semesterIds
+            Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    (reg.courses || []).forEach((id: string) => enrolledCourseIds.add(id));
+                    (reg.courses || []).forEach((cid: string) => {
+                        if (!enrolledCourseSemesters.has(cid)) enrolledCourseSemesters.set(cid, new Set());
+                        enrolledCourseSemesters.get(cid)!.add(semId);
+                    });
                 }
             });
 
@@ -77,17 +83,23 @@ export default function StudentTimetablePage() {
             });
 
             const entries: TimetableEntry[] = [];
+            // Iterate through semesters in the timetable
             for (const semId in tData) {
+                // Iterate through courses in that semester's timetable
                 for (const cId in tData[semId]) {
-                    if (enrolledCourseIds.has(cId)) {
+                    // Check if the student is registered for this specific course in this specific semester
+                    if (enrolledCourseSemesters.get(cId)?.has(semId)) {
                         const courseInfo = cData[cId];
-                        Object.values(tData[semId][cId]).forEach((entry: any) => {
-                            entries.push({
-                                ...entry,
-                                courseCode: courseInfo.code,
-                                courseName: courseInfo.name
+                        if (courseInfo) {
+                            Object.values(tData[semId][cId]).forEach((entry: any) => {
+                                entries.push({
+                                    ...entry,
+                                    courseCode: courseInfo.code,
+                                    courseName: courseInfo.name,
+                                    semesterId: semId
+                                });
                             });
-                        });
+                        }
                     }
                 }
             }
@@ -110,7 +122,7 @@ export default function StudentTimetablePage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">My Weekly Timetable</CardTitle>
-                <CardDescription>Your weekly class schedule based on your enrolled courses.</CardDescription>
+                <CardDescription>Your weekly class schedule based on your current enrolled courses.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
                 {loading ? (
