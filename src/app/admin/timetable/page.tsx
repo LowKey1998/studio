@@ -115,11 +115,7 @@ export default function TimetableManagementPage() {
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
                 case 3: setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 4: {
-                    const entries: TimetableEntry[] = [];
-                    // We'll calculate the list in the next effect when everything is loaded
-                    break;
-                }
+                case 4: break; // Handled below
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
                     days: data.days || defaultDays,
@@ -130,7 +126,6 @@ export default function TimetableManagementPage() {
             }
         }));
 
-        // Flatten timetable entries when snapshot or dependencies change
         const unsubT = onValue(ref(db, 'timetables'), (snapshot) => {
             const tData = snapshot.val() || {};
             get(ref(db, 'semesters')).then(sSnap => {
@@ -176,6 +171,25 @@ export default function TimetableManagementPage() {
         };
     }, []);
 
+    const filteredTimetable = React.useMemo(() => {
+        return masterTimetable.filter(entry => {
+            const matchesRoom = roomFilter === 'all' || entry.venue === roomFilter;
+            const matchesIntake = intakeFilter === 'all' || entry.intakeName === intakes.find(i => i.id === intakeFilter)?.name;
+            const matchesSearch = !searchTerm || 
+                entry.courseName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                entry.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
+            return matchesRoom && matchesIntake && matchesSearch;
+        });
+    }, [masterTimetable, roomFilter, intakeFilter, searchTerm, intakes]);
+
+    const searchedCourses = React.useMemo(() => {
+        if (!courseSearch) return allCourses;
+        return allCourses.filter(c => 
+            c.name.toLowerCase().includes(courseSearch.toLowerCase()) || 
+            c.code.toLowerCase().includes(courseSearch.toLowerCase())
+        );
+    }, [allCourses, courseSearch]);
+
     const handleSaveEntry = async () => {
         if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
             toast({ variant: 'destructive', title: 'Missing required fields' });
@@ -185,8 +199,6 @@ export default function TimetableManagementPage() {
         try {
             const intake = intakes.find(i => i.id === selectedIntakeId);
             const intakeName = intake?.name || 'Master';
-            
-            // Find matched active semester for this intake
             const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
             let targetSemesterId = 'master';
             if (intakeStartStr && calendarSettings) {
@@ -234,7 +246,6 @@ export default function TimetableManagementPage() {
 
         try {
             if (active) {
-                // If it was inactive (crossed out), we create a new entry for this semester
                 const newEntryRef = push(ref(db, `timetables/${semesterId}/${entry.courseId}`));
                 await set(newEntryRef, {
                     day: entry.day,
@@ -244,7 +255,6 @@ export default function TimetableManagementPage() {
                     intakeName: intakes.find(i => i.id === semesters.find(s => s.id === semesterId)?.intakeId)?.name || 'N/A'
                 });
             } else {
-                // If active, we delete the specific entry for this semester
                 const entryToDelete = masterTimetable.find(e => 
                     e.semesterId === semesterId && 
                     e.courseId === entry.courseId && 
@@ -285,24 +295,13 @@ export default function TimetableManagementPage() {
                 : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
 
             if (!sessions[key]) {
-                // Determine potential participants
                 const participants: any[] = [];
-                // 1. Get all active registration paths for this course
-                Object.entries(activePaths).forEach(([pathKey, offerings]: [string, any]) => {
-                    const [intakeId, programmeId] = pathKey.split('-'); // Logic depends on how you save activePaths keys
-                    // Fallback to searching paths
-                    // For now, let's look at all semesters where this course is in the path
-                    // And the semester is "Active" in Registration Management
-                });
-
-                // Simplified logic: find all active semesters where this course is in the path
                 semesters.forEach(sem => {
                     const intake = intakes.find(i => i.id === sem.intakeId);
                     const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
                     if (intakeStartStr && calendarSettings) {
                         const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
                         if (sem.year === state.year && sem.semesterInYear === state.semester) {
-                            // Check if course is in path for this intake/programme (simplified: check current timetable entries)
                             const hasEntry = masterTimetable.some(e => 
                                 e.semesterId === sem.id && 
                                 e.courseId === entry.courseId && 
@@ -320,13 +319,12 @@ export default function TimetableManagementPage() {
                         }
                     }
                 });
-
                 sessions[key] = { entry, participants };
             }
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes, calendarSettings, masterTimetable, activePaths]);
+    }, [filteredTimetable, allCourses, semesters, intakes, calendarSettings, masterTimetable]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
