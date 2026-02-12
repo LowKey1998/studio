@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -19,12 +19,9 @@ import {
     TableHeader, 
     TableRow 
 } from '@/components/ui/table';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -35,6 +32,7 @@ import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
@@ -47,8 +45,6 @@ type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; paymentThreshold?: number; gracePeriodDays?: number; };
-type DeadlineInfo = { title: string; date: string | null; eventId: string | null; };
-
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -298,10 +294,17 @@ export default function RegistrationManagementPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
+    // Per-semester deadline state
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [eventMap, setEventMap] = React.useState<Map<string, { date: string, id: string }>>(new Map());
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+
+    // Bulk deadline state
+    const [isBulkDeadlineOpen, setIsBulkDeadlineOpen] = React.useState(false);
+    const [bulkSelectedSemesters, setBulkSelectedSemesters] = React.useState<Record<string, boolean>>({});
+    const [bulkSelectedPlanId, setBulkSelectedPlanId] = React.useState('');
+    const [bulkDeadlineDates, setBulkDeadlineDates] = React.useState<Record<number, Date | undefined>>({});
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -438,6 +441,65 @@ export default function RegistrationManagementPage() {
         }
     };
 
+    const handleSaveBulkDeadlines = async () => {
+        const selectedSemIds = Object.keys(bulkSelectedSemesters).filter(id => bulkSelectedSemesters[id]);
+        const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
+        
+        if (selectedSemIds.length === 0 || !plan) {
+            toast({ variant: 'destructive', title: 'Missing Selections', description: 'Please select semesters and a payment plan.' });
+            return;
+        }
+
+        const validDeadlines = Object.keys(bulkDeadlineDates).filter(idx => bulkDeadlineDates[Number(idx)]);
+        if (validDeadlines.length < plan.installments) {
+            toast({ variant: 'destructive', title: 'Incomplete Deadlines', description: 'Please set a date for all installments.' });
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const updates: Record<string, any> = {};
+            const existingEvents = Object.entries(calendarEvents).map(([id, data]) => ({ id, ...(data as any) }));
+
+            for (const semId of selectedSemIds) {
+                const semester = semesters.find(s => s.id === semId);
+                if (!semester) continue;
+
+                // 1. Link the plan to the semester
+                updates[`semesters/${semId}/paymentPlanIds/${plan.id}`] = true;
+
+                // 2. Create/Update calendar events
+                for (let i = 0; i < plan.installments; i++) {
+                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
+                    const date = bulkDeadlineDates[i];
+                    
+                    const existing = existingEvents.find(e => e.title?.trim() === fullTitle.trim());
+                    if (existing) {
+                        updates[`calendarEvents/${existing.id}/date`] = format(date!, 'yyyy-MM-dd');
+                    } else {
+                        const newRef = push(ref(db, 'calendarEvents'));
+                        updates[`calendarEvents/${newRef.key}`] = {
+                            title: fullTitle,
+                            date: format(date!, 'yyyy-MM-dd'),
+                            semester: semester.name
+                        };
+                    }
+                }
+            }
+
+            await update(ref(db), updates);
+            toast({ title: 'Bulk Deadlines Applied', description: `Updated ${selectedSemIds.length} semester(s).` });
+            setIsBulkDeadlineOpen(false);
+            setBulkSelectedSemesters({});
+            setBulkSelectedPlanId('');
+            setBulkDeadlineDates({});
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Bulk Update Failed', description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
         setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
         setIsHistoryDialogOpen(true);
@@ -488,9 +550,20 @@ export default function RegistrationManagementPage() {
             )}
 
             <Card className="shadow-lg">
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div><CardTitle className="font-headline text-2xl">Registration Management</CardTitle><CardDescription>Configure semesters and active registration paths.</CardDescription></div>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button>
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                        <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
+                        <CardDescription>Configure semesters, fees, and enrollment paths.</CardDescription>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => setIsBulkDeadlineOpen(true)}>
+                            <Clock className="mr-2 h-4 w-4" />
+                            Bulk Update Deadlines
+                        </Button>
+                        <Button onClick={() => setIsCreateDialogOpen(true)}>
+                            <PlusCircle className="mr-2 h-4 w-4"/> New Semester
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {loading ? <Skeleton className="h-48 w-full" /> : 
@@ -566,7 +639,7 @@ export default function RegistrationManagementPage() {
                                                                             const course = allCourses[cid];
                                                                             if(!course) return null;
                                                                             const lecturerNames = (course.lecturerIds || []).map(lid => users[lid]?.name).filter(Boolean).join(', ') || users[course.lecturerId || '']?.name || 'Unassigned';
-                                                                            const timetable = timetables[semId]?.[cid] ? Object.values(timetables[semId][cid]) : [];
+                                                                            const timetableEntries = timetables[semId]?.[cid] ? Object.values(timetables[semId][cid]) : [];
                                                                             return (
                                                                                 <div key={cid} className={cn("p-2 border rounded text-xs", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "bg-muted/20" : "bg-orange-50 border-orange-200")}>
                                                                                     <div className="flex justify-between font-bold">
@@ -575,10 +648,10 @@ export default function RegistrationManagementPage() {
                                                                                     <div className={cn("flex items-center gap-1 mt-1 font-medium", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "text-muted-foreground" : "text-orange-700")}>
                                                                                         <UserCheck className="h-3 w-3" /> {lecturerNames === 'Unassigned' ? 'NO LECTURER ASSIGNED' : lecturerNames}
                                                                                     </div>
-                                                                                    {timetable.length > 0 && (
+                                                                                    {timetableEntries.length > 0 && (
                                                                                         <div className="flex items-center gap-1 text-primary mt-1">
                                                                                             <Clock className="h-3 w-3" /> 
-                                                                                            {timetable.map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`).join(', ')}
+                                                                                            {timetableEntries.map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`).join(', ')}
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -590,7 +663,7 @@ export default function RegistrationManagementPage() {
                                                                 <div className="flex gap-2 pt-2 border-t">
                                                                     <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semDetails)}><CalendarIcon className="mr-2 h-4 w-4"/>Set Deadlines</Button>
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}><BookCopy className="mr-2 h-4"/>Edit Path</Link></Button>
-                                                                    <Button variant="outline" size="sm" asChild><Link href={`/admin/academics/lecturer-allocation?semesterId=${semId}`}><UserPlus className="mr-2 h-4"/>Lecturers</Link></Button>
+                                                                    <Button variant="outline" size="sm" asChild><Link href={`/admin/timetable?semesterId=${semId}`}><Clock className="mr-2 h-4"/>Manage Timetable</Link></Button>
                                                                 </div>
                                                             </div>
                                                         );
@@ -683,6 +756,77 @@ export default function RegistrationManagementPage() {
                         <Button onClick={handleSaveAllDeadlines} disabled={saving}>
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Save All Settings
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isBulkDeadlineOpen} onOpenChange={setIsBulkDeadlineOpen}>
+                <DialogContent className="max-w-2xl h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Update Deadlines</DialogTitle>
+                        <DialogDescription>Apply a payment plan and its deadlines to multiple semesters at once.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto pr-4 py-4 space-y-6">
+                        <div className="space-y-3">
+                            <Label className="text-base font-bold">1. Select Semesters</Label>
+                            <ScrollArea className="h-48 border rounded-md p-2 bg-muted/10">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {semesters.filter(s => s.status !== 'Archived').map(sem => (
+                                        <div key={sem.id} className="flex items-center space-x-2 p-1">
+                                            <Checkbox 
+                                                id={`bulk-sem-${sem.id}`} 
+                                                checked={!!bulkSelectedSemesters[sem.id]}
+                                                onCheckedChange={() => setBulkSelectedSemesters(prev => ({...prev, [sem.id]: !prev[sem.id]}))}
+                                            />
+                                            <Label htmlFor={`bulk-sem-${sem.id}`} className="text-xs cursor-pointer">{sem.name}</Label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label className="text-base font-bold">2. Select Payment Plan</Label>
+                            <Select value={bulkSelectedPlanId} onValueChange={setBulkSelectedPlanId}>
+                                <SelectTrigger><SelectValue placeholder="Select plan..." /></SelectTrigger>
+                                <SelectContent>
+                                    {allPaymentPlans.filter(p => !p.archived).map(p => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {bulkSelectedPlanId && (
+                            <div className="space-y-4">
+                                <Label className="text-base font-bold">3. Set Due Dates</Label>
+                                <div className="grid gap-4 border rounded-lg p-4">
+                                    {Array.from({ length: allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0 }).map((_, i) => (
+                                        <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                            <span className="text-sm font-medium">{getOrdinalSuffix(i + 1)} Installment</span>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className={cn("w-full sm:w-[240px] justify-start text-left font-normal", !bulkDeadlineDates[i] && "text-muted-foreground")}>
+                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                        {bulkDeadlineDates[i] ? format(bulkDeadlineDates[i]!, 'PPP') : <span>Pick a date</span>}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="end">
+                                                    <Calendar mode="single" selected={bulkDeadlineDates[i]} onSelect={(d) => setBulkDeadlineDates(prev => ({...prev, [i]: d}))} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <Button variant="outline" onClick={() => setIsBulkDeadlineOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveBulkDeadlines} disabled={saving || !bulkSelectedPlanId}>
+                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Apply to Selected
                         </Button>
                     </DialogFooter>
                 </DialogContent>

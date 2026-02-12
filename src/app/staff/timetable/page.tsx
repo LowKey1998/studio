@@ -7,10 +7,10 @@ import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, Layers } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, Layers, CalendarDays } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
-import { parseIntakeDate } from '@/lib/semester-utils';
+import { isWithinInterval, parseISO } from 'date-fns';
 
 type TimeSlot = {
     id: string;
@@ -91,10 +91,8 @@ export default function StaffTimetablePage() {
                     const reg = regsData[userId][semId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         if (!counts[semId]) counts[semId] = {};
-                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
-                        coursesArr.forEach((cid: string) => {
-                            counts[semId][cid] = (counts[semId][cid] || 0) + 1;
-                        });
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
+                        coursesArr.forEach((cid: string) => { counts[semId][cid] = (counts[semId][cid] || 0) + 1; });
                     }
                 }
             }
@@ -107,17 +105,26 @@ export default function StaffTimetablePage() {
                 }
             });
 
-            // Flatten all my sessions
+            const activeSemesterIds = new Set<string>();
+            Object.keys(sData).forEach(sId => {
+                const s = sData[sId];
+                if (s.status === 'Archived') return;
+                if (s.startDate && s.endDate) {
+                    try {
+                        if (isWithinInterval(new Date(), { start: parseISO(s.startDate), end: parseISO(s.endDate) })) activeSemesterIds.add(sId);
+                    } catch(e) { activeSemesterIds.add(sId); }
+                } else { activeSemesterIds.add(sId); }
+            });
+
             const rawEntries: TimetableEntry[] = [];
             for (const semId in tData) {
-                const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry' };
+                if (!activeSemesterIds.has(semId) && semId !== 'master') continue;
+                const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Template' : 'Ad-hoc' };
+                
                 for (const cId in tData[semId]) {
                     if (myCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
-                        const lecturerNames = (courseInfo.lecturerIds || [])
-                            .map((uid: string) => usersData[uid]?.name)
-                            .filter(Boolean)
-                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                        const lecturerNames = (courseInfo.lecturerIds || []).map((uid: string) => usersData[uid]?.name).filter(Boolean).join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
                             rawEntries.push({
@@ -135,46 +142,28 @@ export default function StaffTimetablePage() {
                 }
             }
 
-            // Merge shared sessions and calculate correct student counts
             const mergedMap = new Map<string, MergedEntry>();
             rawEntries.forEach(entry => {
                 const course = cData[entry.courseId];
-                const key = course?.separateInstance 
-                    ? `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}-${entry.semesterId}`
-                    : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
+                const key = course?.separateInstance ? `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}-${entry.semesterId}` : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
 
                 if (!mergedMap.has(key)) {
-                    mergedMap.set(key, {
-                        key,
-                        entry,
-                        totalStudents: 0,
-                        participants: []
-                    });
+                    mergedMap.set(key, { key, entry, totalStudents: 0, participants: [] });
                 }
 
                 const merged = mergedMap.get(key)!;
                 const sem = sData[entry.semesterId];
                 const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
                 
-                // Get correct count for this specific entry
                 let count = 0;
                 if (entry.semesterId !== 'master') {
                     count = counts[entry.semesterId]?.[entry.courseId] || 0;
                 } else {
-                    // For master entries, if separate, count only matching intake. If shared, count all active.
                     if (course?.separateInstance) {
                         const matchingIntakeId = Object.keys(iData).find(id => iData[id].name === entry.intakeName);
-                        Object.keys(sData).forEach(sId => {
-                            if (sData[sId].intakeId === matchingIntakeId && sData[sId].status !== 'Archived') {
-                                count += counts[sId]?.[entry.courseId] || 0;
-                            }
-                        });
+                        Object.keys(sData).forEach(sId => { if (sData[sId].intakeId === matchingIntakeId && activeSemesterIds.has(sId)) count += counts[sId]?.[entry.courseId] || 0; });
                     } else {
-                        Object.keys(sData).forEach(sId => {
-                            if (sData[sId].status !== 'Archived') {
-                                count += counts[sId]?.[entry.courseId] || 0;
-                            }
-                        });
+                        Object.keys(sData).forEach(sId => { if (activeSemesterIds.has(sId)) count += counts[sId]?.[entry.courseId] || 0; });
                     }
                 }
 
@@ -185,100 +174,75 @@ export default function StaffTimetablePage() {
             });
 
             setMergedTimetable(Array.from(mergedMap.values()));
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); } finally { setLoading(false); }
     }, [currentUser]);
 
-    React.useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    React.useEffect(() => { fetchData(); }, [fetchData]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
 
     return (
-        <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="font-headline text-2xl">My Teaching Schedule</CardTitle>
-                <CardDescription>Your weekly recurring classes across all active semesters. Click a class to manage it.</CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-                {loading ? (
-                    <Skeleton className="h-96 w-full" />
-                ) : !hasSlots ? (
-                    <Alert>
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Matrix View Unavailable</AlertTitle>
-                        <AlertDescription>The administration has not yet defined the institutional time slots required for the matrix view.</AlertDescription>
-                    </Alert>
-                ) : (
-                    <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-muted/50">
-                                    <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
-                                    {teachingTimes.slots.map((slot, index) => (
-                                        <TableHead key={slot.id || index} className="text-center font-bold border-r">
-                                            <span className="text-xs">{slot.startTime} - {slot.endTime}</span>
-                                        </TableHead>
-                                    ))}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {displayDays.map(dayName => (
-                                    <TableRow key={dayName}>
-                                        <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
-                                        {teachingTimes.slots.map((slot, sIdx) => {
-                                            const slotStart = timeToMinutes(slot.startTime);
-                                            const slotEnd = timeToMinutes(slot.endTime);
-                                            const sessionsInSlot = mergedTimetable.filter(m => 
-                                                m.entry.day === dayName && 
-                                                timeToMinutes(m.entry.startTime) >= slotStart && 
-                                                timeToMinutes(m.entry.startTime) < slotEnd
-                                            );
+        <div className="space-y-6">
+            <Card className="shadow-lg border-0 bg-primary/5">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="text-primary"/> Active Teaching Schedule</CardTitle>
+                    <CardDescription>Your weekly classes for current active semesters.</CardDescription>
+                </CardHeader>
+            </Card>
 
-                                            return (
-                                                <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
-                                                    <div className="space-y-2">
-                                                        {sessionsInSlot.map((m, eIdx) => (
-                                                            <Link 
-                                                                href={`/staff/courses/${m.entry.courseId}`}
-                                                                key={eIdx} 
-                                                                className="block p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all group"
-                                                            >
-                                                                <div className="flex justify-between items-start">
-                                                                    <p className="font-bold text-[10px] text-primary leading-tight group-hover:underline">{m.entry.courseCode}: {m.entry.courseName}</p>
-                                                                    {m.participants.length > 1 && <Layers className="h-3 w-3 text-primary/40" />}
-                                                                </div>
-                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                    <MapPin className="h-2.5 w-2.5" /> {m.entry.venue}
-                                                                </div>
-                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1">
-                                                                    <Users className="h-2.5 w-2.5" /> {m.totalStudents} Students
-                                                                </div>
-                                                                <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                    {m.participants.map((p, pIdx) => (
-                                                                        <Badge key={pIdx} variant="secondary" className="text-[8px] h-4 px-1">
-                                                                            {p.name} ({p.standing}): {p.count}
-                                                                        </Badge>
-                                                                    ))}
-                                                                </div>
-                                                            </Link>
-                                                        ))}
-                                                    </div>
-                                                </TableCell>
-                                            );
-                                        })}
+            <Card className="shadow-lg">
+                <CardContent className="overflow-x-auto pt-6">
+                    {loading ? (
+                        <Skeleton className="h-96 w-full" />
+                    ) : !hasSlots ? (
+                        <Alert><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined.</AlertDescription></Alert>
+                    ) : (
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map((slot, index) => (<TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>))}
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+                                </TableHeader>
+                                <TableBody>
+                                    {displayDays.map(dayName => (
+                                        <TableRow key={dayName}>
+                                            <TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{dayName}</TableCell>
+                                            {teachingTimes.slots.map((slot, sIdx) => {
+                                                const slotStart = timeToMinutes(slot.startTime);
+                                                const slotEnd = timeToMinutes(slot.endTime);
+                                                const sessionsInSlot = mergedTimetable.filter(m => m.entry.day === dayName && timeToMinutes(m.entry.startTime) >= slotStart && timeToMinutes(m.entry.startTime) < slotEnd);
+
+                                                return (
+                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                        <div className="space-y-2">
+                                                            {sessionsInSlot.map((m, eIdx) => (
+                                                                <Link href={`/staff/courses/${m.entry.courseId}`} key={eIdx} className="block p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{m.entry.courseCode}: {m.entry.courseName}</p>
+                                                                        {m.participants.length > 1 && <Layers className="h-3 w-3 text-primary/40" />}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {m.entry.venue}</div>
+                                                                    <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {m.totalStudents} Students</div>
+                                                                    <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                        {m.participants.map((p, pIdx) => (<Badge key={pIdx} variant="secondary" className="text-[8px] h-4 px-1">{p.name} ({p.standing}): {p.count}</Badge>))}
+                                                                    </div>
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
     );
 }

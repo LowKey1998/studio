@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -32,6 +32,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useSearchParams, useRouter } from 'next/navigation';
 
 type TimeSlot = {
     id: string;
@@ -66,7 +67,9 @@ const timeToMinutes = (time: string) => {
     return hours * 60 + minutes;
 };
 
-export default function TimetableManagementPage() {
+function TimetableManagementComponent() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const [loading, setLoading] = React.useState(true);
     const [generating, setGenerating] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
@@ -77,11 +80,12 @@ export default function TimetableManagementPage() {
     const [rooms, setRooms] = React.useState<Room[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
-    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); // [semId][courseId]
+    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
     // Filter states
+    const [selectedSemesterId, setSelectedSemesterId] = React.useState(searchParams.get('semesterId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -198,14 +202,15 @@ export default function TimetableManagementPage() {
 
     const filteredTimetable = React.useMemo(() => {
         return masterTimetable.filter(entry => {
+            const matchesSemester = selectedSemesterId === 'all' || entry.semesterId === selectedSemesterId;
             const matchesRoom = roomFilter === 'all' || entry.venue === roomFilter;
             const matchesIntake = intakeFilter === 'all' || entry.intakeName === intakes.find(i => i.id === intakeFilter)?.name;
             const matchesSearch = !searchTerm || 
                 entry.courseName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                 entry.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesRoom && matchesIntake && matchesSearch;
+            return matchesSemester && matchesRoom && matchesIntake && matchesSearch;
         });
-    }, [masterTimetable, roomFilter, intakeFilter, searchTerm, intakes]);
+    }, [masterTimetable, selectedSemesterId, roomFilter, intakeFilter, searchTerm, intakes]);
 
     const searchedCourses = React.useMemo(() => {
         if (!courseSearch) return allCourses;
@@ -246,21 +251,15 @@ export default function TimetableManagementPage() {
     }, [allCourses, studentCounts, semesters, intakes]);
 
     const handleSaveEntry = async () => {
-        if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
+        if (!selectedCourseId || !day || !startTime || !endTime) {
             toast({ variant: 'destructive', title: 'Missing required fields' });
             return;
         }
         setSaving(true);
         try {
-            const intake = intakes.find(i => i.id === selectedIntakeId);
+            const semester = semesters.find(s => s.id === selectedSemesterId);
+            const intake = selectedIntakeId ? intakes.find(i => i.id === selectedIntakeId) : (semester ? intakes.find(i => i.id === semester.intakeId) : null);
             const intakeName = intake?.name || 'Master';
-            const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
-            let targetSemesterId = 'master';
-            if (intakeStartStr && calendarSettings) {
-                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                const matchedSem = semesters.find(s => s.intakeId === selectedIntakeId && s.year === state.year && s.semesterInYear === state.semester);
-                if (matchedSem) targetSemesterId = matchedSem.id;
-            }
 
             const data = { day, startTime, endTime, venue: venue || 'TBA', intakeName };
 
@@ -269,7 +268,7 @@ export default function TimetableManagementPage() {
                 await update(entryRef, data);
                 toast({ title: "Entry Updated" });
             } else {
-                const entryRef = push(ref(db, `timetables/${targetSemesterId}/${selectedCourseId}`));
+                const entryRef = push(ref(db, `timetables/${selectedSemesterId}/${selectedCourseId}`));
                 await set(entryRef, data);
                 toast({ title: "Entry Added" });
             }
@@ -277,6 +276,38 @@ export default function TimetableManagementPage() {
             resetAddForm();
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Failed to save entry" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCopyFromMaster = async () => {
+        if (selectedSemesterId === 'master' || selectedSemesterId === 'all') {
+            toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific semester to copy to.' });
+            return;
+        }
+        
+        const targetSemester = semesters.find(s => s.id === selectedSemesterId);
+        if (!targetSemester) return;
+
+        setSaving(true);
+        try {
+            const masterSnap = await get(ref(db, 'timetables/master'));
+            if (!masterSnap.exists()) {
+                toast({ variant: 'destructive', title: 'Master Schedule Empty' });
+                return;
+            }
+
+            const masterData = masterSnap.val();
+            const targetRef = ref(db, `timetables/${selectedSemesterId}`);
+            
+            // Note: This overwrites existing entries for that semester. 
+            // In a production app, we might want to merge or ask the user.
+            await update(targetRef, masterData);
+            
+            toast({ title: 'Schedule Copied', description: `Master baseline loaded into ${targetSemester.name}` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Copy Failed', description: e.message });
         } finally {
             setSaving(false);
         }
@@ -299,24 +330,13 @@ export default function TimetableManagementPage() {
     };
 
     const handleCellClick = (dayName: string, slot: TimeSlot) => {
+        if (selectedSemesterId === 'all') return;
         resetAddForm();
         setDay(dayName);
         setStartTime(slot.startTime);
         setEndTime(slot.endTime);
-        if (intakeFilter !== 'all') {
-            setSelectedIntakeId(intakeFilter);
-        }
         setIsAddOpen(true);
     };
-
-    const intakeStanding = React.useMemo(() => {
-        if (intakeFilter === 'all' || !calendarSettings) return null;
-        const intake = intakes.find(i => i.id === intakeFilter);
-        if (!intake) return null;
-        const intakeStartStr = parseIntakeDate(intake.name);
-        if (!intakeStartStr) return null;
-        return calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-    }, [intakeFilter, intakes, calendarSettings]);
 
     const mergedSessions = React.useMemo(() => {
         const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; totalStudents: number; participants: { semesterId: string; name: string; standing: string; count: number }[] }> = {};
@@ -364,18 +384,23 @@ export default function TimetableManagementPage() {
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <CardTitle className="font-headline text-2xl">Timetable Management</CardTitle>
-                        <CardDescription>Manage shared and separate sessions across all intakes.</CardDescription>
+                        <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || selectedSemesterId === 'master' || selectedSemesterId === 'all'}>
+                            <Copy className="mr-2 h-4 w-4"/> Load Master Baseline
+                        </Button>
                         <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
                             {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
                         </Button>
                         <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
-                            <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
+                            <DialogTrigger asChild><Button disabled={selectedSemesterId === 'all'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
                             <DialogContent className="sm:max-w-lg">
-                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : 'Manual Schedule Entry'}</DialogTitle></DialogHeader>
+                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${selectedSemesterId === 'master' ? 'Master' : semesters.find(s=>s.id === selectedSemesterId)?.name}`}</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
-                                    <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                    {selectedSemesterId === 'master' && (
+                                        <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                    )}
                                     <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal">{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
@@ -386,19 +411,27 @@ export default function TimetableManagementPage() {
                                         <div className="space-y-1"><Label>End Time</Label><Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
                                     </div>
                                 </div>
-                                <DialogFooter><Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
+                                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
                             </DialogContent>
                         </Dialog>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg">
-                        <div className="flex-1 min-w-[200px]"><Label>Search Course</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Search..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
+                    <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg border">
+                        <div className="w-64">
+                            <Label>Viewing Schedule For</Label>
+                            <Select value={selectedSemesterId} onValueChange={(val) => { setSelectedSemesterId(val); router.push(`?semesterId=${val}`); }}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Semesters (Merged)</SelectItem>
+                                    <SelectItem value="master" className="font-bold text-primary">Master Template</SelectItem>
+                                    <Separator className="my-1"/>
+                                    {semesters.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex-1 min-w-[200px]"><Label>Search Class</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter by course..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
                         <div className="w-48"><Label>Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="w-48"><Label>Filter Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                        {intakeFilter !== 'all' && intakeStanding && (
-                            <Badge variant="secondary" className="h-10 px-4 text-sm font-bold border-primary/20 bg-primary/5"><CalendarDays className="mr-2 h-4 w-4"/>Standing: Year {intakeStanding.year}, Sem {intakeStanding.semester}</Badge>
-                        )}
                     </div>
 
                     {!hasSlots ? (
@@ -439,24 +472,30 @@ export default function TimetableManagementPage() {
                                                                     onClick={(e) => e.stopPropagation()} 
                                                                 >
                                                                     <div className="flex justify-between items-start gap-1">
-                                                                        <Link href={`/staff/courses/${s.entry.courseId}`} className="flex-1 group">
-                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2 group-hover:underline" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                        <div className="flex-1">
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {s.entry.venue}</div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2 w-2" /> {s.lecturerNames}</div>
                                                                             <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2 w-2" /> {s.totalStudents} Students</div>
-                                                                        </Link>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="icon" 
-                                                                            className="h-5 w-5 text-destructive" 
-                                                                            onClick={(e) => { 
-                                                                                e.preventDefault(); 
-                                                                                e.stopPropagation(); 
-                                                                                setEntryToDelete(s.entry); 
-                                                                            }}
-                                                                        >
-                                                                            <X className="h-3 w-3" />
-                                                                        </Button>
+                                                                        </div>
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <Button 
+                                                                                variant="ghost" 
+                                                                                size="icon" 
+                                                                                className="h-5 w-5 hover:bg-primary/10" 
+                                                                                onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
+                                                                            >
+                                                                                <Pencil className="h-3 w-3" />
+                                                                            </Button>
+                                                                            <Button 
+                                                                                variant="ghost" 
+                                                                                size="icon" 
+                                                                                className="h-5 w-5 text-destructive hover:bg-destructive/10" 
+                                                                                onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
+                                                                            >
+                                                                                <X className="h-3 w-3" />
+                                                                            </Button>
+                                                                        </div>
                                                                     </div>
                                                                     <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
                                                                         {s.participants.map(p => (
@@ -465,7 +504,7 @@ export default function TimetableManagementPage() {
                                                                                 variant="secondary" 
                                                                                 className="text-[8px] h-4"
                                                                             >
-                                                                                {p.name} ({p.standing}) : {p.count}
+                                                                                {p.name} ({p.standing}): {p.count}
                                                                             </Badge>
                                                                         ))}
                                                                     </div>
@@ -504,5 +543,13 @@ export default function TimetableManagementPage() {
                 </AlertDialogContent>
             </AlertDialog>
         </div>
+    );
+}
+
+export default function TimetableManagementPage() {
+    return (
+        <React.Suspense fallback={<Skeleton className="h-screen w-full" />}>
+            <TimetableManagementComponent />
+        </React.Suspense>
     );
 }
