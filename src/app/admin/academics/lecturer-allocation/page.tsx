@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuChe
 import type { CoursePath } from '@/app/admin/course-paths/page';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 type Course = {
     id: string;
