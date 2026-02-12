@@ -110,7 +110,7 @@ export default function TeachingTimesPage() {
         <Card className="max-w-2xl mx-auto shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Clock className="text-primary"/> Teaching Times Setup</CardTitle>
-                <CardDescription>Configure the institutional operating hours and days. Define specific time slots for accurate timetable matrix rendering.</CardDescription>
+                <CardDescription>Configure the institutional operating hours and days. Use 24-hour format (e.g. 14:00) for all times.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
                 {loading ? (
@@ -151,11 +151,11 @@ export default function TeachingTimesPage() {
                                         <div className="flex-grow grid grid-cols-2 gap-4">
                                             <div className="space-y-1">
                                                 <Label className="text-[10px] uppercase text-muted-foreground">Start</Label>
-                                                <Input type="time" value={slot.startTime} onChange={e => handleUpdateSlot(slot.id, 'startTime', e.target.value)} />
+                                                <Input placeholder="e.g. 14:00" value={slot.startTime} onChange={e => handleUpdateSlot(slot.id, 'startTime', e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-[10px] uppercase text-muted-foreground">End</Label>
-                                                <Input type="time" value={slot.endTime} onChange={e => handleUpdateSlot(slot.id, 'endTime', e.target.value)} />
+                                                <Input placeholder="e.g. 16:00" value={slot.endTime} onChange={e => handleUpdateSlot(slot.id, 'endTime', e.target.value)} />
                                             </div>
                                         </div>
                                         <Button type="button" variant="ghost" size="icon" className="mt-4 self-end text-destructive" onClick={() => handleRemoveSlot(slot.id)}>
@@ -173,19 +173,19 @@ export default function TeachingTimesPage() {
 
                         <div className="grid grid-cols-2 gap-6 pt-4 border-t">
                             <div className="space-y-2">
-                                <Label htmlFor="start-time">Operating Start (Legacy)</Label>
+                                <Label htmlFor="start-time">Operating Start (24h)</Label>
                                 <Input 
                                     id="start-time" 
-                                    type="time" 
+                                    placeholder="e.g. 08:00"
                                     value={settings.startTime} 
                                     onChange={e => setSettings(p => ({...p, startTime: e.target.value}))}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="end-time">Operating End (Legacy)</Label>
+                                <Label htmlFor="end-time">Operating End (24h)</Label>
                                 <Input 
                                     id="end-time" 
-                                    type="time" 
+                                    placeholder="e.g. 17:00"
                                     value={settings.endTime} 
                                     onChange={e => setSettings(p => ({...p, endTime: e.target.value}))}
                                 />
