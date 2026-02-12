@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { MapPin, Clock, PlusCircle, CheckCircle, XCircle, Info, Loader2, Save, Calendar as CalendarIcon, Search, LayoutGrid, CalendarDays, ListFilter, UserSearch, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -23,7 +25,6 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 type Intake = { id: string; name: string; };
-type Room = { id: string; name: string; capacity: number; };
 type TimeSlot = { id: string; startTime: string; endTime: string; };
 type Course = { id: string; name: string; code: string; };
 type Student = { uid: string; id: string; name: string; email: string; };
@@ -201,7 +202,7 @@ export default function AdminMarkAttendancePage() {
 
             toast({ title: "Attendance Saved", description: `Record for ${format(attendanceDate, 'PPP')} updated.` });
             setActiveSession(null);
-            fetchData(); // Refresh overview data
+            fetchData(); 
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Save Failed", description: e.message });
         } finally {
@@ -337,14 +338,14 @@ export default function AdminMarkAttendancePage() {
                                     <TableHeader className="bg-muted/50">
                                         <TableRow>
                                             <TableHead>Student</TableHead>
-                                            {displayDays.map(day => <TableHead key={day} className="text-center">{day.substring(0,3)}</TableHead>)}
+                                            {teachingTimes.days.map(day => <TableHead key={day} className="text-center">{day.substring(0,3)}</TableHead>)}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {allStudents.filter(s => !selectedIntake || s.uid === 'dummy' /* Placeholder for filtered list */).map(student => (
                                             <TableRow key={student.uid}>
                                                 <TableCell className="font-medium">{student.name}</TableCell>
-                                                {displayDays.map(day => <TableCell key={day} className="text-center"><Badge variant="outline" className="h-4 w-4 rounded-full p-0"/></TableCell>)}
+                                                {teachingTimes.days.map(day => <TableCell key={day} className="text-center"><Badge variant="outline" className="h-4 w-4 rounded-full p-0"/></TableCell>)}
                                             </TableRow>
                                         ))}
                                     </TableBody>
