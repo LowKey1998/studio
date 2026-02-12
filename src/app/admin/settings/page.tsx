@@ -4,20 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Skeleton } from '@/components/ui/skeleton';
-import Image from 'next/image';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { format } from 'date-fns';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type IDPrefixes = { 
     student: string; 
@@ -37,7 +35,6 @@ type Integrations = {
     twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
     smtp?: { service?: string; host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
 };
-type SubRole = { id: string; name: string; permissions: Record<string, boolean>; };
 type RegistrationPolicy = { lateRegistrationFee: number; };
 type Department = { id: string; name: string; };
 
@@ -59,7 +56,13 @@ export default function SettingsPage() {
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
-    const [integrations, setIntegrations] = React.useState<Integrations>({ quickbooks: { enabled: false }, sage: { enabled: false }, facebook: { pageAccessToken: '', formId: '' }, twilio: {}, smtp: {} });
+    const [integrations, setIntegrations] = React.useState<Integrations>({ 
+        quickbooks: { enabled: false }, 
+        sage: { enabled: false }, 
+        facebook: { pageAccessToken: '', formId: '' }, 
+        twilio: { accountSid: '', authToken: '', fromNumber: '' }, 
+        smtp: { host: '', port: 587, user: '', pass: '', fromName: '', fromEmail: '' } 
+    });
     const [departments, setDepartments] = React.useState<Department[]>([]);
     
     const [emailTemplates, setEmailTemplates] = React.useState<EmailTemplates>({
@@ -86,7 +89,7 @@ export default function SettingsPage() {
                 if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
                 if (data.overduePolicy) setOverduePolicy(data.overduePolicy);
                 if (data.registrationPolicy) setRegistrationPolicy(data.registrationPolicy);
-                if (data.integrations) setIntegrations(data.integrations);
+                if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
                 if (data.departments) setDepartments(Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })));
                 if (data.emailTemplates) setEmailTemplates(data.emailTemplates);
             }
@@ -110,6 +113,7 @@ export default function SettingsPage() {
             setSaving(false);
         }
     };
+
     const handleDeleteDepartment = async (deptId: string) => {
         if (!window.confirm("Are you sure?")) return;
         await remove(ref(db, `settings/departments/${deptId}`));
@@ -120,7 +124,6 @@ export default function SettingsPage() {
         setSaving(true);
         try {
             const settingsRef = ref(db, 'settings');
-            
             await update(settingsRef, { 
                 idPrefixes: prefixes,
                 leavePolicy: leavePolicy,
@@ -138,6 +141,16 @@ export default function SettingsPage() {
         }
     };
 
+    const handleIntegrationChange = (integration: keyof Integrations, field: string, value: any) => {
+        setIntegrations(prev => ({
+            ...prev,
+            [integration]: {
+                ...(prev[integration] || {}),
+                [field]: value
+            }
+        }));
+    };
+
     const handleTemplateChange = (key: keyof EmailTemplates, field: keyof EmailTemplate, value: any) => {
         setEmailTemplates(prev => ({
             ...prev,
@@ -145,123 +158,134 @@ export default function SettingsPage() {
         }));
     };
 
+    if (loading) return <Skeleton className="h-screen w-full" />;
+
     return (
         <form onSubmit={handleSaveChanges} className="space-y-6 pb-12">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Department Management</CardTitle>
-                    <CardDescription>Manage departments for staff allocation.</CardDescription>
+                    <CardTitle className="font-headline text-2xl">Institutional Infrastructure</CardTitle>
+                    <CardDescription>Manage core departmental structures and account settings.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Dialog open={isDeptDialogOpen} onOpenChange={setIsDeptDialogOpen}>
-                        <DialogTrigger asChild><Button type="button" variant="outline"><PlusCircle className="mr-2 h-4"/>Add Department</Button></DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader><DialogTitle>New Department</DialogTitle></DialogHeader>
-                            <div className="py-4"><Input placeholder="e.g., Academics, Finance" value={newDeptName} onChange={e => setNewDeptName(e.target.value)} /></div>
-                            <DialogFooter><Button onClick={handleAddDepartment}>Add Department</Button></DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                    <div className="mt-4 space-y-2">
-                        {departments.map(dept => (
-                            <div key={dept.id} className="flex justify-between items-center p-2 border rounded-md">
-                               <span>{dept.name}</span>
-                               <Button type="button" variant="ghost" size="icon" onClick={() => handleDeleteDepartment(dept.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card className="shadow-lg">
-                <CardHeader><CardTitle className="font-headline text-2xl">User ID Prefixes</CardTitle><CardDescription>Manage system-wide settings for User ID prefixes.</CardDescription></CardHeader>
-                <CardContent className="space-y-6">{loading ? (Array.from({ length: 3 }).map((_, i) => (<div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center"><Skeleton className="h-5 w-32" /><div className="sm:col-span-2"><Skeleton className="h-10 w-full max-w-sm" /></div></div>))) : 
-                (<>
-                    {(['student', 'staff', 'admin'] as const).map(role => (
-                    <div key={role} className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
-                        <Label htmlFor={`${role}-prefix`}>{role.charAt(0).toUpperCase() + role.slice(1)} ID Prefix</Label>
-                        <div className="sm:col-span-2"><Input id={`${role}-prefix`} name={role} value={prefixes[role]} onChange={(e) => setPrefixes(p => ({ ...p, [role]: e.target.value.toUpperCase() }))} className="max-w-sm" disabled={saving}/></div>
-                    </div>
-                    ))}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center pt-4 border-t">
-                        <Label>Prefix Options</Label>
-                        <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
-                            <div className="flex items-center space-x-2"><Switch id="include-year" checked={prefixes.includeYear} onCheckedChange={(c) => setPrefixes(p => ({...p, includeYear: c}))} /><Label htmlFor="include-year">Include Year (YY)</Label></div>
-                            <div className="flex items-center space-x-2"><Switch id="include-month" checked={prefixes.includeMonth} onCheckedChange={(c) => setPrefixes(p => ({...p, includeMonth: c}))} /><Label htmlFor="include-month">Include Month (MM)</Label></div>
+                <CardContent className="space-y-6">
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <Label className="text-base font-bold">Departments</Label>
+                            <Dialog open={isDeptDialogOpen} onOpenChange={setIsDeptDialogOpen}>
+                                <DialogTrigger asChild><Button type="button" variant="outline" size="sm"><PlusCircle className="mr-2 h-4"/>Add Department</Button></DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader><DialogTitle>New Department</DialogTitle></DialogHeader>
+                                    <div className="py-4"><Input placeholder="e.g., Academics, Finance" value={newDeptName} onChange={e => setNewDeptName(e.target.value)} /></div>
+                                    <DialogFooter><Button onClick={handleAddDepartment}>Add Department</Button></DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {departments.map(dept => (
+                                <div key={dept.id} className="flex justify-between items-center p-2 border rounded-md bg-muted/20">
+                                <span className="text-sm font-medium">{dept.name}</span>
+                                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteDepartment(dept.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                </>)}
                 </CardContent>
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Email Templates & Notifications</CardTitle>
-                    <CardDescription>Configure the automated emails sent by the system when sensitive user data is updated.</CardDescription>
-                </CardHeader>
+                <CardHeader><CardTitle className="font-headline text-2xl">Integrations & External APIs</CardTitle><CardDescription>Configure connections to third-party services.</CardDescription></CardHeader>
                 <CardContent>
-                    <Accordion type="multiple" defaultValue={['password-tpl']} className="w-full">
-                        <AccordionItem value="password-tpl">
-                            <AccordionTrigger className="font-bold">Password Reset Template</AccordionTrigger>
+                    <Accordion type="multiple" defaultValue={['smtp', 'quickbooks']} className="w-full">
+                        <AccordionItem value="smtp">
+                            <AccordionTrigger className="font-bold flex gap-2"><Mail className="h-4 w-4"/>SMTP Email Settings</AccordionTrigger>
                             <AccordionContent className="space-y-4 pt-4">
-                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
-                                    <div className="space-y-0.5">
-                                        <Label>Enable Automated Password Email</Label>
-                                        <p className="text-xs text-muted-foreground">Send an email when an administrator sets or resets a user's password.</p>
-                                    </div>
-                                    <Switch checked={emailTemplates.passwordUpdate.enabled} onCheckedChange={(val) => handleTemplateChange('passwordUpdate', 'enabled', val)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Email Subject</Label>
-                                    <Input value={emailTemplates.passwordUpdate.subject} onChange={e => handleTemplateChange('passwordUpdate', 'subject', e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Email Body (HTML)</Label>
-                                    <Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={8} className="font-mono text-xs" />
-                                    <p className="text-[10px] text-muted-foreground">Use placeholders: <code className="bg-muted px-1">[Name]</code>, <code className="bg-muted px-1">[UserID]</code>, <code className="bg-muted px-1">[Password]</code></p>
+                                <Alert className="bg-blue-50 border-blue-200">
+                                    <Info className="h-4 w-4 text-blue-600" />
+                                    <AlertDescription className="text-blue-700">These settings are used for all system-generated emails including credentials and enrollment alerts.</AlertDescription>
+                                </Alert>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-1"><Label>SMTP Host</Label><Input placeholder="smtp.gmail.com" value={integrations.smtp?.host} onChange={e => handleIntegrationChange('smtp', 'host', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>SMTP Port</Label><Input type="number" placeholder="587" value={integrations.smtp?.port} onChange={e => handleIntegrationChange('smtp', 'port', Number(e.target.value))}/></div>
+                                    <div className="space-y-1"><Label>Username / Email</Label><Input placeholder="portal@institution.com" value={integrations.smtp?.user} onChange={e => handleIntegrationChange('smtp', 'user', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>Password / App Key</Label><Input type="password" placeholder="••••••••" value={integrations.smtp?.pass} onChange={e => handleIntegrationChange('smtp', 'pass', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>From Name</Label><Input placeholder="Edutrack360 Admin" value={integrations.smtp?.fromName} onChange={e => handleIntegrationChange('smtp', 'fromName', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>From Email</Label><Input placeholder="noreply@institution.com" value={integrations.smtp?.fromEmail} onChange={e => handleIntegrationChange('smtp', 'fromEmail', e.target.value)}/></div>
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
 
-                        <AccordionItem value="id-tpl">
-                            <AccordionTrigger className="font-bold">User ID Change Template</AccordionTrigger>
+                        <AccordionItem value="quickbooks">
+                            <AccordionTrigger className="font-bold flex gap-2"><LinkIcon className="h-4 w-4"/>QuickBooks Online</AccordionTrigger>
                             <AccordionContent className="space-y-4 pt-4">
-                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
-                                    <div className="space-y-0.5">
-                                        <Label>Enable ID Change Notification</Label>
-                                        <p className="text-xs text-muted-foreground">Send an email when a user's System ID is updated.</p>
-                                    </div>
-                                    <Switch checked={emailTemplates.idChange.enabled} onCheckedChange={(val) => handleTemplateChange('idChange', 'enabled', val)} />
+                                <div className="flex items-center space-x-2 p-3 border rounded-md bg-muted/20">
+                                    <Switch checked={integrations.quickbooks?.enabled} onCheckedChange={val => handleIntegrationChange('quickbooks', 'enabled', val)} />
+                                    <Label>Enable QuickBooks Sync</Label>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Email Subject</Label>
-                                    <Input value={emailTemplates.idChange.subject} onChange={e => handleTemplateChange('idChange', 'subject', e.target.value)} />
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-1"><Label>Client ID</Label><Input value={integrations.quickbooks?.clientId} onChange={e => handleIntegrationChange('quickbooks', 'clientId', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>Client Secret</Label><Input type="password" value={integrations.quickbooks?.clientSecret} onChange={e => handleIntegrationChange('quickbooks', 'clientSecret', e.target.value)}/></div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Email Body (HTML)</Label>
-                                    <Textarea value={emailTemplates.idChange.body} onChange={e => handleTemplateChange('idChange', 'body', e.target.value)} rows={8} className="font-mono text-xs" />
-                                    <p className="text-[10px] text-muted-foreground">Use placeholders: <code className="bg-muted px-1">[Name]</code>, <code className="bg-muted px-1">[OldID]</code>, <code className="bg-muted px-1">[UserID]</code></p>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    <div className="flex items-center gap-2"><Checkbox checked={integrations.quickbooks?.syncInvoices} onCheckedChange={v => handleIntegrationChange('quickbooks', 'syncInvoices', !!v)}/><Label className="text-xs">Sync Invoices</Label></div>
+                                    <div className="flex items-center gap-2"><Checkbox checked={integrations.quickbooks?.syncExpenses} onCheckedChange={v => handleIntegrationChange('quickbooks', 'syncExpenses', !!v)}/><Label className="text-xs">Sync Expenses</Label></div>
+                                    <div className="flex items-center gap-2"><Checkbox checked={integrations.quickbooks?.syncPayroll} onCheckedChange={v => handleIntegrationChange('quickbooks', 'syncPayroll', !!v)}/><Label className="text-xs">Sync Payroll</Label></div>
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
 
-                        <AccordionItem value="email-tpl">
-                            <AccordionTrigger className="font-bold">Email Address Change Template</AccordionTrigger>
+                        <AccordionItem value="twilio">
+                            <AccordionTrigger className="font-bold flex gap-2"><MessageSquare className="h-4 w-4"/>Twilio SMS Gateway</AccordionTrigger>
                             <AccordionContent className="space-y-4 pt-4">
-                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
-                                    <div className="space-y-0.5">
-                                        <Label>Enable Email Update Notification</Label>
-                                        <p className="text-xs text-muted-foreground">Send a notification when a user's portal email address is changed.</p>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-1"><Label>Account SID</Label><Input value={integrations.twilio?.accountSid} onChange={e => handleIntegrationChange('twilio', 'accountSid', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>Auth Token</Label><Input type="password" value={integrations.twilio?.authToken} onChange={e => handleIntegrationChange('twilio', 'authToken', e.target.value)}/></div>
+                                    <div className="space-y-1"><Label>From Number (E.164)</Label><Input placeholder="+1234567890" value={integrations.twilio?.fromNumber} onChange={e => handleIntegrationChange('twilio', 'fromNumber', e.target.value)}/></div>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="facebook">
+                            <AccordionTrigger className="font-bold flex gap-2"><Facebook className="h-4 w-4"/>Facebook Leads API</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="space-y-1"><Label>Page Access Token</Label><Input type="password" value={integrations.facebook?.pageAccessToken} onChange={e => handleIntegrationChange('facebook', 'pageAccessToken', e.target.value)}/></div>
+                                <div className="space-y-1"><Label>Lead Form ID</Label><Input value={integrations.facebook?.formId} onChange={e => handleIntegrationChange('facebook', 'formId', e.target.value)}/></div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="font-headline text-2xl">Policies & Logic</CardTitle><CardDescription>Set the rules for system automation.</CardDescription></CardHeader>
+                <CardContent>
+                    <Accordion type="multiple" defaultValue={['reg-policy']} className="w-full">
+                        <AccordionItem value="reg-policy">
+                            <AccordionTrigger className="font-bold flex gap-2"><Settings2 className="h-4 w-4"/>Registration & Fees</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <Label>Late Registration Fee (ZMW)</Label>
+                                        <Input type="number" value={registrationPolicy.lateRegistrationFee} onChange={e => setRegistrationPolicy({ lateRegistrationFee: Number(e.target.value) })}/>
                                     </div>
-                                    <Switch checked={emailTemplates.emailChange.enabled} onCheckedChange={(val) => handleTemplateChange('emailChange', 'enabled', val)} />
+                                    <div className="space-y-1">
+                                        <Label>Overdue Balance Action</Label>
+                                        <Select value={overduePolicy} onValueChange={val => setOverduePolicy(val as any)}>
+                                            <SelectTrigger><SelectValue/></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="doNothing">Do Nothing (Display Only)</SelectItem>
+                                                <SelectItem value="suspendAccess">Suspend Portal Access</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Email Subject</Label>
-                                    <Input value={emailTemplates.emailChange.subject} onChange={e => handleTemplateChange('emailChange', 'subject', e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Email Body (HTML)</Label>
-                                    <Textarea value={emailTemplates.emailChange.body} onChange={e => handleTemplateChange('emailChange', 'body', e.target.value)} rows={8} className="font-mono text-xs" />
-                                    <p className="text-[10px] text-muted-foreground">Use placeholders: <code className="bg-muted px-1">[Name]</code>, <code className="bg-muted px-1">[NewEmail]</code></p>
+                            </AccordionContent>
+                        </AccordionItem>
+                        <AccordionItem value="hr-policy">
+                            <AccordionTrigger className="font-bold flex gap-2"><Clock className="h-4 w-4"/>HR & Leave</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="space-y-1 max-w-xs">
+                                    <Label>Max Leave Days (Annual)</Label>
+                                    <Input type="number" value={leavePolicy.maxDays} onChange={e => setLeavePolicy({ maxDays: Number(e.target.value) })}/>
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
@@ -269,12 +293,28 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
 
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="font-headline text-2xl">Email Templates & Notifications</CardTitle><CardDescription>Branding for system-automated emails.</CardDescription></CardHeader>
+                <CardContent>
+                    <Accordion type="multiple" defaultValue={['password-tpl']} className="w-full">
+                        <AccordionItem value="password-tpl">
+                            <AccordionTrigger className="font-bold">Password Reset Template</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                                    <div className="space-y-0.5"><Label>Enable Automated Email</Label><p className="text-xs text-muted-foreground">Send when an admin sets a password.</p></div>
+                                    <Switch checked={emailTemplates.passwordUpdate.enabled} onCheckedChange={val => handleTemplateChange('passwordUpdate', 'enabled', val)} />
+                                </div>
+                                <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.passwordUpdate.subject} onChange={e => handleTemplateChange('passwordUpdate', 'subject', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={8} className="font-mono text-xs" /></div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                </CardContent>
+            </Card>
+
             <div className="flex justify-end">
-                <Button type="submit" disabled={saving || loading}>
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save All Changes
-                </Button>
+                <Button type="submit" disabled={saving || loading}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save All Changes</Button>
             </div>
-            
         </form>
     );
 }

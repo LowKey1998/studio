@@ -48,7 +48,7 @@ export default function LoginPage() {
 
       // Check if it's an email (Parent) or User ID (Student/Staff)
       if (identifier.includes('@')) {
-          // Parent Login Flow
+          // Parent Login Flow - Attempt to sign in with email
           await signInWithEmailAndPassword(auth, emailToSign, password);
           toast({ variant: 'success', title: 'Parent Login Successful' });
           router.push('/parent/dashboard');

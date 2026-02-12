@@ -141,7 +141,6 @@ export default function AdminMarkAttendancePage() {
             // Find all students enrolled in this course across all users
             for (const userId in allRegs) {
                 const userRegs = allRegs[userId];
-                // Check if any registration entry for this user contains this course ID
                 const isEnrolled = Object.values(userRegs).some((reg: any) => {
                     return reg.courses?.includes(session.courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment');
                 });
