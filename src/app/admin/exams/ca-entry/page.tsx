@@ -2,10 +2,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search } from "lucide-react";
-import { db, auth, createNotification } from '@/lib/firebase';
+import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays } from "lucide-react";
+import { db, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,255 +14,238 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type Student = {
     uid: string;
-    id: string; // STU-001
+    id: string;
     name: string;
 };
 
-type Semester = {
-    id: string;
-    name: string;
-    status: 'Open' | 'Closed' | 'Archived';
-}
+type Programme = { id: string; name: string; };
+type Intake = { id: string; name: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
+type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
-type Course = {
-    id: string;
-    name: string;
-    code: string;
-    lecturerId: string;
-    assessmentTemplateId?: string;
-};
-
-type AssessmentComponent = {
-    id: string;
-    name: string;
-    weight: number;
-}
-
-type AssessmentScore = {
-    score?: number;
-    feedback?: string;
-}
-
-type AssessmentScores = Record<string, AssessmentScore>; // componentId -> score
-type AllScores = Record<string, AssessmentScores>; // studentUid -> scores
+type AssessmentComponent = { id: string; name: string; weight: number; };
+type AssessmentScore = { score?: number; feedback?: string; };
+type AllScores = Record<string, Record<string, AssessmentScore>>; // studentUid -> componentId -> score
 
 export default function CAEntryPage() {
-    const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [programmes, setProgrammes] = React.useState<Programme[]>([]);
+    const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
+    
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    
     const [students, setStudents] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
-    const [searchTerm, setSearchTerm] = React.useState('');
-    
     const [templateComponents, setTemplateComponents] = React.useState<AssessmentComponent[]>([]);
+    
+    const [academicStanding, setAcademicStanding] = React.useState<any>(null);
+    const [targetSemesterId, setTargetSemesterId] = React.useState<string | null>(null);
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [searchTerm, setSearchTerm] = React.useState('');
     const { toast } = useToast();
 
-    // Fetch semesters
+    // Initial Data Fetch
     React.useEffect(() => {
-        const semestersRef = ref(db, 'semesters');
-        const unsub = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list = Object.keys(data).map(id => ({ id, ...data[id] })).filter(s => s.status !== 'Archived');
-                setSemesters(list.sort((a,b) => b.name.localeCompare(a.name)));
-                if(list.length > 0 && !selectedSemester) setSelectedSemester(list[0].id);
-            }
-             setLoading(false);
-        });
-        return () => unsub();
-    }, [selectedSemester]);
-
-    // Fetch courses for selected semester
-    React.useEffect(() => {
-        if (!selectedSemester) return;
-        setLoading(true);
-        const fetchCourses = async () => {
-            const regsSnap = await get(ref(db, 'registrations'));
-            const coursesSnap = await get(ref(db, 'courses'));
-            if (!regsSnap.exists() || !coursesSnap.exists()) {
-                setCourses([]); setLoading(false); return;
-            }
-            const allCourses = coursesSnap.val();
-            
-            const coursesInSemester = new Set<string>();
-            Object.values(regsSnap.val()).forEach((userRegs: any) => {
-                 if (userRegs[selectedSemester]) {
-                    userRegs[selectedSemester].courses.forEach((cid: string) => coursesInSemester.add(cid));
-                }
-            });
-            
-            setCourses(Array.from(coursesInSemester).map(cid => ({ id: cid, ...allCourses[cid] })).sort((a, b) => a.name.localeCompare(b.name)));
-            setLoading(false);
-        };
-        fetchCourses();
-    }, [selectedSemester]);
-
-    // Fetch students, template, and scores for selected course
-    React.useEffect(() => {
-        if (!selectedCourseId || !selectedSemester) {
-            setStudents([]); setScores({}); setTemplateComponents([]); return;
-        }
-        setLoading(true);
         const fetchData = async () => {
+            setLoading(true);
             try {
-                const course = courses.find(c => c.id === selectedCourseId);
-                if (!course) throw new Error("Course data not found");
-                
-                // Fetch Assessment Template
-                if (course.assessmentTemplateId) {
-                    const templateSnap = await get(ref(db, `settings/assessmentTemplates/${course.assessmentTemplateId}`));
-                    if(templateSnap.exists()) {
-                        const templateData = templateSnap.val();
-                        setTemplateComponents(templateData.components ? Object.entries(templateData.components).map(([id, comp]: [string, any]) => ({ id, ...comp })) : []);
-                    } else { setTemplateComponents([]); }
-                } else { setTemplateComponents([]); }
-
-                // Fetch Enrolled Students
-                const allUsersSnapshot = await get(ref(db, 'users'));
-                const allUsers = allUsersSnapshot.val();
-                const registrationsSnapshot = await get(ref(db, 'registrations'));
-                const enrolledStudentUids: string[] = [];
-
-                if (registrationsSnapshot.exists()) {
-                    const allRegistrations = registrationsSnapshot.val();
-                    for (const userId in allRegistrations) {
-                         const semesterReg = allRegistrations[userId][selectedSemester];
-                        if (semesterReg && semesterReg.courses.includes(selectedCourseId) && (semesterReg.status === 'Completed' || semesterReg.status === 'Pending Payment')) {
-                            enrolledStudentUids.push(userId);
-                        }
-                    }
-                }
-                const studentList: Student[] = enrolledStudentUids.map(uid => ({
-                    uid, id: allUsers[uid]?.id || 'N/A', name: allUsers[uid]?.name || 'Unknown',
-                })).sort((a, b) => a.name.localeCompare(b.name));
-                setStudents(studentList);
-
-                // Fetch existing scores
-                const scoresRef = ref(db, `assessments/${selectedCourseId}`);
-                const scoresSnapshot = await get(scoresRef);
-                setScores(scoresSnapshot.exists() ? scoresSnapshot.val() : {});
-
-            } catch (error: any) {
-                toast({ variant: 'destructive', title: "Error", description: "Could not fetch data for this course." });
+                const [pSnap, iSnap] = await Promise.all([
+                    get(ref(db, 'programmes')),
+                    get(ref(db, 'intakes'))
+                ]);
+                if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+                if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
+            } catch (e) {
+                console.error(e);
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [selectedCourseId, selectedSemester, toast, courses]);
+    }, []);
+
+    // Calculate Academic Standing and Find Semester
+    React.useEffect(() => {
+        if (!selectedIntakeId) {
+            setAcademicStanding(null);
+            setTargetSemesterId(null);
+            return;
+        }
+
+        const fetchStanding = async () => {
+            const intake = intakes.find(i => i.id === selectedIntakeId);
+            if (!intake) return;
+
+            const [calendarSnap, semestersSnap] = await Promise.all([
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'semesters'))
+            ]);
+
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (calendarSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(
+                    intakeStartStr,
+                    new Date(),
+                    calendarSnap.val().standardCycles,
+                    Object.values(calendarSnap.val().anomalies || {})
+                );
+                setAcademicStanding(state);
+
+                if (semestersSnap.exists()) {
+                    const found = Object.entries(semestersSnap.val() as Record<string, Semester>).find(([id, sem]) => 
+                        sem.intakeId === selectedIntakeId && 
+                        sem.year === state.year && 
+                        sem.semesterInYear === state.semester
+                    );
+                    setTargetSemesterId(found ? found[0] : null);
+                }
+            }
+        };
+        fetchStanding();
+    }, [selectedIntakeId, intakes]);
+
+    // Fetch courses based on Programme, Intake, and identified Semester
+    React.useEffect(() => {
+        if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) {
+            setCourses([]);
+            setSelectedCourseId('');
+            return;
+        }
+
+        const fetchCourses = async () => {
+            const [coursePathsSnap, allCoursesSnap] = await Promise.all([
+                get(ref(db, 'coursePaths')),
+                get(ref(db, 'courses'))
+            ]);
+
+            if (coursePathsSnap.exists() && allCoursesSnap.exists()) {
+                const paths = Object.values(coursePathsSnap.val() || {});
+                const userPath: any = paths.find((p: any) => p.intakeId === selectedIntakeId && p.programmeId === selectedProgrammeId);
+                const allCoursesData = allCoursesSnap.val();
+
+                if (userPath?.semesters?.[targetSemesterId]) {
+                    const courseIds = userPath.semesters[targetSemesterId].courses || [];
+                    setCourses(courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c.status === 'active'));
+                } else {
+                    setCourses([]);
+                }
+            }
+        };
+        fetchCourses();
+    }, [selectedProgrammeId, selectedIntakeId, targetSemesterId]);
+
+    // Load Students and Scores
+    React.useEffect(() => {
+        if (!selectedCourseId || !targetSemesterId) {
+            setStudents([]);
+            setScores({});
+            setTemplateComponents([]);
+            return;
+        }
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const course = courses.find(c => c.id === selectedCourseId);
+                if (!course) throw new Error("Course not found");
+
+                // 1. Template
+                if (course.assessmentTemplateId) {
+                    const tSnap = await get(ref(db, `settings/assessmentTemplates/${course.assessmentTemplateId}`));
+                    if (tSnap.exists()) setTemplateComponents(Object.entries(tSnap.val().components).map(([id, c]: [string, any]) => ({ id, ...c })));
+                }
+
+                // 2. Students
+                const [uSnap, rSnap, sSnap] = await Promise.all([
+                    get(ref(db, 'users')),
+                    get(ref(db, 'registrations')),
+                    get(ref(db, `assessments/${selectedCourseId}`))
+                ]);
+
+                const enrolledUids: string[] = [];
+                const allRegs = rSnap.val() || {};
+                const allUsers = uSnap.val() || {};
+
+                for (const userId in allRegs) {
+                    const reg = allRegs[userId][targetSemesterId];
+                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                        enrolledUids.push(userId);
+                    }
+                }
+
+                setStudents(enrolledUids.map(uid => ({ uid, id: allUsers[uid]?.id || 'N/A', name: allUsers[uid]?.name || 'Unknown' })).sort((a,b) => a.name.localeCompare(b.name)));
+                setScores(sSnap.exists() ? sSnap.val() : {});
+
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
+        };
+        fetchData();
+    }, [selectedCourseId, targetSemesterId, courses]);
 
     const handleScoreChange = (studentUid: string, componentId: string, value: string) => {
         const numericValue = value === '' ? undefined : Number(value);
-        if (numericValue !== undefined && (isNaN(numericValue) || numericValue < 0 || numericValue > 100)) {
-            toast({ variant: 'destructive', title: "Invalid Score", description: "Score must be between 0 and 100." });
-            return;
-        }
+        if (numericValue !== undefined && (numericValue < 0 || numericValue > 100)) return;
         setScores(prev => ({
             ...prev,
-            [studentUid]: { ...(prev[studentUid] || {}), [componentId]: { ...(prev[studentUid]?.[componentId] || {}), score: numericValue } },
-        }));
-    };
-    
-     const handleFeedbackChange = (studentUid: string, componentId: string, feedback: string) => {
-        setScores(prev => ({
-            ...prev,
-            [studentUid]: { ...(prev[studentUid] || {}), [componentId]: { ...(prev[studentUid]?.[componentId] || {}), feedback: feedback } },
+            [studentUid]: { ...(prev[studentUid] || {}), [componentId]: { ...(prev[studentUid]?.[componentId] || {}), score: numericValue } }
         }));
     };
 
-    const handleSaveScores = async () => {
+    const handleSave = async () => {
         if (!selectedCourseId) return;
         setSaving(true);
         try {
-            const scoresRef = ref(db, `assessments/${selectedCourseId}`);
-            await set(scoresRef, scores);
-
-            // Notify students whose scores were updated
-            const course = courses.find(c => c.id === selectedCourseId);
-            const notificationPromises = Object.keys(scores).map(uid => 
-                createNotification(
-                    uid,
-                    `Your continuous assessment scores for ${course?.code || 'course'} have been updated.`,
-                    `/student/courses/${selectedCourseId}/results`
-                )
-            );
-            await Promise.all(notificationPromises);
-
-            toast({ title: "Scores Saved", description: "Continuous assessment scores have been updated and students notified." });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: "Save Failed", description: error.message });
+            await set(ref(db, `assessments/${selectedCourseId}`), scores);
+            toast({ title: "Scores Saved" });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Save Failed", description: e.message });
         } finally {
             setSaving(false);
         }
     };
 
-    const filteredStudents = React.useMemo(() => {
-        return students.filter(s => 
-            s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            s.id.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [students, searchTerm]);
+    const filteredStudents = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Continuous Assessment Entry</CardTitle>
-                <CardDescription>Select a semester and course to enter student scores. All scores are out of 100.</CardDescription>
-                <div className="grid md:grid-cols-2 gap-4 pt-4">
-                    <div className="space-y-1">
-                        <Label>Semester</Label>
-                        <Select value={selectedSemester} onValueChange={setSelectedSemester}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{semesters.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
-                    </div>
-                     <div className="space-y-1">
-                        <Label>Course</Label>
-                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                    </div>
+                <CardDescription>Select a programme and intake. The system will identify the current semester for data entry.</CardDescription>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+                    <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue placeholder="Select programme..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                    {academicStanding && (
+                        <div className="space-y-1"><Label>Standing</Label><div className="flex h-10 items-center px-3 border rounded-md bg-muted/50 text-sm font-bold gap-2"><CalendarDays className="h-4 w-4 text-primary" /> Year {academicStanding.year}, Sem {academicStanding.semester}</div></div>
+                    )}
+                    <div className="space-y-1"><Label>Course</Label><Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}><SelectTrigger><SelectValue placeholder={courses.length > 0 ? "Select course..." : "No courses available"}/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
-                {selectedCourseId && templateComponents.length > 0 && students.length > 0 && (
-                    <div className="relative max-w-sm mb-4">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Filter students by name or ID..." 
-                            className="pl-8" 
-                            value={searchTerm} 
-                            onChange={e => setSearchTerm(e.target.value)} 
-                        />
-                    </div>
+                {selectedCourseId && students.length > 0 && (
+                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter students..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
                 )}
-
-                {loading ? ( <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-                ) : selectedCourseId && templateComponents.length > 0 && filteredStudents.length > 0 ? (
-                    <div className="overflow-x-auto rounded-md border">
+                {loading ? <Skeleton className="h-64 w-full" /> : 
+                 selectedCourseId && templateComponents.length > 0 && filteredStudents.length > 0 ? (
+                    <div className="overflow-x-auto border rounded-md">
                         <Table>
-                            <TableHeader className="bg-muted/50">
-                                <TableRow>
-                                    <TableHead className="min-w-[150px]">Student Name</TableHead>
-                                    <TableHead className="min-w-[100px]">Student ID</TableHead>
-                                    {templateComponents.map(col => <TableHead key={col.id}>{col.name} ({col.weight}%)</TableHead>)}
-                                </TableRow>
-                            </TableHeader>
+                            <TableHeader className="bg-muted/50"><TableRow><TableHead className="min-w-[150px]">Student</TableHead><TableHead>ID</TableHead>{templateComponents.map(c=><TableHead key={c.id}>{c.name} ({c.weight}%)</TableHead>)}</TableRow></TableHeader>
                             <TableBody>
-                                {filteredStudents.map((student) => (
-                                    <TableRow key={student.uid}>
-                                        <TableCell className="font-medium">{student.name}</TableCell>
-                                        <TableCell className="font-mono text-xs uppercase">{student.id}</TableCell>
-                                        {templateComponents.map(col => (
-                                            <TableCell key={col.id}>
-                                                <div className="flex items-center gap-2">
-                                                <Input type="number" min="0" max="100" className="w-20 h-8" value={scores[student.uid]?.[col.id]?.score ?? ''} onChange={(e) => handleScoreChange(student.uid, col.id, e.target.value)} placeholder="-"/>
-                                                <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MessageSquare className="h-4 w-4" /></Button></PopoverTrigger>
-                                                    <PopoverContent className="w-80"><div className="grid gap-4"><div className="space-y-2"><h4 className="font-medium leading-none">Feedback</h4><p className="text-sm text-muted-foreground">Provide feedback for {student.name} on {col.name}.</p></div><div className="grid gap-2"><Textarea value={scores[student.uid]?.[col.id]?.feedback ?? ''} onChange={(e) => handleFeedbackChange(student.uid, col.id, e.target.value)} placeholder="Type feedback here..." /></div></div></PopoverContent>
-                                                </Popover>
-                                                </div>
+                                {filteredStudents.map(s => (
+                                    <TableRow key={s.uid}>
+                                        <TableCell className="font-medium">{s.name}</TableCell>
+                                        <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                                        {templateComponents.map(c => (
+                                            <TableCell key={c.id}>
+                                                <Input type="number" className="w-20 h-8" value={scores[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(s.uid, c.id, e.target.value)} />
                                             </TableCell>
                                         ))}
                                     </TableRow>
@@ -271,20 +253,10 @@ export default function CAEntryPage() {
                             </TableBody>
                         </Table>
                     </div>
-                ) : (
-                    <Alert>
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>No Data to Display</AlertTitle>
-                        <AlertDescription>
-                            {selectedCourseId ? (students.length === 0 ? 'No students are enrolled in this course.' : 'No assessment template is assigned to this course. Please check course settings.') : 'Please select a semester and course to begin.'}
-                        </AlertDescription>
-                    </Alert>
-                )}
+                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select a programme, intake, and course to begin." : (students.length === 0 ? "No students are currently enrolled in this path." : "This course has no assessment template assigned.")}</AlertDescription></Alert>}
             </CardContent>
-            {students.length > 0 && templateComponents.length > 0 && (
-                <CardFooter className="flex justify-end border-t pt-6">
-                    <Button onClick={handleSaveScores} disabled={saving || loading} className="font-bold"><Save className="mr-2 h-4 w-4" />{saving ? 'Saving...' : 'Save All Scores'}</Button>
-                </CardFooter>
+            {students.length > 0 && (
+                <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save All Scores</Button></CardFooter>
             )}
         </Card>
     );

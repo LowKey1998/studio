@@ -2,10 +2,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle } from "lucide-react";
-import { db, auth, createNotification } from '@/lib/firebase';
+import { Loader2, Save, AlertCircle, Search, CalendarDays } from "lucide-react";
+import { db } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,232 +12,183 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type Student = {
     uid: string;
-    id: string; // STU-001
-    name: string;
-};
-
-type Semester = {
     id: string;
     name: string;
-    status: 'Open' | 'Closed' | 'Archived';
-}
-
-type Course = {
-    id: string;
-    name: string;
-    code: string;
-    lecturerId: string;
 };
 
-type AssessmentScore = {
-    score?: number;
-    feedback?: string;
-}
+type Programme = { id: string; name: string; };
+type Intake = { id: string; name: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
+type Course = { id: string; name: string; code: string; };
 
-type FinalExamScore = {
-    finalExam?: AssessmentScore;
-};
-
-type AllScores = Record<string, FinalExamScore>; // studentUid -> scores
+type AssessmentScore = { score?: number; feedback?: string; };
+type FinalExamScore = { finalExam?: AssessmentScore };
+type AllScores = Record<string, FinalExamScore>;
 
 export default function FinalExamEntryPage() {
-    const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [selectedSemester, setSelectedSemester] = React.useState('');
+    const [programmes, setProgrammes] = React.useState<Programme[]>([]);
+    const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
+    const [intakes, setIntakes] = React.useState<Intake[]>([]);
+    const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
+    
     const [courses, setCourses] = React.useState<Course[]>([]);
-    const [selectedCourse, setSelectedCourse] = React.useState('');
+    const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    
     const [students, setStudents] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
     
+    const [academicStanding, setAcademicStanding] = React.useState<any>(null);
+    const [targetSemesterId, setTargetSemesterId] = React.useState<string | null>(null);
+    
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+    const [searchTerm, setSearchTerm] = React.useState('');
     const { toast } = useToast();
 
+    // Initial Data Fetch
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => {
-            setCurrentUser(user);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    // Fetch semesters
-    React.useEffect(() => {
-        const semestersRef = ref(db, 'semesters');
-        const unsub = onValue(semestersRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const list = Object.keys(data).map(id => ({ id, ...data[id] })).filter(s => s.status !== 'Archived');
-                setSemesters(list.sort((a,b) => b.name.localeCompare(a.name)));
-                if(list.length > 0) setSelectedSemester(list[0].id);
-            }
-             setLoading(false);
-        });
-        return () => unsub();
-    }, []);
-
-     // Fetch courses for selected semester
-    React.useEffect(() => {
-        if (!selectedSemester) return;
-        setLoading(true);
-        const fetchCourses = async () => {
-            const regsSnap = await get(ref(db, 'registrations'));
-            const coursesSnap = await get(ref(db, 'courses'));
-            if (!regsSnap.exists() || !coursesSnap.exists()) {
-                setCourses([]); setLoading(false); return;
-            }
-            const allCourses = coursesSnap.val();
-            
-            const coursesInSemester = new Set<string>();
-            Object.values(regsSnap.val()).forEach((userRegs: any) => {
-                 if (userRegs[selectedSemester]) {
-                    userRegs[selectedSemester].courses.forEach((cid: string) => coursesInSemester.add(cid));
-                }
-            });
-            
-            setCourses(Array.from(coursesInSemester).map(cid => ({ id: cid, ...allCourses[cid] })).sort((a, b) => a.name.localeCompare(b.name)));
-            setLoading(false);
-        };
-        fetchCourses();
-    }, [selectedSemester]);
-
-    // Fetch students and scores for selected course
-    React.useEffect(() => {
-        if (!selectedCourse) {
-            setStudents([]);
-            setScores({});
-            return;
-        }
-        setLoading(true);
         const fetchData = async () => {
+            setLoading(true);
             try {
-                // Fetch Enrolled Students
-                const allUsersSnapshot = await get(ref(db, 'users'));
-                const allUsers = allUsersSnapshot.val();
-                const registrationsSnapshot = await get(ref(db, 'registrations'));
-                const enrolledStudentUids: string[] = [];
-
-                if (registrationsSnapshot.exists()) {
-                    const allRegistrations = registrationsSnapshot.val();
-                    for (const userId in allRegistrations) {
-                         const semesterReg = allRegistrations[userId][selectedSemester];
-                        if (semesterReg && semesterReg.courses.includes(selectedCourse) && (semesterReg.status === 'Completed' || semesterReg.status === 'Pending Payment')) {
-                            enrolledStudentUids.push(userId);
-                        }
-                    }
-                }
-                const studentList: Student[] = enrolledStudentUids.map(uid => ({
-                    uid,
-                    id: allUsers[uid]?.id || 'N/A',
-                    name: allUsers[uid]?.name || 'Unknown',
-                })).sort((a, b) => a.name.localeCompare(b.name));
-                setStudents(studentList);
-
-                // Fetch existing scores
-                const scoresRef = ref(db, `assessments/${selectedCourse}`);
-                const scoresSnapshot = await get(scoresRef);
-                setScores(scoresSnapshot.exists() ? scoresSnapshot.val() : {});
-
-            } catch (error: any) {
-                console.error("Error fetching data:", error);
-                toast({ variant: 'destructive', title: "Error", description: "Could not fetch data." });
-            } finally {
-                setLoading(false);
-            }
+                const [pSnap, iSnap] = await Promise.all([
+                    get(ref(db, 'programmes')),
+                    get(ref(db, 'intakes'))
+                ]);
+                if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+                if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourse, selectedSemester, toast]);
+    }, []);
 
-    const handleScoreChange = (studentUid: string, value: string) => {
-        const numericValue = value === '' ? undefined : Number(value);
-        if (numericValue !== undefined && (isNaN(numericValue) || numericValue < 0 || numericValue > 100)) {
-            toast({ variant: 'destructive', title: "Invalid Score", description: "Score must be between 0 and 100." });
-            return;
+    // Standing & Semester Calculation
+    React.useEffect(() => {
+        if (!selectedIntakeId) {
+            setAcademicStanding(null); setTargetSemesterId(null); return;
         }
+        const fetchStanding = async () => {
+            const intake = intakes.find(i => i.id === selectedIntakeId);
+            if (!intake) return;
+            const [calendarSnap, semestersSnap] = await Promise.all([
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'semesters'))
+            ]);
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (calendarSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSnap.val().standardCycles, Object.values(calendarSnap.val().anomalies || {}));
+                setAcademicStanding(state);
+                if (semestersSnap.exists()) {
+                    const found = Object.entries(semestersSnap.val() as Record<string, Semester>).find(([id, sem]) => 
+                        sem.intakeId === selectedIntakeId && sem.year === state.year && sem.semesterInYear === state.semester
+                    );
+                    setTargetSemesterId(found ? found[0] : null);
+                }
+            }
+        };
+        fetchStanding();
+    }, [selectedIntakeId, intakes]);
 
-        setScores(prev => ({
-            ...prev,
-            [studentUid]: {
-                ...prev[studentUid],
-                finalExam: { ...(prev[studentUid]?.finalExam || {}), score: numericValue }
-            },
-        }));
+    // Filter Courses
+    React.useEffect(() => {
+        if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
+        const fetchCourses = async () => {
+            const [coursePathsSnap, allCoursesSnap] = await Promise.all([ get(ref(db, 'coursePaths')), get(ref(db, 'courses')) ]);
+            if (coursePathsSnap.exists() && allCoursesSnap.exists()) {
+                const paths = Object.values(coursePathsSnap.val() || {});
+                const userPath: any = paths.find((p: any) => p.intakeId === selectedIntakeId && p.programmeId === selectedProgrammeId);
+                const allCoursesData = allCoursesSnap.val();
+                if (userPath?.semesters?.[targetSemesterId]) {
+                    const courseIds = userPath.semesters[targetSemesterId].courses || [];
+                    setCourses(courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c.status === 'active'));
+                } else { setCourses([]); }
+            }
+        };
+        fetchCourses();
+    }, [selectedProgrammeId, selectedIntakeId, targetSemesterId]);
+
+    // Load Students & Scores
+    React.useEffect(() => {
+        if (!selectedCourseId || !targetSemesterId) { setStudents([]); setScores({}); return; }
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [uSnap, rSnap, sSnap] = await Promise.all([ get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)) ]);
+                const enrolledUids: string[] = [];
+                const allRegs = rSnap.val() || {};
+                const allUsers = uSnap.val() || {};
+                for (const userId in allRegs) {
+                    const reg = allRegs[userId][targetSemesterId];
+                    if (reg?.courses?.includes(selectedCourseId) && reg.status === 'Completed') enrolledUids.push(userId);
+                }
+                setStudents(enrolledUids.map(uid => ({ uid, id: allUsers[uid]?.id || 'N/A', name: allUsers[uid]?.name || 'Unknown' })).sort((a,b) => a.name.localeCompare(b.name)));
+                setScores(sSnap.exists() ? sSnap.val() : {});
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
+        };
+        fetchData();
+    }, [selectedCourseId, targetSemesterId]);
+
+    const handleScoreChange = (uid: string, value: string) => {
+        const score = value === '' ? undefined : Number(value);
+        if (score !== undefined && (score < 0 || score > 100)) return;
+        setScores(prev => ({ ...prev, [uid]: { ...prev[uid], finalExam: { ...(prev[uid]?.finalExam || {}), score } } }));
     };
 
-    const handleSaveScores = async () => {
-        if (!selectedCourse) return;
+    const handleSave = async () => {
+        if (!selectedCourseId) return;
         setSaving(true);
         try {
-            const scoresRef = ref(db, `assessments/${selectedCourse}`);
-            await set(scoresRef, scores);
-
-            // Notify students
-            const course = courses.find(c => c.id === selectedCourse);
-            const notificationPromises = Object.keys(scores).map(uid => 
-                createNotification(
-                    uid,
-                    `Your final exam results for ${course?.code || 'course'} have been posted.`,
-                    `/student/courses/${selectedCourse}/results`
-                )
-            );
-            await Promise.all(notificationPromises);
-
-            toast({ title: "Scores Saved", description: "Final exam scores have been updated and students notified." });
-        } catch (error: any) {
-            console.error("Error saving scores:", error);
-            toast({ variant: 'destructive', title: "Save Failed", description: error.message });
-        } finally {
-            setSaving(false);
-        }
+            await set(ref(db, `assessments/${selectedCourseId}`), scores);
+            toast({ title: "Exam Scores Saved" });
+        } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed" }); }
+        finally { setSaving(false); }
     };
+
+    const filteredStudents = students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Final Examination Entry</CardTitle>
-                <CardDescription>Select a semester and course to enter final exam scores. All scores are out of 100.</CardDescription>
-                <div className="grid md:grid-cols-2 gap-4 pt-4">
-                    <div className="space-y-1">
-                        <Label>Semester</Label>
-                        <Select value={selectedSemester} onValueChange={setSelectedSemester}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{semesters.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
-                    </div>
-                     <div className="space-y-1">
-                        <Label>Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
-                    </div>
+                <CardDescription>Record official final examination results for active cohorts.</CardDescription>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+                    <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue placeholder="Select programme..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                    {academicStanding && (
+                        <div className="space-y-1"><Label>Standing</Label><div className="flex h-10 items-center px-3 border rounded-md bg-muted/50 text-sm font-bold gap-2"><CalendarDays className="h-4 w-4 text-primary" /> Year {academicStanding.year}, Sem {academicStanding.semester}</div></div>
+                    )}
+                    <div className="space-y-1"><Label>Course</Label><Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}><SelectTrigger><SelectValue placeholder="Select course..."/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
                 </div>
             </CardHeader>
-            <CardContent>
-                {loading ? ( <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-                ) : selectedCourse && students.length > 0 ? (
-                    <div className="overflow-x-auto">
+            <CardContent className="space-y-4">
+                {selectedCourseId && students.length > 0 && (
+                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+                )}
+                {loading ? <Skeleton className="h-64 w-full" /> : 
+                 selectedCourseId && filteredStudents.length > 0 ? (
+                    <div className="border rounded-md">
                         <Table>
-                            <TableHeader><TableRow><TableHead className="min-w-[150px]">Student Name</TableHead><TableHead className="min-w-[100px]">Student ID</TableHead><TableHead>Final Exam Score</TableHead></TableRow></TableHeader>
+                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
                             <TableBody>
-                                {students.map((student) => (
-                                    <TableRow key={student.uid}>
-                                        <TableCell className="font-medium">{student.name}</TableCell>
-                                        <TableCell>{student.id}</TableCell>
-                                        <TableCell>
-                                            <Input type="number" min="0" max="100" className="w-24" value={scores[student.uid]?.finalExam?.score ?? ''} onChange={(e) => handleScoreChange(student.uid, e.target.value)} placeholder="-"/>
-                                        </TableCell>
+                                {filteredStudents.map(s => (
+                                    <TableRow key={s.uid}>
+                                        <TableCell className="font-medium">{s.name}</TableCell>
+                                        <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                                        <TableCell><Input type="number" className="w-24" value={scores[s.uid]?.finalExam?.score ?? ''} onChange={e => handleScoreChange(s.uid, e.target.value)} /></TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                     </div>
-                ) : (
-                    <Alert><AlertCircle className="h-4 w-4" /><AlertTitle>No Data</AlertTitle><AlertDescription>
-                        {selectedCourse ? 'There are no students with completed registrations for this course.' : 'Please select a semester and course to begin.'}
-                    </AlertDescription></Alert>
-                )}
+                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select a programme, intake, and course to enter results." : "No eligible students found."}</AlertDescription></Alert>}
             </CardContent>
             {students.length > 0 && (
-                <CardFooter className="flex justify-end border-t pt-6">
-                    <Button onClick={handleSaveScores} disabled={saving || loading}><Save className="mr-2 h-4 w-4" />{saving ? 'Saving...' : 'Save All Scores'}</Button>
-                </CardFooter>
+                <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Final Exam Scores</Button></CardFooter>
             )}
         </Card>
     );
