@@ -55,6 +55,7 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Switch } from '@/components/ui/switch';
 
 type Lecturer = {
     uid: string;
@@ -82,6 +83,7 @@ type Course = {
     archiveReason?: string;
     studentCount?: number;
     enrolledStudents?: StudentEnrollment[];
+    separateInstance?: boolean;
 };
 
 type Programme = {
@@ -125,6 +127,7 @@ export default function CoursesPage() {
     const [courseYear, setCourseYear] = React.useState('');
     const [selectedLecturerId, setSelectedLecturerId] = React.useState('');
     const [selectedProgrammes, setSelectedProgrammes] = React.useState<Record<string, boolean>>({});
+    const [separateInstance, setSeparateInstance] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -243,6 +246,7 @@ export default function CoursesPage() {
         setCourseCredits('');
         setSelectedLecturerId('');
         setSelectedProgrammes({});
+        setSeparateInstance(false);
         setEditingCourse(null);
     };
     
@@ -254,6 +258,7 @@ export default function CoursesPage() {
         setCourseYear(String(course.year || ''));
         setCourseCredits(String(course.credits || ''));
         setSelectedLecturerId(course.lecturerId || '');
+        setSeparateInstance(course.separateInstance || false);
         
         const initialSelectedProgrammes: Record<string, boolean> = {};
         programmes.forEach(prog => {
@@ -267,7 +272,6 @@ export default function CoursesPage() {
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Updated validation: Only Name and Code are mandatory
         if (!courseName || !courseCode) {
             toast({
                 variant: 'destructive',
@@ -285,6 +289,7 @@ export default function CoursesPage() {
             cost: courseCost ? Number(courseCost) : 0,
             year: courseYear ? Number(courseYear) : 1,
             lecturerId: selectedLecturerId || null,
+            separateInstance: separateInstance,
             status: 'active' as 'active',
         };
 
@@ -496,6 +501,13 @@ export default function CoursesPage() {
                                             {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+                                <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
+                                    <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
+                                        <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Assign to Programmes (Optional)</Label>

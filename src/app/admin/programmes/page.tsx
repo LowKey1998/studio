@@ -6,7 +6,7 @@ import { Loader2, PlusCircle, Trash2, FileText, X, Search, Pencil, DollarSign } 
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, set, push, onValue, remove, update } from 'firebase/database';
+import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 
 type Course = {
     id: string;
@@ -31,6 +32,7 @@ type Course = {
     code: string;
     year: number;
     status: 'active' | 'archived';
+    separateInstance?: boolean;
 };
 
 type Programme = {
@@ -68,6 +70,7 @@ export default function ProgrammesPage() {
     const [courseCost, setCourseCost] = React.useState('');
     const [courseYear, setCourseYear] = React.useState('');
     const [selectedLecturerId, setSelectedLecturerId] = React.useState('');
+    const [separateInstance, setSeparateInstance] = React.useState(false);
     const [courseFormLoading, setCourseFormLoading] = React.useState(false);
 
 
@@ -129,6 +132,7 @@ export default function ProgrammesPage() {
         setCourseCost('');
         setCourseYear('');
         setSelectedLecturerId('');
+        setSeparateInstance(false);
     };
 
     const handleOpenDialog = (programme: Programme | null = null) => {
@@ -190,7 +194,6 @@ export default function ProgrammesPage() {
     
      const handleCreateCourse = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Updated validation: only Name and Code are mandatory
         if (!courseName || !courseCode) {
             toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please fill out Name and Code to add a course.' });
             return;
@@ -203,13 +206,14 @@ export default function ProgrammesPage() {
                 cost: courseCost ? Number(courseCost) : 0,
                 year: courseYear ? Number(courseYear) : 1,
                 lecturerId: selectedLecturerId || null,
+                separateInstance: separateInstance,
                 status: 'active' as 'active',
             };
             const newCourseRef = push(ref(db, 'courses'));
             await set(newCourseRef, courseData);
             
             toast({ variant: 'success', title: 'Course Added' });
-            fetchData(); // Refetch all data to update the course list
+            fetchData();
             resetCourseForm();
             setIsCourseDialogOpen(false);
         } catch (error: any) {
@@ -369,6 +373,13 @@ export default function ProgrammesPage() {
                                                         {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
                                                     </SelectContent>
                                                 </Select>
+                                            </div>
+                                            <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
+                                                <Switch id="separate-instance-dlg" checked={separateInstance} onCheckedChange={setSeparateInstance} />
+                                                <div className="space-y-0.5">
+                                                    <Label htmlFor="separate-instance-dlg" className="text-sm font-bold">Make separate instance per intake</Label>
+                                                    <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
+                                                </div>
                                             </div>
                                         </div>
                                         <DialogFooter>
