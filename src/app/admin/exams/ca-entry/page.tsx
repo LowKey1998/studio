@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays } from "lucide-react";
+import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle } from "lucide-react";
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import Link from 'next/link';
 
 type Student = {
     uid: string;
@@ -162,6 +163,8 @@ export default function CAEntryPage() {
                 if (course.assessmentTemplateId) {
                     const tSnap = await get(ref(db, `settings/assessmentTemplates/${course.assessmentTemplateId}`));
                     if (tSnap.exists()) setTemplateComponents(Object.entries(tSnap.val().components).map(([id, c]: [string, any]) => ({ id, ...c })));
+                } else {
+                    setTemplateComponents([]);
                 }
 
                 // 2. Students
@@ -230,7 +233,7 @@ export default function CAEntryPage() {
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
-                {selectedCourseId && students.length > 0 && (
+                {selectedCourseId && students.length > 0 && templateComponents.length > 0 && (
                     <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter students..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
                 )}
                 {loading ? <Skeleton className="h-64 w-full" /> : 
@@ -253,9 +256,30 @@ export default function CAEntryPage() {
                             </TableBody>
                         </Table>
                     </div>
-                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select a programme, intake, and course to begin." : (students.length === 0 ? "No students are currently enrolled in this path." : "This course has no assessment template assigned.")}</AlertDescription></Alert>}
+                ) : (
+                    <Alert>
+                        <AlertCircle className="h-4 w-4"/>
+                        <AlertTitle>Information</AlertTitle>
+                        <AlertDescription className="flex flex-col gap-4">
+                            {!selectedCourseId ? (
+                                "Select a programme, intake, and course to begin."
+                            ) : students.length === 0 ? (
+                                "No students are currently enrolled in this path."
+                            ) : (
+                                <div className="space-y-4">
+                                    <p>This course has no assessment template assigned. A template is required to define CA components like Quizzes and Assignments.</p>
+                                    <Button asChild variant="outline" size="sm">
+                                        <Link href="/admin/academics/assessment-setup">
+                                            <PlusCircle className="mr-2 h-4 w-4"/> Create Assessment Template
+                                        </Link>
+                                    </Button>
+                                </div>
+                            )}
+                        </AlertDescription>
+                    </Alert>
+                )}
             </CardContent>
-            {students.length > 0 && (
+            {selectedCourseId && templateComponents.length > 0 && students.length > 0 && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save All Scores</Button></CardFooter>
             )}
         </Card>
