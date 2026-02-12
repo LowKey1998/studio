@@ -206,12 +206,26 @@ export default function StudentEnrollmentPage() {
         }
     };
 
+    const getStudentStanding = (student: Student) => {
+        if (!calendarSettings || !student.intakeId) return null;
+        const intake = intakes.find(i => i.id === student.intakeId);
+        if (!intake) return null;
+        const intakeStartStr = parseIntakeDate(intake.name);
+        if (!intakeStartStr) return null;
+        const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+        return `Y${state.year}S${state.semester}`;
+    };
+
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const hasSlots = teachingTimes.slots.length > 0;
 
-    const availableToEnroll = allStudents.filter(s => !enrolledStudents.some(e => e.uid === s.uid) && s.name.toLowerCase().includes(searchStudent.toLowerCase()));
+    const availableToEnroll = allStudents.filter(s => 
+        s.intakeId === selectedIntake &&
+        !enrolledStudents.some(e => e.uid === s.uid) && 
+        s.name.toLowerCase().includes(searchStudent.toLowerCase())
+    );
     const selectedAvailableCount = Object.values(selectedUids).filter(Boolean).length;
     const selectedEnrolledCount = Object.values(selectedEnrolledUids).filter(Boolean).length;
 
@@ -259,16 +273,21 @@ export default function StudentEnrollmentPage() {
                                 <Input placeholder="Search students..." value={searchStudent} onChange={e=>setSearchStudent(e.target.value)} className="h-8"/>
                             </div>
                             <ScrollArea className="flex-1">
-                                {availableToEnroll.map(s => (
+                                {availableToEnroll.map(s => {
+                                    const standing = getStudentStanding(s);
+                                    return (
                                     <div key={s.uid} className="flex items-center gap-2 p-2 border rounded bg-background mb-2">
                                         <Checkbox checked={!!selectedUids[s.uid]} onCheckedChange={() => setSelectedUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
                                         <div className="flex-1">
-                                            <p className="text-sm font-bold">{s.name}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-bold">{s.name}</p>
+                                                {standing && <Badge variant="secondary" className="text-[9px] h-4">{standing}</Badge>}
+                                            </div>
                                             <p className="text-xs text-muted-foreground">{s.id}</p>
                                         </div>
                                         <Button size="sm" variant="ghost" onClick={()=>performEnrollmentAction('enroll', s)} disabled={!!actionLoading}><PlusCircle className="h-4 w-4 text-primary"/></Button>
                                     </div>
-                                ))}
+                                )})}
                             </ScrollArea>
                         </div>
                         <div className="flex flex-col gap-2 border p-4 rounded-lg overflow-hidden">
@@ -290,7 +309,7 @@ export default function StudentEnrollmentPage() {
                                         <Checkbox checked={!!selectedEnrolledUids[s.uid]} onCheckedChange={() => setSelectedEnrolledUids(prev => ({...prev, [s.uid]: !prev[s.uid]}))} />
                                         <div className="flex-1">
                                             <p className="text-sm font-bold">{s.name}</p>
-                                            <p className="text-xs text-muted-foreground">{s.id}</p>
+                                            <p className="text-xs text-muted-foreground">{s.id} &middot; {s.enrolledInSemester}</p>
                                         </div>
                                         <Button size="icon" variant="ghost" className="text-destructive" onClick={()=>setStudentToRemove(s)} disabled={!!actionLoading}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
