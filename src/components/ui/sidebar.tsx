@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -125,7 +124,7 @@ const SidebarProvider = React.forwardRef<
     )
   }
 );
-SidebarProvider.displayName = "SidebarProvider"
+SidebarProvider.displayName = "SidebarProvider";
 
 const Sidebar = React.forwardRef<
   HTMLDivElement,
@@ -219,7 +218,7 @@ const Sidebar = React.forwardRef<
     )
   }
 );
-Sidebar.displayName = "Sidebar"
+Sidebar.displayName = "Sidebar";
 
 const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
@@ -245,7 +244,7 @@ const SidebarTrigger = React.forwardRef<
     </Button>
   )
 });
-SidebarTrigger.displayName = "SidebarTrigger"
+SidebarTrigger.displayName = "SidebarTrigger";
 
 const SidebarRail = React.forwardRef<
   HTMLButtonElement,
@@ -274,7 +273,7 @@ const SidebarRail = React.forwardRef<
     />
   )
 });
-SidebarRail.displayName = "SidebarRail"
+SidebarRail.displayName = "SidebarRail";
 
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
@@ -291,7 +290,7 @@ const SidebarInset = React.forwardRef<
     />
   )
 });
-SidebarInset.displayName = "SidebarInset"
+SidebarInset.displayName = "SidebarInset";
 
 const SidebarInput = React.forwardRef<
   React.ElementRef<typeof Input>,
@@ -309,7 +308,7 @@ const SidebarInput = React.forwardRef<
     />
   )
 });
-SidebarInput.displayName = "SidebarInput"
+SidebarInput.displayName = "SidebarInput";
 
 const SidebarHeader = React.forwardRef<
   HTMLDivElement,
@@ -324,7 +323,7 @@ const SidebarHeader = React.forwardRef<
     />
   )
 });
-SidebarHeader.displayName = "SidebarHeader"
+SidebarHeader.displayName = "SidebarHeader";
 
 const SidebarFooter = React.forwardRef<
   HTMLDivElement,
@@ -339,7 +338,7 @@ const SidebarFooter = React.forwardRef<
     />
   )
 });
-SidebarFooter.displayName = "SidebarFooter"
+SidebarFooter.displayName = "SidebarFooter";
 
 const SidebarSeparator = React.forwardRef<
   React.ElementRef<typeof Separator>,
@@ -354,7 +353,7 @@ const SidebarSeparator = React.forwardRef<
     />
   )
 });
-SidebarSeparator.displayName = "SidebarSeparator"
+SidebarSeparator.displayName = "SidebarSeparator";
 
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
@@ -372,7 +371,7 @@ const SidebarContent = React.forwardRef<
     />
   )
 });
-SidebarContent.displayName = "SidebarContent"
+SidebarContent.displayName = "SidebarContent";
 
 const SidebarGroup = React.forwardRef<
   HTMLDivElement,
@@ -387,7 +386,7 @@ const SidebarGroup = React.forwardRef<
     />
   )
 });
-SidebarGroup.displayName = "SidebarGroup"
+SidebarGroup.displayName = "SidebarGroup";
 
 const SidebarMenu = React.forwardRef<
   HTMLUListElement,
@@ -400,7 +399,7 @@ const SidebarMenu = React.forwardRef<
     {...props}
   />
 ));
-SidebarMenu.displayName = "SidebarMenu"
+SidebarMenu.displayName = "SidebarMenu";
 
 const SidebarMenuItem = React.forwardRef<
   HTMLLIElement,
@@ -413,7 +412,7 @@ const SidebarMenuItem = React.forwardRef<
     {...props}
   />
 ));
-SidebarMenuItem.displayName = "SidebarMenuItem"
+SidebarMenuItem.displayName = "SidebarMenuItem";
 
 const sidebarMenuButtonVariants = cva(
   "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:!p-2.5 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
@@ -435,7 +434,7 @@ const sidebarMenuButtonVariants = cva(
       size: "default",
     },
   }
-)
+);
 
 const SidebarMenuButton = React.forwardRef<
   HTMLButtonElement,
@@ -496,7 +495,7 @@ const SidebarMenuButton = React.forwardRef<
     )
   }
 );
-SidebarMenuButton.displayName = "SidebarMenuButton"
+SidebarMenuButton.displayName = "SidebarMenuButton";
 
 export {
   Sidebar,

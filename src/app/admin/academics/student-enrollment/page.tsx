@@ -218,6 +218,20 @@ export default function StudentEnrollmentPage() {
         return `Y${state.year}S${state.semester}`;
     };
 
+    const intakeStanding = React.useMemo(() => {
+        if (!selectedIntake || !calendarSettings) return null;
+        const intake = intakes.find(i => i.id === selectedIntake);
+        if (!intake) return null;
+        const intakeStartStr = parseIntakeDate(intake.name);
+        if (!intakeStartStr) return null;
+        return calculateAcademicState(
+            intakeStartStr,
+            new Date(),
+            calendarSettings.standardCycles,
+            Object.values(calendarSettings.anomalies || {})
+        );
+    }, [selectedIntake, intakes, calendarSettings]);
+
     if (loading) return <Skeleton className="h-96 w-full" />;
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -239,7 +253,21 @@ export default function StudentEnrollmentPage() {
                     <Button variant="outline" onClick={() => setIsConfigOpen(true)}><Settings2 className="mr-2 h-4 w-4"/>Email Settings</Button>
                 </CardHeader>
                 <CardContent>
-                    <div className="max-w-sm"><Label>Select Schedule Intake</Label><Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setDialogIntakeFilter(val); }}><SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="max-w-md">
+                        <Label>Select Schedule Intake</Label>
+                        <div className="flex items-center gap-4 mt-1">
+                            <Select value={selectedIntake} onValueChange={(val) => { setSelectedIntake(val); setDialogIntakeFilter(val); }}>
+                                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select intake..." /></SelectTrigger>
+                                <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                            {selectedIntake && intakeStanding && (
+                                <Badge variant="secondary" className="whitespace-nowrap h-10 px-4 text-sm font-bold border-primary/20 bg-primary/5">
+                                    <CalendarDays className="mr-2 h-4 w-4"/>
+                                    Standing: Year {intakeStanding.year}, Sem {intakeStanding.semester}
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
