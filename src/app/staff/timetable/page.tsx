@@ -7,8 +7,9 @@ import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin } from 'lucide-react';
+import { Info, MapPin, UserCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 
 type TimeSlot = {
     id: string;
@@ -21,8 +22,10 @@ type TimetableEntry = {
     startTime: string;
     endTime: string;
     venue: string;
+    courseId: string;
     courseCode: string;
     courseName: string;
+    lecturerNames: string;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -47,15 +50,17 @@ export default function StaffTimetablePage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, timetablesSnap, settingsSnap] = await Promise.all([
+            const [coursesSnap, timetablesSnap, settingsSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
-                get(ref(db, 'settings/teachingTimes'))
+                get(ref(db, 'settings/teachingTimes')),
+                get(ref(db, 'users'))
             ]);
 
             const cData = coursesSnap.val() || {};
             const tData = timetablesSnap.val() || {};
             const settingsData = settingsSnap.val() || {};
+            const usersData = usersSnap.val() || {};
 
             setTeachingTimes({
                 days: settingsData.days || defaultDays,
@@ -75,11 +80,18 @@ export default function StaffTimetablePage() {
                 for (const cId in tData[semId]) {
                     if (myCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
+                        const lecturerNames = (courseInfo.lecturerIds || [])
+                            .map((uid: string) => usersData[uid]?.name)
+                            .filter(Boolean)
+                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
                             entries.push({
                                 ...entry,
+                                courseId: cId,
                                 courseCode: courseInfo.code,
-                                courseName: courseInfo.name
+                                courseName: courseInfo.name,
+                                lecturerNames
                             });
                         });
                     }
@@ -104,7 +116,7 @@ export default function StaffTimetablePage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">My Teaching Schedule</CardTitle>
-                <CardDescription>Your weekly recurring classes across all active semesters.</CardDescription>
+                <CardDescription>Your weekly recurring classes across all active semesters. Click a class to manage it.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
                 {loading ? (
@@ -145,13 +157,20 @@ export default function StaffTimetablePage() {
                                                 <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
                                                     <div className="space-y-2">
                                                         {sessionsInSlot.map((entry, eIdx) => (
-                                                            <div key={eIdx} className="p-2 rounded-md border bg-background border-primary/20 shadow-sm">
-                                                                <p className="font-bold text-[10px] text-primary leading-tight">{entry.courseCode}: {entry.courseName}</p>
+                                                            <Link 
+                                                                href={`/staff/courses/${entry.courseId}`}
+                                                                key={eIdx} 
+                                                                className="block p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all group"
+                                                            >
+                                                                <p className="font-bold text-[10px] text-primary leading-tight group-hover:underline">{entry.courseCode}: {entry.courseName}</p>
                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
                                                                     <MapPin className="h-2.5 w-2.5" /> {entry.venue}
                                                                 </div>
+                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5">
+                                                                    <UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}
+                                                                </div>
                                                                 <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
-                                                            </div>
+                                                            </Link>
                                                         ))}
                                                     </div>
                                                 </TableCell>

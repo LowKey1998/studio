@@ -245,7 +245,7 @@ export default function TimetableManagementPage() {
     }, [intakeFilter, intakes, calendarSettings]);
 
     const mergedSessions = React.useMemo(() => {
-        const sessions: Record<string, { entry: TimetableEntry; participants: { semesterId: string; name: string; standing: string }[] }> = {};
+        const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; participants: { semesterId: string; name: string; standing: string }[] }> = {};
         
         filteredTimetable.forEach(entry => {
             const course = allCourses.find(c => c.id === entry.courseId);
@@ -254,7 +254,12 @@ export default function TimetableManagementPage() {
                 : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
 
             if (!sessions[key]) {
-                sessions[key] = { entry, participants: [] };
+                const lecturerNames = (course?.lecturerIds || [])
+                    .map(uid => users[uid]?.name)
+                    .filter(Boolean)
+                    .join(', ') || users[course?.lecturerId || '']?.name || 'Unassigned';
+
+                sessions[key] = { entry, lecturerNames, participants: [] };
             }
             
             const sem = semesters.find(s => s.id === entry.semesterId);
@@ -271,7 +276,7 @@ export default function TimetableManagementPage() {
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes]);
+    }, [filteredTimetable, allCourses, semesters, intakes, users]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
@@ -344,16 +349,17 @@ export default function TimetableManagementPage() {
                                                 );
 
                                                 return (
-                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative" onClick={() => sessionsInSlot.length === 0 && (setDay(dayName), setStartTime(slot.startTime), setEndTime(slot.endTime), setIsAddOpen(true))}>
+                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative">
                                                         <div className="space-y-2">
                                                             {sessionsInSlot.map((s, eIdx) => (
                                                                 <div key={eIdx} className="p-2 rounded-md border bg-background border-primary/20 shadow-sm relative">
                                                                     <div className="flex justify-between items-start gap-1">
-                                                                        <div className="flex-1">
-                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                        <Link href={`/staff/courses/${s.entry.courseId}`} className="flex-1 group">
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2 group-hover:underline" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2 w-2" /> {s.entry.venue}</div>
-                                                                        </div>
-                                                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(s.entry); }}><X className="h-3 w-3" /></Button>
+                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2 w-2" /> {s.lecturerNames}</div>
+                                                                        </Link>
+                                                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => { e.preventDefault(); handleDeleteEntry(s.entry); }}><X className="h-3 w-3" /></Button>
                                                                     </div>
                                                                     <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
                                                                         {s.participants.map(p => (

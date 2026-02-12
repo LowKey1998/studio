@@ -3,12 +3,13 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import { useAuth } from '@/hooks/use-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin } from 'lucide-react';
+import { Info, MapPin, UserCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 
 type TimeSlot = {
     id: string;
@@ -21,9 +22,11 @@ type TimetableEntry = {
     startTime: string;
     endTime: string;
     venue: string;
+    courseId: string;
     courseCode: string;
     courseName: string;
     semesterId: string;
+    lecturerNames: string;
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -44,11 +47,12 @@ export default function StudentTimetablePage() {
         if (!user?.uid) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
-                get(ref(db, 'settings/teachingTimes'))
+                get(ref(db, 'settings/teachingTimes')),
+                get(ref(db, 'users'))
             ]);
 
             if (!regsSnap.exists()) {
@@ -57,8 +61,8 @@ export default function StudentTimetablePage() {
                 return;
             }
 
-            // Map enrolled course IDs to their specific registration semesterId
-            const enrolledCourseSemesters = new Map<string, Set<string>>(); // courseId -> Set of semesterIds
+            const usersData = usersSnap.val() || {};
+            const enrolledCourseSemesters = new Map<string, Set<string>>();
             Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
@@ -79,24 +83,27 @@ export default function StudentTimetablePage() {
             });
 
             const entries: TimetableEntry[] = [];
-            // Iterate through semesters in the timetable
             for (const semId in tData) {
-                // Iterate through courses in that semester's timetable
                 for (const cId in tData[semId]) {
-                    // Check if the student is registered for this specific course in this specific semester
-                    // OR if it's a 'master' entry and the student is enrolled in the course at all
                     const isEnrolledInSem = enrolledCourseSemesters.get(cId)?.has(semId);
                     const isEnrolledAtAll = enrolledCourseSemesters.has(cId);
                     
                     if (isEnrolledInSem || (semId === 'master' && isEnrolledAtAll)) {
                         const courseInfo = cData[cId];
                         if (courseInfo) {
+                            const lecturerNames = (courseInfo.lecturerIds || [])
+                                .map((uid: string) => usersData[uid]?.name)
+                                .filter(Boolean)
+                                .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+
                             Object.values(tData[semId][cId]).forEach((entry: any) => {
                                 entries.push({
                                     ...entry,
+                                    courseId: cId,
                                     courseCode: courseInfo.code,
                                     courseName: courseInfo.name,
-                                    semesterId: semId
+                                    semesterId: semId,
+                                    lecturerNames
                                 });
                             });
                         }
@@ -126,7 +133,7 @@ export default function StudentTimetablePage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="font-headline text-2xl">My Weekly Timetable</CardTitle>
-                <CardDescription>Your weekly class schedule based on your current enrolled courses.</CardDescription>
+                <CardDescription>Your weekly class schedule based on your current enrolled courses. Click a class to enter the classroom.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
                 {loading ? (
@@ -167,13 +174,20 @@ export default function StudentTimetablePage() {
                                                 <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
                                                     <div className="space-y-2">
                                                         {sessionsInSlot.map((entry, eIdx) => (
-                                                            <div key={eIdx} className="p-2 rounded-md border bg-background border-primary/20 shadow-sm">
-                                                                <p className="font-bold text-[10px] text-primary leading-tight">{entry.courseCode}: {entry.courseName}</p>
+                                                            <Link 
+                                                                href={`/student/courses/${entry.courseId}`}
+                                                                key={eIdx} 
+                                                                className="block p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all group"
+                                                            >
+                                                                <p className="font-bold text-[10px] text-primary leading-tight group-hover:underline">{entry.courseCode}: {entry.courseName}</p>
                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
                                                                     <MapPin className="h-2.5 w-2.5" /> {entry.venue}
                                                                 </div>
+                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5">
+                                                                    <UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}
+                                                                </div>
                                                                 <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
-                                                            </div>
+                                                            </Link>
                                                         ))}
                                                     </div>
                                                 </TableCell>
