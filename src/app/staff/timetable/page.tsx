@@ -7,9 +7,10 @@ import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, Layers } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
+import { parseIntakeDate } from '@/lib/semester-utils';
 
 type TimeSlot = {
     id: string;
@@ -25,8 +26,17 @@ type TimetableEntry = {
     courseId: string;
     courseCode: string;
     courseName: string;
+    semesterId: string;
+    semesterName: string;
     lecturerNames: string;
-    studentCount: number;
+    intakeName: string;
+};
+
+type MergedEntry = {
+    key: string;
+    entry: TimetableEntry;
+    totalStudents: number;
+    participants: { name: string; standing: string; count: number }[];
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -38,7 +48,7 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StaffTimetablePage() {
-    const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
+    const [mergedTimetable, setMergedTimetable] = React.useState<MergedEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -51,12 +61,14 @@ export default function StaffTimetablePage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, timetablesSnap, settingsSnap, usersSnap, regsSnap] = await Promise.all([
+            const [coursesSnap, timetablesSnap, settingsSnap, usersSnap, regsSnap, semestersSnap, intakesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
                 get(ref(db, 'users')),
-                get(ref(db, 'registrations'))
+                get(ref(db, 'registrations')),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'intakes'))
             ]);
 
             const cData = coursesSnap.val() || {};
@@ -64,20 +76,23 @@ export default function StaffTimetablePage() {
             const settingsData = settingsSnap.val() || {};
             const usersData = usersSnap.val() || {};
             const regsData = regsSnap.val() || {};
+            const sData = semestersSnap.val() || {};
+            const iData = intakesSnap.val() || {};
 
             setTeachingTimes({
                 days: settingsData.days || defaultDays,
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // Calculate student counts
+            // Calculate student counts per [semId][courseId]
             const counts: Record<string, Record<string, number>> = {};
             for (const userId in regsData) {
                 for (const semId in regsData[userId]) {
                     const reg = regsData[userId][semId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         if (!counts[semId]) counts[semId] = {};
-                        (reg.courses || []).forEach((cid: string) => {
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                        coursesArr.forEach((cid: string) => {
                             counts[semId][cid] = (counts[semId][cid] || 0) + 1;
                         });
                     }
@@ -92,8 +107,10 @@ export default function StaffTimetablePage() {
                 }
             });
 
-            const entries: TimetableEntry[] = [];
+            // Flatten all my sessions
+            const rawEntries: TimetableEntry[] = [];
             for (const semId in tData) {
+                const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry' };
                 for (const cId in tData[semId]) {
                     if (myCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
@@ -102,22 +119,72 @@ export default function StaffTimetablePage() {
                             .filter(Boolean)
                             .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
-                        const studentCount = counts[semId]?.[cId] || 0;
-
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
-                            entries.push({
+                            rawEntries.push({
                                 ...entry,
                                 courseId: cId,
                                 courseCode: courseInfo.code,
                                 courseName: courseInfo.name,
+                                semesterId: semId,
+                                semesterName: semInfo.name,
                                 lecturerNames,
-                                studentCount
+                                intakeName: entry.intakeName || iData[semInfo.intakeId]?.name || 'N/A'
                             });
                         });
                     }
                 }
             }
-            setTimetable(entries);
+
+            // Merge shared sessions and calculate correct student counts
+            const mergedMap = new Map<string, MergedEntry>();
+            rawEntries.forEach(entry => {
+                const course = cData[entry.courseId];
+                const key = course?.separateInstance 
+                    ? `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}-${entry.semesterId}`
+                    : `${entry.courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
+
+                if (!mergedMap.has(key)) {
+                    mergedMap.set(key, {
+                        key,
+                        entry,
+                        totalStudents: 0,
+                        participants: []
+                    });
+                }
+
+                const merged = mergedMap.get(key)!;
+                const sem = sData[entry.semesterId];
+                const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
+                
+                // Get correct count for this specific entry
+                let count = 0;
+                if (entry.semesterId !== 'master') {
+                    count = counts[entry.semesterId]?.[entry.courseId] || 0;
+                } else {
+                    // For master entries, if separate, count only matching intake. If shared, count all active.
+                    if (course?.separateInstance) {
+                        const matchingIntakeId = Object.keys(iData).find(id => iData[id].name === entry.intakeName);
+                        Object.keys(sData).forEach(sId => {
+                            if (sData[sId].intakeId === matchingIntakeId && sData[sId].status !== 'Archived') {
+                                count += counts[sId]?.[entry.courseId] || 0;
+                            }
+                        });
+                    } else {
+                        Object.keys(sData).forEach(sId => {
+                            if (sData[sId].status !== 'Archived') {
+                                count += counts[sId]?.[entry.courseId] || 0;
+                            }
+                        });
+                    }
+                }
+
+                if (!merged.participants.find(p => p.name === entry.intakeName && p.standing === standing)) {
+                    merged.participants.push({ name: entry.intakeName, standing, count });
+                    merged.totalStudents += count;
+                }
+            });
+
+            setMergedTimetable(Array.from(mergedMap.values()));
         } catch (error) {
             console.error(error);
         } finally {
@@ -167,32 +234,38 @@ export default function StaffTimetablePage() {
                                         {teachingTimes.slots.map((slot, sIdx) => {
                                             const slotStart = timeToMinutes(slot.startTime);
                                             const slotEnd = timeToMinutes(slot.endTime);
-                                            const sessionsInSlot = timetable.filter(e => 
-                                                e.day === dayName && 
-                                                timeToMinutes(e.startTime) >= slotStart && 
-                                                timeToMinutes(e.startTime) < slotEnd
+                                            const sessionsInSlot = mergedTimetable.filter(m => 
+                                                m.entry.day === dayName && 
+                                                timeToMinutes(m.entry.startTime) >= slotStart && 
+                                                timeToMinutes(m.entry.startTime) < slotEnd
                                             );
 
                                             return (
                                                 <TableCell key={`${dayName}-${slot.id || sIdx}`} className="p-2 border-r align-top min-h-[100px]">
                                                     <div className="space-y-2">
-                                                        {sessionsInSlot.map((entry, eIdx) => (
+                                                        {sessionsInSlot.map((m, eIdx) => (
                                                             <Link 
-                                                                href={`/staff/courses/${entry.courseId}`}
+                                                                href={`/staff/courses/${m.entry.courseId}`}
                                                                 key={eIdx} 
                                                                 className="block p-2 rounded-md border bg-background border-primary/20 shadow-sm hover:ring-2 hover:ring-primary transition-all group"
                                                             >
-                                                                <p className="font-bold text-[10px] text-primary leading-tight group-hover:underline">{entry.courseCode}: {entry.courseName}</p>
-                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                    <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                <div className="flex justify-between items-start">
+                                                                    <p className="font-bold text-[10px] text-primary leading-tight group-hover:underline">{m.entry.courseCode}: {m.entry.courseName}</p>
+                                                                    {m.participants.length > 1 && <Layers className="h-3 w-3 text-primary/40" />}
                                                                 </div>
-                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5">
-                                                                    <UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}
+                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                    <MapPin className="h-2.5 w-2.5" /> {m.entry.venue}
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1">
-                                                                    <Users className="h-2.5 w-2.5" /> {entry.studentCount} Students
+                                                                    <Users className="h-2.5 w-2.5" /> {m.totalStudents} Students
                                                                 </div>
-                                                                <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
+                                                                <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                    {m.participants.map((p, pIdx) => (
+                                                                        <Badge key={pIdx} variant="secondary" className="text-[8px] h-4 px-1">
+                                                                            {p.name} ({p.standing}): {p.count}
+                                                                        </Badge>
+                                                                    ))}
+                                                                </div>
                                                             </Link>
                                                         ))}
                                                     </div>

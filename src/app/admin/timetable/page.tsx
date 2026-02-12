@@ -139,7 +139,8 @@ export default function TimetableManagementPage() {
                             const reg = data[userId][semId];
                             if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                                 if (!counts[semId]) counts[semId] = {};
-                                (reg.courses || []).forEach((cid: string) => {
+                                const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                                coursesArr.forEach((cid: string) => {
                                     counts[semId][cid] = (counts[semId][cid] || 0) + 1;
                                 });
                             }
@@ -213,6 +214,36 @@ export default function TimetableManagementPage() {
             c.code.toLowerCase().includes(courseSearch.toLowerCase())
         );
     }, [allCourses, courseSearch]);
+
+    const getActualCount = React.useCallback((courseId: string, semId: string, intakeName: string) => {
+        const course = allCourses.find(c => c.id === courseId);
+        if (!course) return 0;
+
+        if (semId !== 'master') {
+            return studentCounts[semId]?.[courseId] || 0;
+        }
+
+        if (course.separateInstance) {
+            const matchingIntakeId = intakes.find(i => i.name === intakeName)?.id;
+            if (!matchingIntakeId) return 0;
+            
+            let total = 0;
+            semesters.forEach(s => {
+                if (s.intakeId === matchingIntakeId && s.status !== 'Archived') {
+                    total += studentCounts[s.id]?.[courseId] || 0;
+                }
+            });
+            return total;
+        }
+
+        let total = 0;
+        semesters.forEach(s => {
+            if (s.status !== 'Archived') {
+                total += studentCounts[s.id]?.[courseId] || 0;
+            }
+        });
+        return total;
+    }, [allCourses, studentCounts, semesters, intakes]);
 
     const handleSaveEntry = async () => {
         if (!selectedCourseId || !selectedIntakeId || !day || !startTime || !endTime) {
@@ -308,7 +339,7 @@ export default function TimetableManagementPage() {
             const sem = semesters.find(s => s.id === entry.semesterId);
             const intake = intakes.find(i => i.id === sem?.intakeId);
             const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
-            const count = studentCounts[entry.semesterId]?.[entry.courseId] || 0;
+            const count = getActualCount(entry.courseId, entry.semesterId, entry.intakeName);
             
             if (!sessions[key].participants.find(p => p.semesterId === entry.semesterId)) {
                 sessions[key].participants.push({
@@ -322,7 +353,7 @@ export default function TimetableManagementPage() {
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes, users, studentCounts]);
+    }, [filteredTimetable, allCourses, semesters, intakes, users, getActualCount]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;

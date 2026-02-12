@@ -79,7 +79,8 @@ export default function StudentTimetablePage() {
                     const reg = allRegs[userId][semId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         if (!counts[semId]) counts[semId] = {};
-                        (reg.courses || []).forEach((cid: string) => {
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                        coursesArr.forEach((cid: string) => {
                             counts[semId][cid] = (counts[semId][cid] || 0) + 1;
                         });
                     }
@@ -142,7 +143,27 @@ export default function StudentTimetablePage() {
                                 .filter(Boolean)
                                 .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
-                            const studentCount = counts[semId]?.[cId] || 0;
+                            // Calculate actual student count for this session
+                            let studentCount = 0;
+                            if (semId !== 'master') {
+                                studentCount = counts[semId]?.[cId] || 0;
+                            } else {
+                                // For master branch, count students across all active matching semesters
+                                if (courseInfo.separateInstance) {
+                                    const matchingIntakeId = userProfile.intakeId;
+                                    Object.keys(allSemesters).forEach(sId => {
+                                        if (allSemesters[sId].intakeId === matchingIntakeId && allSemesters[sId].status !== 'Archived') {
+                                            studentCount += counts[sId]?.[cId] || 0;
+                                        }
+                                    });
+                                } else {
+                                    Object.keys(allSemesters).forEach(sId => {
+                                        if (allSemesters[sId].status !== 'Archived') {
+                                            studentCount += counts[sId]?.[cId] || 0;
+                                        }
+                                    });
+                                }
+                            }
 
                             entries.push({
                                 ...entry,
@@ -175,11 +196,6 @@ export default function StudentTimetablePage() {
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
     const hasSlots = teachingTimes.slots.length > 0;
-
-    const timeToMinutesCell = (time: string) => {
-        const [hours, minutes] = time.split(':').map(Number);
-        return hours * 60 + minutes;
-    };
 
     return (
         <Card className="shadow-lg">
@@ -214,12 +230,12 @@ export default function StudentTimetablePage() {
                                     <TableRow key={dayName}>
                                         <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
                                         {teachingTimes.slots.map((slot, sIdx) => {
-                                            const slotStart = timeToMinutesCell(slot.startTime);
-                                            const slotEnd = timeToMinutesCell(slot.endTime);
+                                            const slotStart = timeToMinutes(slot.startTime);
+                                            const slotEnd = timeToMinutes(slot.endTime);
                                             const sessionsInSlot = timetable.filter(e => 
                                                 e.day === dayName && 
-                                                timeToMinutesCell(e.startTime) >= slotStart && 
-                                                timeToMinutesCell(e.startTime) < slotEnd
+                                                timeToMinutes(e.startTime) >= slotStart && 
+                                                timeToMinutes(e.startTime) < slotEnd
                                             );
 
                                             return (
