@@ -11,7 +11,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInput,
-  SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { LogOut } from 'lucide-react';
@@ -27,6 +26,8 @@ import { allMenuItems, studentMenuItems } from '@/lib/menu-items';
 import Logo from '../logo';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Badge } from '../ui/badge';
+
+const warningKeys = new Set(['missingDeadlines', 'unassignedCourses']);
 
 const hasStaffPermission = (item: any, profile: UserProfile) => {
     if (!profile) return false;
@@ -48,6 +49,13 @@ const hasStaffPermission = (item: any, profile: UserProfile) => {
     return false;
 };
 
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+};
+
 export default function DashboardLayout({
   children,
 }: {
@@ -60,7 +68,9 @@ export default function DashboardLayout({
   const [search, setSearch] = React.useState('');
   const [openAccordion, setOpenAccordion] = React.useState<string[]>([]);
   const [notificationCounts, setNotificationCounts] = React.useState<Record<string, number>>({
-      pendingRegistrations: 0
+      pendingRegistrations: 0,
+      missingDeadlines: 0,
+      unassignedCourses: 0
   });
   
   const handleLogout = async () => {
@@ -109,9 +119,15 @@ export default function DashboardLayout({
     return () => unsub();
   }, [user]);
 
+  // Combined listener for sidebar alerts
   React.useEffect(() => {
-    const registrationsRef = ref(db, 'registrations');
-    const unsub = onValue(registrationsRef, (snapshot) => {
+    const regsRef = ref(db, 'registrations');
+    const semsRef = ref(db, 'semesters');
+    const eventsRef = ref(db, 'calendarEvents');
+    const plansRef = ref(db, 'settings/paymentPlans');
+    const coursesRef = ref(db, 'courses');
+
+    const unsubRegs = onValue(regsRef, (snapshot) => {
         let pendingCount = 0;
         if (snapshot.exists()) {
             const allRegistrations = snapshot.val();
@@ -125,7 +141,57 @@ export default function DashboardLayout({
         }
         setNotificationCounts(prev => ({ ...prev, pendingRegistrations: pendingCount }));
     });
-    return () => unsub();
+
+    const unsubSems = onValue(semsRef, (snapshot) => {
+        get(eventsRef).then(eSnap => {
+            get(plansRef).then(pSnap => {
+                let missingCount = 0;
+                if (snapshot.exists()) {
+                    const sems = snapshot.val();
+                    const events = Object.values(eSnap.val() || {}) as any[];
+                    const plans = pSnap.val() || {};
+
+                    Object.values(sems).forEach((sem: any) => {
+                        if (sem.status === 'Archived') return;
+                        
+                        const linkedPlanIds = Object.keys(sem.paymentPlanIds || {});
+                        linkedPlanIds.forEach(pid => {
+                            const plan = plans[pid];
+                            if (plan && !plan.archived) {
+                                for (let i = 0; i < plan.installments; i++) {
+                                    const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
+                                    const eventExists = events.some(e => e.title?.trim() === title.trim());
+                                    if (!eventExists) {
+                                        missingCount++;
+                                        return; // Count once per semester for simplicity
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+                setNotificationCounts(prev => ({ ...prev, missingDeadlines: missingCount }));
+            });
+        });
+    });
+
+    const unsubCourses = onValue(coursesRef, (snapshot) => {
+        let unassignedCount = 0;
+        if (snapshot.exists()) {
+            Object.values(snapshot.val()).forEach((c: any) => {
+                if (c.status === 'active' && !c.lecturerId && (!c.lecturerIds || c.lecturerIds.length === 0)) {
+                    unassignedCount++;
+                }
+            });
+        }
+        setNotificationCounts(prev => ({ ...prev, unassignedCourses: unassignedCount }));
+    });
+
+    return () => {
+        unsubRegs();
+        unsubSems();
+        unsubCourses();
+    };
   }, []);
 
   const menuItems = React.useMemo(() => {
@@ -138,7 +204,7 @@ export default function DashboardLayout({
         return studentMenuItems;
       case 'staff': {
             return allMenuItems.map(category => {
-                if (!category.items || category.isComingSoon) return null;
+                if (!category.items) return null;
                 const permittedItems = category.items.filter(item => hasStaffPermission(item, userProfile));
                 if (permittedItems.length > 0) {
                     return { ...category, items: permittedItems };
@@ -212,6 +278,8 @@ export default function DashboardLayout({
                              <SidebarMenu>
                                 {item.items.map((subItem: any) => {
                                     const subCount = subItem.notificationKey ? (notificationCounts[subItem.notificationKey] || 0) : 0;
+                                    const isWarning = subItem.notificationKey && warningKeys.has(subItem.notificationKey);
+                                    
                                     return (
                                         <SidebarMenuItem key={subItem.href}>
                                             <Link href={subItem.href}>
@@ -219,7 +287,13 @@ export default function DashboardLayout({
                                                     {subItem.icon && <subItem.icon />}
                                                     <span className="flex-1">{subItem.label}</span>
                                                     {subCount > 0 && (
-                                                        <Badge variant="destructive" className="h-4 min-w-4 flex items-center justify-center p-0 text-[9px] font-bold rounded-full">
+                                                        <Badge 
+                                                            variant={isWarning ? "secondary" : "destructive"} 
+                                                            className={cn(
+                                                                "h-4 min-w-4 flex items-center justify-center p-0 text-[9px] font-bold rounded-full",
+                                                                isWarning && "bg-orange-500 text-white hover:bg-orange-600"
+                                                            )}
+                                                        >
                                                             {subCount}
                                                         </Badge>
                                                     )}
