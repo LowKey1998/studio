@@ -1,12 +1,11 @@
-
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Users, Loader2, MessageSquare, Send, X, MonitorPlay } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Loader2, MessageSquare, Send, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import { ref, push, set, onValue, serverTimestamp, onChildAdded, update, remove, onDisconnect } from 'firebase/database';
+import { ref, push, set, onValue, serverTimestamp, onChildAdded, update, onDisconnect, off, onChildRemoved } from 'firebase/database';
 import { useAuth } from '@/hooks/use-auth';
 import { ScrollArea } from './ui/scroll-area';
 import { Input } from './ui/input';
@@ -23,6 +22,7 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
   ],
 };
 
@@ -33,43 +33,46 @@ export function VideoCall({ channelName, onLeave }: { channelName: string; onLea
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [isHost, setIsHost] = useState(false);
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. Check if current user is the host
+  // 1. Determine Role
   useEffect(() => {
     if (!user || !channelName) return;
     const sessionRef = ref(db, `liveSessions/${channelName}/startedBy`);
-    onValue(sessionRef, (snap) => {
+    return onValue(sessionRef, (snap) => {
         setIsHost(snap.val() === user.uid);
     });
   }, [user, channelName]);
 
   // 2. Initialize Media
   useEffect(() => {
+    let stream: MediaStream;
     async function startMedia() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
         });
-        localStreamRef.current = stream;
+        setLocalStream(stream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
         
-        // Notify presence
         if (user) {
             const presenceRef = ref(db, `liveSessions/${channelName}/participants/${user.uid}`);
-            set(presenceRef, { name: userProfile?.name || 'User', joinedAt: serverTimestamp() });
+            set(presenceRef, { 
+                name: userProfile?.name || 'User', 
+                joinedAt: serverTimestamp(),
+                role: isHost ? 'host' : 'student'
+            });
             onDisconnect(presenceRef).remove();
         }
-
       } catch (err) {
         console.error("Error accessing media devices:", err);
       }
@@ -77,127 +80,143 @@ export function VideoCall({ channelName, onLeave }: { channelName: string; onLea
     startMedia();
 
     return () => {
-      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
     };
-  }, [user, userProfile, channelName]);
+  }, [user, userProfile, channelName, isHost]);
 
-  // 3. Signaling Logic
+  // 3. Signaling & Connection Logic
   useEffect(() => {
-    if (!user || !localStreamRef.current) return;
+    if (!user || !localStream || !channelName) return;
 
-    const signalingRef = ref(db, `liveSessions/${channelName}/signaling`);
+    const createPC = (targetId: string) => {
+      const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Host Logic: Watch for new participants and initiate connections
+      localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
+      });
+
+      pc.ontrack = (event) => {
+        setRemoteStreams(prev => ({
+          ...prev,
+          [targetId]: event.streams[0]
+        }));
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const path = isHost ? `${targetId}/candidates/host` : `${user.uid}/candidates/participant`;
+          const candRef = push(ref(db, `liveSessions/${channelName}/signaling/${path}`));
+          set(candRef, event.candidate.toJSON());
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+              setRemoteStreams(prev => {
+                  const next = { ...prev };
+                  delete next[targetId];
+                  return next;
+              });
+          }
+      };
+
+      // Listen for remote ICE candidates
+      const remotePath = isHost ? `${targetId}/candidates/participant` : `${user.uid}/candidates/host`;
+      const remoteCandRef = ref(db, `liveSessions/${channelName}/signaling/${remotePath}`);
+      onChildAdded(remoteCandRef, (snap) => {
+          if (snap.exists()) {
+              pc.addIceCandidate(new RTCIceCandidate(snap.val())).catch(e => console.error("ICE error", e));
+          }
+      });
+
+      peerConnections.current[targetId] = pc;
+      return pc;
+    };
+
     if (isHost) {
       const participantsRef = ref(db, `liveSessions/${channelName}/participants`);
-      const unsubParticipants = onChildAdded(participantsRef, async (snap) => {
+      const unsubAdded = onChildAdded(participantsRef, async (snap) => {
         const participantId = snap.key;
         if (!participantId || participantId === user.uid) return;
 
-        const pc = createPeerConnection(participantId);
-        peerConnections.current[participantId] = pc;
-
+        const pc = createPC(participantId);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        set(ref(db, `liveSessions/${channelName}/signaling/${participantId}/offer`), {
+        await set(ref(db, `liveSessions/${channelName}/signaling/${participantId}/offer`), {
           type: offer.type,
           sdp: offer.sdp,
           from: user.uid
         });
+
+        const answerRef = ref(db, `liveSessions/${channelName}/signaling/${participantId}/answer`);
+        onValue(answerRef, async (ansSnap) => {
+            if (ansSnap.exists()) {
+                const answer = ansSnap.val();
+                if (pc.signalingState !== 'stable') {
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                }
+            }
+        });
       });
 
-      // Listen for answers
-      const unsubAnswers = onChildAdded(signalingRef, (snap) => {
+      const unsubRemoved = onChildRemoved(participantsRef, (snap) => {
           const participantId = snap.key;
-          if (!participantId || participantId === user.uid) return;
-          
-          onValue(ref(db, `liveSessions/${channelName}/signaling/${participantId}/answer`), async (ansSnap) => {
-              if (ansSnap.exists()) {
-                  const pc = peerConnections.current[participantId];
-                  if (pc && pc.signalingState !== 'stable') {
-                      await pc.setRemoteDescription(new RTCSessionDescription(ansSnap.val()));
-                  }
-              }
-          });
+          if (participantId && peerConnections.current[participantId]) {
+              peerConnections.current[participantId].close();
+              delete peerConnections.current[participantId];
+              setRemoteStreams(prev => {
+                  const next = { ...prev };
+                  delete next[participantId];
+                  return next;
+              });
+          }
       });
 
       return () => {
-          unsubParticipants();
-          unsubAnswers();
-      }
-    } 
-    // Participant Logic: Watch for offers from the host
-    else {
-      const mySignalingRef = ref(db, `liveSessions/${channelName}/signaling/${user.uid}`);
-      
-      const unsubOffer = onValue(ref(db, `liveSessions/${channelName}/signaling/${user.uid}/offer`), async (snap) => {
+          off(participantsRef);
+          unsubAdded();
+          unsubRemoved();
+      };
+    } else {
+      const mySignalingRef = ref(db, `liveSessions/${channelName}/signaling/${user.uid}/offer`);
+      const unsubOffer = onValue(mySignalingRef, async (snap) => {
         if (!snap.exists()) return;
         
         const offer = snap.val();
-        const pc = createPeerConnection(offer.from);
-        peerConnections.current[offer.from] = pc;
-
+        const hostId = offer.from;
+        
+        const pc = createPC(hostId);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        set(ref(db, `liveSessions/${channelName}/signaling/${user.uid}/answer`), {
+        await set(ref(db, `liveSessions/${channelName}/signaling/${user.uid}/answer`), {
           type: answer.type,
           sdp: answer.sdp,
         });
       });
 
-      return () => unsubOffer();
+      return () => {
+          off(mySignalingRef);
+          unsubOffer();
+      };
     }
-  }, [user, isHost, channelName]);
+  }, [user, isHost, channelName, localStream]);
 
-  const createPeerConnection = (targetId: string) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-
-    // Add local tracks to the connection
-    localStreamRef.current?.getTracks().forEach(track => {
-      pc.addTrack(track, localStreamRef.current!);
-    });
-
-    // Handle remote tracks
-    pc.ontrack = (event) => {
-      setRemoteStreams(prev => ({
-        ...prev,
-        [targetId]: event.streams[0]
-      }));
-    };
-
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const candidatesRef = ref(db, `liveSessions/${channelName}/signaling/${isHost ? targetId : user?.uid}/candidates/${isHost ? 'host' : 'participant'}`);
-        push(candidatesRef, event.candidate.toJSON());
-      }
-    };
-
-    // Listen for remote ICE candidates
-    const remoteCandidatePath = `liveSessions/${channelName}/signaling/${isHost ? targetId : user?.uid}/candidates/${isHost ? 'participant' : 'host'}`;
-    onChildAdded(ref(db, remoteCandidatePath), (snap) => {
-        if (snap.exists()) {
-            pc.addIceCandidate(new RTCIceCandidate(snap.val()));
-        }
-    });
-
-    return pc;
-  };
-
-  // 4. Real-time Chat
+  // 4. Chat logic
   useEffect(() => {
+      if (!channelName) return;
       const messagesRef = ref(db, `liveSessions/${channelName}/messages`);
-      const unsub = onValue(messagesRef, (snapshot) => {
+      return onValue(messagesRef, (snapshot) => {
           if (snapshot.exists()) {
               const data = snapshot.val();
               const list = Object.entries(data).map(([id, msg]: [string, any]) => ({ id, ...msg }));
               setMessages(list.sort((a,b) => a.timestamp - b.timestamp));
           }
       });
-      return () => unsub();
   }, [channelName]);
 
   useEffect(() => {
@@ -220,38 +239,30 @@ export function VideoCall({ channelName, onLeave }: { channelName: string; onLea
   };
 
   const toggleMic = () => {
-    if (localStreamRef.current) {
-        const audioTrack = localStreamRef.current.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !micOn;
-            setMic(!micOn);
-        }
+    if (localStream) {
+        localStream.getAudioTracks().forEach(t => t.enabled = !micOn);
+        setMic(!micOn);
     }
   };
 
   const toggleVideo = () => {
-    if (localStreamRef.current) {
-        const videoTrack = localStreamRef.current.getVideoTracks()[0];
-        if (videoTrack) {
-            videoTrack.enabled = !videoOn;
-            setVideo(!videoOn);
-        }
+    if (localStream) {
+        localStream.getVideoTracks().forEach(t => t.enabled = !videoOn);
+        setVideo(!videoOn);
     }
   };
 
   return (
     <div className="flex flex-col md:flex-row h-full bg-slate-950 rounded-2xl overflow-hidden text-white relative border border-white/5 shadow-2xl">
-      {/* Video Grid */}
       <div className="flex-1 flex flex-col relative min-h-0 bg-slate-900/50">
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6 overflow-auto">
-            {/* Local Stream */}
             <div className="relative aspect-video bg-slate-800 rounded-2xl border border-white/5 overflow-hidden shadow-2xl group">
                 <video
                     ref={localVideoRef}
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover mirror"
+                    className="w-full h-full object-cover scale-x-[-1]"
                 />
                 <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-xl px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 shadow-lg">
                     You {isHost && "(Host)"}
@@ -265,13 +276,11 @@ export function VideoCall({ channelName, onLeave }: { channelName: string; onLea
                 )}
             </div>
 
-            {/* Remote Streams */}
             {Object.entries(remoteStreams).map(([uid, stream]) => (
                 <RemoteVideo key={uid} stream={stream} label={isHost ? `Student ${uid.slice(-4)}` : "Lecturer"} />
             ))}
         </div>
 
-        {/* Floating Controls */}
         <div className="p-8 flex items-center justify-center gap-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
             <Button
                 variant="outline"
@@ -320,7 +329,6 @@ export function VideoCall({ channelName, onLeave }: { channelName: string; onLea
         </div>
       </div>
 
-      {/* Sidebar Chat */}
       {showChat && (
           <div className="w-full md:w-96 bg-slate-950/95 backdrop-blur-2xl border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-500 ease-out shadow-2xl">
               <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
@@ -371,7 +379,7 @@ function RemoteVideo({ stream, label }: { stream: MediaStream; label: string }) 
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
-        if (videoRef.current) {
+        if (videoRef.current && stream) {
             videoRef.current.srcObject = stream;
         }
     }, [stream]);

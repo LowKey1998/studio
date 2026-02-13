@@ -136,14 +136,13 @@ export default function StudentCoursesPage() {
                                 .filter(Boolean)
                                 .join(', ') || userMap.get(courseInfo.lecturerId) || 'N/A';
 
-                            // Assignment Alert Logic
                             const courseAssignments = allAssignments[courseId] || allAssignments[`${courseId}_${semesterId}`] || {};
                             let soon = 0;
                             let late = 0;
                             let earliestDueDate = null;
 
                             Object.values(courseAssignments).forEach((a: any) => {
-                                if (a.submissions?.[currentUser.uid]) return; // Skip if submitted
+                                if (a.submissions?.[currentUser.uid]) return; 
                                 
                                 const dueDate = parseISO(a.dueDate);
                                 const today = startOfDay(new Date());

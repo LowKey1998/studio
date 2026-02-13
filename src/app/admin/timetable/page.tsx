@@ -86,17 +86,14 @@ function TimetableManagementComponent() {
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
-    // Filter states
     const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
 
-    // Derived State
     const [resolvedSemester, setResolvedSemester] = React.useState<Semester | null>(null);
     const [academicStanding, setAcademicStanding] = React.useState<string | null>(null);
 
-    // Add/Edit Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
     const [editingEntry, setEditingEntry] = React.useState<TimetableEntry | null>(null);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
@@ -110,7 +107,6 @@ function TimetableManagementComponent() {
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
 
-    // Deletion State
     const [entryToDelete, setEntryToDelete] = React.useState<TimetableEntry | null>(null);
 
     const { toast } = useToast();
@@ -136,7 +132,7 @@ function TimetableManagementComponent() {
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
                 case 3: setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 4: break; // Handled below
+                case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
                     days: data.days || defaultDays,
@@ -207,7 +203,6 @@ function TimetableManagementComponent() {
         };
     }, []);
 
-    // Resolve current semester based on intake selection
     React.useEffect(() => {
         if (viewTarget === 'master' || !calendarSettings) {
             setResolvedSemester(null);
@@ -444,7 +439,7 @@ function TimetableManagementComponent() {
                                     {viewTarget === 'master' && (
                                         <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                     )}
-                                    <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={isCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
+                                    <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
                                     
                                     <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
                                         <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
