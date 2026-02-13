@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon, Filter, GraduationCap, DollarSign } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon, Filter, GraduationCap, DollarSign, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -19,7 +18,7 @@ import {
     TableHead, 
     TableHeader, 
     TableRow 
-} from '@/components/ui/table';
+} from '@/components/table';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -699,6 +698,15 @@ export default function RegistrationManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
+                    <Alert className="bg-blue-50 border-blue-200 mb-6">
+                        <Route className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-blue-800 font-bold">Curriculum Integration</AlertTitle>
+                        <AlertDescription className="text-blue-700 text-xs leading-relaxed">
+                            The course lists below are dynamically linked to the <strong>Course Path Builder</strong>. 
+                            Opening a semester for registration will present students with the specific courses defined in their path.
+                        </AlertDescription>
+                    </Alert>
+
                     {loading ? <Skeleton className="h-48 w-full" /> : 
                     <Accordion type="multiple" defaultValue={allIntakes.map(i => i.id)} className="w-full">
                         {allIntakes.map(intake => (
@@ -722,7 +730,14 @@ export default function RegistrationManagementPage() {
 
                                         return (
                                             <Card key={programme.id} className="bg-muted/50 mb-4">
-                                                <CardHeader><CardTitle className="text-base">{programme.name}</CardTitle></CardHeader>
+                                                <CardHeader className="flex flex-row items-center justify-between">
+                                                    <CardTitle className="text-base">{programme.name}</CardTitle>
+                                                    <Button variant="ghost" size="sm" asChild className="text-primary font-bold">
+                                                        <Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}>
+                                                            Edit Curriculum Path <ChevronRight className="ml-1 h-4 w-4" />
+                                                        </Link>
+                                                    </Button>
+                                                </CardHeader>
                                                 <CardContent className="space-y-4">
                                                     {sortedSemesters.map(({ semId, semData, semesterDetails }) => {
                                                         const semDetails = semesterDetails!;
@@ -1027,3 +1042,4 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
