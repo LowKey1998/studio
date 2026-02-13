@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon, Filter } from 'lucide-react';
+import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon, Filter, GraduationCap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -303,10 +302,9 @@ export default function RegistrationManagementPage() {
 
     // Bulk deadline state
     const [isBulkDeadlineOpen, setIsBulkDeadlineOpen] = React.useState(false);
-    const [bulkSelectedSemesters, setBulkSelectedSemesters] = React.useState<Record<string, boolean>>({});
+    const [bulkSelectedProgrammeId, setBulkSelectedProgrammeId] = React.useState('');
     const [bulkSelectedPlanId, setBulkSelectedPlanId] = React.useState('');
     const [bulkDeadlineDates, setBulkDeadlineDates] = React.useState<Record<number, Date | undefined>>({});
-    const [bulkProgrammeFilter, setBulkProgrammeFilter] = React.useState('all');
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -443,12 +441,28 @@ export default function RegistrationManagementPage() {
         }
     };
 
+    const getDeadlineSummary = (semester: Semester) => {
+        const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
+        const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
+        const summary: { title: string; date: string | null }[] = [];
+        let isMissing = false;
+
+        plans.forEach(plan => {
+            for (let i = 0; i < plan.installments; i++) {
+                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
+                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim());
+                if (!event) isMissing = true;
+                summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
+            }
+        });
+
+        return { summary, isMissing, hasPlans: plans.length > 0 };
+    };
+
     const handleSaveBulkDeadlines = async () => {
-        const selectedSemIds = Object.keys(bulkSelectedSemesters).filter(id => bulkSelectedSemesters[id]);
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
-        
-        if (selectedSemIds.length === 0 || !plan) {
-            toast({ variant: 'destructive', title: 'Missing Selections', description: 'Please select semesters and a payment plan.' });
+        if (!bulkSelectedProgrammeId || !plan) {
+            toast({ variant: 'destructive', title: 'Missing Selections', description: 'Please select a programme and a payment plan.' });
             return;
         }
 
@@ -458,12 +472,18 @@ export default function RegistrationManagementPage() {
             return;
         }
 
+        const targetSemIds = semestersByProgramme[bulkSelectedProgrammeId]?.map(s => s.id) || [];
+        if (targetSemIds.length === 0) {
+            toast({ variant: 'destructive', title: 'No Semesters Found', description: 'No active semesters found for the selected programme.' });
+            return;
+        }
+
         setSaving(true);
         try {
             const updates: Record<string, any> = {};
             const existingEvents = Object.entries(calendarEvents).map(([id, data]) => ({ id, ...(data as any) }));
 
-            for (const semId of selectedSemIds) {
+            for (const semId of targetSemIds) {
                 const semester = semesters.find(s => s.id === semId);
                 if (!semester) continue;
 
@@ -488,9 +508,9 @@ export default function RegistrationManagementPage() {
             }
 
             await update(ref(db), updates);
-            toast({ title: 'Bulk Deadlines Applied', description: `Updated ${selectedSemIds.length} semester(s).` });
+            toast({ title: 'Bulk Deadlines Applied', description: `Updated ${targetSemIds.length} semester(s) for the selected programme.` });
             setIsBulkDeadlineOpen(false);
-            setBulkSelectedSemesters({});
+            setBulkSelectedProgrammeId('');
             setBulkSelectedPlanId('');
             setBulkDeadlineDates({});
         } catch (e: any) {
@@ -503,24 +523,6 @@ export default function RegistrationManagementPage() {
     const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
         setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
         setIsHistoryDialogOpen(true);
-    };
-
-    const getDeadlineSummary = (semester: Semester) => {
-        const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
-        const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
-        const summary: { title: string; date: string | null }[] = [];
-        let isMissing = false;
-
-        plans.forEach(plan => {
-            for (let i = 0; i < plan.installments; i++) {
-                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
-                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim());
-                if (!event) isMissing = true;
-                summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
-            }
-        });
-
-        return { summary, isMissing, hasPlans: plans.length > 0 };
     };
 
     const globalMissingDeadlines = React.useMemo(() => {
@@ -536,7 +538,6 @@ export default function RegistrationManagementPage() {
         allProgrammes.forEach(p => result[p.id] = []);
         
         semesters.forEach(s => {
-            // Find which programme(s) use this semester in their course path
             const pathsUsingSem = allCoursePaths.filter(path => path.semesters && path.semesters[s.id]);
             pathsUsingSem.forEach(path => {
                 if (!result[path.programmeId].find(existing => existing.id === s.id)) {
@@ -780,57 +781,66 @@ export default function RegistrationManagementPage() {
             <Dialog open={isBulkDeadlineOpen} onOpenChange={setIsBulkDeadlineOpen}>
                 <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Bulk Update Deadlines</DialogTitle>
-                        <DialogDescription>Apply a payment plan and its deadlines to multiple semesters at once.</DialogDescription>
+                        <DialogTitle>Bulk Update Deadlines by Programme</DialogTitle>
+                        <DialogDescription>Select a programme to apply a common payment plan and deadlines to all its active semesters across all intakes.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 py-4 space-y-6">
                         <div className="grid md:grid-cols-2 gap-6">
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-base font-bold">1. Select Semesters</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Filter className="h-3 w-3 text-muted-foreground" />
-                                        <Select value={bulkProgrammeFilter} onValueChange={setBulkProgrammeFilter}>
-                                            <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">All Programmes</SelectItem>
-                                                {allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-base font-bold">1. Select Target Programme</Label>
+                                    <Select value={bulkSelectedProgrammeId} onValueChange={setBulkSelectedProgrammeId}>
+                                        <SelectTrigger className="bg-background shadow-sm">
+                                            <SelectValue placeholder="Select programme..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                                <ScrollArea className="h-64 border rounded-md p-2 bg-muted/10">
-                                    <div className="space-y-2">
-                                        {Object.entries(semestersByProgramme)
-                                            .filter(([pId]) => bulkProgrammeFilter === 'all' || pId === bulkProgrammeFilter)
-                                            .map(([pId, sems]) => {
-                                                if (sems.length === 0) return null;
-                                                return (
-                                                    <div key={pId} className="space-y-1">
-                                                        <p className="text-[10px] font-bold text-primary uppercase tracking-wider px-1">{allProgrammes.find(p=>p.id===pId)?.name}</p>
-                                                        {sems.map(sem => (
-                                                            <div key={sem.id} className="flex items-center space-x-2 p-1 hover:bg-white/50 rounded transition-colors">
-                                                                <Checkbox 
-                                                                    id={`bulk-sem-${sem.id}`} 
-                                                                    checked={!!bulkSelectedSemesters[sem.id]}
-                                                                    onCheckedChange={() => setBulkSelectedSemesters(prev => ({...prev, [sem.id]: !prev[sem.id]}))}
-                                                                />
-                                                                <Label htmlFor={`bulk-sem-${sem.id}`} className="text-xs cursor-pointer">{sem.name}</Label>
+
+                                {bulkSelectedProgrammeId && (
+                                    <div className="space-y-3 animate-in fade-in slide-in-from-left-2">
+                                        <div className="flex items-center gap-2 text-primary">
+                                            <GraduationCap className="h-4 w-4" />
+                                            <Label className="text-xs font-black uppercase tracking-wider">Affected Semesters & Status</Label>
+                                        </div>
+                                        <ScrollArea className="h-64 border rounded-xl p-2 bg-muted/10">
+                                            <div className="space-y-2">
+                                                {semestersByProgramme[bulkSelectedProgrammeId]?.map(sem => {
+                                                    const { isMissing, hasPlans } = getDeadlineSummary(sem);
+                                                    return (
+                                                        <div key={sem.id} className="flex items-center justify-between p-3 rounded-lg border bg-background shadow-sm">
+                                                            <div className="space-y-0.5">
+                                                                <p className="text-xs font-bold leading-none">{sem.name}</p>
+                                                                <p className="text-[10px] text-muted-foreground font-medium">Year {sem.year}, Sem {sem.semesterInYear}</p>
                                                             </div>
-                                                        ))}
-                                                        <Separator className="my-2" />
-                                                    </div>
-                                                )
-                                            })}
+                                                            {hasPlans ? (
+                                                                isMissing ? (
+                                                                    <Badge variant="destructive" className="h-5 px-2 text-[8px] uppercase font-black bg-orange-100 text-orange-700 border-orange-200">Missing Deadlines</Badge>
+                                                                ) : (
+                                                                    <Badge variant="outline" className="h-5 px-2 text-[8px] uppercase font-black text-green-600 border-green-600">Deadlines Set</Badge>
+                                                                )
+                                                            ) : (
+                                                                <Badge variant="secondary" className="h-5 px-2 text-[8px] uppercase font-black">No Plans</Badge>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {(!semestersByProgramme[bulkSelectedProgrammeId] || semestersByProgramme[bulkSelectedProgrammeId].length === 0) && (
+                                                    <p className="text-xs text-muted-foreground text-center py-10 italic">No active semesters found for this programme.</p>
+                                                )}
+                                            </div>
+                                        </ScrollArea>
                                     </div>
-                                </ScrollArea>
+                                )}
                             </div>
 
                             <div className="space-y-6">
                                 <div className="space-y-3">
-                                    <Label className="text-base font-bold">2. Select Payment Plan</Label>
+                                    <Label className="text-base font-bold">2. Select Common Payment Plan</Label>
                                     <Select value={bulkSelectedPlanId} onValueChange={setBulkSelectedPlanId}>
-                                        <SelectTrigger><SelectValue placeholder="Select plan..." /></SelectTrigger>
+                                        <SelectTrigger className="bg-background shadow-sm"><SelectValue placeholder="Select plan..." /></SelectTrigger>
                                         <SelectContent>
                                             {allPaymentPlans.filter(p => !p.archived).map(p => (
                                                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -840,16 +850,19 @@ export default function RegistrationManagementPage() {
                                 </div>
 
                                 {bulkSelectedPlanId && (
-                                    <div className="space-y-4">
-                                        <Label className="text-base font-bold">3. Set Due Dates</Label>
-                                        <div className="grid gap-4 border rounded-lg p-4 bg-background shadow-inner">
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-2">
+                                        <div className="flex items-center gap-2 text-primary">
+                                            <CalendarDays className="h-4 w-4" />
+                                            <Label className="text-xs font-black uppercase tracking-wider">3. Define Installment Dates</Label>
+                                        </div>
+                                        <div className="grid gap-4 border-2 border-primary/10 rounded-xl p-4 bg-background shadow-inner">
                                             {Array.from({ length: allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0 }).map((_, i) => (
                                                 <div key={i} className="flex flex-col gap-2">
-                                                    <span className="text-xs font-bold uppercase text-muted-foreground">{getOrdinalSuffix(i + 1)} Installment</span>
+                                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{getOrdinalSuffix(i + 1)} Installment Due Date</span>
                                                     <Popover>
                                                         <PopoverTrigger asChild>
-                                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !bulkDeadlineDates[i] && "text-muted-foreground")}>
-                                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal border-primary/20", !bulkDeadlineDates[i] && "text-muted-foreground")}>
+                                                                <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                                                                 {bulkDeadlineDates[i] ? format(bulkDeadlineDates[i]!, 'PPP') : <span>Pick a date</span>}
                                                             </Button>
                                                         </PopoverTrigger>
@@ -867,9 +880,12 @@ export default function RegistrationManagementPage() {
                     </div>
                     <DialogFooter className="border-t pt-4">
                         <Button variant="outline" onClick={() => setIsBulkDeadlineOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSaveBulkDeadlines} disabled={saving || !bulkSelectedPlanId}>
+                        <Button 
+                            onClick={handleSaveBulkDeadlines} 
+                            disabled={saving || !bulkSelectedPlanId || !bulkSelectedProgrammeId || Object.keys(bulkDeadlineDates).length < (allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0)}
+                        >
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            Apply Plan to Selected
+                            Apply Programme Deadlines
                         </Button>
                     </DialogFooter>
                 </DialogContent>
