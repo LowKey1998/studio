@@ -128,7 +128,8 @@ export default function StudentCoursesPage() {
                         };
                     }
                     
-                    for (const courseId of (registration.courses || [])) {
+                    const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses);
+                    for (const courseId of coursesArr) {
                         const courseInfo = coursesData[courseId];
                         if (courseInfo) {
                             const lecturerNames = (courseInfo.lecturerIds || [])
@@ -259,16 +260,16 @@ export default function StudentCoursesPage() {
                                         </div>
 
                                         {(course.assignmentStatus?.pastDue || 0) > 0 && (
-                                            <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs font-bold">
+                                            <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-[10px] font-bold">
                                                 <AlertCircle className="h-4 w-4" />
-                                                {course.assignmentStatus?.pastDue} Assignment(s) OVERDUE
+                                                <span>{course.assignmentStatus?.pastDue} OVERDUE (due {format(parseISO(course.assignmentStatus?.earliestDueDate!), 'MMM dd')})</span>
                                             </div>
                                         )}
 
                                         {(course.assignmentStatus?.dueSoon || 0) > 0 && (
-                                            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
+                                            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-bold">
                                                 <Clock className="h-4 w-4" />
-                                                {course.assignmentStatus?.dueSoon} Pending Assignment(s) Due Soon
+                                                <span>{course.assignmentStatus?.dueSoon} PENDING (due {format(parseISO(course.assignmentStatus?.earliestDueDate!), 'MMM dd')})</span>
                                             </div>
                                         )}
                                     </CardContent>

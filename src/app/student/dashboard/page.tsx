@@ -74,7 +74,14 @@ export default function StudentDashboardPage() {
     const [intakeName, setIntakeName] = React.useState('');
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
     const [financialWarning, setFinancialWarning] = React.useState<{ message: string; restriction: boolean } | null>(null);
+    const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     const { toast } = useToast();
+
+    React.useEffect(() => {
+        onValue(ref(db, '.info/serverTimeOffset'), (snap) => setServerTimeOffset(snap.val() || 0));
+    }, []);
+
+    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
     React.useEffect(() => {
         if (!user) return;
@@ -115,7 +122,7 @@ export default function StudentDashboardPage() {
                 if (intakeStartStr) {
                     const state = calculateAcademicState(
                         intakeStartStr, 
-                        new Date(), 
+                        getCurrentServerDate(), 
                         calSettings.standardCycles, 
                         Object.values(calSettings.anomalies || {})
                     );
@@ -155,7 +162,7 @@ export default function StudentDashboardPage() {
                             Object.values(courseAssignments).forEach((a: any) => {
                                 if (a.submissions?.[user.uid]) return;
                                 const due = parseISO(a.dueDate);
-                                const today = startOfDay(new Date());
+                                const today = startOfDay(getCurrentServerDate());
                                 const diff = differenceInCalendarDays(due, today);
                                 if (isBefore(due, today)) late++;
                                 else if (diff <= 3) soon++;
@@ -203,12 +210,12 @@ export default function StudentDashboardPage() {
                     .filter((ev: any) => ev.semester === semester.name && ev.title.includes('Deadline'))
                     .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
-                const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), new Date()));
+                const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), getCurrentServerDate()));
                 if (nextDeadline) {
                     setPaymentDeadline({ title: nextDeadline.title.split(' - ')[0], date: nextDeadline.date });
                 }
 
-                const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
+                const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(getCurrentServerDate(), addDays(parseISO(ev.date), grace)));
                 if (passedDeadlines.length > 0) {
                     const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
                     if (paidPercentage < threshold) {
@@ -220,7 +227,7 @@ export default function StudentDashboardPage() {
                 }
             }
 
-            const todayName = daysOfWeek[new Date().getDay()];
+            const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const schedule: TimetableEntry[] = [];
             for (const semId in allTimetables) {
                 const isMaster = semId === 'master';
@@ -247,7 +254,7 @@ export default function StudentDashboardPage() {
 
             const deadlines: DeadlineEvent[] = [];
             Object.values(allCalendarEvents).forEach((ev: any) => {
-                if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(new Date())) {
+                if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(getCurrentServerDate())) {
                     deadlines.push({ title: ev.title, date: ev.date, type: 'payment' });
                 }
             });
@@ -273,7 +280,7 @@ export default function StudentDashboardPage() {
         });
 
         return () => unsub();
-    }, [user, userProfile, toast]);
+    }, [user, userProfile, toast, serverTimeOffset]);
 
     if (authLoading || loading) return <Skeleton className="h-screen w-full" />;
 
@@ -333,7 +340,7 @@ export default function StudentDashboardPage() {
                     <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
                         <div>
                             <CardTitle className="font-headline">Daily Schedule</CardTitle>
-                            <CardDescription>{format(new Date(), 'EEEE, MMMM do')}</CardDescription>
+                            <CardDescription>{format(getCurrentServerDate(), 'EEEE, MMMM do')}</CardDescription>
                         </div>
                         <Button variant="ghost" size="sm" asChild className="text-primary font-bold"><Link href="/student/timetable">Full View <ChevronRight className="h-4 w-4"/></Link></Button>
                     </CardHeader>

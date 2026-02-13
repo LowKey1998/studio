@@ -54,7 +54,7 @@ type TimetableEntry = {
     startTime: string;
     endTime: string;
     venue: string;
-    isOnline?: boolean;
+    isLiveSession?: boolean;
 };
 
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
@@ -102,7 +102,7 @@ function TimetableManagementComponent() {
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
     const [venue, setVenue] = React.useState('');
-    const [isOnline, setIsOnline] = React.useState(false);
+    const [isLiveSession, setIsLiveSession] = React.useState(false);
     
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
@@ -269,8 +269,8 @@ function TimetableManagementComponent() {
                 day, 
                 startTime, 
                 endTime, 
-                venue: isOnline ? 'Online Session' : (venue || 'TBA'), 
-                isOnline,
+                venue: isLiveSession ? 'Online Session' : (venue || 'TBA'), 
+                isLiveSession,
                 intakeName 
             };
 
@@ -335,7 +335,7 @@ function TimetableManagementComponent() {
     };
 
     const resetAddForm = () => {
-        setEditingEntry(null); setSelectedCourseId(''); setSelectedIntakeId(''); setDay(''); setStartTime(''); setEndTime(''); setVenue(''); setCourseSearch(''); setIsOnline(false);
+        setEditingEntry(null); setSelectedCourseId(''); setSelectedIntakeId(''); setDay(''); setStartTime(''); setEndTime(''); setVenue(''); setCourseSearch(''); setIsLiveSession(false);
     };
 
     const handleCellClick = (dayName: string, slot: TimeSlot) => {
@@ -413,12 +413,12 @@ function TimetableManagementComponent() {
                                     <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal">{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
                                     
                                     <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
-                                        <Switch id="is-online" checked={isOnline} onCheckedChange={setIsOnline} />
+                                        <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
                                         <div className="space-y-0.5">
-                                            <Label htmlFor="is-online" className="text-sm font-bold flex items-center gap-2">
+                                            <Label htmlFor="is-live" className="text-sm font-bold flex items-center gap-2">
                                                 <Video className="h-4 w-4 text-primary"/> Online Video Session
                                             </Label>
-                                            <p className="text-[10px] text-muted-foreground leading-tight italic">Enables Agora.io video bridge for this specific lecture session.</p>
+                                            <p className="text-[10px] text-muted-foreground leading-tight italic">Flags this session as an online class. Students can join via video call.</p>
                                         </div>
                                     </div>
 
@@ -426,7 +426,7 @@ function TimetableManagementComponent() {
                                         <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
                                         <div className="space-y-1">
                                             <Label>Venue</Label>
-                                            {isOnline ? (
+                                            {isLiveSession ? (
                                                 <div className="h-10 flex items-center px-3 border rounded-md bg-muted/50 text-xs font-bold text-primary italic">
                                                     <Monitor className="h-3 w-3 mr-2"/> DIGITAL ROOM
                                                 </div>
@@ -499,7 +499,7 @@ function TimetableManagementComponent() {
                                                                     key={eIdx} 
                                                                     className={cn(
                                                                         "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                        s.entry.isOnline ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20"
+                                                                        s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20"
                                                                     )}
                                                                     onClick={(e) => e.stopPropagation()} 
                                                                 >
@@ -507,7 +507,7 @@ function TimetableManagementComponent() {
                                                                         <div className="flex-1">
                                                                             <div className="flex items-center gap-1">
                                                                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
-                                                                                {s.entry.isOnline && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
+                                                                                {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
                                                                             </div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
                                                                                 <MapPin className="h-2 w-2" /> {s.entry.venue}
@@ -520,7 +520,7 @@ function TimetableManagementComponent() {
                                                                                 variant="ghost" 
                                                                                 size="icon" 
                                                                                 className="h-5 w-5 hover:bg-primary/10" 
-                                                                                onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsOnline(!!s.entry.isOnline); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
+                                                                                onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
                                                                             >
                                                                                 <Pencil className="h-3 w-3" />
                                                                             </Button>

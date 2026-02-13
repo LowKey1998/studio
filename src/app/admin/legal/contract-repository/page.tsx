@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,7 +95,7 @@ export default function ContractRepositoryPage() {
                             <div className="space-y-1"><Label>Counter-Party</Label><Input value={party} onChange={e => setParty(e.target.value)}/></div>
                             <div className="space-y-1"><Label>Contract Type</Label><Input value={type} onChange={e => setType(e.target.value)} placeholder="e.g., Vendor, Employment, Lease"/></div>
                             <div className="space-y-1"><Label>Next Review Date</Label><Input type="date" value={reviewDate} onChange={e => setReviewDate(e.target.value)}/></div>
-                            <div className="space-y-1"><Label>File (PDF)</Label><Input type="file" accept=".pdf" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
+                            <div className="space-y-1"><Label>File (PDF, Word, etc.)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
                         </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>

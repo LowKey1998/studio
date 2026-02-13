@@ -28,6 +28,7 @@ export default function PolicyUploadsPage() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     
+    // Dialog state
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const [title, setTitle] = React.useState('');
     const [category, setCategory] = React.useState('');

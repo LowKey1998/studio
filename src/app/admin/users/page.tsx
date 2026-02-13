@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -27,20 +28,17 @@ import {
     MoreVertical, 
     Search, 
     Loader2, 
-    UserX, 
-    UserCheck, 
     Trash2, 
     Pencil, 
     Mail, 
-    Shield, 
     CheckCircle2, 
     FileUp, 
-    Check, 
     Download, 
     Users, 
     UserPlus, 
     UserCog,
-    KeyRound
+    KeyRound,
+    Clock
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -73,7 +71,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { sendEmail } from '@/ai/flows/send-email-flow';
+import { formatDistanceToNow } from 'date-fns';
 
 type UserProfile = {
     uid: string;
@@ -101,6 +99,8 @@ type UserProfile = {
     educationBackground?: { school: string; qualifications: string; };
     medicalHistory?: string;
     lastLogin?: number;
+    isOnline?: boolean;
+    lastSeen?: number;
 };
 
 type Programme = { id: string; name: string; };
@@ -188,7 +188,7 @@ export default function UserManagementPage() {
             setAllProgrammes(Object.keys(pData).map(id => ({ id, ...pData[id] })));
             setAvailableSubRoles(Object.keys(srData).map(id => ({id, ...srData[id]})));
             setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
-            setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...id })) : []);
+            setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...sem.val()[id] })) : []);
 
             if (u.exists()) {
                 const usersData = u.val();
@@ -561,11 +561,12 @@ export default function UserManagementPage() {
                                     <TableHead>User</TableHead>
                                     <TableHead>Role</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>Last Active</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {tableLoading ? Array.from({length: 8}).map((_, i) => <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-10 w-full"/></TableCell></TableRow>) :
+                                {tableLoading ? Array.from({length: 8}).map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-10 w-full"/></TableCell></TableRow>) :
                                 filteredUsers.map(user => (
                                     <TableRow key={user.uid} className={cn(selectedUids[user.uid] && "bg-muted")}>
                                         <TableCell><Checkbox checked={!!selectedUids[user.uid]} onCheckedChange={() => handleToggleSelection(user.uid)} /></TableCell>
@@ -583,6 +584,23 @@ export default function UserManagementPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell><Badge variant={user.status === 'active' ? 'default' : 'destructive'} className="capitalize">{user.status}</Badge></TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                {user.isOnline ? (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                                        <span className="text-xs font-bold text-green-600">Online Now</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                                                        <Clock className="h-3 w-3" />
+                                                        <span className="text-xs">
+                                                            {user.lastSeen ? formatDistanceToNow(new Date(user.lastSeen), { addSuffix: true }) : 'Never'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
@@ -614,7 +632,7 @@ export default function UserManagementPage() {
                                     <AccordionContent className="space-y-4 pt-2">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-1"><Label>Full Name</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-                                            <div className="space-y-1"><Label>Email</Label><Input value={email} readOnly disabled /></div>
+                                            <div className="space-y-1"><Label>Email</Label><Input value={email} onChange={e => setEmail(e.target.value)} /></div>
                                             <div className="space-y-1"><Label>Phone</Label><Input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} /></div>
                                             <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)} /></div>
                                             <div className="space-y-1"><Label>Gender</Label>
@@ -773,7 +791,7 @@ export default function UserManagementPage() {
                                             </TableCell>
                                             <TableCell><Input value={u.department} onChange={e => handleUpdateBulkRow(i, 'department', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
                                             <TableCell>
-                                                {u.imported ? <Check className="h-4 w-4 text-green-600"/> : (
+                                                {u.imported ? <CheckCircle2 className="h-4 w-4 text-green-600"/> : (
                                                     <Button variant="ghost" size="icon" onClick={() => handleRemoveBulkRow(i)} disabled={isProcessingBulk}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                                 )}
                                             </TableCell>
