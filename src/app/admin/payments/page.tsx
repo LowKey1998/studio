@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -194,12 +193,8 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
-    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
-    const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
-    const [isSageEnabled, setIsSageEnabled] = React.useState(false);
-
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
@@ -217,24 +212,20 @@ export default function PaymentsManagementPage() {
     const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
 
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-    const [userData, setUserData] = React.useState<any>(null);
-
     const { toast } = useToast();
 
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, settingsSnap, unlinkedSnap, intakesSnap, coursesSnap, institutionSnap, calendarSnap, invoicesSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, unlinkedSnap, intakesSnap, coursesSnap, calendarSnap, invoicesSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'settings/integrations')),
                 get(ref(db, 'unlinkedPayments')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'settings/institution')),
                 get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'invoices'))
             ]);
@@ -243,18 +234,12 @@ export default function PaymentsManagementPage() {
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
-            if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
             if (calendarSnap.exists()) setCalendarSettings(calendarSnap.val());
 
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
             } else {
                 setUnlinkedPayments([]);
-            }
-            if (settingsSnap.exists()) {
-                const integrations = settingsSnap.val();
-                setIsQuickBooksEnabled(integrations.quickbooks?.enabled && integrations.quickbooks?.syncInvoices);
-                setIsSageEnabled(integrations.sage?.enabled);
             }
 
             const users = usersSnap.val() || {};
@@ -346,19 +331,10 @@ export default function PaymentsManagementPage() {
     }, [toast]);
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-            if (user) {
-                setCurrentUser(user);
-                const userRef = ref(db, `users/${user.uid}`);
-                onValue(userRef, (snapshot) => {
-                    if (snapshot.exists()) {
-                        setUserData(snapshot.val());
-                    }
-                });
-            }
+        onAuthStateChanged(firebaseAuth, (user) => {
+            if (user) setCurrentUser(user);
         });
         fetchPaymentData();
-        return () => unsubscribe();
     }, [fetchPaymentData]);
 
     const handleAddPaymentRow = () => {
@@ -558,6 +534,26 @@ export default function PaymentsManagementPage() {
         }
     }
 
+    const handleOpenHistory = (p: StudentPaymentInfo) => {
+        setHistoryStudent(p);
+        setIsHistoryOpen(true);
+    };
+
+    const handleRecordPaymentForStudent = (student: StudentPaymentInfo) => {
+        setBulkPaymentRows([{ 
+            key: Date.now(), 
+            userId: student.userId, 
+            semesterId: student.semesterId || undefined,
+            invoiceId: student.invoiceId,
+            totalDue: student.totalDue.toFixed(2),
+            totalPaid: student.totalPaid,
+            amount: '', 
+            comment: '' 
+        }]);
+        setIsHistoryOpen(false);
+        setIsBulkRecordOpen(true);
+    };
+
     const filteredData = React.useMemo(() => {
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -589,26 +585,6 @@ export default function PaymentsManagementPage() {
         doc.setFontSize(18); doc.text("Payments Report", 14, 22);
         autoTable(doc, { head: [tableColumn], body: tableRows, startY: 30 });
         doc.save(`payments_report_${new Date().toISOString().split('T')[0]}.pdf`);
-    };
-
-    const handleOpenHistory = (p: StudentPaymentInfo) => {
-        setHistoryStudent(p);
-        setIsHistoryOpen(true);
-    };
-
-    const handleRecordPaymentForStudent = (student: StudentPaymentInfo) => {
-        setBulkPaymentRows([{ 
-            key: Date.now(), 
-            userId: student.userId, 
-            semesterId: student.semesterId || undefined,
-            invoiceId: student.invoiceId,
-            totalDue: student.totalDue.toFixed(2),
-            totalPaid: student.totalPaid,
-            amount: '', 
-            comment: '' 
-        }]);
-        setIsHistoryOpen(false);
-        setIsBulkRecordOpen(true);
     };
 
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {

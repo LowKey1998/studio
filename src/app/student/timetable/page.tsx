@@ -3,11 +3,11 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { useAuth } from '@/hooks/use-auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { isWithinInterval, parseISO } from 'date-fns';
@@ -30,6 +30,14 @@ type TimetableEntry = {
     semesterName: string;
     lecturerNames: string;
     studentCount: number;
+    intakeName: string;
+};
+
+type MergedEntry = {
+    key: string;
+    entry: TimetableEntry;
+    totalStudents: number;
+    participants: { name: string; standing: string; count: number }[];
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -50,13 +58,14 @@ export default function StudentTimetablePage() {
         if (!user?.uid || !userProfile) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
                 get(ref(db, 'users')),
-                get(ref(db, 'semesters'))
+                get(ref(db, 'semesters')),
+                get(ref(db, 'intakes'))
             ]);
 
             if (!regsSnap.exists()) {
@@ -66,33 +75,16 @@ export default function StudentTimetablePage() {
             }
 
             const allSemesters = semestersSnap.val() || {};
-            const activeRegs = Object.entries(regsSnap.val())
-                .filter(([semId, reg]: [string, any]) => {
-                    const semInfo = allSemesters[semId];
-                    if (!semInfo || semInfo.status === 'Archived') return false;
-                    
-                    // If semester dates are set, check if today is within range
-                    if (semInfo.startDate && semInfo.endDate) {
-                        try {
-                            const today = new Date();
-                            return isWithinInterval(today, { 
-                                start: parseISO(semInfo.startDate), 
-                                end: parseISO(semInfo.endDate) 
-                            });
-                        } catch (e) { return true; }
-                    }
-                    return true;
-                });
+            const allIntakes = intakesSnap.val() || {};
+            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
 
-            if (activeRegs.length === 0) {
-                setTimetable([]);
-                setLoading(false);
-                return;
-            }
-
-            const enrolledCourseIds = new Set<string>();
             const activeSemesterIds = new Set<string>();
-            activeRegs.forEach(([semId, reg]: [string, any]) => {
+            const enrolledCourseIds = new Set<string>();
+
+            Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
+                const semInfo = allSemesters[semId];
+                if (!semInfo || semInfo.status === 'Archived') return;
+                
                 activeSemesterIds.add(semId);
                 if (reg.courses) {
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
@@ -100,18 +92,10 @@ export default function StudentTimetablePage() {
                 }
             });
 
-            // Calculate student counts
-            const allRegsSnap = await get(ref(db, 'registrations'));
-            const allRegs = allRegsSnap.val() || {};
-            const counts: Record<string, Record<string, number>> = {};
-            for (const userId in allRegs) {
-                for (const semId in allRegs[userId]) {
-                    if (allRegs[userId][semId].status === 'Completed' || allRegs[userId][semId].status === 'Pending Payment') {
-                        if (!counts[semId]) counts[semId] = {};
-                        const cArr = Array.isArray(allRegs[userId][semId].courses) ? allRegs[userId][semId].courses : Object.keys(allRegs[userId][semId].courses || {});
-                        cArr.forEach((cid: string) => { counts[semId][cid] = (counts[semId][cid] || 0) + 1; });
-                    }
-                }
+            if (activeSemesterIds.size === 0) {
+                setTimetable([]);
+                setLoading(false);
+                return;
             }
 
             const cData = coursesSnap.val() || {};
@@ -124,12 +108,29 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
+            // Calculate student counts for display
+            const allRegsSnap = await get(ref(db, 'registrations'));
+            const allRegs = allRegsSnap.val() || {};
+            const counts: Record<string, Record<string, number>> = {};
+            for (const uId in allRegs) {
+                for (const sId in allRegs[uId]) {
+                    const reg = allRegs[uId][sId];
+                    if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                        if (!counts[sId]) counts[sId] = {};
+                        const cArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
+                        cArr.forEach((cid: string) => { counts[sId][cid] = (counts[sId][cid] || 0) + 1; });
+                    }
+                }
+            }
+
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
-                // Shared logic: only show from branches the student is active in
-                if (!activeSemesterIds.has(semId)) continue;
+                const isMaster = semId === 'master';
+                // Only show from active semesters or master
+                if (!activeSemesterIds.has(semId) && !isMaster) continue;
 
                 for (const cId in tData[semId]) {
+                    // Only show courses the student is actually taking
                     if (enrolledCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
                         const lecturerNames = (courseInfo.lecturerIds || [])
@@ -138,16 +139,31 @@ export default function StudentTimetablePage() {
                             .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
-                            entries.push({
-                                ...entry,
-                                courseId: cId,
-                                courseCode: courseInfo.code,
-                                courseName: courseInfo.name,
-                                semesterId: semId,
-                                semesterName: allSemesters[semId]?.name || 'Unknown',
-                                lecturerNames,
-                                studentCount: counts[semId]?.[cId] || 0
-                            });
+                            // If it's from master, only show if it matches the student's intake (for separate instances)
+                            // or if it's a shared session.
+                            let shouldInclude = true;
+                            if (isMaster && courseInfo.separateInstance) {
+                                shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
+                            } else if (isMaster && !courseInfo.separateInstance) {
+                                // Shared session from master - always include if enrolled
+                                shouldInclude = true;
+                            } else if (!isMaster) {
+                                // Semester-specific entry - include if it's the student's semester
+                                shouldInclude = activeSemesterIds.has(semId);
+                            }
+
+                            if (shouldInclude) {
+                                entries.push({
+                                    ...entry,
+                                    courseId: cId,
+                                    courseCode: courseInfo.code,
+                                    courseName: courseInfo.name,
+                                    semesterId: semId,
+                                    semesterName: allSemesters[semId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
+                                    lecturerNames,
+                                    studentCount: counts[semId]?.[cId] || 0
+                                });
+                            }
                         });
                     }
                 }
@@ -181,7 +197,7 @@ export default function StudentTimetablePage() {
                     {loading ? (
                         <Skeleton className="h-96 w-full" />
                     ) : !hasSlots ? (
-                        <Alert><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>The administration has not yet published standard time slots.</AlertDescription></Alert>
+                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined by administration.</AlertDescription></Alert>
                     ) : timetable.length === 0 ? (
                         <Alert><Info className="h-4 w-4" /><AlertTitle>No Scheduled Classes</AlertTitle><AlertDescription>You are either not registered for an active semester or your courses haven't been scheduled yet.</AlertDescription></Alert>
                     ) : (
@@ -210,8 +226,7 @@ export default function StudentTimetablePage() {
                                                                     <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
                                                                     <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {entry.venue}</div>
                                                                     <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}</div>
-                                                                    <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {entry.studentCount} Students</div>
-                                                                    <p className="text-[9px] font-medium mt-0.5">{entry.startTime} - {entry.endTime}</p>
+                                                                    <div className="mt-2 text-[9px] font-medium opacity-70 italic">{entry.semesterName}</div>
                                                                 </Link>
                                                             ))}
                                                         </div>

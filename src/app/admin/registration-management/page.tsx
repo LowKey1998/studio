@@ -856,7 +856,7 @@ export default function RegistrationManagementPage() {
                                     })}
                                 </AccordionContent>
                             </AccordionItem>
-                        );
+                            );
                         })}
                     </Accordion>}
                 </CardContent>
