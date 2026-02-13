@@ -13,7 +13,7 @@ import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -64,6 +64,7 @@ type UnlinkedPayment = {
     comment: string;
     date: string;
     semesterId?: string;
+    totalDue?: number;
 };
 
 type Transaction = {
@@ -358,7 +359,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast, allIntakes.length, semesters.length]);
+    }, [toast]);
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
@@ -500,12 +501,16 @@ export default function PaymentsManagementPage() {
                 }
             }
             
-            toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) saved.` });
+            toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) saved successfully.` });
             await fetchPaymentData();
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Failed to record payments', description: e.message });
+            toast({ 
+                variant: 'destructive', 
+                title: 'Error Recording Payment', 
+                description: e.message || 'An unexpected error occurred while saving to the database.' 
+            });
         } finally {
             setFormLoading(false);
         }
@@ -529,7 +534,7 @@ export default function PaymentsManagementPage() {
                  await set(newInvoiceRef, { invoiceId, totalTuition: (linkingPayment as any).totalDue || linkingPayment.amount, dateCreated: new Date().toISOString(), semesterId: selectedLinkSemester });
                  await update(ref(db, `registrations/${selectedLinkStudent}/${selectedLinkSemester}`), { invoiceId });
             }
-            if(!invoiceId || !studentInfo) throw new Error("Could not link to registration.");
+            if(!invoiceId || !studentInfo) throw new Error("Could not link to registration. Ensure student has an active path for this semester.");
 
             const txRef = push(ref(db, 'transactions'));
             await set(txRef, {
@@ -565,7 +570,7 @@ export default function PaymentsManagementPage() {
             toast({ title: "Payment Deleted" });
             fetchPaymentData();
         } catch(e: any) {
-            toast({ variant: 'destructive', title: "Delete Failed" });
+            toast({ variant: 'destructive', title: "Delete Failed", description: e.message });
         } finally {
             setActionLoading(null);
         }
@@ -949,5 +954,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
-    
