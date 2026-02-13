@@ -408,6 +408,7 @@ export default function RegistrationManagementPage() {
     const [users, setUsers] = React.useState<Record<string, any>>({});
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     // Per-semester deadline state
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
@@ -433,7 +434,8 @@ export default function RegistrationManagementPage() {
         const refs = [
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
-            ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'timetables'), ref(db, 'users')
+            ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'timetables'), ref(db, 'users'),
+            ref(db, 'settings/academicCalendar')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -449,8 +451,9 @@ export default function RegistrationManagementPage() {
                 case 8: setCalendarEvents(data); break;
                 case 9: setTimetables(data); break;
                 case 10: setUsers(data); break;
+                case 11: setCalendarSettings(data); break;
             }
-            if(i === 10) setLoading(false);
+            if(i === 11) setLoading(false);
         }));
         return () => unsubs.forEach(unsub => unsub());
     }, []);
@@ -709,9 +712,28 @@ export default function RegistrationManagementPage() {
 
                     {loading ? <Skeleton className="h-48 w-full" /> : 
                     <Accordion type="multiple" defaultValue={allIntakes.map(i => i.id)} className="w-full">
-                        {allIntakes.map(intake => (
+                        {allIntakes.map(intake => {
+                            const intakeStartStr = parseIntakeDate(intake.name);
+                            const currentState = intakeStartStr && calendarSettings ? calculateAcademicState(
+                                intakeStartStr,
+                                new Date(),
+                                calendarSettings.standardCycles,
+                                Object.values(calendarSettings.anomalies || {})
+                            ) : null;
+
+                            return (
                             <AccordionItem value={intake.id} key={intake.id}>
-                                <AccordionTrigger className="font-bold text-xl">{intake.name}</AccordionTrigger>
+                                <AccordionTrigger className="hover:no-underline">
+                                    <div className="flex items-center justify-between w-full pr-4">
+                                        <span className="font-bold text-xl">{intake.name}</span>
+                                        {currentState && (
+                                            <Badge variant="secondary" className="gap-1.5 font-bold h-6">
+                                                <CalendarDays className="h-3 w-3" />
+                                                Current: Year {currentState.year}, Sem {currentState.semester}
+                                            </Badge>
+                                        )}
+                                    </div>
+                                </AccordionTrigger>
                                 <AccordionContent className="space-y-4">
                                     {allProgrammes.map(programme => {
                                         const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
@@ -745,11 +767,23 @@ export default function RegistrationManagementPage() {
                                                         const historyItems = semData.history ? Object.values(semData.history) : [];
                                                         const { summary, isMissing, hasPlans } = getDeadlineSummary(semDetails);
                                                         
+                                                        const isCurrentStanding = currentState && 
+                                                            semDetails.year === currentState.year && 
+                                                            semDetails.semesterInYear === currentState.semester;
+
                                                         return (
-                                                            <div key={semId} className="p-4 border rounded-lg bg-card flex flex-col gap-4">
+                                                            <div key={semId} className={cn(
+                                                                "p-4 border rounded-lg flex flex-col gap-4 transition-all shadow-sm",
+                                                                isCurrentStanding ? "bg-blue-50/30 border-blue-200" : "bg-card"
+                                                            )}>
                                                                 <div className="flex justify-between items-start">
                                                                     <div className="space-y-1">
-                                                                        <Label className="font-bold text-base">{semDetails.name}</Label>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Label className="font-bold text-base">{semDetails.name}</Label>
+                                                                            {isCurrentStanding && (
+                                                                                <Badge className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700 h-5 text-[9px] uppercase font-black">Current Standing</Badge>
+                                                                            )}
+                                                                        </div>
                                                                         <div className="flex flex-wrap gap-2 pt-1">
                                                                             {hasPlans ? (
                                                                                 isMissing ? (
@@ -822,7 +856,8 @@ export default function RegistrationManagementPage() {
                                     })}
                                 </AccordionContent>
                             </AccordionItem>
-                        ))}
+                        );
+                        })}
                     </Accordion>}
                 </CardContent>
                 <CardFooter className="justify-end"><Button onClick={handleSaveChanges} disabled={saving}>Save All Changes</Button></CardFooter>
