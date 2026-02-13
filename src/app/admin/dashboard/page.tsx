@@ -80,9 +80,9 @@ export default function AdminDashboardPage() {
             for (const userId in allInvoices) {
                 for (const invoiceId in allInvoices[userId]) {
                     const inv = allInvoices[userId][invoiceId];
-                    const totalDue = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
+                    const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
                     const totalPaid = Object.values(allTransactions).filter((tx: any) => tx.userId === userId && tx.invoiceId === invoiceId && tx.status === 'successful').reduce((acc, tx: any) => acc + (Number(tx.amount) || 0), 0);
-                    totalOutstanding += Math.max(0, totalDue - totalPaid);
+                    totalOutstanding += Math.max(0, due - totalPaid);
                 }
             }
             for (const userId in allRegistrations) {

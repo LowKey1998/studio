@@ -78,7 +78,6 @@ export default function StudentTimetablePage() {
                 const semInfo = allSemesters[semId];
                 if (!semInfo || semInfo.status === 'Archived') return;
                 
-                // Ensure only Completed or Pending Payment registrations show up
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                     activeSemesterIds.add(semId);
                     if (reg.courses) {
@@ -104,66 +103,46 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // Calculate student counts for display
-            const allRegsSnap = await get(ref(db, 'registrations'));
-            const allRegs = allRegsSnap.val() || {};
-            const counts: Record<string, Record<string, number>> = {};
-            for (const uId in allRegs) {
-                for (const sId in allRegs[uId]) {
-                    const reg = allRegs[uId][sId];
-                    if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                        if (!counts[sId]) counts[sId] = {};
-                        const cArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
-                        cArr.forEach((cid: string) => { counts[sId][cid] = (counts[sId][cid] || 0) + 1; });
-                    }
-                }
-            }
-
-            const entries: TimetableEntry[] = [];
+            const rawEntries: TimetableEntry[] = [];
             for (const semId in tData) {
                 const isMaster = semId === 'master';
-                // Only show from active semesters or the master template
                 if (!activeSemesterIds.has(semId) && !isMaster) continue;
 
-                for (const cId in tData[semId]) {
-                    if (enrolledCourseIds.has(cId)) {
-                        const courseInfo = cData[cId];
+                for (const cid in tData[semId]) {
+                    if (enrolledCourseIds.has(cid)) {
+                        const courseInfo = cData[cid];
                         const lecturerNames = (courseInfo.lecturerIds || [])
                             .map((uid: string) => usersData[uid]?.name)
                             .filter(Boolean)
                             .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
-                        Object.values(tData[semId][cId]).forEach((entry: any) => {
+                        Object.values(tData[semId][cid]).forEach((entry: any) => {
                             let shouldInclude = true;
                             if (isMaster) {
                                 if (courseInfo.separateInstance) {
                                     shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
-                                } else {
-                                    // Shared session from master - always include if enrolled
-                                    shouldInclude = true;
                                 }
                             } else {
-                                // Semester-specific entry - include if it's the student's semester
                                 shouldInclude = activeSemesterIds.has(semId);
                             }
 
                             if (shouldInclude) {
-                                entries.push({
+                                rawEntries.push({
                                     ...entry,
-                                    courseId: cId,
+                                    courseId: cid,
                                     courseCode: courseInfo.code,
                                     courseName: courseInfo.name,
                                     semesterId: semId,
                                     semesterName: allSemesters[semId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
                                     lecturerNames,
-                                    studentCount: counts[semId]?.[cId] || 0
+                                    studentCount: 0 
                                 });
                             }
                         });
                     }
                 }
             }
-            setTimetable(entries);
+            setTimetable(rawEntries);
         } catch (error) {
             console.error(error);
         } finally {
@@ -182,7 +161,7 @@ export default function StudentTimetablePage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="text-primary"/> My Active Timetable</CardTitle>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
                     <CardDescription>Your personalized schedule for current active semesters based on your registrations.</CardDescription>
                 </CardHeader>
             </Card>

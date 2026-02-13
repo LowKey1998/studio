@@ -103,11 +103,12 @@ export default function StudentDashboardPage() {
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
             const allSemesters = semSnap.val() || {};
 
+            let currentIntakeNameVal = '';
             if (userProfile?.intakeId) {
-                const iName = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
-                setIntakeName(iName);
+                currentIntakeNameVal = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
+                setIntakeName(currentIntakeNameVal);
 
-                const intakeStartStr = parseIntakeDate(iName);
+                const intakeStartStr = parseIntakeDate(currentIntakeNameVal);
                 if (intakeStartStr) {
                     const state = calculateAcademicState(
                         intakeStartStr, 
@@ -123,6 +124,7 @@ export default function StudentDashboardPage() {
             let totalPresent = 0;
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
+            let activeSemesterIds = new Set<string>();
             let activeSemesterId: string | null = null;
 
             for (const semId in allRegistrations) {
@@ -134,6 +136,7 @@ export default function StudentDashboardPage() {
                     if (semInfo.status === 'Open') {
                         activeSemesterId = semId;
                     }
+                    activeSemesterIds.add(semId);
 
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
                     coursesArr.forEach((cid: string) => {
@@ -206,11 +209,21 @@ export default function StudentDashboardPage() {
             const todayName = daysOfWeek[new Date().getDay()];
             const schedule: TimetableEntry[] = [];
             for (const semId in allTimetables) {
+                const isMaster = semId === 'master';
+                if (!activeSemesterIds.has(semId) && !isMaster) continue;
+
                 for (const cid in allTimetables[semId]) {
                     if (enrolledIds.has(cid)) {
+                        const courseInfo = allCourses[cid];
                         Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
-                                schedule.push({ ...entry, courseCode: allCourses[cid]?.code, courseName: allCourses[cid]?.name, id: cid });
+                                let shouldInclude = true;
+                                if (isMaster && courseInfo?.separateInstance) {
+                                    shouldInclude = currentIntakeNameVal && entry.intakeName === currentIntakeNameVal;
+                                }
+                                if (shouldInclude) {
+                                    schedule.push({ ...entry, courseCode: courseInfo?.code, courseName: courseInfo?.name, id: cid });
+                                }
                             }
                         });
                     }
@@ -414,7 +427,10 @@ export default function StudentDashboardPage() {
                         </CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((deadline, i) => (
-                                <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm transition-all hover:border-primary/30">
+                                <div key={i} className={cn(
+                                    "flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm transition-all hover:border-primary/30",
+                                    deadline.type === 'payment' ? "border-orange-100" : "border-blue-100"
+                                )}>
                                     <div className="flex justify-between items-start">
                                         <Badge variant="outline" className={cn(
                                             "text-[8px] font-black uppercase tracking-widest px-1.5 h-4",
