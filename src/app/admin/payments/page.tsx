@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -391,42 +390,45 @@ export default function PaymentsManagementPage() {
     
             const newRow = { ...row, [field]: value };
             
-            if (field === 'userId') {
-                newRow.semesterId = undefined;
-                newRow.totalDue = undefined;
-                newRow.invoiceId = undefined;
-                newRow.totalPaid = undefined;
-                
-                if (value === '__UNLINKED__') {
-                    newRow.isUnlinked = true;
-                    newRow.userId = undefined;
-                } else {
-                    newRow.isUnlinked = false;
-                    const student = allStudents.find(s => s.uid === value);
-                    if (student?.intakeId && calendarSettings) {
-                        const intake = allIntakes.find(i => i.id === student.intakeId);
-                        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
-                        if (intakeStartStr) {
-                            const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-                            const matchedSemester = semesters.find(s => s.intakeId === student.intakeId && s.year === state.year && s.semesterInYear === state.semester);
-                            if (matchedSemester) newRow.semesterId = matchedSemester.id;
+            // Only re-calculate logic when triggers change to avoid resetting manual input in Total Due
+            if (field === 'userId' || field === 'semesterId') {
+                if (field === 'userId') {
+                    newRow.semesterId = undefined;
+                    newRow.totalDue = undefined;
+                    newRow.invoiceId = undefined;
+                    newRow.totalPaid = undefined;
+                    
+                    if (value === '__UNLINKED__') {
+                        newRow.isUnlinked = true;
+                        newRow.userId = undefined;
+                    } else {
+                        newRow.isUnlinked = false;
+                        const student = allStudents.find(s => s.uid === value);
+                        if (student?.intakeId && calendarSettings) {
+                            const intake = allIntakes.find(i => i.id === student.intakeId);
+                            const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+                            if (intakeStartStr) {
+                                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+                                const matchedSemester = semesters.find(s => s.intakeId === student.intakeId && s.year === state.year && s.semesterInYear === state.semester);
+                                if (matchedSemester) newRow.semesterId = matchedSemester.id;
+                            }
                         }
                     }
                 }
+        
+                if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
+                    const info = paymentInfos.find(p => p.userId === newRow.userId && p.semesterId === newRow.semesterId);
+                    if (info) {
+                        newRow.totalDue = info.totalDue.toFixed(2);
+                        newRow.totalPaid = info.totalPaid;
+                        newRow.invoiceId = info.invoiceId;
+                    } else {
+                        newRow.totalDue = '';
+                        newRow.totalPaid = 0;
+                        newRow.invoiceId = undefined;
+                    }
+                } 
             }
-    
-            if (!newRow.isUnlinked && newRow.userId && newRow.semesterId) {
-                const info = paymentInfos.find(p => p.userId === newRow.userId && p.semesterId === newRow.semesterId);
-                if (info) {
-                    newRow.totalDue = info.totalDue.toFixed(2);
-                    newRow.totalPaid = info.totalPaid;
-                    newRow.invoiceId = info.invoiceId;
-                } else {
-                    newRow.totalDue = '';
-                    newRow.totalPaid = 0;
-                    newRow.invoiceId = undefined;
-                }
-            } 
     
             return newRow;
         }));
