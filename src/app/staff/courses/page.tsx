@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 type CourseInstance = {
     id: string; // courseId
@@ -26,22 +27,19 @@ type CourseInstance = {
     startTime: string;
     endTime: string;
     venue: string;
-    scheduleKey: string; // Used for merging: courseId + day + time + venue
+    scheduleKey: string;
     separateInstance: boolean;
 };
 
 type MergedCourse = {
     key: string; 
     courseId: string;
-    semesterId: string; // For linking
+    semesterId: string; // First matched semester for linking
     name: string;
     code: string;
     totalStudentCount: number;
-    day: string;
-    startTime: string;
-    endTime: string;
-    venue: string;
-    instances: CourseInstance[];
+    semesterNames: string[];
+    sessions: { day: string; startTime: string; endTime: string; venue: string }[];
     isMerged: boolean;
     separateInstance: boolean;
 };
@@ -80,9 +78,7 @@ export default function StaffCoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const allRegistrations = regsSnap.val() || {};
             const allTimetables = timetablesSnap.val() || {};
-            const allUsers = usersSnap.val() || {};
 
-            // 1. Calculate student counts per course per semester
             const studentCounts: Record<string, Record<string, number>> = {};
             for (const userId in allRegistrations) {
                 for (const semesterId in allRegistrations[userId]) {
@@ -90,7 +86,8 @@ export default function StaffCoursesPage() {
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
                         if (reg.courses) {
                             if (!studentCounts[semesterId]) studentCounts[semesterId] = {};
-                            reg.courses.forEach((courseId: string) => {
+                            const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
+                            coursesArr.forEach((courseId: string) => {
                                 studentCounts[semesterId][courseId] = (studentCounts[semesterId][courseId] || 0) + 1;
                             });
                         }
@@ -98,8 +95,15 @@ export default function StaffCoursesPage() {
                 }
             }
 
-            // 2. Identify active courses assigned to this lecturer that are on the timetable
-            const instances: CourseInstance[] = [];
+            const courseSemesterMap = new Map<string, { 
+                courseId: string, 
+                semId: string, 
+                semName: string, 
+                sessions: { day: string, startTime: string, endTime: string, venue: string }[],
+                studentCount: number,
+                separateInstance: boolean
+            }>();
+
             for (const semId in allTimetables) {
                 const semInfo = allSemesters[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry', status: 'Active' };
                 if (semInfo.status === 'Archived') continue;
@@ -108,99 +112,75 @@ export default function StaffCoursesPage() {
                     const courseData = allCoursesData[courseId];
                     if (!courseData) continue;
 
-                    // Check if lecturer is assigned
                     const lecturerIds = courseData.lecturerIds || [];
                     const isAssigned = (Array.isArray(lecturerIds) && lecturerIds.includes(currentUser.uid)) || (courseData.lecturerId === currentUser.uid);
                     
                     if (isAssigned) {
+                        const key = `${semId}-${courseId}`;
                         const entries = Object.values(allTimetables[semId][courseId]) as any[];
-                        entries.forEach(entry => {
-                            const scheduleKey = `${courseId}-${entry.day}-${entry.startTime}-${entry.venue}`;
-                            instances.push({
-                                id: courseId,
-                                name: courseData.name,
-                                code: courseData.code,
-                                studentCount: studentCounts[semId]?.[courseId] || 0,
-                                semester: semInfo.name,
-                                semesterId: semId,
-                                day: entry.day,
-                                startTime: entry.startTime,
-                                endTime: entry.endTime,
-                                venue: entry.venue,
-                                scheduleKey,
-                                separateInstance: !!courseData.separateInstance
-                            });
+                        
+                        courseSemesterMap.set(key, {
+                            courseId,
+                            semId,
+                            semName: semInfo.name,
+                            sessions: entries.map(e => ({ day: e.day, startTime: e.startTime, endTime: e.endTime, venue: e.venue })),
+                            studentCount: studentCounts[semId]?.[courseId] || 0,
+                            separateInstance: !!courseData.separateInstance
                         });
                     }
                 }
             }
 
-            // 3. Process Merging
             let displayList: MergedCourse[] = [];
+
             if (showMerged) {
-                const mergedMap = new Map<string, MergedCourse>();
-                instances.forEach(instance => {
-                    // Separate instances are NEVER merged into a single view card
-                    if (instance.separateInstance) {
-                        const key = `${instance.semesterId}-${instance.scheduleKey}`;
-                        mergedMap.set(key, {
-                            key,
-                            courseId: instance.id,
-                            semesterId: instance.semesterId,
-                            name: instance.name,
-                            code: instance.code,
-                            totalStudentCount: instance.studentCount,
-                            day: instance.day,
-                            startTime: instance.startTime,
-                            endTime: instance.endTime,
-                            venue: instance.venue,
-                            instances: [instance],
-                            isMerged: false,
-                            separateInstance: true
-                        });
-                    } else if (mergedMap.has(instance.scheduleKey)) {
-                        const existing = mergedMap.get(instance.scheduleKey)!;
-                        existing.instances.push(instance);
-                        existing.totalStudentCount += instance.studentCount;
+                const finalMergeMap = new Map<string, MergedCourse>();
+                
+                courseSemesterMap.forEach((val) => {
+                    const sessionSignature = val.sessions
+                        .sort((a, b) => a.day.localeCompare(b.day) || a.startTime.localeCompare(b.startTime))
+                        .map(s => `${s.day}-${s.startTime}-${s.venue}`)
+                        .join('|');
+                    
+                    const mergeKey = val.separateInstance ? `${val.semId}-${val.courseId}-${sessionSignature}` : `${val.courseId}-${sessionSignature}`;
+
+                    if (finalMergeMap.has(mergeKey)) {
+                        const existing = finalMergeMap.get(mergeKey)!;
+                        existing.totalStudentCount += val.studentCount;
+                        existing.semesterNames.push(val.semName);
                         existing.isMerged = true;
                     } else {
-                        mergedMap.set(instance.scheduleKey, {
-                            key: instance.scheduleKey,
-                            courseId: instance.id,
-                            semesterId: instance.semesterId,
-                            name: instance.name,
-                            code: instance.code,
-                            totalStudentCount: instance.studentCount,
-                            day: instance.day,
-                            startTime: instance.startTime,
-                            endTime: instance.endTime,
-                            venue: instance.venue,
-                            instances: [instance],
+                        finalMergeMap.set(mergeKey, {
+                            key: mergeKey,
+                            courseId: val.courseId,
+                            semesterId: val.semId,
+                            name: allCoursesData[val.courseId].name,
+                            code: allCoursesData[val.courseId].code,
+                            totalStudentCount: val.studentCount,
+                            semesterNames: [val.semName],
+                            sessions: val.sessions,
                             isMerged: false,
-                            separateInstance: false
+                            separateInstance: val.separateInstance
                         });
                     }
                 });
-                displayList = Array.from(mergedMap.values());
+                displayList = Array.from(finalMergeMap.values());
             } else {
-                displayList = instances.map(instance => ({
-                    key: `${instance.semesterId}-${instance.scheduleKey}`,
-                    courseId: instance.id,
-                    semesterId: instance.semesterId,
-                    name: instance.name,
-                    code: instance.code,
-                    totalStudentCount: instance.studentCount,
-                    day: instance.day,
-                    startTime: instance.startTime,
-                    endTime: instance.endTime,
-                    venue: instance.venue,
-                    instances: [instance],
+                displayList = Array.from(courseSemesterMap.values()).map(val => ({
+                    key: `${val.semId}-${val.courseId}`,
+                    courseId: val.courseId,
+                    semesterId: val.semId,
+                    name: allCoursesData[val.courseId].name,
+                    code: allCoursesData[val.courseId].code,
+                    totalStudentCount: val.studentCount,
+                    semesterNames: [val.semName],
+                    sessions: val.sessions,
                     isMerged: false,
-                    separateInstance: instance.separateInstance
+                    separateInstance: val.separateInstance
                 }));
             }
 
-            setCourses(displayList.sort((a,b) => a.name.localeCompare(b.name) || a.startTime.localeCompare(b.startTime)));
+            setCourses(displayList.sort((a,b) => a.name.localeCompare(b.name)));
         } catch (error) {
             console.error(error);
             toast({ variant: 'destructive', title: 'Error', description: "Could not fetch courses." });
@@ -227,12 +207,12 @@ export default function StaffCoursesPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
                         <CardDescription>
-                            Courses from the active timetable where you are assigned as a lecturer.
+                            Your assigned courses and student groupings. Multiple weekly sessions are grouped per card.
                         </CardDescription>
                     </div>
                     <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
@@ -256,22 +236,27 @@ export default function StaffCoursesPage() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2 bg-muted/30 p-3 rounded-md">
-                                <div className="flex items-center gap-2 text-sm">
-                                    <Clock className="h-4 w-4 text-primary" />
-                                    <span className="font-semibold">{course.day}, {course.startTime} - {course.endTime}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <MapPin className="h-4 w-4" />
-                                    <span>{course.venue}</span>
-                                </div>
+                            <div className="space-y-3 bg-muted/30 p-3 rounded-md border border-dashed">
+                                {course.sessions.map((session, sIdx) => (
+                                    <div key={sIdx} className="space-y-1">
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Clock className="h-4 w-4 text-primary" />
+                                            <span className="font-semibold">{session.day}, {session.startTime} - {session.endTime}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <MapPin className="h-4 w-4" />
+                                            <span>{session.venue}</span>
+                                        </div>
+                                        {sIdx < course.sessions.length - 1 && <Separator className="my-2 opacity-50" />}
+                                    </div>
+                                ))}
                             </div>
 
                             <div className="space-y-1">
                                 <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Group(s) / Semester(s)</Label>
                                 <div className="flex flex-wrap gap-1">
-                                    {course.instances.map((inst, idx) => (
-                                        <Badge key={idx} variant="outline" className="text-[10px] bg-background">{inst.semester}</Badge>
+                                    {course.semesterNames.map((name, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-[10px] bg-background">{name}</Badge>
                                     ))}
                                 </div>
                             </div>
