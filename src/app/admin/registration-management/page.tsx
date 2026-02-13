@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, Shi
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
-import { ref, get, set, push, onValue, update, remove, serverTimestamp } from 'firebase/database';
+import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ import {
     TableHead, 
     TableHeader, 
     TableRow 
-} from '@/components/table';
+} from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -1042,4 +1042,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
