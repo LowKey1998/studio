@@ -1,10 +1,10 @@
 "use client";
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
-import { useAuth } from '@/hooks/use-auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Info, MapPin, UserCheck, Users, CalendarDays, Layers } from 'lucide-react';
@@ -31,6 +31,13 @@ type TimetableEntry = {
     lecturerNames: string;
     studentCount: number;
     intakeName: string;
+};
+
+type MergedEntry = {
+    key: string;
+    entry: TimetableEntry;
+    totalStudents: number;
+    participants: { name: string; standing: string; count: number }[];
 };
 
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -218,3 +225,5 @@ export default function StudentTimetablePage() {
         </div>
     );
 }
+
+import { useAuth } from '@/hooks/use-auth';

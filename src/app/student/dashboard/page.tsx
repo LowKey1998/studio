@@ -212,7 +212,7 @@ export default function StudentDashboardPage() {
                 const isMaster = semId === 'master';
                 if (!activeSemesterIds.has(semId) && !isMaster) continue;
 
-                for (const cid in allTimetables[semId]) {
+                for (const cid in tData[semId]) {
                     if (enrolledIds.has(cid)) {
                         const courseInfo = allCourses[cid];
                         Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {

@@ -371,20 +371,38 @@ export default function ApproveRegistrationsPage() {
                     date: new Date().toISOString().split('T')[0],
                     description: `Invoice for ${request.semesterName}`,
                 };
+                
+                // Detailed error handling for server actions to prevent "Unexpected response from server"
                 if(isQuickBooksEnabled) {
-                    await syncInvoiceToQuickbooks(syncData);
-                    toast({ title: 'Synced to QuickBooks' });
+                    try {
+                        await syncInvoiceToQuickbooks(syncData);
+                        toast({ title: 'Synced to QuickBooks' });
+                    } catch (qbError: any) {
+                        console.error("QuickBooks Sync Error:", qbError);
+                        toast({ variant: 'warning', title: 'QuickBooks Sync Postponed', description: qbError.message || 'The registration was approved but QuickBooks synchronization failed.' });
+                    }
                 }
                 if(isSageEnabled) {
-                    await syncInvoiceToSage(syncData as any);
-                    toast({ title: 'Synced to Sage' });
+                    try {
+                        await syncInvoiceToSage(syncData as any);
+                        toast({ title: 'Synced to Sage' });
+                    } catch (sageError: any) {
+                        console.error("Sage Sync Error:", sageError);
+                        toast({ variant: 'warning', title: 'Sage Sync Postponed', description: sageError.message || 'The registration was approved but Sage synchronization failed.' });
+                    }
                 }
 
             } else { 
                 await remove(registrationRef);
                 await remove(invoiceRef);
-                if(isQuickBooksEnabled) await voidQbInvoice(request.invoiceId);
-                // No equivalent Sage void action for now
+                if(isQuickBooksEnabled) {
+                    try {
+                        await voidQbInvoice(request.invoiceId);
+                    } catch (voidError) {
+                        console.warn("Failed to void QB invoice:", voidError);
+                    }
+                }
+                
                 await createNotification(
                     request.userId,
                     `Your course registration for ${request.semesterName} has been declined. Please review and resubmit.`,
@@ -398,6 +416,7 @@ export default function ApproveRegistrationsPage() {
             }
             fetchRequests();
         } catch(error: any) {
+             console.error("Approval Action Error:", error);
              toast({ variant: 'destructive', title: 'Action Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setActionLoading(null); }
     };
@@ -500,7 +519,7 @@ export default function ApproveRegistrationsPage() {
                                                     <Badge variant={statusVariant[request.status]}>{statusText[request.status]}</Badge>
                                                     {type === 'approved' && (
                                                         <AlertDialog>
-                                                            <AlertDialogTrigger asChild><Button size="xs" variant="link" className="h-auto p-0 text-[10px]">Force Enroll</Button></AlertDialogTrigger>
+                                                            <AlertDialogTrigger asChild><Button variant="link" className="h-auto p-0 text-[10px]">Force Enroll</Button></AlertDialogTrigger>
                                                             <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Bypass Payment Policy?</AlertDialogTitle><AlertDialogDescription>This will manually enroll the student regardless of payment status. Use only for cash-verified students.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleForceEnroll(request)}>Enroll Student</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                                                         </AlertDialog>
                                                     )}
@@ -513,19 +532,19 @@ export default function ApproveRegistrationsPage() {
                                             <Label className="text-xs uppercase text-muted-foreground font-bold tracking-widest">Course Selection</Label>
                                             <ul className="space-y-2">
                                                 {currentSelection.map(courseId => allCourses.get(courseId)).filter(Boolean).map(course => {
-                                                    const history = request.academicHistory[course.id];
-                                                    const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course.id)) : false;
+                                                    const history = request.academicHistory[course!.id];
+                                                    const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course!.id)) : false;
                                                     return(
-                                                    <li key={course.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course.id) && !currentSelection.includes(course.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course.id) && currentSelection.includes(course.id) && "bg-green-100 border-green-200")}>
-                                                        <Checkbox id={`${reqId}-${course.id}`} checked={type === 'pending' ? currentSelection.includes(course.id) : request.courseIds.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
-                                                        <label htmlFor={`${reqId}-${course.id}`} className="flex-1 flex flex-col">
-                                                            <div><span className="font-medium">{course.code}</span><span className="text-muted-foreground"> - {course.name}</span></div>
+                                                    <li key={course!.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course!.id) && !currentSelection.includes(course!.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course!.id) && currentSelection.includes(course!.id) && "bg-green-100 border-green-200")}>
+                                                        <Checkbox id={`${reqId}-${course!.id}`} checked={type === 'pending' ? currentSelection.includes(course!.id) : request.courseIds.includes(course!.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course!.id)} disabled={type !== 'pending'}/>
+                                                        <label htmlFor={`${reqId}-${course!.id}`} className="flex-1 flex flex-col">
+                                                            <div><span className="font-medium">{course!.code}</span><span className="text-muted-foreground"> - {course!.name}</span></div>
                                                             <div className='flex gap-2 items-center'>
                                                                 {history && (<Popover><PopoverTrigger asChild><Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='cursor-pointer h-4 px-1 text-[9px]'><History className="mr-1 h-3 w-3"/>{history}</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>Previously {history.toLowerCase()}.</PopoverContent></Popover>)}
                                                                 {isPathDeviation && (<Popover><PopoverTrigger asChild><Badge variant='destructive' className='cursor-pointer h-4 px-1 text-[9px]'><AlertTriangle className="mr-1 h-3 w-3"/>Path Deviation</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>This course is not in the defined path.</PopoverContent></Popover>)}
                                                             </div>
                                                         </label>
-                                                        <span className="font-mono text-right">ZMW {course.cost.toFixed(2)}</span>
+                                                        <span className="font-mono text-right">ZMW {course!.cost.toFixed(2)}</span>
                                                     </li>
                                                 )})}
                                             </ul>
@@ -588,7 +607,7 @@ export default function ApproveRegistrationsPage() {
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="destructive" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Scholarship</Button>
-                        <Button onClick={handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
+                        <Button onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
