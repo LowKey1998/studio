@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -8,7 +9,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardDescription, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand, Users, ShieldAlert } from 'lucide-react';
+import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, ClipboardEdit, Hand, Users, ShieldAlert, MonitorPlay } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
@@ -60,6 +61,7 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         { name: 'Assessment', href: `/staff/courses/${courseId}/assessment`, icon: <ClipboardEdit/> },
         { name: 'Participants', href: `/staff/courses/${courseId}/participants`, icon: <Users/> },
         { name: 'Messages', href: `/staff/courses/${courseId}/messages`, icon: <MessageSquare/> },
+        { name: 'Live Session', href: `/staff/courses/${courseId}/live`, icon: <MonitorPlay/> },
     ];
     
     const checkActive = (href: string) => {

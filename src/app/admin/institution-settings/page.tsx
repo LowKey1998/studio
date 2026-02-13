@@ -1,10 +1,11 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, Trash2, Palette } from 'lucide-react';
+import { Loader2, Save, Wand2, Trash2, Palette, DollarSign, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue } from 'firebase/database';
@@ -13,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import { removeBackground } from '@/ai/flows/remove-background-flow';
 import { Separator } from '@/components/ui/separator';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type NamePart = {
   text: string;
@@ -27,6 +30,7 @@ type Institution = {
   sidebarColor?: string;
   sidebarTextColor?: string;
   nameParts?: NamePart[];
+  billingPolicy?: 'course' | 'semester';
 };
 
 export default function InstitutionSettingsPage() {
@@ -35,7 +39,8 @@ export default function InstitutionSettingsPage() {
         nameParts: [],
         topBarColor: '#ffffff',
         sidebarColor: '#ffffff',
-        sidebarTextColor: '#000000'
+        sidebarTextColor: '#000000',
+        billingPolicy: 'course'
     });
     const [logoFile, setLogoFile] = React.useState<File | null>(null);
     const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
@@ -56,7 +61,8 @@ export default function InstitutionSettingsPage() {
                     topBarColor: data.topBarColor || '#ffffff',
                     sidebarColor: data.sidebarColor || '#ffffff',
                     sidebarTextColor: data.sidebarTextColor || '#000000',
-                    nameParts: data.nameParts || (data.name ? data.name.split(' ').map((word: string) => ({ text: word, color: '#000000' })) : [])
+                    nameParts: data.nameParts || (data.name ? data.name.split(' ').map((word: string) => ({ text: word, color: '#000000' })) : []),
+                    billingPolicy: data.billingPolicy || 'course'
                 });
             }
             setLoading(false);
@@ -161,6 +167,7 @@ export default function InstitutionSettingsPage() {
                 sidebarColor: institution.sidebarColor,
                 sidebarTextColor: institution.sidebarTextColor,
                 nameParts: institution.nameParts,
+                billingPolicy: institution.billingPolicy
             };
 
             await update(settingsRef, updates);
@@ -203,10 +210,45 @@ export default function InstitutionSettingsPage() {
                      <Separator />
 
                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2 text-base font-bold flex items-center gap-2"><DollarSign className="h-4 w-4"/> Tuition & Billing Policy</Label>
+                        <div className="sm:col-span-2 space-y-4">
+                            <Alert className="bg-primary/5 border-primary/20 max-w-2xl">
+                                <Info className="h-4 w-4 text-primary" />
+                                <AlertTitle className="font-bold">Billing Strategy</AlertTitle>
+                                <AlertDescription className="text-xs leading-relaxed italic">
+                                    This setting determines how tuition is calculated for students during registration.
+                                </AlertDescription>
+                            </Alert>
+                            <RadioGroup 
+                                value={institution.billingPolicy || 'course'} 
+                                onValueChange={(val) => setInstitution(p => ({...p, billingPolicy: val as any}))}
+                                className="grid gap-4 max-w-2xl"
+                            >
+                                <div className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                                    <RadioGroupItem value="course" id="policy-course" className="mt-1" />
+                                    <Label htmlFor="policy-course" className="cursor-pointer space-y-1">
+                                        <p className="font-bold">Pay Per Course</p>
+                                        <p className="text-xs text-muted-foreground font-normal leading-snug">Students are billed based on the sum of individual costs for each course they select. Ideal for part-time or flexible credit-based programs.</p>
+                                    </Label>
+                                </div>
+                                <div className="flex items-start space-x-3 p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
+                                    <RadioGroupItem value="semester" id="policy-semester" className="mt-1" />
+                                    <Label htmlFor="policy-semester" className="cursor-pointer space-y-1">
+                                        <p className="font-bold">Flat Semester Fee</p>
+                                        <p className="text-xs text-muted-foreground font-normal leading-snug">Students are billed a fixed tuition amount for the entire programme per semester, regardless of the number of courses selected. Ideal for full-time cohorts.</p>
+                                    </Label>
+                                </div>
+                            </RadioGroup>
+                        </div>
+                     </div>
+
+                     <Separator />
+
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
                         <Label className="pt-2">Institution Logo</Label>
                         <div className="sm:col-span-2 flex items-center gap-4">
                             <div className="w-20 h-20 rounded-md border p-1 flex items-center justify-center bg-muted">
-                                {currentLogoUrl ? (<Image src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" data-ai-hint="logo"/>) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
+                                {currentLogoUrl ? (<img src={currentLogoUrl} alt="Logo Preview" width={80} height={80} className="object-contain" />) : (<span className="text-xs text-muted-foreground">No Logo</span>)}
                             </div>
                             <div className="flex flex-col gap-2">
                                 <Input id="institution-logo" type="file" onChange={handleFileSelect} accept="image/*" className="max-w-xs"/>
@@ -272,7 +314,7 @@ export default function InstitutionSettingsPage() {
                 </CardContent>
                 <CardFooter className="border-t pt-6">
                      <Button type="submit" disabled={saving || loading}>
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2"/>} Save Settings
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 mr-2"/>} Save Settings
                     </Button>
                 </CardFooter>
             </Card>

@@ -1,24 +1,18 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, BookOpen, Route, History, Info, Download, Power, PowerOff, ShieldAlert, Pencil, PlusCircle, Calendar as CalendarIcon, FileText, Trash2, CheckCircle2, AlertCircle, Clock, UserCheck, CalendarDays, BookCopy, UserPlus, Percent, Checkbox as CheckboxIcon, Filter, GraduationCap, DollarSign, ChevronRight } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
-import { 
-    Table, 
-    TableBody, 
-    TableCell, 
-    TableHead, 
-    TableHeader, 
-    TableRow 
-} from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -197,10 +191,10 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
             if (editingSemester) {
                 await update(ref(db, `semesters/${editingSemester.id}`), semesterData);
-                toast({ variant: 'success', title: 'Semester Updated' });
+                toast({ title: 'Semester Updated' });
             } else {
                 await set(push(ref(db, 'semesters')), semesterData);
-                toast({ variant: 'success', title: 'Semester Created' });
+                toast({ title: 'Semester Created' });
             }
             onSaveSuccess();
         } catch (error: any) {
@@ -679,7 +673,7 @@ export default function RegistrationManagementPage() {
                         </ul>
                         <Button 
                             variant="link" 
-                            className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900"
+                            className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900 underline"
                             onClick={() => setIsBulkDeadlineOpen(true)}
                         >
                             Set Programme Deadlines &rarr;
@@ -705,15 +699,6 @@ export default function RegistrationManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Alert className="bg-blue-50 border-blue-200 mb-6">
-                        <Route className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="text-blue-800 font-bold">Curriculum Integration</AlertTitle>
-                        <AlertDescription className="text-blue-700 text-xs leading-relaxed">
-                            The course lists below are dynamically linked to the <strong>Course Path Builder</strong>. 
-                            Opening a semester for registration will present students with the specific courses defined in their path.
-                        </AlertDescription>
-                    </Alert>
-
                     {loading ? <Skeleton className="h-48 w-full" /> : 
                     <Accordion type="multiple" defaultValue={allIntakes.map(i => i.id)} className="w-full">
                         {allIntakes.map(intake => {

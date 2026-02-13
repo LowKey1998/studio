@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -189,7 +190,7 @@ export default function AdminDashboardPage() {
                                     <span className="text-sm"><strong>{missingDeadlinesCount}</strong> semester(s) missing installment deadlines</span>
                                 </div>
                                 <Button size="sm" variant="outline" asChild className="h-8 border-orange-200 hover:bg-orange-100">
-                                    <Link href="/admin/registration-management">Fix Configuration</Link>
+                                    <Link href="/admin/registration-management">Set Programme Deadlines</Link>
                                 </Button>
                             </div>
                         )}
@@ -235,7 +236,7 @@ export default function AdminDashboardPage() {
                         </div>
                     ) : (
                         <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-                            <Calendar className="mx-auto h-12 w-12 opacity-10 mb-2"/>
+                            <Calendar className="mx-auto h-12 w-12 opacity-10 mb-2" />
                             <p>No upcoming programme deadlines scheduled.</p>
                         </div>
                     )}

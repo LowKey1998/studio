@@ -70,7 +70,9 @@ type UserProfile = {
     exemptedCourses?: Record<string, boolean>;
 };
 
-type CalendarEvent = { id: string; title: string; date: string; };
+type InstitutionSettings = {
+    billingPolicy: 'course' | 'semester';
+};
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -96,6 +98,7 @@ export default function RegisterForSemesterPage() {
     const [selectedOptionalFees, setSelectedOptionalFees] = React.useState<string[]>([]);
     const [selectedPaymentPlan, setSelectedPaymentPlan] = React.useState<string>('');
     const [applyScholarship, setApplyScholarship] = React.useState(false);
+    const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester'>('course');
 
     const [availablePaymentPlans, setAvailablePaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [paymentDeadlines, setPaymentDeadlines] = React.useState<string[]>([]);
@@ -159,6 +162,9 @@ export default function RegisterForSemesterPage() {
                 const allSettings = settingsSnap.val() || {};
                 const allProgrammes = programmesSnap.val() || {};
                 const allPaymentPlansData = allSettings.paymentPlans || {};
+                
+                const instSettings: InstitutionSettings = allSettings.institution || { billingPolicy: 'course' };
+                setBillingPolicy(instSettings.billingPolicy);
 
                 const programmeData = allProgrammes[userDataVal.programmeId];
                 if (programmeData) {
@@ -197,6 +203,7 @@ export default function RegisterForSemesterPage() {
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
 
+                // If policy is semester-based, we pre-select and lock all courses
                 const initialSelectedCourses = semesterCourses
                     .map(c => c.id)
                     .filter(id => !userDataVal.exemptedCourses?.[id]);
@@ -239,7 +246,7 @@ export default function RegisterForSemesterPage() {
     }, [selectedPaymentPlan, availablePaymentPlans, semesterDetails]);
 
     const toggleCourseSelection = (courseId: string) => {
-        if (programme?.tuitionFee) return;
+        if (billingPolicy === 'semester') return; // Cannot deselect if on flat fee
         setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
 
@@ -266,7 +273,9 @@ export default function RegisterForSemesterPage() {
             const newInvoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
             const invoiceId = newInvoiceRef.key!;
 
-            const tuitionCost = programme?.tuitionFee ? programme.tuitionFee : selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c => c.id === id)?.cost || 0), 0);
+            const tuitionCost = billingPolicy === 'semester' 
+                ? (programme?.tuitionFee || 0) 
+                : selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c => c.id === id)?.cost || 0), 0);
             
             const mandatoryFeesCost = Object.values(semesterDetails.mandatoryFees || {}).reduce((sum, fee) => sum + fee.amount, 0);
             const optionalFeesCost = selectedOptionalFees.reduce((sum, id) => sum + (semesterDetails.optionalFees?.[id]?.amount || 0), 0);
@@ -334,7 +343,7 @@ export default function RegisterForSemesterPage() {
         )
     }
 
-    const isFlatFee = !!programme?.tuitionFee && programme.tuitionFee > 0;
+    const isLocked = billingPolicy === 'semester';
 
     return (
         <div className="space-y-6">
@@ -347,19 +356,24 @@ export default function RegisterForSemesterPage() {
                 <CardContent className="space-y-6">
                      <div className="space-y-2">
                         <h3 className="font-semibold">Courses for this Semester</h3>
-                        {isFlatFee && <Alert><Info className="h-4 w-4"/><AlertDescription>This programme has a flat semester fee, so all courses below are required and pre-selected.</AlertDescription></Alert>}
+                        {isLocked && (
+                            <Alert className="bg-primary/5 border-primary/20">
+                                <Info className="h-4 w-4 text-primary"/>
+                                <AlertDescription className="text-xs">This programme follows a <strong>Flat Semester Fee</strong> policy. All listed courses are required for the session.</AlertDescription>
+                            </Alert>
+                        )}
                         <div className="grid md:grid-cols-2 gap-2">
                             {coursesForSemester.map(course => (
-                                <div key={course.id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
+                                <div key={course.id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50 shadow-sm">
                                     <Checkbox 
                                         id={course.id} 
                                         checked={selectedCourseIds.includes(course.id)} 
                                         onCheckedChange={() => toggleCourseSelection(course.id)}
-                                        disabled={isFlatFee || !!userData?.exemptedCourses?.[course.id]}
+                                        disabled={isLocked || !!userData?.exemptedCourses?.[course.id]}
                                     />
-                                    <Label htmlFor={course.id} className={`flex-1 ${isFlatFee ? 'cursor-default' : 'cursor-pointer'}`}>
-                                        <p>{course.name}</p>
-                                        <p className="text-xs text-muted-foreground">{course.code} - ZMW {course.cost.toFixed(2)}</p>
+                                    <Label htmlFor={course.id} className={`flex-1 ${isLocked ? 'cursor-default' : 'cursor-pointer'}`}>
+                                        <p className="font-medium">{course.name}</p>
+                                        <p className="text-xs text-muted-foreground">{course.code} {!isLocked && `- ZMW ${course.cost.toFixed(2)}`}</p>
                                     </Label>
                                     {!!userData?.exemptedCourses?.[course.id] && <Badge variant="secondary">Exempted</Badge>}
                                 </div>
@@ -373,7 +387,7 @@ export default function RegisterForSemesterPage() {
                                 <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
                                     <Checkbox id={`mand-${id}`} checked disabled/>
                                     <Label htmlFor={`mand-${id}`} className="flex-1 cursor-default">
-                                        <p>{fee.name} <Badge variant="destructive">Mandatory</Badge></p>
+                                        <p className="text-sm font-medium">{fee.name} <Badge variant="destructive" className="h-4 text-[8px] uppercase">Required</Badge></p>
                                         <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
                                     </Label>
                                 </div>
@@ -382,7 +396,7 @@ export default function RegisterForSemesterPage() {
                                 <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
                                     <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} />
                                     <Label htmlFor={id} className="flex-1 cursor-pointer">
-                                        <p>{fee.name}</p>
+                                        <p className="text-sm font-medium">{fee.name}</p>
                                         <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
                                     </Label>
                                 </div>
@@ -399,32 +413,33 @@ export default function RegisterForSemesterPage() {
                     <Separator />
                      <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <Label>Payment Plan</Label>
+                            <Label className="font-bold">Payment Plan</Label>
                             <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan}>
                                 <SelectTrigger><SelectValue placeholder="Select a payment plan..." /></SelectTrigger>
                                 <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installment{p.installments > 1 ? 's' : ''})</SelectItem>)}</SelectContent>
                             </Select>
-                            <div className="text-xs text-muted-foreground space-y-1 pt-2">
-                                {paymentDeadlines.map(d => <p key={d}>{d}</p>)}
+                            <div className="text-xs text-muted-foreground space-y-1 pt-2 bg-muted/30 p-2 rounded border border-dashed mt-2">
+                                {paymentDeadlines.map(d => <p key={d} className="flex items-center gap-2"><Clock className="h-3 w-3"/> {d}</p>)}
                             </div>
                         </div>
                          <div className="flex items-end">
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-2 p-4 border rounded-lg bg-blue-50/50">
                                 <Checkbox id="apply-scholarship" checked={applyScholarship} onCheckedChange={c => setApplyScholarship(!!c)}/>
-                                <Label htmlFor="apply-scholarship">I have a scholarship (100% Tuition Waiver)</Label>
+                                <Label htmlFor="apply-scholarship" className="cursor-pointer">
+                                    <p className="font-bold text-blue-700">I have a scholarship</p>
+                                    <p className="text-xs text-blue-600">Apply for 100% Tuition Waiver</p>
+                                </Label>
                             </div>
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter className="flex justify-end">
-                    <Button onClick={handleSubmitRegistration} disabled={saving}>
+                <CardFooter className="flex justify-end border-t pt-6">
+                    <Button size="lg" onClick={handleSubmitRegistration} disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                        Complete Registration
+                        Complete & Submit Registration
                     </Button>
                 </CardFooter>
             </Card>
         </div>
     );
 }
-
-    

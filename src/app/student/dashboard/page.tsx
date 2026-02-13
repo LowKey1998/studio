@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -16,7 +17,8 @@ import {
     AlertTriangle,
     ShieldAlert,
     Wallet,
-    MapPin
+    MapPin,
+    AlertCircle
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -24,7 +26,7 @@ import { ref, get, onValue } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Progress } from '@/components/ui/progress';
-import { format, parseISO, startOfDay, isAfter, addDays, isToday } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isToday, differenceInCalendarDays, isBefore } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -39,6 +41,7 @@ type Course = {
     name: string;
     code: string;
     lecturerNames: string;
+    assignmentAlert?: { type: 'soon' | 'late'; count: number };
 };
 
 type TimetableEntry = {
@@ -82,11 +85,11 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap, fSnap, semSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap, fSnap, semSnap, studentAssSnap] = await Promise.all([
                 get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
                 get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
                 get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'quizzes')), get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters'))
+                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -98,10 +101,10 @@ export default function StudentDashboardPage() {
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
             const allAssessments = assSnap.val() || {};
-            const allQuizzes = qSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
             const allSemesters = semSnap.val() || {};
+            const allAssignments = studentAssSnap.val() || {};
 
             let currentIntakeNameVal = '';
             if (userProfile?.intakeId) {
@@ -133,9 +136,7 @@ export default function StudentDashboardPage() {
                 if (!semInfo || semInfo.status === 'Archived') continue;
 
                 if (reg.courses) {
-                    if (semInfo.status === 'Open') {
-                        activeSemesterId = semId;
-                    }
+                    if (semInfo.status === 'Open') activeSemesterId = semId;
                     activeSemesterIds.add(semId);
 
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
@@ -148,11 +149,24 @@ export default function StudentDashboardPage() {
                                 .filter(Boolean)
                                 .join(', ') || allUsers[c.lecturerId]?.name || 'N/A';
 
+                            const courseAssignments = allAssignments[cid] || allAssignments[`${cid}_${semId}`] || {};
+                            let soon = 0;
+                            let late = 0;
+                            Object.values(courseAssignments).forEach((a: any) => {
+                                if (a.submissions?.[user.uid]) return;
+                                const due = parseISO(a.dueDate);
+                                const today = startOfDay(new Date());
+                                const diff = differenceInCalendarDays(due, today);
+                                if (isBefore(due, today)) late++;
+                                else if (diff <= 3) soon++;
+                            });
+
                             currentCourses.push({
                                 id: cid,
                                 name: c.name,
                                 code: c.code,
-                                lecturerNames
+                                lecturerNames,
+                                assignmentAlert: late > 0 ? { type: 'late', count: late } : soon > 0 ? { type: 'soon', count: soon } : undefined
                             });
                         }
                         
@@ -212,7 +226,7 @@ export default function StudentDashboardPage() {
                 const isMaster = semId === 'master';
                 if (!activeSemesterIds.has(semId) && !isMaster) continue;
 
-                for (const cid in tData[semId]) {
+                for (const cid in allTimetables[semId]) {
                     if (enrolledIds.has(cid)) {
                         const courseInfo = allCourses[cid];
                         Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
@@ -235,11 +249,6 @@ export default function StudentDashboardPage() {
             Object.values(allCalendarEvents).forEach((ev: any) => {
                 if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(new Date())) {
                     deadlines.push({ title: ev.title, date: ev.date, type: 'payment' });
-                }
-            });
-            Object.entries(allQuizzes).forEach(([id, q]: [string, any]) => {
-                if (q.startTime && isAfter(parseISO(q.startTime), new Date())) {
-                    deadlines.push({ title: `Quiz: ${q.title}`, date: q.startTime, type: 'quiz', link: `/student/quizzes/${id}` });
                 }
             });
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
@@ -266,23 +275,7 @@ export default function StudentDashboardPage() {
         return () => unsub();
     }, [user, userProfile, toast]);
 
-    if (authLoading || loading) {
-        return (
-            <div className="space-y-6">
-                <div className="flex flex-col gap-2">
-                    <Skeleton className="h-8 w-64" />
-                    <Skeleton className="h-4 w-96" />
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
-                </div>
-                <div className="grid gap-6 md:grid-cols-3">
-                    <Skeleton className="lg:col-span-2 h-96 w-full" />
-                    <Skeleton className="h-96 w-full" />
-                </div>
-            </div>
-        );
-    }
+    if (authLoading || loading) return <Skeleton className="h-screen w-full" />;
 
     return (
         <div className="space-y-8">
@@ -290,27 +283,14 @@ export default function StudentDashboardPage() {
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold tracking-tight font-headline text-primary">Hello, {userProfile?.name?.split(' ')[0]}!</h1>
                     <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">
-                            {userProfile?.programmeName || 'Academic Portal'}
-                        </Badge>
-                        <Badge className="font-bold bg-primary text-primary-foreground">
-                            Intake: {intakeName}
-                        </Badge>
-                        {academicStanding && (
-                            <Badge variant="secondary" className="gap-1.5 font-bold">
-                                <CalendarDays className="h-3 w-3" />
-                                {academicStanding}
-                            </Badge>
-                        )}
+                        <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-primary/5">{userProfile?.programmeName || 'Academic Portal'}</Badge>
+                        <Badge className="font-bold bg-primary text-primary-foreground">Intake: {intakeName}</Badge>
+                        {academicStanding && <Badge variant="secondary" className="gap-1.5 font-bold"><CalendarDays className="h-3 w-3" />{academicStanding}</Badge>}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                        <Link href="/student/registration"><PlusCircle className="mr-2 h-4 w-4"/>Registration</Link>
-                    </Button>
-                    <Button size="sm" asChild>
-                        <Link href="/student/payments"><CreditCard className="mr-2 h-4 w-4"/>Pay Fees</Link>
-                    </Button>
+                    <Button variant="outline" size="sm" asChild><Link href="/student/registration"><PlusCircle className="mr-2 h-4 w-4"/>Registration</Link></Button>
+                    <Button size="sm" asChild><Link href="/student/payments"><CreditCard className="mr-2 h-4 w-4"/>Pay Fees</Link></Button>
                 </div>
             </div>
 
@@ -318,61 +298,32 @@ export default function StudentDashboardPage() {
                 {paymentDeadline && feeBalance > 0 && (
                     <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                <Clock className="h-4 w-4"/> Next Payment Due
-                            </CardTitle>
+                            <CardTitle className="text-sm font-black uppercase text-primary tracking-widest flex items-center gap-2"><Clock className="h-4 w-4"/> Next Payment Due</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <PaymentCountdown deadlineDate={paymentDeadline.date} title={paymentDeadline.title} />
-                        </CardContent>
+                        <CardContent><PaymentCountdown deadlineDate={paymentDeadline.date} title={paymentDeadline.title} /></CardContent>
                     </Card>
                 )}
-
-                <Card className={cn("shadow-md", (!paymentDeadline || feeBalance <= 0) ? "lg:col-span-1" : "")}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Balance</CardTitle>
-                        <Wallet className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>
-                            ZMW {feeBalance.toFixed(2)}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-wider">Outstanding Dues</p>
-                    </CardContent>
-                </Card>
-
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Courses</CardTitle>
-                        <BookOpen className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-black">{enrolledCourses.length}</div>
-                        <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-wider">Active Enrollment</p>
-                    </CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
                 </Card>
-
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Attendance</CardTitle>
-                        <Hand className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        <div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div>
-                        <Progress value={attendanceRate} className="h-1.5" />
-                    </CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardContent><div className="text-2xl font-black">{enrolledCourses.length}</div></CardContent>
+                </Card>
+                <Card className="shadow-md">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Attendance</CardTitle><Hand className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardContent className="space-y-2"><div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div><Progress value={attendanceRate} className="h-1.5" /></CardContent>
                 </Card>
             </div>
 
             {financialWarning && (
-                <Alert variant="destructive" className="border-2 shadow-md animate-in slide-in-from-left-4">
+                <Alert variant="destructive" className="border-2 shadow-md">
                     <ShieldAlert className="h-5 w-5" />
                     <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
                     <AlertDescription className="flex flex-col gap-3">
-                        <p>{financialWarning.message} To avoid academic restrictions, please pay online or contact the finance office.</p>
-                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive hover:bg-destructive/10" asChild>
-                            <Link href="/student/payments">View Invoices & Pay</Link>
-                        </Button>
+                        <p>{financialWarning.message}</p>
+                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive" asChild><Link href="/student/payments">Resolve Now</Link></Button>
                     </AlertDescription>
                 </Alert>
             )}
@@ -384,37 +335,28 @@ export default function StudentDashboardPage() {
                             <CardTitle className="font-headline">Daily Schedule</CardTitle>
                             <CardDescription>{format(new Date(), 'EEEE, MMMM do')}</CardDescription>
                         </div>
-                        <Button variant="ghost" size="sm" asChild className="text-primary font-bold">
-                            <Link href="/student/timetable" className="flex items-center gap-1">
-                                Full View <ChevronRight className="h-4 w-4"/>
-                            </Link>
-                        </Button>
+                        <Button variant="ghost" size="sm" asChild className="text-primary font-bold"><Link href="/student/timetable">Full View <ChevronRight className="h-4 w-4"/></Link></Button>
                     </CardHeader>
                     <CardContent className="pt-6">
                         {todaySchedule.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySchedule.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow">
+                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm">
                                         <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r border-primary/10 pr-4">
                                             <span className="text-sm font-black text-primary">{entry.startTime}</span>
                                             <span className="text-[9px] text-muted-foreground font-bold uppercase">{entry.endTime}</span>
                                         </div>
                                         <div className="flex-1">
                                             <p className="font-bold text-sm">{entry.courseCode}: {entry.courseName}</p>
-                                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
-                                                <MapPin className="h-3 w-3 text-primary/60" /> {entry.venue}
-                                            </div>
+                                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1"><MapPin className="h-3 w-3 text-primary/60" /> {entry.venue}</div>
                                         </div>
-                                        <Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10" asChild>
-                                            <Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4 text-primary"/></Link>
-                                        </Button>
+                                        <Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10" asChild><Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4 text-primary"/></Link></Button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
                             <div className="text-center py-16 text-muted-foreground border-2 border-dashed rounded-xl bg-card">
-                                <Clock className="mx-auto h-12 w-12 opacity-10 mb-2" />
-                                <p className="font-medium">No classes scheduled for today.</p>
+                                <Clock className="mx-auto h-12 w-12 opacity-10 mb-2" /><p className="font-medium">No classes scheduled for today.</p>
                             </div>
                         )}
                     </CardContent>
@@ -422,55 +364,30 @@ export default function StudentDashboardPage() {
 
                 <div className="space-y-6">
                     <Card className="shadow-lg border-l-4 border-l-primary">
-                        <CardHeader className="pb-3 border-b">
-                            <CardTitle className="text-base font-bold">Upcoming Deadlines</CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Deadlines</CardTitle></CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((deadline, i) => (
-                                <div key={i} className={cn(
-                                    "flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm transition-all hover:border-primary/30",
-                                    deadline.type === 'payment' ? "border-orange-100" : "border-blue-100"
-                                )}>
+                                <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm">
                                     <div className="flex justify-between items-start">
-                                        <Badge variant="outline" className={cn(
-                                            "text-[8px] font-black uppercase tracking-widest px-1.5 h-4",
-                                            deadline.type === 'payment' ? "text-orange-600 border-orange-200 bg-orange-50" : "text-blue-600 border-blue-200 bg-blue-50"
-                                        )}>
-                                            {deadline.type}
-                                        </Badge>
+                                        <Badge variant="outline" className="text-[8px] font-black uppercase">{deadline.type}</Badge>
                                         <span className="text-[10px] font-bold text-muted-foreground">{format(parseISO(deadline.date), 'MMM dd')}</span>
                                     </div>
                                     <p className="text-xs font-bold mt-1 line-clamp-1">{deadline.title}</p>
-                                    {deadline.link && (
-                                        <Link href={deadline.link} className="text-[10px] font-black text-primary hover:underline mt-1 flex items-center gap-1 uppercase">
-                                            Open Task <ChevronRight className="h-2 w-2"/>
-                                        </Link>
-                                    )}
                                 </div>
                             )) : <p className="text-xs text-muted-foreground text-center py-8 italic">No urgent deadlines.</p>}
                         </CardContent>
                     </Card>
 
                     <Card className="shadow-lg border-l-4 border-l-green-500">
-                        <CardHeader className="pb-3 border-b">
-                            <CardTitle className="text-base font-bold">Recent Academic Results</CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Recent Results</CardTitle></CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {recentGrades.length > 0 ? recentGrades.map((grade, i) => (
                                 <div key={i} className="flex justify-between items-center p-3 rounded-lg border bg-green-50/20">
-                                    <div>
-                                        <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">{grade.courseCode}</p>
-                                        <p className="text-xs font-medium text-muted-foreground">{grade.label}</p>
-                                    </div>
-                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'} className="font-mono text-sm shadow-sm">{grade.score}%</Badge>
+                                    <div><p className="text-[10px] font-black text-green-700 uppercase">{grade.courseCode}</p><p className="text-xs font-medium text-muted-foreground">{grade.label}</p></div>
+                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'}>{grade.score}%</Badge>
                                 </div>
                             )) : <p className="text-xs text-muted-foreground text-center py-8 italic">No recent results posted.</p>}
                         </CardContent>
-                        <CardFooter className="pt-0 border-t bg-muted/5 p-2">
-                            <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase tracking-widest" asChild>
-                                <Link href="/student/courses/results">Full Transcript <ChevronRight className="ml-1 h-3 w-3"/></Link>
-                            </Button>
-                        </CardFooter>
                     </Card>
                 </div>
             </div>

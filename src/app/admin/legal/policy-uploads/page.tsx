@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, Trash2, Download, FileUp, Check } from "lucide-react";
+import { PlusCircle, Loader2, Trash2, Download, FileUp, Check as CheckIcon } from "lucide-react";
 import { db, storage } from '@/lib/firebase';
 import { ref as dbRef, onValue, set, push, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -79,8 +80,8 @@ export default function PolicyUploadsPage() {
         <Card>
             <CardHeader className="flex-row items-center justify-between">
                 <div>
-                    <CardTitle>Policy Uploads</CardTitle>
-                    <CardDescription>Manage official institutional policies.</CardDescription>
+                    <CardTitle>Legal Policy Uploads</CardTitle>
+                    <CardDescription>Manage official institutional and legal policies. Accepts Office and PDF formats.</CardDescription>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4"/>Upload Policy</Button></DialogTrigger>
@@ -88,13 +89,16 @@ export default function PolicyUploadsPage() {
                         <DialogHeader><DialogTitle>Upload New Policy</DialogTitle></DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="space-y-1"><Label>Policy Title</Label><Input value={title} onChange={e => setTitle(e.target.value)}/></div>
-                            <div className="space-y-1"><Label>Category</Label><Input value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g., HR, Academic, Finance"/></div>
-                            <div className="space-y-1"><Label>File (PDF, Doc, Excel, PPT)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
+                            <div className="space-y-1"><Label>Category</Label><Input value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g., Compliance, HR, Safety"/></div>
+                            <div className="space-y-1">
+                                <Label>File (PDF, Word, Excel, PPT, Text)</Label>
+                                <Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={e => setFile(e.target.files?.[0] || null)} />
+                            </div>
                         </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                             <Button onClick={handleSavePolicy} disabled={saving}>
-                                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}
+                                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckIcon className="mr-2 h-4 w-4"/>}
                                 Save Policy
                             </Button>
                         </DialogFooter>
@@ -103,7 +107,7 @@ export default function PolicyUploadsPage() {
             </CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Category</TableHead><TableHead>Upload Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Title</TableHead> <TableHead>Category</TableHead><TableHead>Upload Date</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                     <TableBody>
                         {loading ? <TableRow><TableCell colSpan={4}><Skeleton className="h-24"/></TableCell></TableRow> :
                          policies.map(p => (

@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import { Info, MapPin, UserCheck, Users, CalendarDays, Layers } from 'lucide-rea
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { isWithinInterval, parseISO } from 'date-fns';
+import { useAuth } from '@/hooks/use-auth';
 
 type TimeSlot = {
     id: string;
@@ -225,5 +227,3 @@ export default function StudentTimetablePage() {
         </div>
     );
 }
-
-import { useAuth } from '@/hooks/use-auth';

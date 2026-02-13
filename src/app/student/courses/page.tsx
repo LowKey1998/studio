@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
-import { differenceInCalendarDays, parseISO, isBefore } from 'date-fns';
+import { differenceInCalendarDays, parseISO, isBefore, startOfDay } from 'date-fns';
 
 type Course = {
     id: string;
@@ -137,21 +138,21 @@ export default function StudentCoursesPage() {
 
                             // Assignment Alert Logic
                             const courseAssignments = allAssignments[courseId] || allAssignments[`${courseId}_${semesterId}`] || {};
-                            let dueSoon = 0;
-                            let pastDue = 0;
+                            let soon = 0;
+                            let late = 0;
                             let earliestDueDate = null;
 
                             Object.values(courseAssignments).forEach((a: any) => {
                                 if (a.submissions?.[currentUser.uid]) return; // Skip if submitted
                                 
                                 const dueDate = parseISO(a.dueDate);
-                                const today = new Date();
+                                const today = startOfDay(new Date());
                                 const diff = differenceInCalendarDays(dueDate, today);
 
                                 if (isBefore(dueDate, today)) {
-                                    pastDue++;
+                                    late++;
                                 } else if (diff <= 3) {
-                                    dueSoon++;
+                                    soon++;
                                 }
 
                                 if (!earliestDueDate || isBefore(dueDate, parseISO(earliestDueDate))) {
@@ -168,7 +169,7 @@ export default function StudentCoursesPage() {
                                 semesterName: semesterInfo.name,
                                 year: semesterInfo.year,
                                 semesterInYear: semesterInfo.semesterInYear,
-                                assignmentStatus: { dueSoon, pastDue, earliestDueDate },
+                                assignmentStatus: { dueSoon: soon, pastDue: late, earliestDueDate },
                                 hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId]
                             });
                         }

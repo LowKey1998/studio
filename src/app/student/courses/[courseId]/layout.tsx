@@ -8,7 +8,7 @@ import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, Users, ClipboardCheck, Hand, Calendar } from 'lucide-react';
+import { ChevronLeft, BookMarked, Folder, Route, MessageSquare, Users, ClipboardCheck, Hand, Calendar, Video } from 'lucide-react';
 
 type Course = {
     name: string;
@@ -44,10 +44,10 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
         { name: 'Participants', href: `/student/courses/${courseId}/participants`, icon: <Users/> },
         { name: 'Messages', href: `/student/courses/${courseId}/messages`, icon: <MessageSquare/> },
         { name: 'Results', href: `/student/courses/${courseId}/results`, icon: <ClipboardCheck/> },
+        { name: 'Live Session', href: `/student/courses/${courseId}/live`, icon: <Video/> },
     ];
     
     const checkActive = (href: string) => {
-        // A more robust check for the base route
         if(href.endsWith('/assignments')) {
             return pathname === href || pathname === `/student/courses/${courseId}`;
         }
@@ -82,7 +82,7 @@ export default function StudentCourseLayout({ children }: { children: React.Reac
                     return (
                         <Link key={item.name} href={item.href} passHref>
                             <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap ${isActive ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-                                {React.cloneElement(item.icon, { className: 'h-4 w-4' })}
+                                {React.cloneElement(item.icon as React.ReactElement, { className: 'h-4 w-4' })}
                                 {item.name}
                             </button>
                         </Link>
