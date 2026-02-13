@@ -89,7 +89,7 @@ type Course = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; };
 type StudentInfo = {
     uid: string;
     id: string;
@@ -472,7 +472,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setFormLoading(false);
         }
-    }
+    };
     
     const handleLinkPayment = async () => {
         if (!linkingPayment || !selectedLinkStudent || !linkingPayment.semesterId) {
@@ -532,7 +532,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setActionLoading(null);
         }
-    }
+    };
 
     const handleOpenHistory = (p: StudentPaymentInfo) => {
         setHistoryStudent(p);

@@ -45,7 +45,6 @@ export default function AdminDashboardPage() {
     const [loading, setLoading] = React.useState(true);
     const [activitiesLoading, setActivitiesLoading] = React.useState(true);
 
-    // Warning states
     const [missingDeadlinesCount, setMissingDeadlinesCount] = React.useState(0);
     const [unassignedCoursesCount, setUnassignedCoursesCount] = React.useState(0);
 
@@ -67,18 +66,15 @@ export default function AdminDashboardPage() {
             const allCalendarEvents = data.calendarEvents || {};
             const allPlans = data.settings?.paymentPlans || {};
 
-            // 1. User Counts
             const usersList = Object.values(allUsers) as any[];
             setStudentCount(usersList.filter(u => u.role === 'Student').length);
             setStaffCount(usersList.filter(u => u.role === 'Staff').length);
             setProgrammeCount(Object.keys(allProgrammes).length);
 
-            // 2. Courses
             const activeCourses = Object.values(allCourses).filter((c: any) => c.status === 'active');
             setActiveCourseCount(activeCourses.length);
             setUnassignedCoursesCount(activeCourses.filter((c: any) => !c.lecturerId && (!c.lecturerIds || c.lecturerIds.length === 0)).length);
 
-            // 3. Financials
             let pendingCount = 0;
             let totalOutstanding = 0;
             for (const userId in allInvoices) {
@@ -97,14 +93,13 @@ export default function AdminDashboardPage() {
             setPendingRegistrations(pendingCount);
             setOutstandingBalance(totalOutstanding);
 
-            // 4. Deadlines & Missing Config
             let missing = 0;
             const progDeadlines: ProgrammeDeadline[] = [];
             
             Object.values(allSemesters).forEach((sem: any) => {
                 if (sem.status === 'Archived') return;
                 const linkedPlanIds = Object.keys(sem.paymentPlanIds || {});
-                const intakeName = sem.name.split(' ')[0]; // E.g., 2024JAN
+                const intakeName = sem.name.split(' ')[0];
                 
                 linkedPlanIds.forEach(pid => {
                     const plan = allPlans[pid];
@@ -132,7 +127,6 @@ export default function AdminDashboardPage() {
             setMissingDeadlinesCount(missing);
             setProgrammeDeadlines(progDeadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 5));
 
-            // 5. Recent Activities
             const activitiesData = data.recentActivities || {};
             setRecentActivities(Object.values(activitiesData).sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 5) as any);
 

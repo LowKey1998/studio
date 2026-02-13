@@ -85,10 +85,13 @@ export default function StudentTimetablePage() {
                 const semInfo = allSemesters[semId];
                 if (!semInfo || semInfo.status === 'Archived') return;
                 
-                activeSemesterIds.add(semId);
-                if (reg.courses) {
-                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
-                    coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
+                // Ensure only Completed or Pending Payment registrations show up
+                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                    activeSemesterIds.add(semId);
+                    if (reg.courses) {
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
+                        coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
+                    }
                 }
             });
 
@@ -126,11 +129,10 @@ export default function StudentTimetablePage() {
             const entries: TimetableEntry[] = [];
             for (const semId in tData) {
                 const isMaster = semId === 'master';
-                // Only show from active semesters or master
+                // Only show from active semesters or the master template
                 if (!activeSemesterIds.has(semId) && !isMaster) continue;
 
                 for (const cId in tData[semId]) {
-                    // Only show courses the student is actually taking
                     if (enrolledCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
                         const lecturerNames = (courseInfo.lecturerIds || [])
@@ -139,15 +141,15 @@ export default function StudentTimetablePage() {
                             .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
                         Object.values(tData[semId][cId]).forEach((entry: any) => {
-                            // If it's from master, only show if it matches the student's intake (for separate instances)
-                            // or if it's a shared session.
                             let shouldInclude = true;
-                            if (isMaster && courseInfo.separateInstance) {
-                                shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
-                            } else if (isMaster && !courseInfo.separateInstance) {
-                                // Shared session from master - always include if enrolled
-                                shouldInclude = true;
-                            } else if (!isMaster) {
+                            if (isMaster) {
+                                if (courseInfo.separateInstance) {
+                                    shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
+                                } else {
+                                    // Shared session from master - always include if enrolled
+                                    shouldInclude = true;
+                                }
+                            } else {
                                 // Semester-specific entry - include if it's the student's semester
                                 shouldInclude = activeSemesterIds.has(semId);
                             }

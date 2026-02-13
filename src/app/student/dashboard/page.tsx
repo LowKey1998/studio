@@ -137,7 +137,8 @@ export default function StudentDashboardPage() {
                         activeSemesterName = semInfo.name;
                     }
 
-                    reg.courses.forEach((cid: string) => {
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
+                    coursesArr.forEach((cid: string) => {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
                         if (c) {
@@ -169,7 +170,6 @@ export default function StudentDashboardPage() {
             setEnrolledCourses(currentCourses);
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
-            // --- Financial & Deadline Countdown ---
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
