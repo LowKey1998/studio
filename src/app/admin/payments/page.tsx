@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -98,23 +98,7 @@ type StudentInfo = {
     intakeId?: string;
 };
 
-type Invoice = {
-    invoiceId: string;
-    totalTuition: number;
-    totalMandatoryFees: number;
-    totalOptionalFees: number;
-    lateFee?: number;
-    paymentPlan: string;
-    dateCreated: string;
-    semester: string;
-    semesterId: string;
-    courses: string[];
-    optionalFees: string[];
-    applyScholarship?: boolean;
-};
-
-type GroupedOption = { value: string; label: string };
-type OptionGroup = { groupName: string; items: GroupedOption[] };
+type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
@@ -390,7 +374,6 @@ export default function PaymentsManagementPage() {
     
             const newRow = { ...row, [field]: value };
             
-            // Only re-calculate logic when triggers change to avoid resetting manual input in Total Due
             if (field === 'userId' || field === 'semesterId') {
                 if (field === 'userId') {
                     newRow.semesterId = undefined;
@@ -422,10 +405,6 @@ export default function PaymentsManagementPage() {
                         newRow.totalDue = info.totalDue.toFixed(2);
                         newRow.totalPaid = info.totalPaid;
                         newRow.invoiceId = info.invoiceId;
-                    } else {
-                        newRow.totalDue = '';
-                        newRow.totalPaid = 0;
-                        newRow.invoiceId = undefined;
                     }
                 } 
             }
@@ -616,6 +595,21 @@ export default function PaymentsManagementPage() {
         setIsHistoryOpen(true);
     };
 
+    const handleRecordPaymentForStudent = (student: StudentPaymentInfo) => {
+        setBulkPaymentRows([{ 
+            key: Date.now(), 
+            userId: student.userId, 
+            semesterId: student.semesterId || undefined,
+            invoiceId: student.invoiceId,
+            totalDue: student.totalDue.toFixed(2),
+            totalPaid: student.totalPaid,
+            amount: '', 
+            comment: '' 
+        }]);
+        setIsHistoryOpen(false);
+        setIsBulkRecordOpen(true);
+    };
+
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {
         Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
@@ -624,8 +618,6 @@ export default function PaymentsManagementPage() {
         { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
         { groupName: 'Students', items: allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` })) }
     ];
-
-    if (loading) return <div className="p-6"><Skeleton className="h-screen w-full" /></div>;
 
     return (
         <div className="space-y-6">
@@ -641,7 +633,7 @@ export default function PaymentsManagementPage() {
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Due</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">ZMW {summaryStats.totalDue.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Paid</CardTitle><PiggyBank className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">ZMW {summaryStats.totalPaid.toFixed(2)}</div></CardContent></Card>
                          <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Balance</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">ZMW {summaryStats.totalBalance.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent></Card>
+                         <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent>
                     </div>
 
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
@@ -948,8 +940,11 @@ export default function PaymentsManagementPage() {
                             );
                         })()}
                     </div>
-                    <DialogFooter className="border-t pt-4">
+                    <DialogFooter className="border-t pt-4 flex justify-between items-center w-full">
                         <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close Ledger</Button>
+                        <Button onClick={() => historyStudent && handleRecordPaymentForStudent(historyStudent)}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Record New Payment
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

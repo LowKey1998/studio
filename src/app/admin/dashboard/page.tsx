@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -6,11 +5,12 @@ import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck, GanttC
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
-import { formatDistanceToNow, isAfter, parseISO } from 'date-fns';
+import { formatDistanceToNow, isAfter, parseISO, addDays } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Button } from "@/components/ui/button";
 
 type ActivityLog = {
     user: string;
@@ -53,12 +53,6 @@ export default function AdminDashboardPage() {
         setLoading(true);
         setActivitiesLoading(true);
         
-        const refs = [
-            ref(db, 'users'), ref(db, 'courses'), ref(db, 'programmes'), 
-            ref(db, 'registrations'), ref(db, 'invoices'), ref(db, 'transactions'), 
-            ref(db, 'semesters'), ref(db, 'calendarEvents'), ref(db, 'settings/paymentPlans')
-        ];
-
         const unsub = onValue(ref(db), (snapshot) => {
             if (!snapshot.exists()) { setLoading(false); return; }
             const data = snapshot.val();
@@ -71,7 +65,7 @@ export default function AdminDashboardPage() {
             const allTransactions = data.transactions || {};
             const allSemesters = data.semesters || {};
             const allCalendarEvents = data.calendarEvents || {};
-            const allPlans = data['settings/paymentPlans'] || {};
+            const allPlans = data.settings?.paymentPlans || {};
 
             // 1. User Counts
             const usersList = Object.values(allUsers) as any[];
@@ -122,8 +116,6 @@ export default function AdminDashboardPage() {
                             if (!event) {
                                 missing++;
                             } else if (isAfter(parseISO(event.date), new Date())) {
-                                // Find associated programme for this specific semester instance
-                                // This is an estimation based on naming convention
                                 const progName = sem.name.includes('Year') ? sem.name.split('Year')[0].replace(intakeName, '').trim() : 'General';
                                 
                                 progDeadlines.push({
