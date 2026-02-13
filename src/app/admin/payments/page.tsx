@@ -3,10 +3,10 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createQbPayment } from '@/ai/flows/sync-to-quickbooks';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -71,6 +70,7 @@ type Transaction = {
     paymentDate: string;
     status: 'successful' | 'failed';
     method?: string;
+    comment?: string;
 };
 
 type Course = {
@@ -227,6 +227,8 @@ export default function PaymentsManagementPage() {
     const [semesterFilter, setSemesterFilter] = React.useState('all');
 
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+    const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
@@ -259,7 +261,7 @@ export default function PaymentsManagementPage() {
             
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
+            if (allIntakes.length === 0 && intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (coursesSnap.exists()) setAllCourses(coursesSnap.val());
             if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
             if (calendarSnap.exists()) setCalendarSettings(calendarSnap.val());
@@ -431,7 +433,6 @@ export default function PaymentsManagementPage() {
                     newRow.totalPaid = info.totalPaid;
                     newRow.invoiceId = info.invoiceId;
                 } else {
-                    // Try to find if a registration exists at all even if not invoiced
                     newRow.totalDue = '';
                     newRow.totalPaid = 0;
                     newRow.invoiceId = undefined;
@@ -500,11 +501,11 @@ export default function PaymentsManagementPage() {
                         transactionId: newTxId, userId, invoiceId, amount: parseFloat(amount), currency: 'ZMW', status: 'successful', paymentDate: new Date().toISOString(), method: 'Manual', comment,
                     });
                     
-                    await createNotification(userId, `A manual payment of ZMW ${parseFloat(amount).toFixed(2)} was recorded for your account. Comment: ${comment || 'N/A'}`, '/student/payments');
+                    await createNotification(userId, `A manual payment of ZMW ${parseFloat(amount).toFixed(2)} was recorded for your account.`, '/student/payments');
                 }
             }
             
-            toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) have been successfully recorded.` });
+            toast({ title: "Payments Recorded", description: `${paymentsToRecord.length} payment(s) recorded successfully.` });
             await fetchPaymentData();
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
@@ -704,6 +705,11 @@ export default function PaymentsManagementPage() {
         }
     };
 
+    const handleOpenHistory = (p: StudentPaymentInfo) => {
+        setHistoryStudent(p);
+        setIsHistoryOpen(true);
+    };
+
     const statusVariant: { [key in StudentPaymentInfo['status']]: 'destructive' | 'secondary' | 'default' } = {
         Paid: 'default', Pending: 'secondary', Overdue: 'destructive'
     };
@@ -892,20 +898,28 @@ export default function PaymentsManagementPage() {
                         </TabsList>
                         <TabsContent value="studentPayments">
                             <Table>
-                                <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead><TableHead className="text-right">Invoice</TableHead></TableRow></TableHeader>
+                                <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Student Name</TableHead><TableHead className="text-right">Total Due</TableHead><TableHead className="text-right">Total Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-center">Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                 <TableBody>
                                     {loading ? ( Array.from({length: 5}).map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-8 w-full"/></TableCell></TableRow>))
                                     ) : filteredData.length > 0 ? (
                                         filteredData.map((p, index) => (
-                                            <TableRow key={`${p.userId}-${index}`}>
+                                            <TableRow key={`${p.userId}-${index}`} className="hover:bg-muted/50 cursor-pointer" onClick={() => handleOpenHistory(p)}>
                                                 <TableCell className="font-medium">{p.studentId}</TableCell>
                                                 <TableCell>{p.studentName}</TableCell>
                                                 <TableCell className="text-right">{p.totalDue.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right text-green-600">{p.totalPaid.toFixed(2)}</TableCell>
                                                 <TableCell className="text-right font-bold">{p.balance.toFixed(2)}</TableCell>
                                                 <TableCell className="text-center"><Badge variant={statusVariant[p.status]}>{p.status}</Badge></TableCell>
-                                                <TableCell className="text-right">
+                                                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                                     <div className="flex justify-end gap-2">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            onClick={() => handleOpenHistory(p)}
+                                                            title="View Payment History"
+                                                        >
+                                                            <History className="h-4 w-4 text-primary" />
+                                                        </Button>
                                                         <Button 
                                                             variant="ghost" 
                                                             size="icon" 
@@ -1012,6 +1026,52 @@ export default function PaymentsManagementPage() {
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                         <Button onClick={handleLinkPayment} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Link Payment</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Payment History: {historyStudent?.studentName}</DialogTitle>
+                        <DialogDescription>List of all successful payments for {historyStudent?.studentId}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <ScrollArea className="h-[400px] border rounded-md p-4">
+                            {(() => {
+                                const studentTxs = rawTransactions.filter(t => t.userId === historyStudent?.userId && t.status === 'successful');
+                                return studentTxs.length > 0 ? (
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Date</TableHead>
+                                                <TableHead>Method</TableHead>
+                                                <TableHead>Transaction ID</TableHead>
+                                                <TableHead className="text-right">Amount</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {studentTxs.map(tx => (
+                                                <TableRow key={tx.key}>
+                                                    <TableCell>{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                    <TableCell>{tx.method}</TableCell>
+                                                    <TableCell className="font-mono text-[10px]">{tx.transactionId}</TableCell>
+                                                    <TableCell className="text-right font-bold">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground italic">
+                                        <Info className="h-8 w-8 mb-2 opacity-20" />
+                                        <p>No payment history found for this student.</p>
+                                    </div>
+                                );
+                            })()}
+                        </ScrollArea>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
