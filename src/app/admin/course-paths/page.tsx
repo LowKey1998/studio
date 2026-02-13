@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -436,7 +437,9 @@ function CoursePathBuilderComponent() {
 
     const groupedSemesters = semestersForPath.reduce((acc, sem) => {
         const yearKey = `Year ${sem.year}`;
-        if(!acc[yearKey]) acc[yearKey] = [];
+        if(!acc[yearKey]) {
+            acc[yearKey] = [];
+        }
         acc[yearKey].push(sem);
         return acc;
     }, {} as Record<string, Semester[]>);

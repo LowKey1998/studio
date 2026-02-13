@@ -810,7 +810,7 @@ export default function RegistrationManagementPage() {
                         ))}
                     </Accordion>}
                 </CardContent>
-                <CardFooter className="justify-end"><Button onClick={handleSaveChanges} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save All Changes</Button></CardFooter>
+                <CardFooter className="justify-end"><Button onClick={handleSaveChanges} disabled={saving}>Save All Changes</Button></CardFooter>
             </Card>
 
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
