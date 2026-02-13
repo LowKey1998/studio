@@ -677,8 +677,12 @@ export default function RegistrationManagementPage() {
                         <ul className="list-disc pl-5 text-sm">
                             {globalMissingDeadlines.map(s => <li key={s.id}>{s.name}</li>)}
                         </ul>
-                        <Button variant="link" asChild className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900">
-                            <Link href="/admin/calendar">Set Deadlines in Calendar &rarr;</Link>
+                        <Button 
+                            variant="link" 
+                            className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900"
+                            onClick={() => setIsBulkDeadlineOpen(true)}
+                        >
+                            Set Programme Deadlines &rarr;
                         </Button>
                     </AlertDescription>
                 </Alert>

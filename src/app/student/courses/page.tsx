@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock } from "lucide-react";
+import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock, BookMarked, AlertCircle, ClipboardCheck } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -13,6 +12,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { differenceInCalendarDays, parseISO, isBefore } from 'date-fns';
 
 type Course = {
     id: string;
@@ -23,6 +23,12 @@ type Course = {
     semesterName: string;
     year: number;
     semesterInYear: number;
+    assignmentStatus?: {
+        dueSoon: number;
+        pastDue: number;
+        earliestDueDate: string | null;
+    };
+    hasResultsPublished?: boolean;
 };
 
 type SemesterGroup = {
@@ -57,13 +63,15 @@ export default function StudentCoursesPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, intakesSnap, calendarSnap] = await Promise.all([
+            const [registrationsSnap, semestersSnap, coursesSnap, usersSnap, intakesSnap, calendarSnap, assignmentsSnap, resultsSnap] = await Promise.all([
                 get(ref(db, `registrations/${currentUser.uid}`)),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'users')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'settings/academicCalendar'))
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'assignments')),
+                get(ref(db, 'resultsPublished'))
             ]);
 
             const userProfile = usersSnap.val()?.[currentUser.uid];
@@ -88,6 +96,8 @@ export default function StudentCoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
             const usersData = usersSnap.val() || {};
+            const allAssignments = assignmentsSnap.val() || {};
+            const allResultsPublished = resultsSnap.val() || {};
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
@@ -102,7 +112,6 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // STRICT FILTER: Only show courses for the student's own intake path
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
                     const isArchived = semesterInfo.status === 'Archived';
@@ -126,6 +135,30 @@ export default function StudentCoursesPage() {
                                 .filter(Boolean)
                                 .join(', ') || userMap.get(courseInfo.lecturerId) || 'N/A';
 
+                            // Assignment Alert Logic
+                            const courseAssignments = allAssignments[courseId] || allAssignments[`${courseId}_${semesterId}`] || {};
+                            let dueSoon = 0;
+                            let pastDue = 0;
+                            let earliestDueDate = null;
+
+                            Object.values(courseAssignments).forEach((a: any) => {
+                                if (a.submissions?.[currentUser.uid]) return; // Skip if submitted
+                                
+                                const dueDate = parseISO(a.dueDate);
+                                const today = new Date();
+                                const diff = differenceInCalendarDays(dueDate, today);
+
+                                if (isBefore(dueDate, today)) {
+                                    pastDue++;
+                                } else if (diff <= 3) {
+                                    dueSoon++;
+                                }
+
+                                if (!earliestDueDate || isBefore(dueDate, parseISO(earliestDueDate))) {
+                                    earliestDueDate = a.dueDate;
+                                }
+                            });
+
                             targetGroups[semesterId].courses.push({
                                 id: courseId,
                                 name: courseInfo.name,
@@ -134,7 +167,9 @@ export default function StudentCoursesPage() {
                                 semesterId: semesterId,
                                 semesterName: semesterInfo.name,
                                 year: semesterInfo.year,
-                                semesterInYear: semesterInfo.semesterInYear
+                                semesterInYear: semesterInfo.semesterInYear,
+                                assignmentStatus: { dueSoon, pastDue, earliestDueDate },
+                                hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId]
                             });
                         }
                     }
@@ -161,7 +196,7 @@ export default function StudentCoursesPage() {
     
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
@@ -204,14 +239,37 @@ export default function StudentCoursesPage() {
                             {group.courses.map((course, idx) => (
                                     <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-md transition-all duration-300 hover:shadow-xl border-t-2 border-t-primary/10">
                                     <CardHeader>
-                                        <CardTitle className="font-headline text-lg leading-tight">{course.name}</CardTitle>
-                                        <CardDescription className="font-bold font-mono text-primary/80">{course.code}</CardDescription>
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <CardTitle className="font-headline text-lg leading-tight">{course.name}</CardTitle>
+                                                <CardDescription className="font-bold font-mono text-primary/80">{course.code}</CardDescription>
+                                            </div>
+                                            {course.hasResultsPublished && (
+                                                <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
+                                                    <ClipboardCheck className="h-3 w-3 mr-1" /> Results Out
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </CardHeader>
-                                    <CardContent className="space-y-2">
+                                    <CardContent className="space-y-4">
                                         <div className="flex items-start text-sm text-muted-foreground">
                                             <UserCheck className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
                                             <span className="line-clamp-2">{course.lecturerName}</span>
                                         </div>
+
+                                        {(course.assignmentStatus?.pastDue || 0) > 0 && (
+                                            <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs font-bold">
+                                                <AlertCircle className="h-4 w-4" />
+                                                {course.assignmentStatus?.pastDue} Assignment(s) OVERDUE
+                                            </div>
+                                        )}
+
+                                        {(course.assignmentStatus?.dueSoon || 0) > 0 && (
+                                            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
+                                                <Clock className="h-4 w-4" />
+                                                {course.assignmentStatus?.dueSoon} Pending Assignment(s) Due Soon
+                                            </div>
+                                        )}
                                     </CardContent>
                                     <CardFooter>
                                     <Button asChild className="w-full">

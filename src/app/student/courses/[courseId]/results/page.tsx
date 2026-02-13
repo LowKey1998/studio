@@ -1,17 +1,16 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ChevronDown, Flag, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, Flag, Loader2, ClipboardCheck, Info } from "lucide-react";
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, onValue, push, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -24,13 +23,6 @@ type AssessmentScore = {
     feedback?: string;
 }
 
-type AssessmentScores = {
-    assignment1?: AssessmentScore;
-    quiz1?: AssessmentScore;
-    midterm?: AssessmentScore;
-    finalExam?: AssessmentScore;
-};
-
 type UserData = {
     id: string; // STU-001
     name: string;
@@ -41,17 +33,21 @@ type CourseData = {
     code: string;
 }
 
-const assessmentColumns: { key: keyof AssessmentScores, label: string }[] = [
-    { key: 'assignment1', label: 'Assignment 1' },
-    { key: 'quiz1', label: 'Quiz 1' },
-    { key: 'midterm', label: 'Midterm' },
-    { key: 'finalExam', label: 'Final Exam' },
-];
+type AssessmentComponent = {
+    id: string;
+    name: string;
+    weight: number;
+}
 
 export default function StudentResultsPage() {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
-    const [scores, setScores] = React.useState<AssessmentScores | null>(null);
+    const semesterIdFilter = searchParams.get('semesterId');
+    
+    const [scores, setScores] = React.useState<Record<string, AssessmentScore> | null>(null);
+    const [templateComponents, setTemplateComponents] = React.useState<AssessmentComponent[]>([]);
+    const [isPublished, setIsPublished] = React.useState(false);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userData, setUserData] = React.useState<UserData | null>(null);
@@ -81,13 +77,27 @@ export default function StudentResultsPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [scoresSnapshot, courseSnapshot] = await Promise.all([
-                    get(ref(db, `assessments/${courseId}/${currentUser.uid}`)),
-                    get(ref(db, `courses/${courseId}`))
+                // 1. Get Course and determine if results are published for this semester
+                const [courseSnap, publishedSnap] = await Promise.all([
+                    get(ref(db, `courses/${courseId}`)),
+                    semesterIdFilter ? get(ref(db, `resultsPublished/${semesterIdFilter}/${courseId}`)) : Promise.resolve({ exists: () => false, val: () => false } as any)
                 ]);
-                
-                setScores(scoresSnapshot.exists() ? scoresSnapshot.val() : null);
-                setCourseData(courseSnapshot.exists() ? courseSnapshot.val() : null);
+
+                const cData = courseSnap.val();
+                setCourseData(cData);
+                setIsPublished(publishedSnap.exists() ? publishedSnap.val() : false);
+
+                // 2. Fetch template components
+                if (cData?.assessmentTemplateId) {
+                    const templateSnap = await get(ref(db, `settings/assessmentTemplates/${cData.assessmentTemplateId}`));
+                    if (templateSnap.exists()) {
+                        setTemplateComponents(Object.entries(templateSnap.val().components).map(([id, c]: [string, any]) => ({ id, ...c })));
+                    }
+                }
+
+                // 3. Fetch Student's specific scores
+                const scoresSnap = await get(ref(db, `assessments/${courseId}/${currentUser.uid}`));
+                setScores(scoresSnap.exists() ? scoresSnap.val() : null);
 
             } catch (error: any) {
                 console.error("Error fetching scores:", error);
@@ -98,7 +108,7 @@ export default function StudentResultsPage() {
         };
 
         fetchData();
-    }, [courseId, currentUser, toast]);
+    }, [courseId, currentUser, semesterIdFilter, toast]);
     
     const handleSubmitAppeal = async () => {
         if(!appealingAssessment || !appealReason.trim() || !currentUser || !userData || !courseData){
@@ -143,18 +153,30 @@ export default function StudentResultsPage() {
         }
     }
 
-    const hasResults = scores && Object.values(scores).some(v => v?.score !== undefined);
+    const hasAnyScore = scores && Object.values(scores).some(v => v?.score !== undefined);
+
+    if (loading) return <div className="p-6 space-y-4"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/></div>;
 
     return (
-        <Card>
-            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between">
-                <div>
-                    <CardTitle>My Results & Feedback</CardTitle>
-                    <CardDescription>View your scores and feedback from your lecturer for this course.</CardDescription>
+        <Card className="shadow-lg">
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <CardTitle className="text-xl font-headline">My Academic Performance</CardTitle>
+                        {isPublished ? (
+                            <Badge className="bg-green-600 text-white border-green-700">Official Results</Badge>
+                        ) : (
+                            <Badge variant="secondary">Provisional / Unofficial</Badge>
+                        )}
+                    </div>
+                    <CardDescription>Track your progress across continuous assessment components and final examinations.</CardDescription>
                 </div>
                  <Dialog open={isAppealDialogOpen} onOpenChange={setIsAppealDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="secondary" disabled={!hasResults}><Flag className="mr-2 h-4 w-4"/>Submit Grade Appeal</Button>
+                        <Button variant="outline" disabled={!hasAnyScore} className="font-bold">
+                            <Flag className="mr-2 h-4 w-4"/>
+                            Appeal a Grade
+                        </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
@@ -171,10 +193,13 @@ export default function StudentResultsPage() {
                                         <SelectValue placeholder="Select an assessment..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {assessmentColumns
-                                            .filter(col => scores?.[col.key]?.score !== undefined)
-                                            .map(col => <SelectItem key={col.key} value={col.label}>{col.label}</SelectItem>)
+                                        {templateComponents
+                                            .filter(col => scores?.[col.id]?.score !== undefined)
+                                            .map(col => <SelectItem key={col.id} value={col.name}>{col.name}</SelectItem>)
                                         }
+                                        {scores?.finalExam?.score !== undefined && (
+                                            <SelectItem value="Final Exam">Final Exam</SelectItem>
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -191,70 +216,102 @@ export default function StudentResultsPage() {
                 </Dialog>
             </CardHeader>
             <CardContent>
-                {loading ? (
-                    <div className="space-y-2">
-                        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-                    </div>
-                ) : hasResults ? (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Assessment</TableHead>
-                                <TableHead className="text-center">Score</TableHead>
-                                <TableHead className="text-right">Feedback</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {assessmentColumns.map(col => {
-                                const result = scores?.[col.key];
-                                if (!result || result.score === undefined) return null;
-
-                                return (
-                                    <Collapsible asChild key={col.key}>
-                                        <>
-                                            <TableRow>
-                                                <TableCell className="font-medium">{col.label}</TableCell>
-                                                <TableCell className="text-center">
-                                                    <Badge variant={result.score >= 50 ? "default" : "destructive"}>{result.score} / 100</Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    {result.feedback ? (
-                                                        <CollapsibleTrigger asChild>
-                                                            <Button variant="ghost" size="sm">
-                                                                View <ChevronDown className="h-4 w-4" />
-                                                            </Button>
-                                                        </CollapsibleTrigger>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">No feedback</span>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                            {result.feedback && (
-                                                <CollapsibleContent asChild>
-                                                    <tr className="bg-muted/50 hover:bg-muted/50">
-                                                        <TableCell colSpan={3} className="p-4">
-                                                            <p className="text-sm whitespace-pre-wrap">{result.feedback}</p>
-                                                        </TableCell>
-                                                    </tr>
-                                                </CollapsibleContent>
+                {hasAnyScore ? (
+                    <div className="rounded-md border overflow-hidden shadow-sm">
+                        <Table>
+                            <TableHeader className="bg-muted/50">
+                                <TableRow>
+                                    <TableHead>Assessment Component</TableHead>
+                                    <TableHead className="text-center">Weight</TableHead>
+                                    <TableHead className="text-center">Score</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {templateComponents.map(comp => {
+                                    const result = scores?.[comp.id];
+                                    return (
+                                        <Collapsible asChild key={comp.id}>
+                                            <>
+                                                <TableRow className="group">
+                                                    <TableCell className="font-bold">{comp.name}</TableCell>
+                                                    <TableCell className="text-center text-xs text-muted-foreground">{comp.weight}%</TableCell>
+                                                    <TableCell className="text-center">
+                                                        {result?.score !== undefined ? (
+                                                            <Badge variant={result.score >= 50 ? "default" : "destructive"} className="font-mono min-w-[60px] justify-center">
+                                                                {result.score}%
+                                                            </Badge>
+                                                        ) : <span className="text-xs text-muted-foreground italic">Not Graded</span>}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {result?.feedback ? (
+                                                            <CollapsibleTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-8">
+                                                                    Feedback <ChevronDown className="h-4 w-4 ml-1" />
+                                                                </Button>
+                                                            </CollapsibleTrigger>
+                                                        ) : (
+                                                            <span className="text-[10px] text-muted-foreground uppercase font-black">No Notes</span>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                                {result?.feedback && (
+                                                    <CollapsibleContent asChild>
+                                                        <tr className="bg-primary/5 hover:bg-primary/5">
+                                                            <TableCell colSpan={4} className="p-4 border-l-4 border-l-primary">
+                                                                <div className="flex items-start gap-2">
+                                                                    <Info className="h-4 w-4 text-primary mt-0.5" />
+                                                                    <p className="text-sm italic leading-relaxed">{result.feedback}</p>
+                                                                </div>
+                                                            </TableCell>
+                                                        </tr>
+                                                    </CollapsibleContent>
+                                                )}
+                                            </>
+                                        </Collapsible>
+                                    );
+                                })}
+                                
+                                {scores?.finalExam?.score !== undefined && (
+                                    <TableRow className="bg-muted/20 border-t-2">
+                                        <TableCell className="font-black text-primary">FINAL EXAMINATION</TableCell>
+                                        <TableCell className="text-center text-xs font-bold">60%</TableCell>
+                                        <TableCell className="text-center">
+                                            <Badge className="bg-primary text-white font-mono min-w-[60px] justify-center text-sm shadow-md">
+                                                {scores.finalExam.score}%
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {isPublished ? (
+                                                <Badge variant="outline" className="text-[10px] uppercase font-black border-green-600 text-green-600">Finalized</Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="text-[10px] uppercase font-black">Provisional</Badge>
                                             )}
-                                        </>
-                                    </Collapsible>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 ) : (
-                    <Alert>
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>No Results Available</AlertTitle>
-                        <AlertDescription>
-                            Your lecturer has not posted any results for this course yet.
-                        </AlertDescription>
-                    </Alert>
+                    <div className="py-20 text-center text-muted-foreground bg-muted/10 border-2 border-dashed rounded-xl">
+                        <ClipboardCheck className="mx-auto h-12 w-12 opacity-20 mb-4" />
+                        <h3 className="text-lg font-bold">No Results Found</h3>
+                        <p className="text-sm max-w-xs mx-auto">Results will appear here as your lecturer posts grades for CA components and examinations.</p>
+                    </div>
                 )}
             </CardContent>
+            {hasAnyScore && !isPublished && (
+                <CardFooter>
+                    <Alert className="bg-muted/50 border-0">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle className="text-xs font-bold uppercase tracking-widest">Provisional Notice</AlertTitle>
+                        <AlertDescription className="text-xs italic leading-relaxed">
+                            Scores shown are provisional and subject to verification by the Board of Examiners. Official results will be marked with a green badge once published by the Registrar.
+                        </AlertDescription>
+                    </Alert>
+                </CardFooter>
+            )}
         </Card>
     );
 }
-
