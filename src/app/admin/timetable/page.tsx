@@ -88,10 +88,14 @@ function TimetableManagementComponent() {
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
     // Filter states
-    const [selectedSemesterId, setSelectedSemesterId] = React.useState(searchParams.get('semesterId') || 'master');
+    const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
+
+    // Derived State
+    const [resolvedSemester, setResolvedSemester] = React.useState<Semester | null>(null);
+    const [academicStanding, setAcademicStanding] = React.useState<string | null>(null);
 
     // Add/Edit Entry state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
@@ -204,9 +208,44 @@ function TimetableManagementComponent() {
         };
     }, []);
 
+    // Resolve current semester based on intake selection
+    React.useEffect(() => {
+        if (viewTarget === 'master' || !calendarSettings) {
+            setResolvedSemester(null);
+            setAcademicStanding(null);
+            return;
+        }
+
+        const intake = intakes.find(i => i.id === viewTarget);
+        if (!intake) return;
+
+        const startStr = parseIntakeDate(intake.name);
+        if (startStr) {
+            const state = calculateAcademicState(
+                startStr,
+                new Date(),
+                calendarSettings.standardCycles,
+                Object.values(calendarSettings.anomalies || {})
+            );
+            setAcademicStanding(`Year ${state.year}, Semester ${state.semester}`);
+            
+            const matched = semesters.find(s => 
+                s.intakeId === intake.id && 
+                s.year === state.year && 
+                s.semesterInYear === state.semester
+            );
+            setResolvedSemester(matched || null);
+        }
+    }, [viewTarget, intakes, semesters, calendarSettings]);
+
+    const effectiveSemesterId = React.useMemo(() => {
+        if (viewTarget === 'master') return 'master';
+        return resolvedSemester?.id || 'none';
+    }, [viewTarget, resolvedSemester]);
+
     const filteredTimetable = React.useMemo(() => {
         return masterTimetable.filter(entry => {
-            const matchesSemester = selectedSemesterId === 'all' || entry.semesterId === selectedSemesterId;
+            const matchesSemester = effectiveSemesterId === 'master' || entry.semesterId === effectiveSemesterId;
             const matchesRoom = roomFilter === 'all' || entry.venue === roomFilter;
             const matchesIntake = intakeFilter === 'all' || entry.intakeName === intakes.find(i => i.id === intakeFilter)?.name;
             const matchesSearch = !searchTerm || 
@@ -214,7 +253,7 @@ function TimetableManagementComponent() {
                 entry.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
             return matchesSemester && matchesRoom && matchesIntake && matchesSearch;
         });
-    }, [masterTimetable, selectedSemesterId, roomFilter, intakeFilter, searchTerm, intakes]);
+    }, [masterTimetable, effectiveSemesterId, roomFilter, intakeFilter, searchTerm, intakes]);
 
     const searchedCourses = React.useMemo(() => {
         if (!courseSearch) return allCourses;
@@ -261,8 +300,7 @@ function TimetableManagementComponent() {
         }
         setSaving(true);
         try {
-            const semester = semesters.find(s => s.id === selectedSemesterId);
-            const intake = selectedIntakeId ? intakes.find(i => i.id === selectedIntakeId) : (semester ? intakes.find(i => i.id === semester.intakeId) : null);
+            const intake = selectedIntakeId ? intakes.find(i => i.id === selectedIntakeId) : (resolvedSemester ? intakes.find(i => i.id === resolvedSemester.intakeId) : null);
             const intakeName = intake?.name || 'Master';
 
             const data = { 
@@ -279,7 +317,7 @@ function TimetableManagementComponent() {
                 await update(entryRef, data);
                 toast({ title: "Entry Updated" });
             } else {
-                const entryRef = push(ref(db, `timetables/${selectedSemesterId}/${selectedCourseId}`));
+                const entryRef = push(ref(db, `timetables/${effectiveSemesterId}/${selectedCourseId}`));
                 await set(entryRef, data);
                 toast({ title: "Entry Added" });
             }
@@ -293,14 +331,11 @@ function TimetableManagementComponent() {
     };
 
     const handleCopyFromMaster = async () => {
-        if (selectedSemesterId === 'master' || selectedSemesterId === 'all') {
-            toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific semester to copy to.' });
+        if (effectiveSemesterId === 'master' || effectiveSemesterId === 'none') {
+            toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific intake with an active semester to copy to.' });
             return;
         }
         
-        const targetSemester = semesters.find(s => s.id === selectedSemesterId);
-        if (!targetSemester) return;
-
         setSaving(true);
         try {
             const masterSnap = await get(ref(db, 'timetables/master'));
@@ -310,11 +345,11 @@ function TimetableManagementComponent() {
             }
 
             const masterData = masterSnap.val();
-            const targetRef = ref(db, `timetables/${selectedSemesterId}`);
+            const targetRef = ref(db, `timetables/${effectiveSemesterId}`);
             
             await update(targetRef, masterData);
             
-            toast({ title: 'Schedule Copied', description: `Master baseline loaded into ${targetSemester.name}` });
+            toast({ title: 'Schedule Copied', description: `Master baseline loaded into ${resolvedSemester?.name}` });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Copy Failed', description: e.message });
         } finally {
@@ -339,7 +374,7 @@ function TimetableManagementComponent() {
     };
 
     const handleCellClick = (dayName: string, slot: TimeSlot) => {
-        if (selectedSemesterId === 'all') return;
+        if (effectiveSemesterId === 'none') return;
         resetAddForm();
         setDay(dayName);
         setStartTime(slot.startTime);
@@ -389,28 +424,28 @@ function TimetableManagementComponent() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
-                        <CardTitle className="font-headline text-2xl">Timetable Management</CardTitle>
+                        <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
                         <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || selectedSemesterId === 'master' || selectedSemesterId === 'all'}>
+                        <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || viewTarget === 'master' || effectiveSemesterId === 'none'}>
                             <Copy className="mr-2 h-4 w-4"/> Load Master Baseline
                         </Button>
                         <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
                             {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
                         </Button>
                         <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
-                            <DialogTrigger asChild><Button disabled={selectedSemesterId === 'all'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
+                            <DialogTrigger asChild><Button disabled={effectiveSemesterId === 'none'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
                             <DialogContent className="sm:max-w-lg">
-                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${selectedSemesterId === 'master' ? 'Master' : semesters.find(s=>s.id === selectedSemesterId)?.name}`}</DialogTitle></DialogHeader>
+                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
                                 <div className="grid gap-4 py-4">
-                                    {selectedSemesterId === 'master' && (
+                                    {viewTarget === 'master' && (
                                         <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                     )}
-                                    <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal">{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
+                                    <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={isCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
                                     
                                     <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
                                         <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
@@ -447,26 +482,42 @@ function TimetableManagementComponent() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg border">
-                        <div className="w-64">
-                            <Label>Viewing Schedule For</Label>
-                            <Select value={selectedSemesterId} onValueChange={(val) => { setSelectedSemesterId(val); router.push(`?semesterId=${val}`); }}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                        <div className="w-72">
+                            <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Viewing Schedule For</Label>
+                            <Select value={viewTarget} onValueChange={setViewTarget}>
+                                <SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Semesters (Merged)</SelectItem>
-                                    <SelectItem value="master" className="font-bold text-primary">Master Template</SelectItem>
+                                    <SelectItem value="master" className="font-bold text-primary">MASTER TEMPLATE (Baseline)</SelectItem>
                                     <Separator className="my-1"/>
-                                    {semesters.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intakes</div>
+                                    {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="flex-1 min-w-[200px]"><Label>Search Class</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter by course..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
-                        <div className="w-48"><Label>Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
+                        {academicStanding && (
+                            <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-primary/5 text-primary shadow-sm">
+                                <GraduationCap className="h-4 w-4" />
+                                {academicStanding}
+                            </Badge>
+                        )}
+                        <div className="flex-1 min-w-[200px]"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Search Course</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter code or name..." className="pl-8 bg-background shadow-sm h-10 border-primary/20" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
+                        <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
+
+                    {viewTarget !== 'master' && !resolvedSemester && !loading && (
+                        <Alert className="bg-orange-50 border-orange-200">
+                            <AlertCircle className="h-4 w-4 text-orange-600" />
+                            <AlertTitle className="font-bold text-orange-800">Semester Instance Not Found</AlertTitle>
+                            <AlertDescription className="text-orange-700">
+                                No active semester instance was found for **{intakes.find(i=>i.id===viewTarget)?.name}** at the resolved standing of **{academicStanding}**. Please create this semester in Registration Management to enable specific scheduling.
+                            </AlertDescription>
+                        </Alert>
+                    )}
 
                     {!hasSlots ? (
                         <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Define **Time Slots** in Teaching Times Setup to enable the grid view.</AlertDescription></Alert>
                     ) : (
-                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px]">
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
