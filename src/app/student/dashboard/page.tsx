@@ -16,7 +16,8 @@ import {
     CalendarDays,
     AlertTriangle,
     ShieldAlert,
-    Wallet
+    Wallet,
+    MapPin
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -184,18 +185,15 @@ export default function StudentDashboardPage() {
                 const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
                 const grace = semester.gracePeriodDays || 0;
                 
-                // Find all deadlines for this specific semester
                 const semDeadlines = Object.values(allCalendarEvents)
                     .filter((ev: any) => ev.semester === semester.name && ev.title.includes('Deadline'))
                     .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
-                // Find next upcoming deadline
                 const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), new Date()));
                 if (nextDeadline) {
                     setPaymentDeadline({ title: nextDeadline.title.split(' - ')[0], date: nextDeadline.date });
                 }
 
-                // Check for defaulter warning
                 const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
                 if (passedDeadlines.length > 0) {
                     const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
@@ -307,7 +305,6 @@ export default function StudentDashboardPage() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                {/* Countdown Card */}
                 {paymentDeadline && feeBalance > 0 && (
                     <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
                         <CardHeader className="pb-2">
@@ -321,7 +318,7 @@ export default function StudentDashboardPage() {
                     </Card>
                 )}
 
-                <Card className={cn("shadow-md", !paymentDeadline || feeBalance <= 0 ? "lg:col-span-1" : "")}>
+                <Card className={cn("shadow-md", (!paymentDeadline || feeBalance <= 0) ? "lg:col-span-1" : "")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Balance</CardTitle>
                         <Wallet className="h-4 w-4 text-primary" />

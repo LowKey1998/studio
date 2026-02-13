@@ -1,6 +1,8 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck, GanttChart, PiggyBank, AlertCircle, Calendar, Clock, ChevronRight } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -10,7 +12,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Button } from "@/components/ui/button";
 
 type ActivityLog = {
     user: string;
