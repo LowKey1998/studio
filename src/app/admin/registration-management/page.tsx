@@ -96,7 +96,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setYear(String(editingSemester.year || ''));
             setSemesterInYear(String(editingSemester.semesterInYear || ''));
             setCustomName(editingSemester.name || '');
-            setUseCustomName(true); // Always use custom for editing to prevent accidental renames
+            setUseCustomName(true); 
             
             setSemesterDates({
                 from: editingSemester.startDate ? parseISO(editingSemester.startDate) : undefined,

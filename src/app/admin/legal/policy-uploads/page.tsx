@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, Trash2, Download } from "lucide-react";
+import { PlusCircle, Loader2, Trash2, Download, FileUp, Check } from "lucide-react";
 import { db, storage } from '@/lib/firebase';
 import { ref as dbRef, onValue, set, push, remove } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -70,6 +70,7 @@ export default function PolicyUploadsPage() {
     };
     
     const handleDelete = async (id: string) => {
+        if (!window.confirm("Are you sure?")) return;
         await remove(dbRef(db, `policies/${id}`));
         toast({ title: 'Policy deleted' });
     }
@@ -88,11 +89,14 @@ export default function PolicyUploadsPage() {
                         <div className="grid gap-4 py-4">
                             <div className="space-y-1"><Label>Policy Title</Label><Input value={title} onChange={e => setTitle(e.target.value)}/></div>
                             <div className="space-y-1"><Label>Category</Label><Input value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g., HR, Academic, Finance"/></div>
-                            <div className="space-y-1"><Label>File (PDF)</Label><Input type="file" accept=".pdf" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
+                            <div className="space-y-1"><Label>File (PDF, Doc, Excel, PPT)</Label><Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onChange={e => setFile(e.target.files?.[0] || null)} /></div>
                         </div>
                         <DialogFooter>
                             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleSavePolicy} disabled={saving}>{saving && <Loader2 className="mr-2"/>}Save Policy</Button>
+                            <Button onClick={handleSavePolicy} disabled={saving}>
+                                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4"/>}
+                                Save Policy
+                            </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
@@ -108,7 +112,7 @@ export default function PolicyUploadsPage() {
                                 <TableCell>{p.category}</TableCell>
                                 <TableCell>{format(new Date(p.uploadDate), 'PPP')}</TableCell>
                                 <TableCell className="text-right">
-                                    <Button asChild variant="outline" size="sm" className="mr-2"><a href={p.fileUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4"/>Download</a></Button>
+                                    <Button asChild variant="outline" size="sm" className="mr-2"><a href={p.fileUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4"/>Download</a></Button>
                                     <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}><Trash2 className="h-4 w-4"/></Button>
                                 </TableCell>
                             </TableRow>

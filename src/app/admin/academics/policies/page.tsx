@@ -127,10 +127,10 @@ export default function AcademicPoliciesPage() {
                                     <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="A short summary of what this document contains..."/>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>File (PDF)</Label>
+                                    <Label>File (PDF, Doc, Excel, PPT)</Label>
                                     <div className="flex items-center gap-2 p-4 border-2 border-dashed rounded-lg bg-muted/20">
                                         <FileUp className="h-8 w-8 text-muted-foreground" />
-                                        <Input type="file" accept=".pdf" className="border-0 bg-transparent shadow-none" onChange={e => setFile(e.target.files?.[0] || null)} />
+                                        <Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" className="border-0 bg-transparent shadow-none" onChange={e => setFile(e.target.files?.[0] || null)} />
                                     </div>
                                 </div>
                             </div>
@@ -168,7 +168,7 @@ export default function AcademicPoliciesPage() {
                             <CardFooter className="mt-auto border-t p-4 flex justify-between bg-muted/10">
                                 <Button asChild variant="outline" size="sm" className="w-full">
                                     <a href={res.fileUrl} target="_blank" rel="noopener noreferrer">
-                                        <Download className="mr-2 h-4 w-4"/>Download PDF
+                                        <Download className="mr-2 h-4 w-4"/>Download File
                                     </a>
                                 </Button>
                             </CardFooter>
