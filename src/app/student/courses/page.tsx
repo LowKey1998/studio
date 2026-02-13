@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -13,7 +12,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
-import { differenceInCalendarDays, parseISO, isBefore, startOfDay } from 'date-fns';
+import { differenceInCalendarDays, parseISO, isBefore, startOfDay, format } from 'date-fns';
 
 type Course = {
     id: string;
@@ -262,14 +261,14 @@ export default function StudentCoursesPage() {
                                         {(course.assignmentStatus?.pastDue || 0) > 0 && (
                                             <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-[10px] font-bold">
                                                 <AlertCircle className="h-4 w-4" />
-                                                <span>{course.assignmentStatus?.pastDue} OVERDUE (due {format(parseISO(course.assignmentStatus?.earliestDueDate!), 'MMM dd')})</span>
+                                                <span>{course.assignmentStatus?.pastDue} OVERDUE (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
                                             </div>
                                         )}
 
                                         {(course.assignmentStatus?.dueSoon || 0) > 0 && (
                                             <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-bold">
                                                 <Clock className="h-4 w-4" />
-                                                <span>{course.assignmentStatus?.dueSoon} PENDING (due {format(parseISO(course.assignmentStatus?.earliestDueDate!), 'MMM dd')})</span>
+                                                <span>{course.assignmentStatus?.dueSoon} PENDING (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
                                             </div>
                                         )}
                                     </CardContent>
