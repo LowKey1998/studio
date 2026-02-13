@@ -124,7 +124,6 @@ export default function StudentDashboardPage() {
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
             let activeSemesterId: string | null = null;
-            let activeSemesterName = '';
 
             for (const semId in allRegistrations) {
                 const reg = allRegistrations[semId];
@@ -134,7 +133,6 @@ export default function StudentDashboardPage() {
                 if (reg.courses) {
                     if (semInfo.status === 'Open') {
                         activeSemesterId = semId;
-                        activeSemesterName = semInfo.name;
                     }
 
                     const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);

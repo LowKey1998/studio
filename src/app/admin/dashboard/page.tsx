@@ -6,7 +6,7 @@ import { Users, BookOpen, UserCheck, Activity, DollarSign, BookOpenCheck, GanttC
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
-import { formatDistanceToNow, isAfter, parseISO, addDays } from 'date-fns';
+import { formatDistanceToNow, isAfter, parseISO, addDays, isToday } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';

@@ -33,13 +33,6 @@ type TimetableEntry = {
     intakeName: string;
 };
 
-type MergedEntry = {
-    key: string;
-    entry: TimetableEntry;
-    totalStudents: number;
-    participants: { name: string; standing: string; count: number }[];
-};
-
 const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const timeToMinutes = (time: string) => {

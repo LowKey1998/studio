@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth as firebaseAuth } from '@/lib/firebase';
-import { sendEmail } from '@/ai/flows/send-email-flow';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
@@ -152,7 +151,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search..."
                         className="h-9"
                         value={search}
-                        onChange={e => setSearch(e.target.value)}
+                        onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
                 <Separator />
