@@ -360,102 +360,90 @@ export default function PaymentsManagementPage() {
     };
     
     const handleSaveBulkPayments = async () => {
-        setFormLoading(true);
         const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.semesterId && ((p.isUnlinked && p.reference) || (!p.isUnlinked && p.userId)));
         
         if(paymentsToRecord.length === 0) {
             toast({ variant: 'destructive', title: 'No valid payments entered.', description: 'Each row requires a student/ref, a semester, and an amount.'});
-            setFormLoading(false);
             return;
         }
         
-        let successCount = 0;
-        let failCount = 0;
-        const errors: string[] = [];
+        setFormLoading(true);
+        const updates: Record<string, any> = {};
+        const notifications: { userId: string, message: string }[] = [];
 
         try {
             for (const paymentRecord of paymentsToRecord) {
-                try {
-                    if (paymentRecord.isUnlinked) {
-                        const { reference, semesterId, amount, comment, totalDue } = paymentRecord;
-                        await push(ref(db, 'unlinkedPayments'), {
-                            reference,
-                            semesterId,
-                            amount: parseFloat(amount),
-                            comment,
-                            totalDue: parseFloat(String(totalDue)) || 0,
-                            date: new Date().toISOString()
-                        });
-                    } else {
-                        let { userId, invoiceId, semesterId, amount, comment, totalDue } = paymentRecord;
-                        if (!userId || !semesterId) continue;
+                const now = new Date().toISOString();
+                const amountFloat = parseFloat(paymentRecord.amount);
 
-                        const studentInfo = allStudents.find(s => s.uid === userId);
-                        const semesterInfo = semesters.find(s => s.id === semesterId);
+                if (paymentRecord.isUnlinked) {
+                    const unlinkedRef = push(ref(db, 'unlinkedPayments'));
+                    updates[`unlinkedPayments/${unlinkedRef.key}`] = {
+                        reference: paymentRecord.reference,
+                        semesterId: paymentRecord.semesterId,
+                        amount: amountFloat,
+                        comment: paymentRecord.comment || '',
+                        totalDue: parseFloat(String(paymentRecord.totalDue)) || 0,
+                        date: now
+                    };
+                } else {
+                    let { userId, invoiceId, semesterId, comment, totalDue } = paymentRecord;
+                    if (!userId || !semesterId) continue;
 
-                        if (!studentInfo || !semesterInfo) {
-                            errors.push(`Row ${paymentRecord.key}: Student/Semester info missing.`);
-                            failCount++;
-                            continue;
-                        }
+                    const semesterInfo = semesters.find(s => s.id === semesterId);
+                    if (!semesterInfo) continue;
 
-                        // Ensure invoice exists
-                        if (!invoiceId) {
-                            const newInvoiceRef = push(ref(db, `invoices/${userId}`));
-                            invoiceId = newInvoiceRef.key!;
-                            await set(newInvoiceRef, {
-                                invoiceId,
-                                totalTuition: parseFloat(String(totalDue)) || 0,
-                                totalMandatoryFees: 0,
-                                totalOptionalFees: 0,
-                                dateCreated: new Date().toISOString(),
-                                semester: semesterInfo.name,
-                                semesterId: semesterInfo.id,
-                                courses: [],
-                                optionalFees: [],
-                            });
-                            await update(ref(db, `registrations/${userId}/${semesterId}`), { invoiceId });
-                        }
-
-                        // Record Transaction
-                        await set(push(ref(db, 'transactions')), {
-                            transactionId: `MANUAL-${Date.now()}`,
-                            userId,
+                    if (!invoiceId) {
+                        const newInvoiceRef = push(ref(db, `invoices/${userId}`));
+                        invoiceId = newInvoiceRef.key!;
+                        updates[`invoices/${userId}/${invoiceId}`] = {
                             invoiceId,
-                            amount: parseFloat(amount),
-                            currency: 'ZMW',
-                            status: 'successful',
-                            paymentDate: new Date().toISOString(),
-                            method: 'Manual',
-                            comment
-                        });
-
-                        // Notify
-                        await createNotification(userId, `A manual payment of ZMW ${parseFloat(amount).toFixed(2)} was recorded for your ${semesterInfo.name} account.`, '/student/payments');
+                            totalTuition: parseFloat(String(totalDue)) || 0,
+                            totalMandatoryFees: 0,
+                            totalOptionalFees: 0,
+                            dateCreated: now,
+                            semester: semesterInfo.name,
+                            semesterId: semesterInfo.id,
+                            courses: [],
+                            optionalFees: [],
+                        };
+                        updates[`registrations/${userId}/${semesterId}/invoiceId`] = invoiceId;
                     }
-                    successCount++;
-                } catch (rowError: any) {
-                    errors.push(`Row ${paymentRecord.key}: ${rowError.message}`);
-                    failCount++;
+
+                    const txRef = push(ref(db, 'transactions'));
+                    updates[`transactions/${txRef.key}`] = {
+                        transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
+                        userId,
+                        invoiceId,
+                        amount: amountFloat,
+                        currency: 'ZMW',
+                        status: 'successful',
+                        paymentDate: now,
+                        method: 'Manual',
+                        comment: comment || ''
+                    };
+
+                    notifications.push({
+                        userId,
+                        message: `A manual payment of ZMW ${amountFloat.toFixed(2)} was recorded for your ${semesterInfo.name} account.`
+                    });
                 }
             }
             
-            if (failCount === 0) {
-                toast({ title: "Success", description: `Recorded ${successCount} payments successfully.` });
-                setIsBulkRecordOpen(false);
-                setBulkPaymentRows([]);
-            } else {
-                toast({ 
-                    variant: 'destructive', 
-                    title: `Partial Success (${successCount}/${paymentsToRecord.length})`, 
-                    description: `Recorded ${successCount} successfully. ${failCount} failed. Check console for details.` 
-                });
-                console.error("Bulk Payment Errors:", errors);
-            }
+            await update(ref(db), updates);
             
+            toast({ variant: 'success', title: "Payments Recorded", description: `Successfully processed ${paymentsToRecord.length} records.` });
+            setIsBulkRecordOpen(false);
+            setBulkPaymentRows([]);
+            
+            // Handle notifications in background
+            notifications.forEach(n => {
+                createNotification(n.userId, n.message, '/student/payments').catch(() => {});
+            });
+
             await fetchPaymentData();
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Critical error during batch save.', description: e.message });
+            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
         } finally {
             setFormLoading(false);
         }
@@ -465,22 +453,24 @@ export default function PaymentsManagementPage() {
         if (!linkingPayment || !selectedLinkStudent || !linkingPayment.semesterId) return;
         setFormLoading(true);
         try {
-            let info = paymentInfos.find(p => p.userId === selectedLinkStudent && p.semesterId === linkingPayment.semesterId);
+            const info = paymentInfos.find(p => p.userId === selectedLinkStudent && p.semesterId === linkingPayment.semesterId);
             let invoiceId = info?.invoiceId;
+            const updates: Record<string, any> = {};
 
             if (!invoiceId) {
                 const newInvoiceRef = push(ref(db, `invoices/${selectedLinkStudent}`));
                 invoiceId = newInvoiceRef.key!;
-                await set(newInvoiceRef, {
+                updates[`invoices/${selectedLinkStudent}/${invoiceId}`] = {
                     invoiceId,
                     totalTuition: linkingPayment.totalDue || 0,
                     dateCreated: new Date().toISOString(),
                     semesterId: linkingPayment.semesterId
-                });
-                await update(ref(db, `registrations/${selectedLinkStudent}/${linkingPayment.semesterId}`), { invoiceId });
+                };
+                updates[`registrations/${selectedLinkStudent}/${linkingPayment.semesterId}/invoiceId`] = invoiceId;
             }
 
-            await set(push(ref(db, 'transactions')), {
+            const txRef = push(ref(db, 'transactions'));
+            updates[`transactions/${txRef.key}`] = {
                 transactionId: `LINKED-${linkingPayment.id}`,
                 userId: selectedLinkStudent,
                 invoiceId,
@@ -490,12 +480,16 @@ export default function PaymentsManagementPage() {
                 paymentDate: linkingPayment.date,
                 method: 'Manual (Linked)',
                 comment: `Linked to account. Original Reference: ${linkingPayment.reference}`
-            });
+            };
 
-            await remove(ref(db, `unlinkedPayments/${linkingPayment.id}`));
-            await createNotification(selectedLinkStudent, `A previous deposit of ZMW ${linkingPayment.amount.toFixed(2)} was successfully linked to your account.`, '/student/payments');
+            updates[`unlinkedPayments/${linkingPayment.id}`] = null;
+
+            await update(ref(db), updates);
             
-            toast({ title: 'Payment Linked Successfully' });
+            toast({ variant: 'success', title: 'Payment Linked' });
+            
+            createNotification(selectedLinkStudent, `A previous deposit of ZMW ${linkingPayment.amount.toFixed(2)} was successfully linked to your account.`, '/student/payments').catch(() => {});
+            
             await fetchPaymentData();
             setIsLinkingOpen(false);
         } catch (e: any) {

@@ -236,10 +236,12 @@ export default function PaymentsManagementPage() {
                  toast({ variant: 'destructive', title: 'Invalid amount' }); return;
             }
 
-            const newTxId = transactionId.trim() || `CASH-${Date.now()}`;
             const txRef = push(ref(db, 'transactions'));
+            const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
+            
+            // Perform DB update immediately
             await set(txRef, {
-                transactionId: newTxId,
+                transactionId: txId,
                 userId: selectedStudent.userId,
                 amount: amount,
                 currency: 'ZMW',
@@ -249,20 +251,21 @@ export default function PaymentsManagementPage() {
                 recordedBy: userData?.name || 'Accountant',
             });
 
-            await createNotification(
+            toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} has been credited to ${selectedStudent.studentName}.` });
+            setIsRecordPaymentOpen(false);
+            resetDialog();
+            
+            // Handle notification in background to prevent blocking
+            createNotification(
                 selectedStudent.userId,
                 `A payment of ZMW ${amount.toFixed(2)} was manually recorded for your account.`,
                 '/student/payments'
-            );
-            
-            toast({ title: "Payment Recorded", description: `Payment of ZMW ${amount.toFixed(2)} for ${selectedStudent.studentName} has been recorded.` });
-            
-            fetchPaymentData(); // Refresh data
-            setIsRecordPaymentOpen(false);
-            resetDialog();
+            ).catch(err => console.error("Background notification failed:", err));
+
+            await fetchPaymentData();
 
         } catch (e: any) {
-             toast({ variant: 'destructive', title: 'Failed to record payment', description: e.message });
+             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
         } finally {
             setFormLoading(false);
         }
