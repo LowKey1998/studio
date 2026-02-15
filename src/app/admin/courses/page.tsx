@@ -176,13 +176,13 @@ export default function CoursesPage() {
 
             const isSemesterActive = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (!sem.endDate) return false;
+                if (!sem.endDate) return true; // If no date set, assume current if open
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
                     // Active means the end date hasn't passed yet.
                     return !isAfter(now, end);
                 } catch (e) {
-                    return false;
+                    return true;
                 }
             };
 
@@ -194,7 +194,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        // REQUIREMENT: Count only those enrolled for semesters that have not yet ended
+                        // Count only those enrolled for semesters that have not yet ended
                         if (semesterInfo && isSemesterActive(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
@@ -402,9 +402,15 @@ export default function CoursesPage() {
                                                     <SelectContent><SelectItem value="none">Unassigned</SelectItem>{lecturers.map(l => ( <SelectItem key={l.uid} value={l.uid}>{l.name}</SelectItem> ))}</SelectContent>
                                                 </Select>
                                             </div>
-                                            <div className="flex items-center space-x-2 p-4 border rounded-md bg-primary/5">
-                                                <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                                <div className="space-y-0.5"><Label className="text-sm font-bold">Make separate instance per intake</Label><p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p></div>
+                                            <div className="flex items-start space-x-2 p-4 border rounded-md bg-primary/5">
+                                                <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} className="mt-1" />
+                                                <div className="space-y-1">
+                                                    <Label className="text-sm font-bold">Cohort-Specific Timetabling</Label>
+                                                    <p className="text-[10px] text-muted-foreground leading-tight italic">
+                                                        Enable this if different student intakes should have their own separate class sessions. 
+                                                        If disabled, all students taking this course will share the same timetable entries regardless of their intake.
+                                                    </p>
+                                                </div>
                                             </div>
                                             <div className="space-y-2"><Label>Linked Programmes</Label><div className="grid grid-cols-2 gap-2 border p-4 max-h-48 overflow-y-auto bg-muted/20">{programmes.map(p => (<div key={p.id} className="flex items-center gap-2"><Checkbox checked={!!selectedProgrammes[p.id]} onCheckedChange={() => setSelectedProgrammes(prev => ({...prev, [p.id]: !prev[p.id]}))}/><Label className="font-normal text-sm">{p.name}</Label></div>))}</div></div>
                                         </div>

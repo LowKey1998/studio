@@ -53,6 +53,7 @@ export default function ProgrammesPage() {
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [lecturers, setLecturers] = React.useState<Lecturer[]>([]);
+    const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester' | 'unknown'>('course');
     const [loading, setLoading] = React.useState(true);
     const [formLoading, setFormLoading] = React.useState(false);
     
@@ -79,12 +80,17 @@ export default function ProgrammesPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, coursesSnap, programmesSnap] = await Promise.all([
+            const [usersSnap, coursesSnap, programmesSnap, settingsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'programmes'))
+                get(ref(db, 'programmes')),
+                get(ref(db, 'settings/institution'))
             ]);
             
+            if (settingsSnap.exists()) {
+                setBillingPolicy(settingsSnap.val().billingPolicy || 'course');
+            }
+
             const lecturersList: Lecturer[] = [];
             if (usersSnap.exists()) {
                 const usersData = usersSnap.val();
@@ -151,14 +157,16 @@ export default function ProgrammesPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div>
-                        <CardTitle className="text-2xl font-headline">Academic Programmes</CardTitle>
-                        <CardDescription>Manage academic programmes and curriculum catalogs.</CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" asChild><Link href="/admin/courses"><BookCopy className="mr-2 h-4 w-4" /> Manage Course Catalog</Link></Button>
-                        <Button onClick={() => { setEditingProgramme(null); setProgrammeName(''); setProgrammeTuition(''); setSelectedCourses({}); setIsDialogOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Add Programme</Button>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-2xl font-headline">Academic Programmes</CardTitle>
+                            <CardDescription>Manage academic programmes and curriculum catalogs.</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" asChild><Link href="/admin/courses"><BookCopy className="mr-2 h-4 w-4" /> Manage Course Catalog</Link></Button>
+                            <Button onClick={() => { setEditingProgramme(null); setProgrammeName(''); setProgrammeTuition(''); setSelectedCourses({}); setIsDialogOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Add Programme</Button>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
@@ -168,10 +176,17 @@ export default function ProgrammesPage() {
                 programmes.map(prog => (
                     <Card key={prog.id} className="flex flex-col justify-between shadow-md hover:shadow-xl transition-all border-t-4 border-t-primary">
                         <CardHeader>
-                            <CardTitle className="text-lg leading-tight">{prog.name}</CardTitle>
-                            <CardDescription className="font-bold">
-                                {prog.tuitionFee ? `ZMW ${prog.tuitionFee.toLocaleString()}` : 'Fee Not Set'}
-                            </CardDescription>
+                            <div className="space-y-1">
+                                <CardTitle className="text-lg leading-tight">{prog.name}</CardTitle>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-bold text-primary">
+                                        {prog.tuitionFee ? `ZMW ${prog.tuitionFee.toLocaleString()}` : 'Fee Not Set'}
+                                    </span>
+                                    <Badge variant="outline" className="text-[10px] uppercase font-black tracking-widest opacity-70">
+                                        {billingPolicy === 'semester' ? 'Flat Semester Fee' : 'Pay per Course'}
+                                    </Badge>
+                                </div>
+                            </div>
                         </CardHeader>
                         <CardContent className="flex-grow">
                             <Badge variant="secondary" className="mt-2">
@@ -195,7 +210,11 @@ export default function ProgrammesPage() {
                     <div className="flex-1 overflow-auto py-4 space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1"><Label>Programme Name *</Label><Input value={programmeName} onChange={e => setProgrammeName(e.target.value)} placeholder="e.g., Bachelor of Science in Nursing"/></div>
-                            <div className="space-y-1"><Label>Semester Tuition Fee (Optional)</Label><Input type="number" value={programmeTuition} onChange={e => setProgrammeTuition(e.target.value)} placeholder="e.g., 5000" /></div>
+                            <div className="space-y-1">
+                                <Label>Tuition Fee (ZMW)</Label>
+                                <Input type="number" value={programmeTuition} onChange={e => setProgrammeTuition(e.target.value)} placeholder="e.g., 5000" />
+                                <p className="text-[10px] text-muted-foreground italic">Required for 'Flat Semester Fee' billing.</p>
+                            </div>
                         </div>
                         <Separator />
                         <div className="space-y-4">
@@ -212,9 +231,12 @@ export default function ProgrammesPage() {
                                                 <Input type="number" placeholder="Cost" value={newCourseCost} onChange={e => setNewCourseCost(e.target.value)} />
                                                 <Input type="number" placeholder="Year" value={newCourseYear} onChange={e => setNewCourseYear(e.target.value)} />
                                             </div>
-                                            <div className="flex items-center space-x-2 p-2 border rounded bg-muted/20">
-                                                <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                                <Label className="text-xs font-medium">Separate instance per intake</Label>
+                                            <div className="flex items-start space-x-2 p-2 border rounded bg-muted/20">
+                                                <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} className="mt-1" />
+                                                <div className="space-y-0.5">
+                                                    <Label className="text-xs font-bold">Cohort-Specific Timetabling</Label>
+                                                    <p className="text-[9px] text-muted-foreground leading-tight italic">Enable if intakes should have independent class sessions.</p>
+                                                </div>
                                             </div>
                                         </div>
                                         <DialogFooter><Button type="submit" disabled={courseFormLoading}>Create & Link</Button></DialogFooter>
