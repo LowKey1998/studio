@@ -9,10 +9,10 @@ import { ref, get, onValue, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, Layers, CalendarDays, Video, Loader2 } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, Layers, CalendarDays, Video, Loader2, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
-import { isWithinInterval, parseISO } from 'date-fns';
+import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -46,7 +46,7 @@ type MergedEntry = {
     participants: { name: string; standing: string; count: number }[];
 };
 
-const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const timeToMinutes = (time: string) => {
     if (!time) return 0;
@@ -56,11 +56,15 @@ const timeToMinutes = (time: string) => {
 
 export default function StaffTimetablePage() {
     const [mergedTimetable, setMergedTimetable] = React.useState<MergedEntry[]>([]);
-    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [currentUserProfile, setCurrentUserProfile] = React.useState<any>(null);
+    
+    // Week Navigation
+    const [viewWeek, setViewWeek] = React.useState(new Date());
+
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -95,7 +99,7 @@ export default function StaffTimetablePage() {
             const iData = intakesSnap.val() || {};
 
             setTeachingTimes({
-                days: settingsData.days || defaultDays,
+                days: settingsData.days || calendarDays.slice(1, 6),
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
@@ -193,25 +197,31 @@ export default function StaffTimetablePage() {
 
     React.useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleRequestLive = async (merged: MergedEntry) => {
+    const handleRequestLive = async (merged: MergedEntry, date: Date) => {
         if (!currentUser || !currentUserProfile) return;
-        setActionLoading(merged.key);
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const actionKey = `${merged.key}-${dateStr}`;
+        setActionLoading(actionKey);
         try {
             const updates: Record<string, any> = {};
-            updates[`timetables/${merged.entry.semesterId}/${merged.entry.courseId}/${merged.entry.id}/isLiveRequested`] = true;
+            // Store request under a date-keyed path within the entry
+            updates[`timetables/${merged.entry.semesterId}/${merged.entry.courseId}/${merged.entry.id}/dateRequests/${dateStr}`] = {
+                status: 'Requested',
+                timestamp: serverTimestamp()
+            };
             await update(ref(db), updates);
 
             const registrarIds = await getRegistrarIds();
             const notificationPromises = registrarIds.map(id => 
                 createNotification(
                     id, 
-                    `${currentUserProfile.name} has requested a Live Link for ${merged.entry.courseCode} on ${merged.entry.day}.`,
+                    `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
                     '/admin/timetable'
                 )
             );
             await Promise.all(notificationPromises);
 
-            toast({ title: 'Request Sent', description: 'The Registrar has been notified of your live link request.' });
+            toast({ title: 'Request Sent', description: `Live session requested for ${format(date, 'PPP')}.` });
             fetchData();
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
@@ -220,7 +230,16 @@ export default function StaffTimetablePage() {
         }
     };
 
-    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
+    const currentWeekInterval = React.useMemo(() => {
+        const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
+        return [0, 1, 2, 3, 4, 5, 6].map(i => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    }, [viewWeek]);
+
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
     const hasSlots = teachingTimes.slots.length > 0;
 
     return (
@@ -228,9 +247,20 @@ export default function StaffTimetablePage() {
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="text-primary"/> Active Teaching Schedule</CardTitle>
-                    <CardDescription>Your weekly classes. You can request sessions to be converted into live video sessions.</CardDescription>
+                    <CardDescription>Your weekly classes. Navigation is date-specific to handle varying session types.</CardDescription>
                 </CardHeader>
             </Card>
+
+            <div className="flex items-center justify-between px-2 py-2 bg-primary/5 border rounded-lg">
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
+                    <div className="font-bold text-sm uppercase tracking-widest text-primary">
+                        {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-black uppercase opacity-60">Calendar View</Badge>
+            </div>
 
             <Card className="shadow-lg">
                 <CardContent className="overflow-x-auto pt-6">
@@ -243,65 +273,83 @@ export default function StaffTimetablePage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
-                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        <TableHead className="w-32 border-r font-bold text-center">DATE & DAY</TableHead>
                                         {teachingTimes.slots.map((slot, index) => (<TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>))}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {displayDays.map(dayName => (
-                                        <TableRow key={dayName}>
-                                            <TableCell className="font-bold text-xs uppercase tracking-wider text-center border-r bg-muted/20">{dayName}</TableCell>
-                                            {teachingTimes.slots.map((slot, sIdx) => {
-                                                const slotStart = timeToMinutes(slot.startTime);
-                                                const slotEnd = timeToMinutes(slot.endTime);
-                                                const sessionsInSlot = mergedTimetable.filter(m => m.entry.day === dayName && timeToMinutes(m.entry.startTime) >= slotStart && timeToMinutes(m.entry.startTime) < slotEnd);
+                                    {currentWeekInterval.map(date => {
+                                        const dayName = calendarDays[getDay(date)];
+                                        const isDayToday = isToday(date);
+                                        const dateStr = format(date, 'yyyy-MM-dd');
 
-                                                return (
-                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
-                                                        <div className="space-y-2">
-                                                            {sessionsInSlot.map((m, eIdx) => (
-                                                                <div key={eIdx} className={cn(
-                                                                    "block p-2 rounded-md border bg-background shadow-sm transition-all",
-                                                                    m.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
-                                                                    m.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
-                                                                )}>
-                                                                    <div className="flex justify-between items-start">
-                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{m.entry.courseCode}: {m.entry.courseName}</p>
-                                                                        {m.entry.isLiveSession ? <Video className="h-3 w-3 text-blue-600" /> : <Layers className="h-3 w-3 text-primary/40" />}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {m.entry.venue}</div>
-                                                                    <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {m.totalStudents} Students</div>
-                                                                    
-                                                                    {!m.entry.isLiveSession && (
-                                                                        <div className="mt-2 pt-2 border-t flex items-center justify-between">
-                                                                            {m.entry.isLiveRequested ? (
-                                                                                <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Link Requested</Badge>
-                                                                            ) : (
-                                                                                <Button 
-                                                                                    variant="ghost" 
-                                                                                    size="sm" 
-                                                                                    className="h-6 text-[9px] font-bold p-1 uppercase"
-                                                                                    onClick={() => handleRequestLive(m)}
-                                                                                    disabled={actionLoading === m.key}
-                                                                                >
-                                                                                    {actionLoading === m.key ? <Loader2 className="h-3 w-3 animate-spin"/> : <Video className="h-3 w-3 mr-1"/>}
-                                                                                    Request Live Link
-                                                                                </Button>
+                                        return (
+                                            <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
+                                                <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
+                                                    <div className="flex flex-col">
+                                                        <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                        <span className="text-sm font-black">{format(date, 'MMM dd')}</span>
+                                                    </div>
+                                                </TableCell>
+                                                {teachingTimes.slots.map((slot, sIdx) => {
+                                                    const slotStart = timeToMinutes(slot.startTime);
+                                                    const slotEnd = timeToMinutes(slot.endTime);
+                                                    const sessionsInSlot = mergedTimetable.filter(m => m.entry.day === dayName && timeToMinutes(m.entry.startTime) >= slotStart && timeToMinutes(m.entry.startTime) < slotEnd);
+
+                                                    return (
+                                                        <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                            <div className="space-y-2">
+                                                                {sessionsInSlot.map((m, eIdx) => {
+                                                                    // Check for date-specific request
+                                                                    const dateRequest = (m.entry as any).dateRequests?.[dateStr];
+                                                                    const isLiveRequestedOnDate = dateRequest?.status === 'Requested';
+                                                                    const isLiveApprovedOnDate = dateRequest?.status === 'Approved' || m.entry.isLiveSession;
+
+                                                                    return (
+                                                                        <div key={eIdx} className={cn(
+                                                                            "block p-2 rounded-md border bg-background shadow-sm transition-all",
+                                                                            isLiveApprovedOnDate ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
+                                                                            isLiveRequestedOnDate && "border-orange-400 bg-orange-50/20"
+                                                                        )}>
+                                                                            <div className="flex justify-between items-start">
+                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{m.entry.courseCode}: {m.entry.courseName}</p>
+                                                                                {isLiveApprovedOnDate ? <Video className="h-3 w-3 text-blue-600" /> : <Layers className="h-3 w-3 text-primary/40" />}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {isLiveApprovedOnDate ? "DIGITAL ROOM" : m.entry.venue}</div>
+                                                                            <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {m.totalStudents} Students</div>
+                                                                            
+                                                                            {!isLiveApprovedOnDate && (
+                                                                                <div className="mt-2 pt-2 border-t flex items-center justify-between">
+                                                                                    {isLiveRequestedOnDate ? (
+                                                                                        <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Requested</Badge>
+                                                                                    ) : (
+                                                                                        <Button 
+                                                                                            variant="ghost" 
+                                                                                            size="sm" 
+                                                                                            className="h-6 text-[9px] font-bold p-1 uppercase"
+                                                                                            onClick={() => handleRequestLive(m, date)}
+                                                                                            disabled={actionLoading === `${m.key}-${dateStr}`}
+                                                                                        >
+                                                                                            {actionLoading === `${m.key}-${dateStr}` ? <Loader2 className="h-3 w-3 animate-spin"/> : <Video className="h-3 w-3 mr-1"/>}
+                                                                                            Request Live
+                                                                                        </Button>
+                                                                                    )}
+                                                                                </div>
                                                                             )}
-                                                                        </div>
-                                                                    )}
 
-                                                                    <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                        {m.participants.map((p, pIdx) => (<Badge key={pIdx} variant="secondary" className="text-[8px] h-4 px-1">{p.name} ({p.standing}): {p.count}</Badge>))}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </TableCell>
-                                                );
-                                            })}
-                                        </TableRow>
-                                    ))}
+                                                                            <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                                {m.participants.map((p, pIdx) => (<Badge key={pIdx} variant="secondary" className="text-[8px] h-4 px-1">{p.name} ({p.standing}): {p.count}</Badge>))}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>

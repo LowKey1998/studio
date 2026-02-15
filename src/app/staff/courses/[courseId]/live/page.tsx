@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { VideoCall } from '@/components/video-call';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Info, Play, MonitorPlay, Power, Loader2, Clock, AlertTriangle, ClipboardCheck, Search, CheckCircle, XCircle, Save } from 'lucide-react';
+import { ChevronLeft, Info, Play, MonitorPlay, Power, Loader2, Clock, AlertTriangle, ClipboardCheck, Search, CheckCircle, XCircle, Save, Video } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type Student = { uid: string; id: string; name: string; };
 type AttendanceStatus = "Present" | "Absent" | "Late" | "Excused Absence";
@@ -62,7 +62,8 @@ export default function LecturerLivePage() {
       });
 
       const checkTimetable = async () => {
-          const today = daysOfWeek[new Date().getDay()];
+          const today = calendarDays[new Date().getDay()];
+          const dateStr = format(new Date(), 'yyyy-MM-dd');
           const [timetablesSnap, courseSnap] = await Promise.all([
               get(ref(db, 'timetables')),
               get(ref(db, `courses/${courseId}`))
@@ -78,7 +79,14 @@ export default function LecturerLivePage() {
               for (const semId in data) {
                   if (data[semId][courseId]) {
                       const sessions = Object.values(data[semId][courseId]) as any[];
-                      const todaySession = sessions.find(s => s.day === today && s.isLiveSession);
+                      // Check for global live status OR date-specific approved request
+                      const todaySession = sessions.find(s => {
+                          const matchesDay = s.day === today;
+                          const hasGlobalLive = !!s.isLiveSession;
+                          const hasApprovedDateRequest = s.dateRequests?.[dateStr]?.status === 'Approved';
+                          return matchesDay && (hasGlobalLive || hasApprovedDateRequest);
+                      });
+
                       if (todaySession) {
                           isLive = true;
                           startTime = todaySession.startTime;

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import Link from 'next/link';
@@ -63,7 +63,7 @@ type Course = { id: string; name: string; code: string; status: string; lecturer
 type Room = { id: string; name: string; capacity: number; };
 type Intake = { id: string; name: string; };
 
-const defaultDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const timeToMinutes = (time: string) => {
     if (!time) return 0;
@@ -85,8 +85,11 @@ function TimetableManagementComponent() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
     const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
-    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: defaultDays, slots: [] });
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
+
+    // Week Navigation
+    const [viewWeek, setViewWeek] = React.useState(new Date());
 
     const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
@@ -137,7 +140,7 @@ function TimetableManagementComponent() {
                 case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
-                    days: data.days || defaultDays,
+                    days: data.days || calendarDays.slice(1, 6),
                     slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 }); break;
                 case 7: setCalendarSettings(data); break;
@@ -305,7 +308,7 @@ function TimetableManagementComponent() {
                 endTime, 
                 venue: isLiveSession ? 'Online Session' : (venue || 'TBA'), 
                 isLiveSession,
-                isLiveRequested: false, // Reset request status when admin updates
+                isLiveRequested: false, 
                 intakeName 
             };
 
@@ -379,6 +382,15 @@ function TimetableManagementComponent() {
         setIsAddOpen(true);
     };
 
+    const currentWeekInterval = React.useMemo(() => {
+        const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
+        return [0, 1, 2, 3, 4, 5, 6].map(i => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    }, [viewWeek]);
+
     const mergedSessions = React.useMemo(() => {
         const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; totalStudents: number; participants: { semesterId: string; name: string; standing: string; count: number }[] }> = {};
         
@@ -416,7 +428,7 @@ function TimetableManagementComponent() {
         return Object.values(sessions);
     }, [filteredTimetable, allCourses, semesters, intakes, users, getActualCount]);
 
-    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : defaultDays;
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
     const hasSlots = teachingTimes.slots.length > 0;
 
     return (
@@ -443,7 +455,7 @@ function TimetableManagementComponent() {
                                         {viewTarget === 'master' && (
                                             <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                         )}
-                                        <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
+                                        <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal">{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
                                         
                                         <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
                                             <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
@@ -456,7 +468,7 @@ function TimetableManagementComponent() {
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{calendarDays.slice(1, 6).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
                                             <div className="space-y-1">
                                                 <Label>Venue</Label>
                                                 {isLiveSession ? (
@@ -503,6 +515,19 @@ function TimetableManagementComponent() {
                         <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
 
+                    {viewTarget !== 'master' && (
+                        <div className="flex items-center justify-between px-2 py-2 bg-primary/5 border rounded-lg">
+                            <div className="flex items-center gap-4">
+                                <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
+                                <div className="font-bold text-sm uppercase tracking-widest text-primary">
+                                    {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
+                                </div>
+                                <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] font-black uppercase opacity-60">Calendar View</Badge>
+                        </div>
+                    )}
+
                     {viewTarget !== 'master' && !resolvedSemester && !loading && (
                         <Alert className="bg-orange-50 border-orange-200">
                             <AlertCircle className="h-4 w-4 text-orange-600" />
@@ -520,96 +545,109 @@ function TimetableManagementComponent() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
-                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        <TableHead className="w-32 border-r font-bold text-center">DATE & DAY</TableHead>
                                         {teachingTimes.slots.map((slot, index) => (<TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>))}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {displayDays.map(dayName => (
-                                        <TableRow key={dayName}>
-                                            <TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{dayName}</TableCell>
-                                            {teachingTimes.slots.map((slot, sIdx) => {
-                                                const slotStart = timeToMinutes(slot.startTime);
-                                                const slotEnd = timeToMinutes(slot.endTime);
-                                                const sessionsInSlot = mergedSessions.filter(s => 
-                                                    s.entry.day === dayName && 
-                                                    timeToMinutes(s.entry.startTime) >= slotStart && 
-                                                    timeToMinutes(s.entry.startTime) < slotEnd
-                                                );
+                                    {currentWeekInterval.map(date => {
+                                        const dayName = calendarDays[getDay(date)];
+                                        const isDayToday = isToday(date);
+                                        const isEnabledDay = displayDays.includes(dayName);
 
-                                                return (
-                                                    <TableCell 
-                                                        key={sIdx} 
-                                                        className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative cursor-pointer"
-                                                        onClick={() => handleCellClick(dayName, slot)}
-                                                    >
-                                                        <div className="space-y-2">
-                                                            {sessionsInSlot.map((s, eIdx) => (
-                                                                <div 
-                                                                    key={eIdx} 
-                                                                    className={cn(
-                                                                        "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                        s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
-                                                                        s.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
-                                                                    )}
-                                                                    onClick={(e) => e.stopPropagation()} 
-                                                                >
-                                                                    <div className="flex justify-between items-start gap-1">
-                                                                        <div className="flex-1">
-                                                                            <div className="flex items-center gap-1">
-                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
-                                                                                {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
-                                                                                {s.entry.isLiveRequested && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
+                                        if (!isEnabledDay && viewTarget === 'master') return null;
+
+                                        return (
+                                            <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
+                                                <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
+                                                    <div className="flex flex-col">
+                                                        <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                        {viewTarget !== 'master' && <span className="text-sm font-black">{format(date, 'MMM dd')}</span>}
+                                                    </div>
+                                                </TableCell>
+                                                {teachingTimes.slots.map((slot, sIdx) => {
+                                                    const slotStart = timeToMinutes(slot.startTime);
+                                                    const slotEnd = timeToMinutes(slot.endTime);
+                                                    const sessionsInSlot = mergedSessions.filter(s => 
+                                                        s.entry.day === dayName && 
+                                                        timeToMinutes(s.entry.startTime) >= slotStart && 
+                                                        timeToMinutes(s.entry.startTime) < slotEnd
+                                                    );
+
+                                                    return (
+                                                        <TableCell 
+                                                            key={sIdx} 
+                                                            className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative cursor-pointer"
+                                                            onClick={() => handleCellClick(dayName, slot)}
+                                                        >
+                                                            <div className="space-y-2">
+                                                                {sessionsInSlot.map((s, eIdx) => (
+                                                                    <div 
+                                                                        key={eIdx} 
+                                                                        className={cn(
+                                                                            "p-2 rounded-md border bg-background shadow-sm relative transition-all",
+                                                                            s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
+                                                                            s.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
+                                                                        )}
+                                                                        onClick={(e) => e.stopPropagation()} 
+                                                                    >
+                                                                        <div className="flex justify-between items-start gap-1">
+                                                                            <div className="flex-1">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                                    {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
+                                                                                    {s.entry.isLiveRequested && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                                    <MapPin className="h-2.5 w-2.5" /> {s.entry.venue}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
+                                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                             </div>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                                <MapPin className="h-2.5 w-2.5" /> {s.entry.venue}
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <Button 
+                                                                                    variant="ghost" 
+                                                                                    size="icon" 
+                                                                                    className="h-5 w-5 hover:bg-primary/10" 
+                                                                                    onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
+                                                                                >
+                                                                                    <Pencil className="h-3 w-3" />
+                                                                                </Button>
+                                                                                <Button 
+                                                                                    variant="ghost" 
+                                                                                    size="icon" 
+                                                                                    className="h-5 w-5 text-destructive hover:bg-destructive/10" 
+                                                                                    onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
+                                                                                >
+                                                                                    <X className="h-3 w-3" />
+                                                                                </Button>
                                                                             </div>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
-                                                                            <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                         </div>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                className="h-5 w-5 hover:bg-primary/10" 
-                                                                                onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
-                                                                            >
-                                                                                <Pencil className="h-3 w-3" />
-                                                                            </Button>
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                className="h-5 w-5 text-destructive hover:bg-destructive/10" 
-                                                                                onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
-                                                                            >
-                                                                                <X className="h-3 w-3" />
-                                                                            </Button>
+                                                                        <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                            {s.participants.map(p => (
+                                                                                <Badge 
+                                                                                    key={p.semesterId} 
+                                                                                    variant="secondary" 
+                                                                                    className="text-[8px] h-4"
+                                                                                >
+                                                                                    {p.name} ({p.standing}): {p.count}
+                                                                                </Badge>
+                                                                            ))}
                                                                         </div>
                                                                     </div>
-                                                                    <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                        {s.participants.map(p => (
-                                                                            <Badge 
-                                                                                key={p.semesterId} 
-                                                                                variant="secondary" 
-                                                                                className="text-[8px] h-4"
-                                                                            >
-                                                                                {p.name} ({p.standing}): {p.count}
-                                                                            </Badge>
-                                                                        ))}
+                                                                ))}
+                                                                {sessionsInSlot.length === 0 && (
+                                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <PlusCircle className="h-6 w-6 text-primary/40" />
                                                                     </div>
-                                                                </div>
-                                                            ))}
-                                                            {sessionsInSlot.length === 0 && (
-                                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <PlusCircle className="h-6 w-6 text-primary/40" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                );
-                                            })}
-                                        </TableRow>
-                                    ))}
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
