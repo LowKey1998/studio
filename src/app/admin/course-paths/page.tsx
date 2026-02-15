@@ -593,6 +593,7 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
 }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
     const [filter, setFilter] = React.useState('');
+    const [targetYear, setTargetYear] = React.useState<string>('');
 
     const filtered = React.useMemo(() => {
         const lowerFilter = filter.toLowerCase();
@@ -601,6 +602,25 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
             c.code.toLowerCase().includes(lowerFilter)
         );
     }, [courses, filter]);
+
+    const uniqueYears = React.useMemo(() => {
+        return Array.from(new Set(semestersForPath.map(s => s.year))).sort((a,b) => a-b);
+    }, [semestersForPath]);
+
+    const semestersInYear = React.useMemo(() => {
+        if (!targetYear) return [];
+        return semestersForPath.filter(s => String(s.year) === targetYear);
+    }, [targetYear, semestersForPath]);
+
+    // Reset target semester if it's not in the new year
+    React.useEffect(() => {
+        if (targetSemester && targetYear) {
+            const sem = semestersForPath.find(s => s.id === targetSemester);
+            if (sem && String(sem.year) !== targetYear) {
+                setTargetSemester('');
+            }
+        }
+    }, [targetYear, targetSemester, semestersForPath, setTargetSemester]);
 
     return (
         <Card ref={setNodeRef}>
@@ -615,20 +635,37 @@ function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, on
                         onChange={e => setFilter(e.target.value)} 
                     />
                 </div>
-                 <div className="pt-2 space-y-2">
-                    <div className="space-y-1">
-                        <Label htmlFor="target-semester">Target Semester</Label>
-                        <Select value={targetSemester} onValueChange={setTargetSemester}>
-                            <SelectTrigger id="target-semester"><SelectValue placeholder="Target semester..." /></SelectTrigger>
-                            <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name.split(' ').slice(-2).join(' ')}</SelectItem>))}</SelectContent>
-                        </Select>
+                 <div className="pt-2 space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <Label htmlFor="target-year">Target Year</Label>
+                            <Select value={targetYear} onValueChange={setTargetYear}>
+                                <SelectTrigger id="target-year"><SelectValue placeholder="Year..." /></SelectTrigger>
+                                <SelectContent>
+                                    {uniqueYears.map(year => (
+                                        <SelectItem key={year} value={String(year)}>Year {year}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="target-semester">Target Semester</Label>
+                            <Select value={targetSemester} onValueChange={setTargetSemester} disabled={!targetYear}>
+                                <SelectTrigger id="target-semester"><SelectValue placeholder="Semester..." /></SelectTrigger>
+                                <SelectContent>
+                                    {semestersInYear.map(sem => (
+                                        <SelectItem key={sem.id} value={sem.id}>Sem {sem.semesterInYear}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </div>
                 <Alert className="bg-primary/5 border-primary/20">
                     <Info className="h-4 w-4 text-primary" />
                     <AlertTitle className="text-xs font-black uppercase tracking-widest">How it works</AlertTitle>
                     <AlertDescription className="text-xs italic leading-relaxed">
-                        These courses are active and not yet mapped to this path. <strong>Drag</strong> a course into a semester column OR select a <strong>Target Semester</strong> and click <strong>(+)</strong> to assign it.
+                        These courses are active and not yet mapped to this path. <strong>Drag</strong> a course into a semester column OR select a <strong>Target Year & Semester</strong> and click <strong>(+)</strong> to assign it instantly.
                     </AlertDescription>
                 </Alert>
             </CardHeader>
