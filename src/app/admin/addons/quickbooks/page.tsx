@@ -20,6 +20,7 @@ import { fetchInvoicesFromQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { fetchAccountsFromQuickbooks } from '@/ai/flows/fetch-qb-accounts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 type QBIntegrationSettings = {
     enabled: boolean;
@@ -128,8 +129,6 @@ export default function QuickBooksPage() {
         }
     };
     
-    const canManage = userProfile?.role === 'Admin';
-    const isConfigured = !!settings.clientId && !!settings.clientSecret;
     const isConnected = !!settings.connected;
 
     if (loading) {
