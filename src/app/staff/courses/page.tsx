@@ -66,12 +66,11 @@ export default function StaffCoursesPage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, semestersSnap, regsSnap, timetablesSnap, usersSnap] = await Promise.all([
+            const [coursesSnap, semestersSnap, regsSnap, timetablesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'registrations')),
-                get(ref(db, 'timetables')),
-                get(ref(db, 'users'))
+                get(ref(db, 'timetables'))
             ]);
 
             const allCoursesData = coursesSnap.val() || {};

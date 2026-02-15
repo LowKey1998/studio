@@ -1,8 +1,9 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
@@ -485,12 +486,41 @@ function TimetableManagementComponent() {
                             <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
                                 <DialogTrigger asChild><Button disabled={effectiveSemesterId === 'none'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
                                 <DialogContent className="sm:max-w-lg">
-                                    <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
+                                    <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
                                     <div className="grid gap-4 py-4">
                                         {viewTarget === 'master' && (
                                             <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                         )}
-                                        <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={isCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal">{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
+                                        <div className="space-y-1">
+                                            <Label>Select Course</Label>
+                                            <Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className="w-full justify-between font-normal">
+                                                        {selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}
+                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                                    <div className="flex flex-col">
+                                                        <div className="p-2 border-b">
+                                                            <Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/>
+                                                        </div>
+                                                        <ScrollArea className="h-64">
+                                                            <div className="p-1">
+                                                                {searchedCourses.map((c) => (
+                                                                    <Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}>
+                                                                        <div className="text-left">
+                                                                            <div className="font-bold">{c.code}</div>
+                                                                            <div className="text-muted-foreground">{c.name}</div>
+                                                                        </div>
+                                                                    </Button>
+                                                                ))}
+                                                            </div>
+                                                        </ScrollArea>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
                                         
                                         <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
                                             <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
@@ -702,7 +732,8 @@ function TimetableManagementComponent() {
                                                                                 ))}
                                                                             </div>
                                                                         </div>
-                                                                    ))}
+                                                                    );
+                                                                })}
                                                                 {sessionsInSlot.length === 0 && (
                                                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <PlusCircle className="h-6 w-6 text-primary/40" />

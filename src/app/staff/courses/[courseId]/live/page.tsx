@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -68,7 +69,9 @@ export default function LecturerLivePage() {
               get(ref(db, `courses/${courseId}`))
           ]);
 
-          if (courseSnap.exists()) setCourseData(courseSnap.val());
+          if (courseSnap.exists()) {
+              setCourseData(courseSnap.val());
+          }
 
           let isLive = false;
           let startTime = null;
