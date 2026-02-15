@@ -55,6 +55,7 @@ type TimetableEntry = {
     endTime: string;
     venue: string;
     isLiveSession?: boolean;
+    isLiveRequested?: boolean;
 };
 
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
@@ -304,6 +305,7 @@ function TimetableManagementComponent() {
                 endTime, 
                 venue: isLiveSession ? 'Online Session' : (venue || 'TBA'), 
                 isLiveSession,
+                isLiveRequested: false, // Reset request status when admin updates
                 intakeName 
             };
 
@@ -545,7 +547,8 @@ function TimetableManagementComponent() {
                                                                     key={eIdx} 
                                                                     className={cn(
                                                                         "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                        s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20"
+                                                                        s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
+                                                                        s.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
                                                                     )}
                                                                     onClick={(e) => e.stopPropagation()} 
                                                                 >
@@ -554,6 +557,7 @@ function TimetableManagementComponent() {
                                                                             <div className="flex items-center gap-1">
                                                                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                                 {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
+                                                                                {s.entry.isLiveRequested && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
                                                                             </div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
                                                                                 <MapPin className="h-2 w-2" /> {s.entry.venue}

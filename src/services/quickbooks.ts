@@ -1,3 +1,4 @@
+
 import { db } from '@/lib/firebase';
 import { get, ref } from 'firebase/database';
 import QuickBooks from 'node-quickbooks';
@@ -89,6 +90,24 @@ export async function getQbInvoices(): Promise<any[]> {
         return response.QueryResponse.Invoice || [];
     } catch (error) {
         console.error('Error in QuickBooks findInvoices:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetches the Chart of Accounts from QuickBooks for mapping purposes.
+ */
+export async function getQbAccounts(): Promise<any[]> {
+    const qbo = await getQuickBooksClient();
+    const findAccountsAsync = promisify(qbo, qbo.findAccounts);
+    try {
+        const response: any = await findAccountsAsync({
+            limit: 50,
+            sort: 'Name ASC'
+        });
+        return response.QueryResponse.Account || [];
+    } catch (error) {
+        console.error('Error in QuickBooks findAccounts:', error);
         throw error;
     }
 }
