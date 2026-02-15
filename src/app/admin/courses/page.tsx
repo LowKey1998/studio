@@ -28,12 +28,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download, Route, Info } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download, Route, Info, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -47,14 +46,12 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get, child, serverTimestamp, update, remove, push } from 'firebase/database';
+import { ref, get, serverTimestamp, update, push } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { isWithinInterval, parseISO, startOfDay } from 'date-fns';
@@ -86,6 +83,7 @@ type Course = {
     studentCount?: number;
     enrolledStudents?: StudentEnrollment[];
     separateInstance?: boolean;
+    assessmentTemplateId?: string;
 };
 
 type Programme = {
@@ -350,6 +348,15 @@ export default function CoursesPage() {
         } catch (error: any) { toast({ variant: 'destructive', title: 'Failed', description: error.message }); }
     };
 
+    const handleArchiveSubmit = async () => {
+        if (archivingCourse) {
+            await handleUpdateCourseStatus(archivingCourse.id, 'archived', archiveReason);
+            setIsArchiveDialogOpen(false);
+            setArchivingCourse(null);
+            setArchiveReason('');
+        }
+    };
+
     const filteredAndGroupedCourses = React.useMemo(() => {
         const filtered = courses.filter(course => {
             const statusMatch = course.status === activeTab;
@@ -405,7 +412,7 @@ export default function CoursesPage() {
                                             </div>
                                             <div className="space-y-2"><Label>Linked Programmes</Label><div className="grid grid-cols-2 gap-2 border p-4 max-h-48 overflow-y-auto bg-muted/20">{programmes.map(p => (<div key={p.id} className="flex items-center gap-2"><Checkbox checked={!!selectedProgrammes[p.id]} onCheckedChange={() => setSelectedProgrammes(prev => ({...prev, [p.id]: !prev[p.id]}))}/><Label className="font-normal text-sm">{p.name}</Label></div>))}</div></div>
                                         </div>
-                                        <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : 'Save'}</Button></DialogFooter>
+                                        <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
                                     </form>
                                 </DialogContent>
                             </Dialog>
