@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -30,10 +29,21 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter,
+    DialogClose,
+} from '@/components/ui/dialog';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 type TimeSlot = {
     id: string;
@@ -777,27 +787,4 @@ export default function TimetableManagementPage() {
             <TimetableManagementComponent />
         </React.Suspense>
     );
-}
-
-function useAuth() {
-    const [user, setUser] = React.useState<User | null>(null);
-    const [userProfile, setUserProfile] = React.useState<any>(null);
-    const [loading, setLoading] = React.useState(true);
-
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            setUser(user);
-            if (user) {
-                const userRef = ref(db, `users/${user.uid}`);
-                const snapshot = await get(userRef);
-                if (snapshot.exists()) {
-                    setUserProfile(snapshot.val());
-                }
-            }
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    return { user, userProfile, loading };
 }

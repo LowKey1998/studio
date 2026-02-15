@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -243,7 +242,7 @@ export default function LecturerLivePage() {
               Ready to begin? Starting the session will allow students to join the video bridge and participate in the real-time chat.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6 w-full max-w-sm">
+          <CardContent className="space-y-6 w-full max-sm:max-w-xs">
             {autoStartTime && (
                 <div className="flex items-center justify-center gap-2 text-sm font-black text-primary uppercase tracking-widest p-4 border rounded-xl bg-primary/5">
                     <Clock className="h-4 w-4"/>

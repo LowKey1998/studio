@@ -28,7 +28,6 @@ export const allMenuItems = [
         { href: '/admin/admissions/offer-letters', label: 'Offer Letters', icon: FileSignature },
         { href: '/admin/admissions/confirmation', label: 'Admission Confirmation', icon: CheckCircle2 },
         { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
-        { href: '/admin/admissions/notifications', label: 'SMS/Email Notifications', icon: Mail },
         { href: '/admin/admissions/analytics', label: 'Admission Funnel Analytics', icon: LineChart },
         { href: '/admin/admissions/leads', label: 'Leads Capture', icon: Users },
         { href: '/admin/admissions/lead-scoring', label: 'Lead Scoring', icon: Star },
