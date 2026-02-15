@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route, History, Search } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route, History, Search, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get, serverTimestamp } from 'firebase/database';
@@ -63,7 +63,6 @@ function CoursePathBuilderComponent() {
     const [availableCourses, setAvailableCourses] = React.useState<Course[]>([]);
     const [activeCourse, setActiveCourse] = React.useState<Course | null>(null);
     const [targetSemester, setTargetSemester] = React.useState('');
-    const [coursesToLoad, setCoursesToLoad] = React.useState<string>('');
 
 
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
@@ -95,7 +94,7 @@ function CoursePathBuilderComponent() {
             const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
             setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
 
-            const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
+            const semestersData = semestersSnap.val() || {};
             setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
         } catch (error) {
             console.error("Failed to fetch initial data:", error);
@@ -357,32 +356,6 @@ function CoursePathBuilderComponent() {
         setIsHistoryDialogOpen(true);
     };
 
-    const handleLoadCourses = () => {
-        if (!coursesToLoad || !targetSemester) {
-            toast({ variant: 'destructive', title: 'Please select a programme and target semester.' });
-            return;
-        }
-
-        const programmeToLoad = programmes.find(p => p.id === coursesToLoad);
-        if (!programmeToLoad || !programmeToLoad.courseIds) {
-            toast({ variant: 'destructive', title: 'Selected programme has no courses.' });
-            return;
-        }
-
-        const courseIdsToLoad = Object.keys(programmeToLoad.courseIds);
-        const coursesToAdd = availableCourses.filter(c => courseIdsToLoad.includes(c.id));
-        
-        setAvailableCourses(prev => prev.filter(c => !courseIdsToLoad.includes(c.id)));
-        setSemesterCourses(prev => {
-            const newSemesters = { ...prev };
-            const targetList = newSemesters[targetSemester] ? [...newSemesters[targetSemester]] : [];
-            newSemesters[targetSemester] = [...targetList, ...coursesToAdd];
-            return newSemesters;
-        });
-
-        toast({ title: 'Courses Loaded', description: `${coursesToAdd.length} courses added to semester.`});
-    };
-
     const groupedSemesters = semestersForPath.reduce((acc, sem) => {
         const yearKey = `Year ${sem.year}`;
         if(!acc[yearKey]) {
@@ -514,13 +487,9 @@ function CoursePathBuilderComponent() {
                                         <div className="md:col-span-1">
                                             <AvailableCoursesColumn 
                                                 courses={availableCourses}
-                                                allProgrammes={programmes}
-                                                coursesToLoad={coursesToLoad}
-                                                setCoursesToLoad={setCoursesToLoad}
                                                 targetSemester={targetSemester}
                                                 setTargetSemester={setTargetSemester}
                                                 onAddCourse={handleAddCourseToSemester}
-                                                onLoadCourses={handleLoadCourses}
                                                 semestersForPath={semestersForPath}
                                             />
                                         </div>
@@ -615,15 +584,11 @@ function SemesterColumn({ semester, courses, currentPath, onHistoryClick, onDele
     );
 }
 
-function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCoursesToLoad, targetSemester, setTargetSemester, onAddCourse, onLoadCourses, semestersForPath }: {
+function AvailableCoursesColumn({ courses, targetSemester, setTargetSemester, onAddCourse, semestersForPath }: {
     courses: Course[];
-    allProgrammes: Programme[];
-    coursesToLoad: string;
-    setCoursesToLoad: (id: string) => void;
     targetSemester: string;
     setTargetSemester: (id: string) => void;
     onAddCourse: (courseId: string) => void;
-    onLoadCourses: () => void;
     semestersForPath: Semester[];
 }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
@@ -652,21 +617,20 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
                 </div>
                  <div className="pt-2 space-y-2">
                     <div className="space-y-1">
-                        <Label htmlFor="load-from-programme">Load All From Programme</Label>
-                        <Select value={coursesToLoad} onValueChange={setCoursesToLoad}>
-                            <SelectTrigger id="load-from-programme"><SelectValue placeholder="Select programme..." /></SelectTrigger>
-                            <SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-1">
                         <Label htmlFor="target-semester">Target Semester</Label>
                         <Select value={targetSemester} onValueChange={setTargetSemester}>
                             <SelectTrigger id="target-semester"><SelectValue placeholder="Target semester..." /></SelectTrigger>
                             <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name.split(' ').slice(-2).join(' ')}</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
-                     <Button onClick={onLoadCourses} size="sm" className="w-full">Load All Matching</Button>
                 </div>
+                <Alert className="bg-primary/5 border-primary/20">
+                    <Info className="h-4 w-4 text-primary" />
+                    <AlertTitle className="text-xs font-black uppercase tracking-widest">How it works</AlertTitle>
+                    <AlertDescription className="text-xs italic leading-relaxed">
+                        These courses are active and not yet mapped to this path. <strong>Drag</strong> a course into a semester column OR select a <strong>Target Semester</strong> and click <strong>(+)</strong> to assign it.
+                    </AlertDescription>
+                </Alert>
             </CardHeader>
             <CardContent className="max-h-[600px] overflow-y-auto space-y-2">
                 <SortableContext id="available" items={filtered.map(c => c.id)} strategy={verticalListSortingStrategy}>
