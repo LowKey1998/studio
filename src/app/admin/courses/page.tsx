@@ -34,7 +34,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, Route, Info, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -159,7 +159,6 @@ export default function CoursesPage() {
                 Object.entries(usersSnap.val() as Record<string, any>).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
-            // Filter for staff with "Lecturer" sub-role or assignable class permission
             const subRolesData = subRolesSnap.val() || {};
             const lecturerRoleIds = new Set(
                 Object.keys(subRolesData).filter(id => 
@@ -188,15 +187,14 @@ export default function CoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const now = startOfDay(new Date());
 
-            const isSemesterActive = (sem: any) => {
+            const isSemesterCurrent = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
+                if (sem.status === 'Open') return true;
                 if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
                     return !isAfter(now, end);
-                } catch (e) {
-                    return true;
-                }
+                } catch (e) { return true; }
             };
 
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
@@ -207,7 +205,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        if (semesterInfo && isSemesterActive(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
+                        if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
@@ -492,7 +490,7 @@ export default function CoursesPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isStudentListOpen} onOpenChange={isStudentListOpen ? () => setIsStudentListOpen(false) : undefined}>
+            <Dialog open={isStudentListOpen} onOpenChange={(o) => setIsStudentListOpen(o)}>
                 <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
                     <DialogHeader><DialogTitle>Enrolled Students</DialogTitle><DialogDescription>Current active students for {selectedCourseForList?.name}.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-auto rounded-md border mt-4">

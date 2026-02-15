@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route, History } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, GripVertical, Check, ChevronsUpDown, Info, MinusCircle, Pencil, Copy, Route, History, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get, serverTimestamp } from 'firebase/database';
@@ -73,60 +72,42 @@ function CoursePathBuilderComponent() {
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
     
     // --- Data Fetching ---
-    React.useEffect(() => {
-        const refs = [
-            ref(db, 'intakes'),
-            ref(db, 'programmes'),
-            ref(db, 'courses'),
-            ref(db, 'coursePaths'),
-            ref(db, 'semesters')
-        ];
+    const fetchData = React.useCallback(async () => {
+        setLoading(true);
+        try {
+            const [intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semestersSnap] = await Promise.all([
+                get(ref(db, 'intakes')),
+                get(ref(db, 'programmes')),
+                get(ref(db, 'courses')),
+                get(ref(db, 'coursePaths')),
+                get(ref(db, 'semesters'))
+            ]);
 
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const snapshots = await Promise.all(refs.map(r => get(r)));
-                const [intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semestersSnap] = snapshots;
+            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
+            setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
+            
+            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
+            setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
+            
+            const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
+            setCourses(Object.keys(coursesData).map(id => ({ id, ...coursesData[id] })));
 
-                const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
-                setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
-                
-                const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
-                setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
-                
-                const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
-                setCourses(Object.keys(coursesData).map(id => ({ id, ...coursesData[id] })));
+            const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
+            setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
 
-                const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
-                setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
-
-                const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
-                setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
-            } catch (error) {
-                console.error("Failed to fetch initial data:", error);
-                toast({ variant: "destructive", title: "Error", description: "Failed to load page data."});
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-        
-        const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
-             const data = snapshot.val() || {};
-             const list = Object.keys(data).map(id => ({ id, ...data[id] }));
-             switch(i) {
-                case 0: setIntakes(list.sort((a,b) => (b as any).name.localeCompare((a as any).name))); break;
-                case 1: setProgrammes(list); break;
-                case 2: setCourses(list); break;
-                case 3: setCoursePaths(list); break;
-                case 4: setAllSemesters(list); break;
-            }
-        }));
-
-        return () => unsubs.forEach(unsub => unsub());
-
+            const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
+            setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
+        } catch (error) {
+            console.error("Failed to fetch initial data:", error);
+            toast({ variant: "destructive", title: "Error", description: "Failed to load page data."});
+        } finally {
+            setLoading(false);
+        }
     }, [toast]);
+
+    React.useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     // --- Course Path Logic ---
     const currentPath = React.useMemo(() => {
@@ -213,7 +194,6 @@ function CoursePathBuilderComponent() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
         } finally {
-            // Force a re-fetch of courses to clear the assigned ones from the list
             fetchData();
             setSaving(false);
         }
@@ -318,38 +298,6 @@ function CoursePathBuilderComponent() {
     const addNewSemesterField = () => setNewSemesters(prev => [...prev, { year: '', semesterInYear: '' }]);
     const removeNewSemesterField = (index: number) => setNewSemesters(prev => prev.filter((_, i) => i !== index));
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const [intakesSnap, programmesSnap, coursesSnap, coursePathsSnap, semestersSnap] = await Promise.all([
-                get(ref(db, 'intakes')),
-                get(ref(db, 'programmes')),
-                get(ref(db, 'courses')),
-                get(ref(db, 'coursePaths')),
-                get(ref(db, 'semesters')),
-            ]);
-
-            const intakesData = intakesSnap.exists() ? intakesSnap.val() : {};
-            setIntakes(Object.keys(intakesData).map(id => ({ id, ...intakesData[id] })).sort((a,b) => b.name.localeCompare(a.name)));
-            
-            const programmesData = programmesSnap.exists() ? programmesSnap.val() : {};
-            setProgrammes(Object.keys(programmesData).map(id => ({ id, ...programmesData[id] })));
-            
-            const coursesData = coursesSnap.exists() ? coursesSnap.val() : {};
-            setCourses(Object.keys(coursesData).map(id => ({ id, ...coursesData[id] })));
-
-            const coursePathsData = coursePathsSnap.exists() ? coursePathsSnap.val() : {};
-            setCoursePaths(Object.keys(coursePathsData).map(id => ({ id, ...coursePathsData[id] })));
-
-            const semestersData = semestersSnap.exists() ? semestersSnap.val() : {};
-            setAllSemesters(Object.keys(semestersData).map(id => ({ id, ...semestersData[id] })));
-        } catch (error) {
-            console.error("Failed to fetch initial data:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-    
     // --- DnD and UI Logic ---
     const findContainer = (id: string) => {
         if (id === 'available') return 'available';
@@ -673,13 +621,32 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
     semestersForPath: Semester[];
 }) {
     const { setNodeRef } = useSortable({ id: 'available', data: { type: 'container', id: 'available' } });
+    const [filter, setFilter] = React.useState('');
+
+    const filtered = React.useMemo(() => {
+        const lowerFilter = filter.toLowerCase();
+        return courses.filter(c => 
+            c.name.toLowerCase().includes(lowerFilter) || 
+            c.code.toLowerCase().includes(lowerFilter)
+        );
+    }, [courses, filter]);
+
     return (
         <Card ref={setNodeRef}>
-            <CardHeader>
+            <CardHeader className="space-y-4">
                 <CardTitle>Available Courses</CardTitle>
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Filter courses..." 
+                        className="pl-8" 
+                        value={filter} 
+                        onChange={e => setFilter(e.target.value)} 
+                    />
+                </div>
                  <div className="pt-2 space-y-2">
                     <div className="space-y-1">
-                        <Label htmlFor="load-from-programme">Load Courses From</Label>
+                        <Label htmlFor="load-from-programme">Load All From Programme</Label>
                         <Select value={coursesToLoad} onValueChange={setCoursesToLoad}>
                             <SelectTrigger id="load-from-programme"><SelectValue placeholder="Select programme..." /></SelectTrigger>
                             <SelectContent>{allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
@@ -688,18 +655,18 @@ function AvailableCoursesColumn({ courses, allProgrammes, coursesToLoad, setCour
                     <div className="space-y-1">
                         <Label htmlFor="target-semester">Target Semester</Label>
                         <Select value={targetSemester} onValueChange={setTargetSemester}>
-                            <SelectTrigger id="target-semester"><SelectValue placeholder="Select semester to add to..." /></SelectTrigger>
+                            <SelectTrigger id="target-semester"><SelectValue placeholder="Target semester..." /></SelectTrigger>
                             <SelectContent>{semestersForPath.map(sem => (<SelectItem key={sem.id} value={sem.id}>{sem.name.split(' ').slice(-2).join(' ')}</SelectItem>))}</SelectContent>
                         </Select>
                     </div>
-                     <Button onClick={onLoadCourses} size="sm" className="w-full">Load Courses</Button>
+                     <Button onClick={onLoadCourses} size="sm" className="w-full">Load All Matching</Button>
                 </div>
             </CardHeader>
             <CardContent className="max-h-[600px] overflow-y-auto space-y-2">
-                <SortableContext id="available" items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext id="available" items={filtered.map(c => c.id)} strategy={verticalListSortingStrategy}>
                     <div className="space-y-2">
-                         {courses.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} onAdd={() => onAddCourse(course.id)} />)}
-                         {courses.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">All courses assigned.</p>}
+                         {filtered.map(course => <DraggableCourseItem key={course.id} id={course.id} course={course} onAdd={() => onAddCourse(course.id)} />)}
+                         {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">{courses.length > 0 ? "No matches found." : "All courses assigned."}</p>}
                     </div>
                 </SortableContext>
             </CardContent>

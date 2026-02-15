@@ -102,16 +102,16 @@ export default function ProgrammesPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const unsubSettings = onValue(ref(db, 'settings/institution'), (snapshot) => {
+            onValue(ref(db, 'settings/institution'), (snapshot) => {
                 if (snapshot.exists()) setBillingPolicy(snapshot.val().billingPolicy || 'course');
             });
 
-            const unsubLecturers = onValue(ref(db, 'users'), (snapshot) => {
+            onValue(ref(db, 'users'), (snapshot) => {
                 const lecturersList: Lecturer[] = [];
                 if (snapshot.exists()) {
                     const usersData = snapshot.val();
                     Object.keys(usersData).forEach(uid => {
-                        if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
+                        if (usersData[uid].role === 'Staff' && (usersData[uid].subRoles?.includes('Lecturer') || usersData[uid].subRoleNames?.includes('Lecturer'))) {
                             lecturersList.push({ uid, name: usersData[uid].name });
                         }
                     });
@@ -119,21 +119,14 @@ export default function ProgrammesPage() {
                 setLecturers(lecturersList);
             });
 
-            const unsubCourses = onValue(ref(db, 'courses'), (snapshot) => {
+            onValue(ref(db, 'courses'), (snapshot) => {
                 setAllCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(key => ({ id: key, ...snapshot.val()[key] })) : []);
             });
 
-            const unsubProgrammes = onValue(ref(db, 'programmes'), (snapshot) => {
+            onValue(ref(db, 'programmes'), (snapshot) => {
                 setProgrammes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
                 setLoading(false);
             });
-
-            return () => {
-                unsubSettings();
-                unsubLecturers();
-                unsubCourses();
-                unsubProgrammes();
-            };
         } catch(e) {
             console.error(e);
             toast({ variant: "destructive", title: "Load Failed" });
