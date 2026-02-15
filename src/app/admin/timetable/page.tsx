@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -330,6 +330,33 @@ function TimetableManagementComponent() {
         }
     };
 
+    const handleApproveLive = async (entry: TimetableEntry, dateStr: string) => {
+        setSaving(true);
+        try {
+            const path = `timetables/${entry.semesterId}/${entry.courseId}/${entry.id}/dateRequests/${dateStr}`;
+            await update(ref(db, path), {
+                status: 'Approved',
+                approvedAt: serverTimestamp()
+            });
+            
+            const course = allCourses.find(c => c.id === entry.courseId);
+            const lecturerId = course?.lecturerId;
+            if (lecturerId) {
+                await createNotification(
+                    lecturerId,
+                    `Your live session request for ${entry.courseCode} on ${dateStr} has been approved.`,
+                    `/staff/courses/${entry.courseId}/live?semesterId=${entry.semesterId}`
+                );
+            }
+            
+            toast({ title: 'Live Session Approved' });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Approval Failed' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleCopyFromMaster = async () => {
         if (effectiveSemesterId === 'master' || effectiveSemesterId === 'none') {
             toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific intake with an active semester to copy to.' });
@@ -553,6 +580,7 @@ function TimetableManagementComponent() {
                                     {currentWeekInterval.map(date => {
                                         const dayName = calendarDays[getDay(date)];
                                         const isDayToday = isToday(date);
+                                        const dateStr = format(date, 'yyyy-MM-dd');
                                         const isEnabledDay = displayDays.includes(dayName);
 
                                         if (!isEnabledDay && viewTarget === 'master') return null;
@@ -581,61 +609,82 @@ function TimetableManagementComponent() {
                                                             onClick={() => handleCellClick(dayName, slot)}
                                                         >
                                                             <div className="space-y-2">
-                                                                {sessionsInSlot.map((s, eIdx) => (
-                                                                    <div 
-                                                                        key={eIdx} 
-                                                                        className={cn(
-                                                                            "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                            s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
-                                                                            s.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
-                                                                        )}
-                                                                        onClick={(e) => e.stopPropagation()} 
-                                                                    >
-                                                                        <div className="flex justify-between items-start gap-1">
-                                                                            <div className="flex-1">
-                                                                                <div className="flex items-center gap-1">
-                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
-                                                                                    {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
-                                                                                    {s.entry.isLiveRequested && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
+                                                                {sessionsInSlot.map((s, eIdx) => {
+                                                                    const dateRequest = (s.entry as any).dateRequests?.[dateStr];
+                                                                    const isLiveRequestedOnDate = dateRequest?.status === 'Requested';
+                                                                    const isLiveApprovedOnDate = dateRequest?.status === 'Approved' || s.entry.isLiveSession;
+
+                                                                    return (
+                                                                        <div 
+                                                                            key={eIdx} 
+                                                                            className={cn(
+                                                                                "p-2 rounded-md border bg-background shadow-sm relative transition-all",
+                                                                                isLiveApprovedOnDate ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
+                                                                                isLiveRequestedOnDate && "border-orange-400 bg-orange-50/20"
+                                                                            )}
+                                                                            onClick={(e) => e.stopPropagation()} 
+                                                                        >
+                                                                            <div className="flex justify-between items-start gap-1">
+                                                                                <div className="flex-1">
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                                        {isLiveApprovedOnDate && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
+                                                                                        {isLiveRequestedOnDate && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                                        <MapPin className="h-2.5 w-2.5" /> {isLiveApprovedOnDate ? "DIGITAL ROOM" : s.entry.venue}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
+                                                                                    <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                                    <MapPin className="h-2.5 w-2.5" /> {s.entry.venue}
+                                                                                <div className="flex flex-col gap-1">
+                                                                                    <Button 
+                                                                                        variant="ghost" 
+                                                                                        size="icon" 
+                                                                                        className="h-5 w-5 hover:bg-primary/10" 
+                                                                                        onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
+                                                                                    >
+                                                                                        <Pencil className="h-3 w-3" />
+                                                                                    </Button>
+                                                                                    <Button 
+                                                                                        variant="ghost" 
+                                                                                        size="icon" 
+                                                                                        className="h-5 w-5 text-destructive hover:bg-destructive/10" 
+                                                                                        onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
+                                                                                    >
+                                                                                        <X className="h-3 w-3" />
+                                                                                    </Button>
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
-                                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                             </div>
-                                                                            <div className="flex flex-col gap-1">
-                                                                                <Button 
-                                                                                    variant="ghost" 
-                                                                                    size="icon" 
-                                                                                    className="h-5 w-5 hover:bg-primary/10" 
-                                                                                    onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
-                                                                                >
-                                                                                    <Pencil className="h-3 w-3" />
-                                                                                </Button>
-                                                                                <Button 
-                                                                                    variant="ghost" 
-                                                                                    size="icon" 
-                                                                                    className="h-5 w-5 text-destructive hover:bg-destructive/10" 
-                                                                                    onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
-                                                                                >
-                                                                                    <X className="h-3 w-3" />
-                                                                                </Button>
+                                                                            
+                                                                            {isLiveRequestedOnDate && (
+                                                                                <div className="mt-2 pt-2 border-t">
+                                                                                    <Button 
+                                                                                        variant="outline" 
+                                                                                        size="sm" 
+                                                                                        className="w-full h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
+                                                                                        onClick={() => handleApproveLive(s.entry, dateStr)}
+                                                                                        disabled={saving}
+                                                                                    >
+                                                                                        {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <Check className="h-2 w-2 mr-1"/>}
+                                                                                        Approve Live
+                                                                                    </Button>
+                                                                                </div>
+                                                                            )}
+
+                                                                            <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                                {s.participants.map(p => (
+                                                                                    <Badge 
+                                                                                        key={p.semesterId} 
+                                                                                        variant="secondary" 
+                                                                                        className="text-[8px] h-4"
+                                                                                    >
+                                                                                        {p.name} ({p.standing}): {p.count}
+                                                                                    </Badge>
+                                                                                ))}
                                                                             </div>
                                                                         </div>
-                                                                        <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                            {s.participants.map(p => (
-                                                                                <Badge 
-                                                                                    key={p.semesterId} 
-                                                                                    variant="secondary" 
-                                                                                    className="text-[8px] h-4"
-                                                                                >
-                                                                                    {p.name} ({p.standing}): {p.count}
-                                                                                </Badge>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
+                                                                    ))}
                                                                 {sessionsInSlot.length === 0 && (
                                                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <PlusCircle className="h-6 w-6 text-primary/40" />
