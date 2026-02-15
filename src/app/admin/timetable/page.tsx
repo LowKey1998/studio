@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -338,11 +337,10 @@ function TimetableManagementComponent() {
             
             toast({ title: 'Live Session Approved' });
             
-            // Dispatch notification in background
             const course = allCourses.find(c => c.id === entry.courseId);
             const lecturerId = course?.lecturerId;
             if (lecturerId) {
-                createNotification(
+                await createNotification(
                     lecturerId,
                     `Your live session request for ${entry.courseCode} on ${dateStr} has been approved.`,
                     `/staff/courses/${entry.courseId}/live?semesterId=${entry.semesterId}`
@@ -669,9 +667,9 @@ function TimetableManagementComponent() {
                                                                             )}
 
                                                                             <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                                {s.participants.map(p => (
+                                                                                {s.participants.map((p, idx) => (
                                                                                     <Badge 
-                                                                                        key={p.semesterId} 
+                                                                                        key={idx} 
                                                                                         variant="secondary" 
                                                                                         className="text-[8px] h-4"
                                                                                     >

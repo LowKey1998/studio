@@ -19,21 +19,19 @@ const SyncInvoiceInputSchema = z.object({
 
 export type SyncInvoiceInput = z.infer<typeof SyncInvoiceInputSchema>;
 
-export async function syncInvoiceToSage(input: SyncInvoiceInput): Promise<void> {
-  await syncInvoiceFlow(input);
+export async function syncInvoiceToSage(input: SyncInvoiceInput) {
+  return await syncInvoiceFlow(input);
 }
 
 const syncInvoiceFlow = ai.defineFlow(
   {
     name: 'syncInvoiceToSageFlow',
     inputSchema: SyncInvoiceInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     console.log(`Simulating Sage Invoice Sync for ${input.studentName}.`);
-    console.log(`Invoice ID: ${input.invoiceId}, Amount: ${input.amount}, Date: ${input.date}`);
-    console.log(`Description: ${input.description}`);
-    // In a real application, you would make an API call to Sage here.
+    return { success: true };
   }
 );
 
@@ -51,20 +49,19 @@ const SyncExpenseInputSchema = z.object({
 
 export type SyncExpenseInput = z.infer<typeof SyncExpenseInputSchema>;
 
-export async function syncExpenseToSage(input: SyncExpenseInput): Promise<void> {
-    await syncExpenseFlow(input);
+export async function syncExpenseToSage(input: SyncExpenseInput) {
+    return await syncExpenseFlow(input);
 }
 
 const syncExpenseFlow = ai.defineFlow(
   {
     name: 'syncExpenseToSageFlow',
     inputSchema: SyncExpenseInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     console.log(`Simulating Sage Expense Sync for category: ${input.category}.`);
-    console.log(`Amount: ${input.amount}, Date: ${input.date}, Vendor: ${input.vendor || 'N/A'}`);
-    // In a real application, you would make an API call to Sage here.
+    return { success: true };
   }
 );
 
@@ -82,19 +79,18 @@ const SyncPayrollInputSchema = z.object({
 
 export type SyncPayrollInput = z.infer<typeof SyncPayrollInputSchema>;
 
-export async function syncPayrollToSage(input: SyncPayrollInput): Promise<void> {
-    await syncPayrollFlow(input);
+export async function syncPayrollToSage(input: SyncPayrollInput) {
+    return await syncPayrollFlow(input);
 }
 
 const syncPayrollFlow = ai.defineFlow(
   {
     name: 'syncPayrollToSageFlow',
     inputSchema: SyncPayrollInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     console.log(`Simulating Sage Payroll Sync for ${input.staffName} for ${input.month}.`);
-    console.log(`Gross: ${input.grossSalary}, Deductions: ${input.deductions}, Net: ${input.netPay}`);
-    // In a real application, you would make an API call to Sage here.
+    return { success: true };
   }
 );

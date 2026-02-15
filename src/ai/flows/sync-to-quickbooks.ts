@@ -37,30 +37,31 @@ const SyncInvoiceInputSchema = z.object({
 
 export type SyncInvoiceInput = z.infer<typeof SyncInvoiceInputSchema>;
 
-export async function syncInvoiceToQuickbooks(input: SyncInvoiceInput): Promise<void> {
-  await syncInvoiceFlow(input);
+export async function syncInvoiceToQuickbooks(input: SyncInvoiceInput) {
+  return await syncInvoiceFlow(input);
 }
 
 const syncInvoiceFlow = ai.defineFlow(
   {
     name: 'syncInvoiceFlow',
     inputSchema: SyncInvoiceInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     await createQbInvoice({
-      CustomerRef: { name: input.studentName, value: input.studentId }, // Using studentId
+      CustomerRef: { name: input.studentName, value: input.studentId },
       Line: [{
         Amount: input.amount,
         Description: input.description,
         DetailType: 'SalesItemLineDetail',
         SalesItemLineDetail: {
-          ItemRef: { value: '1' } // Assuming a generic service item with ID '1'
+          ItemRef: { value: '1' }
         }
       }],
       DocNumber: input.invoiceId,
       TxnDate: input.date,
     });
+    return { success: true };
   }
 );
 
@@ -75,35 +76,37 @@ const SyncPaymentInputSchema = z.object({
 });
 export type SyncPaymentInput = z.infer<typeof SyncPaymentInputSchema>;
 
-export async function createQbPayment(input: SyncPaymentInput): Promise<void> {
-  await syncPaymentFlow(input);
+export async function createQbPayment(input: SyncPaymentInput) {
+  return await syncPaymentFlow(input);
 }
 
 const syncPaymentFlow = ai.defineFlow(
   {
     name: 'syncPaymentFlow',
     inputSchema: SyncPaymentInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     await createQbPaymentService(input);
+    return { success: true };
   }
 );
 
 
 // --- Void Invoice ---
-export async function voidQbInvoice(invoiceId: string): Promise<void> {
-    await voidQbInvoiceFlow({ invoiceId });
+export async function voidQbInvoice(invoiceId: string) {
+    return await voidQbInvoiceFlow({ invoiceId });
 }
 
 const voidQbInvoiceFlow = ai.defineFlow(
   {
     name: 'voidQbInvoiceFlow',
     inputSchema: z.object({ invoiceId: z.string() }),
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async ({ invoiceId }) => {
     await voidQbInvoiceService(invoiceId);
+    return { success: true };
   }
 );
 
@@ -121,30 +124,31 @@ const SyncExpenseInputSchema = z.object({
 
 export type SyncExpenseInput = z.infer<typeof SyncExpenseInputSchema>;
 
-export async function syncExpenseToQuickbooks(input: SyncExpenseInput): Promise<void> {
-    await syncExpenseFlow(input);
+export async function syncExpenseToQuickbooks(input: SyncExpenseInput) {
+    return await syncExpenseFlow(input);
 }
 
 const syncExpenseFlow = ai.defineFlow(
   {
     name: 'syncExpenseFlow',
     inputSchema: SyncExpenseInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     await createQbExpense({
-      AccountRef: { value: '41' }, // Expense Account
+      AccountRef: { value: '41' },
       PaymentType: 'Check',
       TotalAmt: input.amount,
-      EntityRef: input.vendor ? { name: input.vendor, type: 'Vendor', value: '0' } : undefined, // Vendor reference if exists
+      EntityRef: input.vendor ? { name: input.vendor, type: 'Vendor', value: '0' } : undefined,
       Line: [{
           Amount: input.amount,
           DetailType: 'AccountBasedExpenseLineDetail',
           AccountBasedExpenseLineDetail: {
-              AccountRef: { name: input.category, value: '41' } // Map category to an expense account
+              AccountRef: { name: input.category, value: '41' }
           }
       }]
     });
+    return { success: true };
   }
 );
 
@@ -162,15 +166,15 @@ const SyncPayrollInputSchema = z.object({
 
 export type SyncPayrollInput = z.infer<typeof SyncPayrollInputSchema>;
 
-export async function syncPayrollToQuickbooks(input: SyncPayrollInput): Promise<void> {
-    await syncPayrollFlow(input);
+export async function syncPayrollToQuickbooks(input: SyncPayrollInput) {
+    return await syncPayrollFlow(input);
 }
 
 const syncPayrollFlow = ai.defineFlow(
   {
     name: 'syncPayrollFlow',
     inputSchema: SyncPayrollInputSchema,
-    outputSchema: z.void(),
+    outputSchema: z.object({ success: z.boolean() }),
   },
   async (input) => {
     await createQbJournalEntryForPayroll({
@@ -199,11 +203,12 @@ const syncPayrollFlow = ai.defineFlow(
                 Amount: input.netPay,
                 JournalEntryLineDetail: {
                     PostingType: "Credit",
-                    AccountRef: { name: "Bank", value: "35" } // Assuming payment from main bank account
+                    AccountRef: { name: "Bank", value: "35" }
                 },
                 Description: `Net Pay to ${input.staffName}`
             }
         ]
     });
+    return { success: true };
   }
 );

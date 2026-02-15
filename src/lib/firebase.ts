@@ -24,11 +24,11 @@ const storage = getStorage(app);
 const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 /**
- * Creates a notification for a specific user using the server-side action.
+ * Creates a notification for a specific user or group of users using the server-side action.
  * This handles both database persistence and FCM push.
  */
-export const createNotification = async (userId: string, message: string, link: string, type: Notification['type'] = 'info') => {
-  return await sendNotification(userId, message, link, type);
+export const createNotification = async (userIdOrIds: string | string[], message: string, link: string, type: Notification['type'] = 'info') => {
+  return await sendNotification(userIdOrIds, message, link, type);
 };
 
 /**

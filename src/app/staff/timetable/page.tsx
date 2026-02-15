@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -222,23 +221,19 @@ export default function StaffTimetablePage() {
                 timestamp: serverTimestamp()
             };
             
-            // Perform DB update first for immediate synchronization
             await update(ref(db), updates);
-            
-            // Show success toast immediately
             toast({ title: 'Request Sent', description: `Live session requested for ${format(date, 'PPP')}.` });
             setActionLoading(null);
 
-            // Dispatch notifications in background
-            getRegistrarIds().then(registrarIds => {
-                registrarIds.forEach(id => {
-                    createNotification(
-                        id, 
-                        `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
-                        '/admin/timetable'
-                    );
-                });
-            });
+            const registrarIds = await getRegistrarIds();
+            if (registrarIds.length > 0) {
+                // Batch notification into a single call
+                await createNotification(
+                    registrarIds, 
+                    `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
+                    '/admin/timetable'
+                );
+            }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
             setActionLoading(null);
@@ -273,7 +268,7 @@ export default function StaffTimetablePage() {
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
                 </div>
-                <Badge variant="outline" className="text-[10px] font-black uppercase opacity-60">Calendar View</Badge>
+                <Badge variant="secondary" className="text-[10px] font-black uppercase">Cohort Schedule</Badge>
             </div>
 
             <Card className="shadow-lg">

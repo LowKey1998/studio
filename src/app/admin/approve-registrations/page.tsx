@@ -372,14 +372,13 @@ export default function ApproveRegistrationsPage() {
                     description: `Invoice for ${request.semesterName}`,
                 };
                 
-                // Detailed error handling for server actions to prevent "Unexpected response from server"
                 if(isQuickBooksEnabled) {
                     try {
                         await syncInvoiceToQuickbooks(syncData);
                         toast({ title: 'Synced to QuickBooks' });
                     } catch (qbError: any) {
                         console.error("QuickBooks Sync Error:", qbError);
-                        toast({ variant: 'warning', title: 'QuickBooks Sync Postponed', description: qbError.message || 'The registration was approved but QuickBooks synchronization failed.' });
+                        toast({ variant: 'warning', title: 'QuickBooks Sync Postponed', description: 'The registration was approved but QuickBooks synchronization failed. Please sync manually from the Finance tab.' });
                     }
                 }
                 if(isSageEnabled) {
@@ -388,7 +387,7 @@ export default function ApproveRegistrationsPage() {
                         toast({ title: 'Synced to Sage' });
                     } catch (sageError: any) {
                         console.error("Sage Sync Error:", sageError);
-                        toast({ variant: 'warning', title: 'Sage Sync Postponed', description: sageError.message || 'The registration was approved but Sage synchronization failed.' });
+                        toast({ variant: 'warning', title: 'Sage Sync Postponed', description: 'The registration was approved but Sage synchronization failed. Please sync manually from the Finance tab.' });
                     }
                 }
 
