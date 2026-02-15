@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -6,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db } from '@/lib/firebase';
+import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -422,59 +421,61 @@ function TimetableManagementComponent() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div>
-                        <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
-                        <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || viewTarget === 'master' || effectiveSemesterId === 'none'}>
-                            <Copy className="mr-2 h-4 w-4"/> Load Master Baseline
-                        </Button>
-                        <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
-                            {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
-                        </Button>
-                        <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
-                            <DialogTrigger asChild><Button disabled={effectiveSemesterId === 'none'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
-                            <DialogContent className="sm:max-w-lg">
-                                <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    {viewTarget === 'master' && (
-                                        <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                                    )}
-                                    <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
-                                    
-                                    <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
-                                        <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
-                                        <div className="space-y-0.5">
-                                            <Label htmlFor="is-live" className="text-sm font-bold flex items-center gap-2">
-                                                <Video className="h-4 w-4 text-primary"/> Online Video Session
-                                            </Label>
-                                            <p className="text-[10px] text-muted-foreground leading-tight italic">Flags this session as an online class. Students can join via video call.</p>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
+                            <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || viewTarget === 'master' || effectiveSemesterId === 'none'}>
+                                <Copy className="mr-2 h-4 w-4"/> Load Master Baseline
+                            </Button>
+                            <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
+                                {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
+                            </Button>
+                            <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetAddForm(); }}>
+                                <DialogTrigger asChild><Button disabled={effectiveSemesterId === 'none'}><PlusCircle className="mr-2 h-4 w-4"/> Add Session</Button></DialogTrigger>
+                                <DialogContent className="sm:max-w-lg">
+                                    <DialogHeader><DialogTitle>{editingEntry ? 'Edit Schedule Entry' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
+                                    <div className="grid gap-4 py-4">
+                                        {viewTarget === 'master' && (
+                                            <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                        )}
+                                        <div className="space-y-1"><Label>Select Course</Label><Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between font-normal" onClick={() => setIsCoursePopoverOpen(!isCoursePopoverOpen)}>{selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0"><div className="flex flex-col"><div className="p-2 border-b"><Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/></div><ScrollArea className="h-64"><div className="p-1">{searchedCourses.map((c) => (<Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}><div className="text-left"><div className="font-bold">{c.code}</div><div className="text-muted-foreground">{c.name}</div></div></Button>))}</div></ScrollArea></div></PopoverContent></Popover></div>
+                                        
+                                        <div className="flex items-center space-x-2 p-3 border rounded-lg bg-primary/5">
+                                            <Switch id="is-live" checked={isLiveSession} onCheckedChange={setIsLiveSession} />
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="is-live" className="text-sm font-bold flex items-center gap-2">
+                                                    <Video className="h-4 w-4 text-primary"/> Online Video Session
+                                                </Label>
+                                                <p className="text-[10px] text-muted-foreground leading-tight italic">Flags this session as an online class. Students can join via video call.</p>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
-                                        <div className="space-y-1">
-                                            <Label>Venue</Label>
-                                            {isLiveSession ? (
-                                                <div className="h-10 flex items-center px-3 border rounded-md bg-muted/50 text-xs font-bold text-primary italic">
-                                                    <Monitor className="h-3 w-3 mr-2"/> DIGITAL ROOM
-                                                </div>
-                                            ) : (
-                                                <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Room (Optional)"/></SelectTrigger><SelectContent><SelectItem value="TBA">None / TBA</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
-                                            )}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1"><Label>Day</Label><Select value={day} onValueChange={setDay}><SelectTrigger><SelectValue placeholder="Day..."/></SelectTrigger><SelectContent>{displayDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1">
+                                                <Label>Venue</Label>
+                                                {isLiveSession ? (
+                                                    <div className="h-10 flex items-center px-3 border rounded-md bg-muted/50 text-xs font-bold text-primary italic">
+                                                        <Monitor className="h-3 w-3 mr-2"/> DIGITAL ROOM
+                                                    </div>
+                                                ) : (
+                                                    <Select value={venue} onValueChange={setVenue}><SelectTrigger><SelectValue placeholder="Room (Optional)"/></SelectTrigger><SelectContent><SelectItem value="TBA">None / TBA</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1"><Label>Start Time</Label><Input placeholder="e.g. 14:00" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
+                                            <div className="space-y-1"><Label>End Time</Label><Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1"><Label>Start Time</Label><Input placeholder="e.g. 14:00" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
-                                        <div className="space-y-1"><Label>End Time</Label><Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
-                                    </div>
-                                </div>
-                                <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">

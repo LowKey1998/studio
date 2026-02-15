@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -137,8 +136,6 @@ export default function StaffCoursesPage() {
                 const finalMergeMap = new Map<string, MergedCourse>();
                 
                 courseSemesterMap.forEach((val) => {
-                    // Grouping strategy: Key is courseId + session pattern. 
-                    // This groups Mon/Wed sessions for the same course into one card.
                     const sessionSignature = val.sessions
                         .sort((a, b) => a.day.localeCompare(b.day) || a.startTime.localeCompare(b.startTime))
                         .map(s => `${s.day}-${s.startTime}-${s.venue}`)
@@ -191,7 +188,7 @@ export default function StaffCoursesPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, showMerged, toast, semesters, allCoursesData, studentCounts]);
+    }, [currentUser, showMerged, toast]);
 
     React.useEffect(() => {
         if (currentUser) fetchLecturerCourses();
