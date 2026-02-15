@@ -25,6 +25,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 
 type Course = {
@@ -133,7 +134,7 @@ export default function ProgrammesPage() {
             setSelectedCourses(prev => ({...prev, [courseId]: true}));
             toast({ title: 'Course added and linked' });
             setIsCourseDialogOpen(false); fetchData();
-            setNewCourseName(''); setNewCourseCode(''); setNewCourseCost(''); setNewCourseYear('');
+            setNewCourseName(''); setNewCourseCode(''); setNewCourseCode(''); setNewCourseCost(''); setNewCourseYear('');
         } catch (e) { toast({ variant: 'destructive', title: 'Course Creation Failed' }); } finally { setCourseFormLoading(false); }
     };
 
@@ -148,72 +149,90 @@ export default function ProgrammesPage() {
     }, [allCourses, courseSearchTerm]);
 
     return (
-        <Card>
-            <CardHeader className="flex-row items-center justify-between">
-                <div><CardTitle className="text-2xl">Programmes</CardTitle><CardDescription>Manage academic programmes and curriculum catalogs.</CardDescription></div>
-                <div className="flex gap-2">
-                    <Button variant="outline" asChild><Link href="/admin/courses"><BookCopy className="mr-2 h-4 w-4" /> Course Catalog</Link></Button>
-                    <Button onClick={() => { setEditingProgramme(null); setProgrammeName(''); setProgrammeTuition(''); setSelectedCourses({}); setIsDialogOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Add Programme</Button>
-                </div>
-            </CardHeader>
-            <CardContent>
-                {loading ? <Skeleton className="h-48 w-full"/> : 
-                <div className="space-y-4">
-                    {programmes.map(prog => (
-                        <Card key={prog.id} className="flex flex-row items-center justify-between p-4">
-                            <div><CardTitle className="text-lg">{prog.name}</CardTitle><CardDescription>{prog.tuitionFee ? `ZMW ${prog.tuitionFee.toFixed(2)} / semester` : `${Object.keys(prog.courseIds || {}).length} courses`}</CardDescription></div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => { setEditingProgramme(prog); setProgrammeName(prog.name); setProgrammeTuition(prog.tuitionFee?.toString() || ''); setSelectedCourses(prog.courseIds || {}); setIsDialogOpen(true); }}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
-                                <Button variant="destructive" size="icon" onClick={async () => { if(confirm("Delete programme?")) { await remove(ref(db, `programmes/${prog.id}`)); fetchData(); } }}><Trash2 className="h-4 w-4"/></Button>
-                            </div>
-                        </Card>
-                    ))}
-                </div>}
-            </CardContent>
+        <div className="space-y-6">
+            <Card className="shadow-lg border-0 bg-primary/5">
+                <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div>
+                        <CardTitle className="text-2xl font-headline">Academic Programmes</CardTitle>
+                        <CardDescription>Manage academic programmes and curriculum catalogs.</CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" asChild><Link href="/admin/courses"><BookCopy className="mr-2 h-4 w-4" /> Manage Course Catalog</Link></Button>
+                        <Button onClick={() => { setEditingProgramme(null); setProgrammeName(''); setProgrammeTuition(''); setSelectedCourses({}); setIsDialogOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Add Programme</Button>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {loading ? Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-xl"/>) : 
+                programmes.map(prog => (
+                    <Card key={prog.id} className="flex flex-col justify-between shadow-md hover:shadow-xl transition-all border-t-4 border-t-primary">
+                        <CardHeader>
+                            <CardTitle className="text-lg leading-tight">{prog.name}</CardTitle>
+                            <CardDescription className="font-bold">
+                                {prog.tuitionFee ? `ZMW ${prog.tuitionFee.toLocaleString()}` : 'Fee Not Set'}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                            <Badge variant="secondary" className="mt-2">
+                                {Object.keys(prog.courseIds || {}).length} Mapped Courses
+                            </Badge>
+                        </CardContent>
+                        <CardFooter className="flex gap-2 pt-0">
+                            <Button variant="outline" className="flex-1" onClick={() => { setEditingProgramme(prog); setProgrammeName(prog.name); setProgrammeTuition(prog.tuitionFee?.toString() || ''); setSelectedCourses(prog.courseIds || {}); setIsDialogOpen(true); }}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { if(confirm("Permanently delete this programme?")) { await remove(ref(db, `programmes/${prog.id}`)); fetchData(); } }}><Trash2 className="h-4 w-4"/></Button>
+                        </CardFooter>
+                    </Card>
+                ))}
+            </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-2xl h-[85vh] flex flex-col">
-                    <DialogHeader><DialogTitle>{editingProgramme ? 'Edit' : 'New'} Programme</DialogTitle></DialogHeader>
+                <DialogContent className="max-w-3xl h-[85vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>{editingProgramme ? 'Edit' : 'New'} Programme</DialogTitle>
+                        <DialogDescription>Define the curriculum and fee structure for this academic track.</DialogDescription>
+                    </DialogHeader>
                     <div className="flex-1 overflow-auto py-4 space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Name *</Label><Input value={programmeName} onChange={e => setProgrammeName(e.target.value)} /></div>
-                            <div className="space-y-1"><Label>Tuition (Optional)</Label><Input type="number" value={programmeTuition} onChange={e => setProgrammeTuition(e.target.value)} /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label>Programme Name *</Label><Input value={programmeName} onChange={e => setProgrammeName(e.target.value)} placeholder="e.g., Bachelor of Science in Nursing"/></div>
+                            <div className="space-y-1"><Label>Semester Tuition Fee (Optional)</Label><Input type="number" value={programmeTuition} onChange={e => setProgrammeTuition(e.target.value)} placeholder="e.g., 5000" /></div>
                         </div>
                         <Separator />
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center"><Label className="text-lg font-bold">Assigned Courses</Label>
+                            <div className="flex justify-between items-center">
+                                <Label className="text-base font-bold">Curriculum Mapping</Label>
                                 <Dialog open={isCourseDialogOpen} onOpenChange={setIsCourseDialogOpen}>
-                                    <DialogTrigger asChild><Button variant="outline" size="sm"><PlusCircle className="mr-2 h-4 w-4"/>Quick Create Course</Button></DialogTrigger>
+                                    <DialogTrigger asChild><Button variant="outline" size="sm" className="h-8"><PlusCircle className="mr-2 h-4 w-4"/>Quick Create Course</Button></DialogTrigger>
                                     <DialogContent><form onSubmit={handleCreateCourse}>
                                         <DialogHeader><DialogTitle>New Course & Link</DialogTitle></DialogHeader>
                                         <div className="space-y-4 py-4">
-                                            <Input placeholder="Name" value={newCourseName} onChange={e => setNewCourseName(e.target.value)} required />
-                                            <Input placeholder="Code" value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} required />
+                                            <Input placeholder="Course Name" value={newCourseName} onChange={e => setNewCourseName(e.target.value)} required />
+                                            <Input placeholder="Course Code" value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} required />
                                             <div className="grid grid-cols-2 gap-2">
                                                 <Input type="number" placeholder="Cost" value={newCourseCost} onChange={e => setNewCourseCost(e.target.value)} />
                                                 <Input type="number" placeholder="Year" value={newCourseYear} onChange={e => setNewCourseYear(e.target.value)} />
                                             </div>
                                             <div className="flex items-center space-x-2 p-2 border rounded bg-muted/20">
                                                 <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                                <Label className="text-xs">Separate Instance per Intake</Label>
+                                                <Label className="text-xs font-medium">Separate instance per intake</Label>
                                             </div>
                                         </div>
                                         <DialogFooter><Button type="submit" disabled={courseFormLoading}>Create & Link</Button></DialogFooter>
                                     </form></DialogContent>
                                 </Dialog>
                             </div>
-                            <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 opacity-50"/><Input placeholder="Filter..." className="pl-8" value={courseSearchTerm} onChange={e => setCourseSearchTerm(e.target.value)} /></div>
-                            <ScrollArea className="h-64 border rounded-md p-4">
+                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input placeholder="Search catalog..." className="pl-8" value={courseSearchTerm} onChange={e => setCourseSearchTerm(e.target.value)} /></div>
+                            <ScrollArea className="h-64 border rounded-md p-4 bg-muted/5">
                                 <Accordion type="multiple" defaultValue={Object.keys(groupedCourses)}>
                                     {Object.entries(groupedCourses).map(([year, courses]) => (
-                                        <AccordionItem key={year} value={year}>
-                                            <AccordionTrigger className="text-sm font-bold">{year}</AccordionTrigger>
-                                            <AccordionContent className="grid gap-2">
+                                        <AccordionItem key={year} value={year} className="border-none">
+                                            <AccordionTrigger className="font-bold text-sm py-2 hover:no-underline">{year}</AccordionTrigger>
+                                            <AccordionContent className="grid gap-2 pt-2">
                                                 {courses.map(c => (
-                                                    <div key={c.id} className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 transition-colors">
+                                                    <div key={c.id} className="flex items-center gap-2 p-2 rounded hover:bg-primary/5 border border-transparent hover:border-primary/10 transition-colors">
                                                         <Checkbox id={`c-${c.id}`} checked={!!selectedCourses[c.id]} onCheckedChange={() => setSelectedCourses(prev => ({...prev, [c.id]: !prev[c.id]}))} />
                                                         <Label htmlFor={`c-${c.id}`} className="text-sm cursor-pointer flex-1">
-                                                            <span className="font-medium">{c.name}</span> <span className="opacity-50 font-mono text-xs">({c.code})</span>
+                                                            <span className="font-medium">{c.name}</span> <span className="opacity-50 font-mono text-xs ml-2">({c.code})</span>
                                                         </Label>
                                                     </div>
                                                 ))}
@@ -224,9 +243,9 @@ export default function ProgrammesPage() {
                             </ScrollArea>
                         </div>
                     </div>
-                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleFormSubmit} disabled={formLoading}>Save Programme</Button></DialogFooter>
+                    <DialogFooter className="border-t pt-4"><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button onClick={handleFormSubmit} disabled={formLoading}>{formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Programme</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
-        </Card>
+        </div>
     );
 }

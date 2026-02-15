@@ -176,12 +176,10 @@ export default function CoursesPage() {
 
             const isSemesterActive = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                // If it's open for registration, it's considered part of current/upcoming load
-                if (sem.status === 'Open') return true;
                 if (!sem.endDate) return false;
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
-                    // Active means end date hasn't passed yet
+                    // Active means the end date hasn't passed yet.
                     return !isAfter(now, end);
                 } catch (e) {
                     return false;
@@ -196,6 +194,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
+                        // REQUIREMENT: Count only those enrolled for semesters that have not yet ended
                         if (semesterInfo && isSemesterActive(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
