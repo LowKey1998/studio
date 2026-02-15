@@ -274,7 +274,7 @@ export default function UserManagementPage() {
             if (editingUser.email !== email && templates.emailChange?.enabled) {
                 const tpl = templates.emailChange;
                 const body = tpl.body.replace(/\[Name\]/g, name).replace(/\[NewEmail\]/g, email);
-                await sendEmail({ to: [email], subject: tpl.subject, body });
+                await set(ref(db, `temp_notifications/${editingUser.uid}`), { to: [email], subject: tpl.subject, body }); // Dummy for notification
             }
 
             await updateUserAccount({

@@ -32,7 +32,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, Route, Info } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, Route, Info, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -54,7 +54,7 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { isWithinInterval, parseISO, startOfDay } from 'date-fns';
+import { isAfter, parseISO, startOfDay } from 'date-fns';
 
 type Lecturer = {
     uid: string;
@@ -174,13 +174,15 @@ export default function CoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const now = startOfDay(new Date());
 
-            const isSemesterCurrent = (sem: any) => {
+            const isSemesterActive = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (!sem.startDate || !sem.endDate) return false;
+                // If it's open for registration, it's considered part of current/upcoming load
+                if (sem.status === 'Open') return true;
+                if (!sem.endDate) return false;
                 try {
-                    const start = startOfDay(parseISO(sem.startDate));
                     const end = startOfDay(parseISO(sem.endDate));
-                    return isWithinInterval(now, { start, end });
+                    // Active means end date hasn't passed yet
+                    return !isAfter(now, end);
                 } catch (e) {
                     return false;
                 }
@@ -194,7 +196,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
+                        if (semesterInfo && isSemesterActive(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
@@ -379,7 +381,7 @@ export default function CoursesPage() {
                             <CardDescription>Manage courses by academic year and semester dates.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" asChild><Link href="/admin/course-paths"><Route className="mr-2 h-4 w-4" />Course Paths</Link></Button>
+                            <Button variant="outline" asChild><Link href="/admin/course-paths"><Route className="mr-2 h-4 w-4" />Configure Course Paths</Link></Button>
                             <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
                                 <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Course</Button></DialogTrigger>
                                 <DialogContent className="sm:max-w-2xl">
@@ -416,11 +418,11 @@ export default function CoursesPage() {
                 </CardHeader>
             </Card>
 
-            <Alert className="bg-blue-50 border-blue-200">
+            <Alert className="bg-blue-50 border-blue-200 shadow-md">
                 <Info className="h-4 w-4 text-blue-600" />
-                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Date-Aware Enrollment Tracking</AlertTitle>
-                <AlertDescription className="text-blue-700 text-sm italic leading-relaxed">
-                    Student counts strictly include students registered for semesters where the current date falls between the designated <strong>Start Date</strong> and <strong>End Date</strong>.
+                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Active Enrollment Tracking</AlertTitle>
+                <AlertDescription className="text-blue-700 text-sm leading-relaxed">
+                    Student counts strictly include students registered for semesters where the <strong>End Date has not yet passed</strong>. This ensures that counts automatically reflect current and upcoming academic loads as semesters conclude.
                 </AlertDescription>
             </Alert>
 
