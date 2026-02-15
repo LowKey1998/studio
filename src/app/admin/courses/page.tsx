@@ -33,7 +33,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download, Route, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -56,6 +56,7 @@ import Link from 'next/link';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type Lecturer = {
     uid: string;
@@ -446,269 +447,290 @@ export default function CoursesPage() {
     }, [courses, activeTab, searchTerm, yearFilter]);
 
     return (
-        <Card className="shadow-lg border-0">
-            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <CardTitle className="font-headline text-2xl">Academic Course Management</CardTitle>
-                    <CardDescription>Configure course details, credits, and programme assignments.</CardDescription>
-                </div>
-                <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
-                    <DialogTrigger asChild>
-                        <Button>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Add New Course
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-2xl">
-                        <form onSubmit={handleFormSubmit}>
-                            <DialogHeader>
-                                <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
-                                <DialogDescription>
-                                    Define academic parameters and assign a lecturer.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <Label htmlFor="courseName">Course Name *</Label>
-                                        <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label htmlFor="courseCode">Course Code *</Label>
-                                        <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-1">
-                                        <Label htmlFor="courseCredits">Credits (Optional)</Label>
-                                        <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
-                                        <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label htmlFor="courseYear">Academic Year (Optional)</Label>
-                                        <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label htmlFor="lecturer">Lecturer (Optional)</Label>
-                                    <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
-                                        <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
-                                            {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
-                                    <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                    <div className="space-y-0.5">
-                                        <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
-                                        <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Assign to Programmes (Optional)</Label>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
-                                        {programmes.map(prog => (
-                                            <div key={prog.id} className="flex items-center gap-2">
-                                                <Checkbox
-                                                    id={`prog-${prog.id}`}
-                                                    checked={!!selectedProgrammes[prog.id]}
-                                                    onCheckedChange={() => handleProgrammeSelection(prog.id)}
-                                                />
-                                                <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <DialogFooter className="pt-4 border-t">
-                                <DialogClose asChild>
-                                    <Button variant="outline" type="button">Cancel</Button>
-                                </DialogClose>
-                                <Button type="submit" disabled={formLoading}>
-                                    {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
-            </CardHeader>
-            <CardContent>
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-                    <TabsList>
-                        <TabsTrigger value="active">Active Catalog</TabsTrigger>
-                        <TabsTrigger value="archived">Archived / Legacy</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-                <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/10">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Search code or name..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-8 bg-background"
-                        />
+        <div className="space-y-6">
+            <Card className="shadow-lg border-0 bg-primary/5">
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <CardTitle className="font-headline text-2xl">Course Catalog</CardTitle>
+                        <CardDescription>Manage individual course items, pricing, and programme associations.</CardDescription>
                     </div>
-                    <Select value={yearFilter} onValueChange={setYearFilter}>
-                        <SelectTrigger className="w-full md:w-[180px] bg-background">
-                            <SelectValue placeholder="Year Filter" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Years</SelectItem>
-                            <SelectItem value="1">Year 1</SelectItem>
-                            <SelectItem value="2">Year 2</SelectItem>
-                            <SelectItem value="3">Year 3</SelectItem>
-                            <SelectItem value="4">Year 4</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                 <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
-                    <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
-                        {loading ? (
-                            Array.from({length: 3}).map((_, i) => <Skeleton className="h-20 w-full rounded-md"/>)
-                        ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
-                           Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => {
-                               const numA = parseInt(a.replace('Year ', ''));
-                               const numB = parseInt(b.replace('Year ', ''));
-                               if (isNaN(numA)) return 1;
-                               if (isNaN(numB)) return -1;
-                               return numA - numB;
-                           }).map(([year, courses]) => (
-                               <AccordionItem value={year} key={year} className="border rounded-lg bg-card overflow-hidden">
-                                   <AccordionTrigger className="font-bold text-lg px-4 hover:no-underline">{year} Courses <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
-                                   <AccordionContent className="px-0">
-                                       <Table>
-                                           <TableHeader>
-                                                <TableRow className="bg-muted/30">
-                                                   <TableHead className="pl-4">Code</TableHead>
-                                                   <TableHead>Name</TableHead>
-                                                   <TableHead>Lecturer(s)</TableHead>
-                                                   <TableHead>Students</TableHead>
-                                                   {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
-                                                   <TableHead className="text-right pr-4">Actions</TableHead>
-                                               </TableRow>
-                                           </TableHeader>
-                                           <TableBody>
-                                               {courses.map((course) => (
-                                                   <TableRow key={course.id}>
-                                                       <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
-                                                       <TableCell>
-                                                           <div className="flex flex-col">
-                                                               <span className="font-medium">{course.name}</span>
-                                                               {course.credits && <span className="text-[10px] text-muted-foreground">{course.credits} Credits</span>}
-                                                           </div>
-                                                       </TableCell>
-                                                       <TableCell className="text-sm">{course.lecturerName}</TableCell>
-                                                       <TableCell>
-                                                           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course)}>
-                                                               <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
-                                                           </Button>
-                                                       </TableCell>
-                                                       {activeTab === 'archived' && <TableHead className="text-xs italic">{course.archiveReason || 'N/A'}</TableHead>}
-                                                       <TableCell className="text-right pr-4">
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end">
-                                                                    {activeTab === 'active' ? (
-                                                                        <>
-                                                                        <DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit Details</DropdownMenuItem>
-                                                                        <DropdownMenuItem onClick={() => handleViewStudents(course)}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
-                                                                        <DropdownMenuSeparator />
-                                                                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}>
-                                                                            <Trash2 className="mr-2 h-4 w-4"/>Archive Course
-                                                                        </DropdownMenuItem>
-                                                                        </>
-                                                                    ) : (
-                                                                        <DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}><Undo2 className="mr-2 h-4 w-4"/>Restore Course</DropdownMenuItem>
-                                                                    )}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                       </TableCell>
-                                                   </TableRow>
-                                               ))}
-                                           </TableBody>
-                                       </Table>
-                                   </AccordionContent>
-                               </AccordionItem>
-                           ))
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                                <BookCopy className="h-12 w-12 opacity-20 mb-4" />
-                                <p>No {activeTab} courses found matching the filters.</p>
-                            </div>
-                        )}
-                    </Accordion>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" asChild>
+                            <Link href="/admin/course-paths">
+                                <Route className="mr-2 h-4 w-4" />
+                                Configure Course Paths
+                            </Link>
+                        </Button>
+                        <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <PlusCircle className="mr-2 h-4 w-4" />
+                                    Add New Course
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-2xl">
+                                <form onSubmit={handleFormSubmit}>
+                                    <DialogHeader>
+                                        <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
+                                        <DialogDescription>
+                                            Define academic parameters and assign a lecturer.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="courseName">Course Name *</Label>
+                                                <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="courseCode">Course Code *</Label>
+                                                <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="courseCredits">Credits (Optional)</Label>
+                                                <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
+                                                <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label htmlFor="courseYear">Academic Year (Optional)</Label>
+                                                <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="lecturer">Lecturer (Optional)</Label>
+                                            <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
+                                                <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
+                                                    {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
+                                            <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
+                                                <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Assign to Programmes (Optional)</Label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
+                                                {programmes.map(prog => (
+                                                    <div key={prog.id} className="flex items-center gap-2">
+                                                        <Checkbox
+                                                            id={`prog-${prog.id}`}
+                                                            checked={!!selectedProgrammes[prog.id]}
+                                                            onCheckedChange={() => handleProgrammeSelection(prog.id)}
+                                                        />
+                                                        <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <DialogFooter className="pt-4 border-t">
+                                        <DialogClose asChild>
+                                            <Button variant="outline" type="button">Cancel</Button>
+                                        </DialogClose>
+                                        <Button type="submit" disabled={formLoading}>
+                                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+                </CardHeader>
+            </Card>
 
-                     <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Archive Course?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This course will be moved to the legacy tab. Please provide a reason for archiving.
-                            </AlertDialogDescription>
-                             <div className="space-y-2 pt-2">
-                                <Label htmlFor="archiveReason">Reason for Archiving</Label>
-                                <Input 
-                                    id="archiveReason" 
-                                    placeholder="e.g., Curriculum update, End of cycle" 
-                                    value={archiveReason}
-                                    onChange={(e) => setArchiveReason(e.target.value)}
-                                />
-                            </div>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => { setArchivingCourse(null); setArchiveReason(''); }}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleArchiveSubmit} className="bg-destructive hover:bg-destructive/90">
-                                Confirm Archive
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
+            <Alert className="bg-blue-50 border-blue-200">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Critical Configuration Step</AlertTitle>
+                <AlertDescription className="text-blue-700 text-sm">
+                    Courses created here represent the "Master Catalog". To make these courses available for student registration, you <strong>must</strong> map them to specific semesters within the <Link href="/admin/course-paths" className="font-bold underline">Intakes / Course Paths</Link> module.
+                </AlertDescription>
+            </Alert>
 
-                <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
-                    <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
-                        <DialogHeader>
-                            <div className="flex justify-between items-center pr-8">
-                                <div>
-                                    <DialogTitle>Enrolled Students</DialogTitle>
-                                    <DialogDescription>List of students currently enrolled in {selectedCourseForList?.name}.</DialogDescription>
-                                </div>
-                                <Button onClick={handleDownloadClassList} size="sm" variant="outline" className="shrink-0"><Download className="mr-2 h-4 w-4"/>Download List</Button>
-                            </div>
-                        </DialogHeader>
-                        <div className="flex-1 overflow-auto rounded-md border mt-4">
-                            <Table>
-                                <TableHeader>
-                                    <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
-                                        <TableRow>
-                                            <TableHead className="pl-4">Student ID</TableHead>
-                                            <TableHead>Full Name</TableHead>
-                                            <TableHead className="pr-4 text-right">Active Semester</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                </TableHeader>
-                                <TableBody>
-                                    {viewingStudents.length > 0 ? viewingStudents.map(s => (
-                                        <TableRow key={s.uid}>
-                                            <TableCell className="font-mono text-xs pl-4">{s.id}</TableCell>
-                                            <TableCell className="font-medium text-sm">{s.name}</TableCell>
-                                            <TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell>
-                                        </TableRow>
-                                    )) : (
-                                        <TableRow>
-                                            <TableCell colSpan={3} className="h-32 text-center text-muted-foreground italic">No students enrolled.</TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+            <Card>
+                <CardContent className="pt-6">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+                        <TabsList>
+                            <TabsTrigger value="active">Active Catalog</TabsTrigger>
+                            <TabsTrigger value="archived">Archived / Legacy</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+                    <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/10">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input 
+                                placeholder="Search code or name..." 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-8 bg-background"
+                            />
                         </div>
-                    </DialogContent>
-                </Dialog>
-            </CardContent>
-        </Card>
+                        <Select value={yearFilter} onValueChange={setYearFilter}>
+                            <SelectTrigger className="w-full md:w-[180px] bg-background">
+                                <SelectValue placeholder="Year Filter" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Years</SelectItem>
+                                <SelectItem value="1">Year 1</SelectItem>
+                                <SelectItem value="2">Year 2</SelectItem>
+                                <SelectItem value="3">Year 3</SelectItem>
+                                <SelectItem value="4">Year 4</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
+                        <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
+                            {loading ? (
+                                Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>)
+                            ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
+                            Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => {
+                                const numA = parseInt(a.replace('Year ', ''));
+                                const numB = parseInt(b.replace('Year ', ''));
+                                if (isNaN(numA)) return 1;
+                                if (isNaN(numB)) return -1;
+                                return numA - numB;
+                            }).map(([year, courses]) => (
+                                <AccordionItem value={year} key={year} className="border rounded-lg bg-card overflow-hidden">
+                                    <AccordionTrigger className="font-bold text-lg px-4 hover:no-underline">{year} Courses <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
+                                    <AccordionContent className="px-0">
+                                        <Table>
+                                            <TableHeader>
+                                                    <TableRow className="bg-muted/30">
+                                                    <TableHead className="pl-4">Code</TableHead>
+                                                    <TableHead>Name</TableHead>
+                                                    <TableHead>Lecturer(s)</TableHead>
+                                                    <TableHead>Students</TableHead>
+                                                    {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
+                                                    <TableHead className="text-right pr-4">Actions</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {courses.map((course) => (
+                                                    <TableRow key={course.id}>
+                                                        <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium">{course.name}</span>
+                                                                {course.credits && <span className="text-[10px] text-muted-foreground">{course.credits} Credits</span>}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-sm">{course.lecturerName}</TableCell>
+                                                        <TableCell>
+                                                            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course)}>
+                                                                <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
+                                                            </Button>
+                                                        </TableCell>
+                                                        {activeTab === 'archived' && <TableHead className="text-xs italic">{course.archiveReason || 'N/A'}</TableHead>}
+                                                        <TableCell className="text-right pr-4">
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end">
+                                                                        {activeTab === 'active' ? (
+                                                                            <>
+                                                                            <DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit Details</DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => handleViewStudents(course)}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
+                                                                            <DropdownMenuSeparator />
+                                                                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}>
+                                                                                <Trash2 className="mr-2 h-4 w-4"/>Archive Course
+                                                                            </DropdownMenuItem>
+                                                                            </>
+                                                                        ) : (
+                                                                            <DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}><Undo2 className="mr-2 h-4 w-4"/>Restore Course</DropdownMenuItem>
+                                                                        )}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            ))
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                                    <BookCopy className="h-12 w-12 opacity-20 mb-4" />
+                                    <p>No {activeTab} courses found matching the filters.</p>
+                                </div>
+                            )}
+                        </Accordion>
+
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Archive Course?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This course will be moved to the legacy tab. Please provide a reason for archiving.
+                                </AlertDialogDescription>
+                                <div className="space-y-2 pt-2">
+                                    <Label htmlFor="archiveReason">Reason for Archiving</Label>
+                                    <Input 
+                                        id="archiveReason" 
+                                        placeholder="e.g., Curriculum update, End of cycle" 
+                                        value={archiveReason}
+                                        onChange={(e) => setArchiveReason(e.target.value)}
+                                    />
+                                </div>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => { setArchivingCourse(null); setArchiveReason(''); }}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleArchiveSubmit} className="bg-destructive hover:bg-destructive/90">
+                                    Confirm Archive
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </CardContent>
+            </Card>
+
+            <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
+                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <div className="flex justify-between items-center pr-8">
+                            <div>
+                                <DialogTitle>Enrolled Students</DialogTitle>
+                                <DialogDescription>List of students currently enrolled in {selectedCourseForList?.name}.</DialogDescription>
+                            </div>
+                            <Button onClick={handleDownloadClassList} size="sm" variant="outline" className="shrink-0"><Download className="mr-2 h-4 w-4"/>Download List</Button>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto rounded-md border mt-4">
+                        <Table>
+                            <TableHeader>
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                                    <TableRow>
+                                        <TableHead className="pl-4">Student ID</TableHead>
+                                        <TableHead>Full Name</TableHead>
+                                        <TableHead className="pr-4 text-right">Active Semester</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                            </TableHeader>
+                            <TableBody>
+                                {viewingStudents.length > 0 ? viewingStudents.map(s => (
+                                    <TableRow key={s.uid}>
+                                        <TableCell className="font-mono text-xs pl-4">{s.id}</TableCell>
+                                        <TableCell className="font-medium text-sm">{s.name}</TableCell>
+                                        <TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell>
+                                    </TableRow>
+                                )) : (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="h-32 text-center text-muted-foreground italic">No students enrolled.</TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </div>
     );
 }

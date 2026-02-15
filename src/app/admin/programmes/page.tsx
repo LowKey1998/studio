@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, PlusCircle, Trash2, FileText, X, Search, Pencil, DollarSign } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, FileText, X, Search, Pencil, DollarSign, BookCopy, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -25,6 +25,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import Link from 'next/link';
 
 type Course = {
     id: string;
@@ -256,9 +257,17 @@ export default function ProgrammesPage() {
                     <CardTitle className="font-headline text-2xl">Programme Management</CardTitle>
                     <CardDescription>Create academic programmes and assign courses to them.</CardDescription>
                 </div>
-                <Button onClick={() => handleOpenDialog()}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Programme
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" asChild>
+                        <Link href="/admin/courses">
+                            <BookCopy className="mr-2 h-4 w-4" />
+                            Manage Course Catalog
+                        </Link>
+                    </Button>
+                    <Button onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Programme
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
                 {loading ? (
