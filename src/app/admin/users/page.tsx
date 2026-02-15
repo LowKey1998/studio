@@ -37,7 +37,8 @@ import {
     UserPlus, 
     UserCog,
     KeyRound,
-    Clock
+    Clock,
+    UserCheck
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -414,7 +415,7 @@ export default function UserManagementPage() {
         const reader = new FileReader();
         reader.onload = (evt) => {
             try {
-                const bstr = evt.target?.result;
+                const bstr = evt.target?.result as string;
                 const wb = read(bstr, { type: 'binary' });
                 const wsname = wb.SheetNames[0];
                 const ws = wb.Sheets[wsname];
