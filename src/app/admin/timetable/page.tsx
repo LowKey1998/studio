@@ -8,10 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -35,6 +32,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 
 type TimeSlot = {
     id: string;
@@ -88,9 +87,7 @@ function TimetableManagementComponent() {
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
-    // Week Navigation
     const [viewWeek, setViewWeek] = React.useState(new Date());
-
     const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
@@ -339,17 +336,18 @@ function TimetableManagementComponent() {
                 approvedAt: serverTimestamp()
             });
             
+            toast({ title: 'Live Session Approved' });
+            
+            // Dispatch notification in background
             const course = allCourses.find(c => c.id === entry.courseId);
             const lecturerId = course?.lecturerId;
             if (lecturerId) {
-                await createNotification(
+                createNotification(
                     lecturerId,
                     `Your live session request for ${entry.courseCode} on ${dateStr} has been approved.`,
                     `/staff/courses/${entry.courseId}/live?semesterId=${entry.semesterId}`
                 );
             }
-            
-            toast({ title: 'Live Session Approved' });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Approval Failed' });
         } finally {
@@ -373,9 +371,7 @@ function TimetableManagementComponent() {
 
             const masterData = masterSnap.val();
             const targetRef = ref(db, `timetables/${effectiveSemesterId}`);
-            
             await update(targetRef, masterData);
-            
             toast({ title: 'Schedule Copied', description: `Master baseline loaded into ${resolvedSemester?.name}` });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Copy Failed', description: e.message });

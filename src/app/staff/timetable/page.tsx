@@ -5,16 +5,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, onValue, update, serverTimestamp } from 'firebase/database';
+import { ref, get, set, onValue, update, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, Layers, CalendarDays, Video, Loader2, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, Layers, CalendarDays, Video, Loader2, ChevronLeft, ChevronRight, Clock, Search, ChevronsUpDown, Pencil, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 type TimeSlot = {
     id: string;
@@ -62,18 +69,17 @@ export default function StaffTimetablePage() {
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [currentUserProfile, setCurrentUserProfile] = React.useState<any>(null);
     
-    // Week Navigation
     const [viewWeek, setViewWeek] = React.useState(new Date());
-
     const { toast } = useToast();
 
     React.useEffect(() => {
-        onAuthStateChanged(auth, user => {
+        const unsubscribe = onAuthStateChanged(auth, user => {
             setCurrentUser(user);
             if(user) {
                 get(ref(db, `users/${user.uid}`)).then(s => setCurrentUserProfile(s.val()));
             }
         });
+        return () => unsubscribe();
     }, []);
 
     const fetchData = React.useCallback(async () => {
@@ -195,7 +201,14 @@ export default function StaffTimetablePage() {
         } catch (error) { console.error(error); } finally { setLoading(false); }
     }, [currentUser]);
 
-    React.useEffect(() => { fetchData(); }, [fetchData]);
+    React.useEffect(() => {
+        if (!currentUser) return;
+        fetchData();
+        const unsubT = onValue(ref(db, 'timetables'), (snapshot) => {
+            if(snapshot.exists()) fetchData();
+        });
+        return () => unsubT();
+    }, [currentUser, fetchData]);
 
     const handleRequestLive = async (merged: MergedEntry, date: Date) => {
         if (!currentUser || !currentUserProfile) return;
@@ -204,28 +217,30 @@ export default function StaffTimetablePage() {
         setActionLoading(actionKey);
         try {
             const updates: Record<string, any> = {};
-            // Store request under a date-keyed path within the entry
             updates[`timetables/${merged.entry.semesterId}/${merged.entry.courseId}/${merged.entry.id}/dateRequests/${dateStr}`] = {
                 status: 'Requested',
                 timestamp: serverTimestamp()
             };
+            
+            // Perform DB update first for immediate synchronization
             await update(ref(db), updates);
-
-            const registrarIds = await getRegistrarIds();
-            const notificationPromises = registrarIds.map(id => 
-                createNotification(
-                    id, 
-                    `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
-                    '/admin/timetable'
-                )
-            );
-            await Promise.all(notificationPromises);
-
+            
+            // Show success toast immediately
             toast({ title: 'Request Sent', description: `Live session requested for ${format(date, 'PPP')}.` });
-            fetchData();
+            setActionLoading(null);
+
+            // Dispatch notifications in background
+            getRegistrarIds().then(registrarIds => {
+                registrarIds.forEach(id => {
+                    createNotification(
+                        id, 
+                        `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
+                        '/admin/timetable'
+                    );
+                });
+            });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
-        } finally {
             setActionLoading(null);
         }
     };
@@ -239,19 +254,18 @@ export default function StaffTimetablePage() {
         });
     }, [viewWeek]);
 
-    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
     const hasSlots = teachingTimes.slots.length > 0;
 
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="text-primary"/> Active Teaching Schedule</CardTitle>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Active Teaching Schedule</CardTitle>
                     <CardDescription>Your weekly classes. Navigation is date-specific to handle varying session types.</CardDescription>
                 </CardHeader>
             </Card>
 
-            <div className="flex items-center justify-between px-2 py-2 bg-primary/5 border rounded-lg">
+            <div className="flex items-center justify-between px-2 py-2 bg-primary/5 border rounded-lg shadow-sm">
                 <div className="flex items-center gap-4">
                     <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
                     <div className="font-bold text-sm uppercase tracking-widest text-primary">
@@ -300,7 +314,6 @@ export default function StaffTimetablePage() {
                                                         <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
                                                             <div className="space-y-2">
                                                                 {sessionsInSlot.map((m, eIdx) => {
-                                                                    // Check for date-specific request
                                                                     const dateRequest = (m.entry as any).dateRequests?.[dateStr];
                                                                     const isLiveRequestedOnDate = dateRequest?.status === 'Requested';
                                                                     const isLiveApprovedOnDate = dateRequest?.status === 'Approved' || m.entry.isLiveSession;
