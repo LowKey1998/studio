@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -19,6 +20,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -37,7 +39,7 @@ export default function LecturerLivePage() {
   const [loading, setLoading] = useState(true);
   const [isLiveTimetableDay, setIsLiveTimetableDay] = useState(false);
   const [autoStartTime, setAutoStartTime] = useState<string | null>(null);
-  const [courseData, setCourseData] = useState<any>(null);
+  const [courseData, setCourseData] = setCourseData(null);
   
   // Attendance State
   const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);

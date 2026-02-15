@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { isWithinInterval, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 type TimeSlot = {
     id: string;
@@ -132,7 +133,10 @@ export default function StaffTimetablePage() {
                 for (const cId in tData[semId]) {
                     if (myCourseIds.has(cId)) {
                         const courseInfo = cData[cId];
-                        const lecturerNames = (courseInfo.lecturerIds || []).map((uid: string) => usersData[uid]?.name).filter(Boolean).join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                        const lecturerNames = (courseInfo.lecturerIds || [])
+                            .map((uid: string) => usersData[uid]?.name)
+                            .filter(Boolean)
+                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
 
                         Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
                             rawEntries.push({
@@ -257,7 +261,7 @@ export default function StaffTimetablePage() {
                                                             {sessionsInSlot.map((m, eIdx) => (
                                                                 <div key={eIdx} className={cn(
                                                                     "block p-2 rounded-md border bg-background shadow-sm transition-all",
-                                                                    m.entry.isLiveSession ? "border-blue-500 bg-blue-50/20" : "border-primary/20",
+                                                                    m.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
                                                                     m.entry.isLiveRequested && "border-orange-400 bg-orange-50/20"
                                                                 )}>
                                                                     <div className="flex justify-between items-start">

@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -472,7 +473,7 @@ function TimetableManagementComponent() {
                                             <div className="space-y-1"><Label>End Time</Label><Input placeholder="e.g. 16:00" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
                                         </div>
                                     </div>
-                                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
+                                    <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button onClick={handleSaveEntry} disabled={saving}>Save Entry</Button></DialogFooter>
                                 </DialogContent>
                             </Dialog>
                         </div>
