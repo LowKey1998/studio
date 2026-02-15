@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -68,7 +67,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
-import * as XLSX from 'xlsx';
+import { read, utils, writeFile } from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDistanceToNow } from 'date-fns';
@@ -416,11 +415,11 @@ export default function UserManagementPage() {
         reader.onload = (evt) => {
             try {
                 const bstr = evt.target?.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wb = read(bstr, { type: 'binary' });
                 const wsname = wb.SheetNames[0];
                 const ws = wb.Sheets[wsname];
-                const data = XLSX.utils.sheet_to_json(ws);
-                setBulkUsersToCreate(data.map((row: any) => ({
+                const jsonData = utils.sheet_to_json(ws);
+                setBulkUsersToCreate(jsonData.map((row: any) => ({
                     id: row.id || row.ID || row.SystemID || `USER-${Date.now().toString().slice(-6)}`,
                     name: row.name || row.Name || row.FullName || '',
                     email: row.email || row.Email || '',
@@ -431,7 +430,7 @@ export default function UserManagementPage() {
                     phoneNumber: row.phone || row.Phone || row.phoneNumber || '',
                     imported: false
                 })).filter(u => u.name && u.email));
-                toast({ title: "File Processed", description: `${data.length} users ready for review.` });
+                toast({ title: "File Processed", description: `${jsonData.length} users ready for review.` });
             } catch (err) {
                 toast({ variant: 'destructive', title: "Processing Error" });
             }
@@ -517,9 +516,9 @@ export default function UserManagementPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div><CardTitle className="text-2xl font-headline">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
+                    <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}><FileUp className="mr-2 h-4 w-4"/>Bulk Create</Button>
                         <DropdownMenu>
@@ -722,10 +721,10 @@ export default function UserManagementPage() {
                             <div className="flex gap-2">
                                 <Button variant="outline" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/>Add Row</Button>
                                 <Button variant="outline" onClick={() => {
-                                    const ws = XLSX.utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', password: '', subRoles: '', department: '', phone: '' }]);
-                                    const wb = XLSX.book_new();
-                                    XLSX.book_append_sheet(wb, ws, "Users");
-                                    XLSX.writeFile(wb, "bulk_user_template.xlsx");
+                                    const ws = utils.json_to_sheet([{ id: '', name: '', email: '', role: 'Student', password: '', subRoles: '', department: '', phone: '' }]);
+                                    const wb = utils.book_new();
+                                    utils.book_append_sheet(wb, ws, "Users");
+                                    writeFile(wb, "bulk_user_template.xlsx");
                                 }}><Download className="mr-2 h-4 w-4"/>Template</Button>
                             </div>
                         </div>

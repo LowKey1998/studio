@@ -174,20 +174,16 @@ export default function CoursesPage() {
             const allSemesters = semestersSnap.val() || {};
             const now = startOfDay(new Date());
 
-            // User Requirement: Strict date-aware counting
             const isSemesterCurrent = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (sem.startDate && sem.endDate) {
-                    try {
-                        const start = startOfDay(parseISO(sem.startDate));
-                        const end = startOfDay(parseISO(sem.endDate));
-                        return isWithinInterval(now, { start, end });
-                    } catch (e) {
-                        return false;
-                    }
+                if (!sem.startDate || !sem.endDate) return false;
+                try {
+                    const start = startOfDay(parseISO(sem.startDate));
+                    const end = startOfDay(parseISO(sem.endDate));
+                    return isWithinInterval(now, { start, end });
+                } catch (e) {
+                    return false;
                 }
-                // Fallback for semesters where dates haven't been configured yet but it is active
-                return sem.status === 'Open';
             };
 
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
@@ -199,7 +195,8 @@ export default function CoursesPage() {
                         const semesterInfo = allSemesters[semesterId];
                         
                         if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
-                            registration.courses?.forEach((courseId: string) => {
+                            const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
+                            coursesArr.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
                                     courseEnrollments[courseId] = [];
                                 }
@@ -421,9 +418,9 @@ export default function CoursesPage() {
 
             <Alert className="bg-blue-50 border-blue-200">
                 <Info className="h-4 w-4 text-blue-600" />
-                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Semester-Aware Enrollment</AlertTitle>
+                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Date-Aware Enrollment Tracking</AlertTitle>
                 <AlertDescription className="text-blue-700 text-sm italic leading-relaxed">
-                    Student counts shown below represent students strictly enrolled in a semester that is <strong>currently in session</strong> (defined by its start and end dates). Counts will transition automatically when new academic periods begin.
+                    Student counts strictly include students registered for semesters where the current date falls between the designated <strong>Start Date</strong> and <strong>End Date</strong>.
                 </AlertDescription>
             </Alert>
 
