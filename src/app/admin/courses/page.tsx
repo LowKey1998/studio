@@ -32,7 +32,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, GraduationCap, BookCopy, Download, Route, Info, AlertCircle } from 'lucide-react';
+import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, Route, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -111,8 +111,8 @@ export default function CoursesPage() {
     const [isArchiveDialogOpen, setIsArchiveDialogOpen] = React.useState(false);
     const [archivingCourse, setArchivingCourse] = React.useState<Course | null>(null);
     const [archiveReason, setArchiveReason] = React.useState('');
-    const [editingCourse, setEditingCourse] = React.useState<Course | null>(null);
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
+    const [editingCourse, setEditingCourse] = React.useState<Course | null>(null);
 
     const [searchTerm, setSearchTerm] = React.useState('');
     const [yearFilter, setYearFilter] = React.useState('all');
@@ -169,27 +169,25 @@ export default function CoursesPage() {
             if(programmesSnap.exists()) {
                 const programmesData = programmesSnap.val();
                 setProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
-            } else {
-                setProgrammes([]);
             }
 
             const allSemesters = semestersSnap.val() || {};
             const now = startOfDay(new Date());
 
+            // User Requirement: Strict date-aware counting
             const isSemesterCurrent = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (sem.status === 'Open') return true; 
                 if (sem.startDate && sem.endDate) {
                     try {
-                        return isWithinInterval(now, {
-                            start: parseISO(sem.startDate),
-                            end: parseISO(sem.endDate)
-                        });
+                        const start = startOfDay(parseISO(sem.startDate));
+                        const end = startOfDay(parseISO(sem.endDate));
+                        return isWithinInterval(now, { start, end });
                     } catch (e) {
                         return false;
                     }
                 }
-                return false;
+                // Fallback for semesters where dates haven't been configured yet but it is active
+                return sem.status === 'Open';
             };
 
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
@@ -381,7 +379,7 @@ export default function CoursesPage() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle className="font-headline text-2xl">Course Catalog</CardTitle>
-                            <CardDescription>Manage courses by academic year and dates.</CardDescription>
+                            <CardDescription>Manage courses by academic year and semester dates.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" asChild><Link href="/admin/course-paths"><Route className="mr-2 h-4 w-4" />Course Paths</Link></Button>
@@ -423,8 +421,10 @@ export default function CoursesPage() {
 
             <Alert className="bg-blue-50 border-blue-200">
                 <Info className="h-4 w-4 text-blue-600" />
-                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Note</AlertTitle>
-                <AlertDescription className="text-blue-700 text-sm">Enrollment counts automatically update based on active semester dates.</AlertDescription>
+                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Semester-Aware Enrollment</AlertTitle>
+                <AlertDescription className="text-blue-700 text-sm italic leading-relaxed">
+                    Student counts shown below represent students strictly enrolled in a semester that is <strong>currently in session</strong> (defined by its start and end dates). Counts will transition automatically when new academic periods begin.
+                </AlertDescription>
             </Alert>
 
             <Card>
@@ -473,7 +473,13 @@ export default function CoursesPage() {
                     <DialogHeader><DialogTitle>Enrolled Students</DialogTitle><DialogDescription>Current active students for {selectedCourseForList?.name}.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-auto rounded-md border mt-4">
                         <Table>
-                            <TableHeader><TableRow><TableHead className="pl-4">ID</TableHead><TableHead>Name</TableHead><TableHead className="pr-4 text-right">Semester</TableHead></TableRow></TableHeader>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="pl-4">ID</TableHead>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead className="pr-4 text-right">Semester</TableHead>
+                                </TableRow>
+                            </TableHeader>
                             <TableBody>{viewingStudents.map(s => (<TableRow key={s.uid}><TableCell className="font-mono text-xs pl-4">{s.id}</TableCell><TableCell className="font-medium text-sm">{s.name}</TableCell><TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell></TableRow>))}</TableBody>
                         </Table>
                     </div>
