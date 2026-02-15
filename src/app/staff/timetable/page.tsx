@@ -61,7 +61,6 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StaffTimetablePage() {
-    const { user, userProfile, loading: authLoading } = useAuth();
     const [mergedTimetable, setMergedTimetable] = React.useState<MergedEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
@@ -114,9 +113,11 @@ export default function StaffTimetablePage() {
                 for (const semId in regsData[userId]) {
                     const reg = regsData[userId][semId];
                     if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                        if (!counts[semId]) counts[semId] = {};
-                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
-                        coursesArr.forEach((cid: string) => { counts[semId][cid] = (counts[semId][cid] || 0) + 1; });
+                        if (reg.courses) {
+                            if (!counts[semId]) counts[semId] = {};
+                            const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
+                            coursesArr.forEach((cid: string) => { counts[semId][cid] = (counts[semId][cid] || 0) + 1; });
+                        }
                     }
                 }
             }
@@ -406,27 +407,4 @@ export default function StaffTimetablePage() {
             </Card>
         </div>
     );
-}
-
-function useAuth() {
-    const [user, setUser] = React.useState<User | null>(null);
-    const [userProfile, setUserProfile] = React.useState<any>(null);
-    const [loading, setLoading] = React.useState(true);
-
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            setUser(user);
-            if (user) {
-                const userRef = ref(db, `users/${user.uid}`);
-                const snapshot = await get(userRef);
-                if (snapshot.exists()) {
-                    setUserProfile(snapshot.val());
-                }
-            }
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    return { user, userProfile, loading };
 }

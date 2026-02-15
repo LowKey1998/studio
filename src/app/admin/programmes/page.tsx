@@ -102,7 +102,7 @@ export default function ProgrammesPage() {
             setAllCourses(coursesSnap.exists() ? Object.keys(coursesSnap.val()).map(key => ({ id: key, ...coursesSnap.val()[key] })) : []);
             
             // Fetch Programmes
-            setProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(key => ({ id: key, ...programmesSnap.val()[key] })) : []);
+            setProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
 
         } catch(e) {
             console.error(e);

@@ -570,7 +570,7 @@ export default function CoursesPage() {
                  <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
                     <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
                         {loading ? (
-                            Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>)
+                            Array.from({length: 3}).map((_, i) => <Skeleton className="h-20 w-full rounded-md"/>)
                         ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
                            Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => {
                                const numA = parseInt(a.replace('Year ', ''));
@@ -682,12 +682,14 @@ export default function CoursesPage() {
                         </DialogHeader>
                         <div className="flex-1 overflow-auto rounded-md border mt-4">
                             <Table>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
-                                    <TableRow>
-                                        <TableHead className="pl-4">Student ID</TableHead>
-                                        <TableHead>Full Name</TableHead>
-                                        <TableHead className="pr-4 text-right">Active Semester</TableHead>
-                                    </TableRow>
+                                <TableHeader>
+                                    <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                                        <TableRow>
+                                            <TableHead className="pl-4">Student ID</TableHead>
+                                            <TableHead>Full Name</TableHead>
+                                            <TableHead className="pr-4 text-right">Active Semester</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
                                 </TableHeader>
                                 <TableBody>
                                     {viewingStudents.length > 0 ? viewingStudents.map(s => (
