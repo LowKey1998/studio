@@ -209,16 +209,18 @@ export default function StaffCoursesPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
-                        <CardDescription>
-                            Your assigned courses and student groupings. Multiple weekly sessions are grouped per card.
-                        </CardDescription>
-                    </div>
-                    <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
-                        <Switch id="merged-mode" checked={showMerged} onCheckedChange={setShowMerged} />
-                        <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Group Sessions</Label>
+                <CardHeader>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
+                            <CardDescription>
+                                Your assigned courses and student groupings. Multiple weekly sessions are grouped per card.
+                            </CardDescription>
+                        </div>
+                        <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
+                            <Switch id="merged-mode" checked={showMerged} onCheckedChange={setShowMerged} />
+                            <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Group Sessions</Label>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>

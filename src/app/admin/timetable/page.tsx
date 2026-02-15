@@ -561,10 +561,10 @@ function TimetableManagementComponent() {
                                                                                 {s.entry.isLiveRequested && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
                                                                             </div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                                <MapPin className="h-2 w-2" /> {s.entry.venue}
+                                                                                <MapPin className="h-2.5 w-2.5" /> {s.entry.venue}
                                                                             </div>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2 w-2" /> {s.lecturerNames}</div>
-                                                                            <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2 w-2" /> {s.totalStudents} Students</div>
+                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
+                                                                            <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                         </div>
                                                                         <div className="flex flex-col gap-1">
                                                                             <Button 

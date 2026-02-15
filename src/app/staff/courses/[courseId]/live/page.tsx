@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -19,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -47,6 +47,7 @@ export default function LecturerLivePage() {
   const [savingAttendance, setSavingAttendance] = useState(false);
 
   const { user, userProfile } = useAuth();
+  const { toast } = useToast();
 
   const channelName = `course-${courseId}`;
 
@@ -187,8 +188,6 @@ export default function LecturerLivePage() {
       s.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
       s.id.toLowerCase().includes(studentSearch.toLowerCase())
   );
-
-  const { toast } = useToast();
 
   if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-primary" /><p className="mt-4 text-xs font-black uppercase tracking-widest text-muted-foreground">Synchronizing Classroom...</p></div>;
 
