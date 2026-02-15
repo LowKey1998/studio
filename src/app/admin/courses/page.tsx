@@ -34,7 +34,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Loader2, Trash2, Undo2, MoreVertical, Pencil, Users, Search, Route, Info, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -189,7 +189,6 @@ export default function CoursesPage() {
 
             const isSemesterCurrent = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (sem.status === 'Open') return true;
                 if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));

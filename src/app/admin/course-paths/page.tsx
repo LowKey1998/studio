@@ -476,11 +476,17 @@ function CoursePathBuilderComponent() {
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div className="space-y-1">
                                         <Label>Intake</Label>
-                                        <Select value={selectedIntake} onValueChange={setSelectedIntake}><SelectTrigger><SelectValue placeholder="Select an Intake..."/></SelectTrigger><SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
+                                        <Select value={selectedIntake} onValueChange={setSelectedIntake}>
+                                            <SelectTrigger><SelectValue placeholder="Select an Intake..."/></SelectTrigger>
+                                            <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                                        </Select>
                                     </div>
                                     <div className="space-y-1">
                                         <Label>Programme</Label>
-                                        <Select value={selectedProgramme} onValueChange={setSelectedProgramme}><SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger><SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                                        <Select value={selectedProgramme} onValueChange={setSelectedProgramme}>
+                                            <SelectTrigger><SelectValue placeholder="Select a Programme..."/></SelectTrigger>
+                                            <SelectContent>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
                                 {selectedIntake && selectedProgramme ? (
