@@ -26,6 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import Link from 'next/link';
 
 type Course = {
@@ -49,6 +51,11 @@ type Lecturer = {
     name: string;
 };
 
+type CurrentAdmin = {
+    name: string;
+    id: string;
+}
+
 export default function ProgrammesPage() {
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
@@ -56,6 +63,7 @@ export default function ProgrammesPage() {
     const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester' | 'unknown'>('course');
     const [loading, setLoading] = React.useState(true);
     const [formLoading, setFormLoading] = React.useState(false);
+    const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
     
     // Edit Programme Dialog State
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
@@ -76,37 +84,60 @@ export default function ProgrammesPage() {
     const [courseFormLoading, setCourseFormLoading] = React.useState(false);
 
     const { toast } = useToast();
+
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            const userRef = ref(db, `users/${user.uid}`);
+            const snapshot = await get(userRef);
+            if (snapshot.exists()) {
+              const userData = snapshot.val();
+              setCurrentAdmin({ name: userData.name, id: userData.id });
+            }
+          }
+        });
+        return () => unsubscribe();
+    }, []);
     
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, coursesSnap, programmesSnap, settingsSnap] = await Promise.all([
-                get(ref(db, 'users')),
-                get(ref(db, 'courses')),
-                get(ref(db, 'programmes')),
-                get(ref(db, 'settings/institution'))
-            ]);
-            
-            if (settingsSnap.exists()) {
-                setBillingPolicy(settingsSnap.val().billingPolicy || 'course');
-            }
+            // Use onValue for live updates to keep linked courses in sync
+            const unsubSettings = onValue(ref(db, 'settings/institution'), (snapshot) => {
+                if (snapshot.exists()) setBillingPolicy(snapshot.val().billingPolicy || 'course');
+            });
 
-            const lecturersList: Lecturer[] = [];
-            if (usersSnap.exists()) {
-                const usersData = usersSnap.val();
-                Object.keys(usersData).forEach(uid => {
-                    if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
-                        lecturersList.push({ uid, name: usersData[uid].name });
-                    }
-                });
-            }
-            setLecturers(lecturersList);
-            setAllCourses(coursesSnap.exists() ? Object.keys(coursesSnap.val()).map(key => ({ id: key, ...coursesSnap.val()[key] })) : []);
-            setProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
+            const unsubLecturers = onValue(ref(db, 'users'), (snapshot) => {
+                const lecturersList: Lecturer[] = [];
+                if (snapshot.exists()) {
+                    const usersData = snapshot.val();
+                    Object.keys(usersData).forEach(uid => {
+                        if (usersData[uid].role === 'Staff' && usersData[uid].subRoles?.includes('Lecturer')) {
+                            lecturersList.push({ uid, name: usersData[uid].name });
+                        }
+                    });
+                }
+                setLecturers(lecturersList);
+            });
+
+            const unsubCourses = onValue(ref(db, 'courses'), (snapshot) => {
+                setAllCourses(snapshot.exists() ? Object.keys(snapshot.val()).map(key => ({ id: key, ...snapshot.val()[key] })) : []);
+            });
+
+            const unsubProgrammes = onValue(ref(db, 'programmes'), (snapshot) => {
+                setProgrammes(snapshot.exists() ? Object.keys(snapshot.val()).map(id => ({ id, ...snapshot.val()[id] })) : []);
+                setLoading(false);
+            });
+
+            return () => {
+                unsubSettings();
+                unsubLecturers();
+                unsubCourses();
+                unsubProgrammes();
+            };
         } catch(e) {
             console.error(e);
             toast({ variant: "destructive", title: "Load Failed" });
-        } finally {
             setLoading(false);
         }
     }, [toast]);
@@ -125,7 +156,7 @@ export default function ProgrammesPage() {
                 await push(ref(db, 'programmes'), programmeData);
                 toast({ title: 'Programme Created' });
             }
-            setIsDialogOpen(false); fetchData();
+            setIsDialogOpen(false);
         } catch (error: any) { toast({ variant: 'destructive', title: 'Failed' }); } finally { setFormLoading(false); }
     };
     
@@ -139,8 +170,8 @@ export default function ProgrammesPage() {
             await set(newCourseRef, { name: newCourseName, code: newCourseCode, cost: Number(newCourseCost) || 0, year: Number(newCourseYear) || 1, lecturerId: selectedLecturerId || null, separateInstance, status: 'active' });
             setSelectedCourses(prev => ({...prev, [courseId]: true}));
             toast({ title: 'Course added and linked' });
-            setIsCourseDialogOpen(false); fetchData();
-            setNewCourseName(''); setNewCourseCode(''); setNewCourseCode(''); setNewCourseCost(''); setNewCourseYear('');
+            setIsCourseDialogOpen(false);
+            setNewCourseName(''); setNewCourseCode(''); setNewCourseCost(''); setNewCourseYear('');
         } catch (e) { toast({ variant: 'destructive', title: 'Course Creation Failed' }); } finally { setCourseFormLoading(false); }
     };
 
@@ -195,7 +226,7 @@ export default function ProgrammesPage() {
                         </CardContent>
                         <CardFooter className="flex gap-2 pt-0">
                             <Button variant="outline" className="flex-1" onClick={() => { setEditingProgramme(prog); setProgrammeName(prog.name); setProgrammeTuition(prog.tuitionFee?.toString() || ''); setSelectedCourses(prog.courseIds || {}); setIsDialogOpen(true); }}><Pencil className="mr-2 h-4 w-4"/>Edit</Button>
-                            <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { if(confirm("Permanently delete this programme?")) { await remove(ref(db, `programmes/${prog.id}`)); fetchData(); } }}><Trash2 className="h-4 w-4"/></Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => { if(confirm("Permanently delete this programme?")) { await remove(ref(db, `programmes/${prog.id}`)); } }}><Trash2 className="h-4 w-4"/></Button>
                         </CardFooter>
                     </Card>
                 ))}

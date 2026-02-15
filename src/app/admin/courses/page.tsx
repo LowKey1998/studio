@@ -46,7 +46,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { ref, get, serverTimestamp, update, push } from 'firebase/database';
+import { ref, get, serverTimestamp, update, push, onValue } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -145,12 +145,13 @@ export default function CoursesPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, coursesSnap, programmesSnap, registrationsSnap, semestersSnap] = await Promise.all([
+            const [usersSnap, coursesSnap, programmesSnap, registrationsSnap, semestersSnap, subRolesSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'registrations')),
-                get(ref(db, 'semesters'))
+                get(ref(db, 'semesters')),
+                get(ref(db, 'settings/subRoles'))
             ]);
             
             const userMap = new Map<string, any>();
@@ -158,10 +159,23 @@ export default function CoursesPage() {
                 Object.entries(usersSnap.val() as Record<string, any>).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
+            // Correctly filter for staff with "Lecturer" sub-role
+            const subRolesData = subRolesSnap.val() || {};
+            const lecturerRoleIds = new Set(
+                Object.keys(subRolesData).filter(id => 
+                    subRolesData[id].name === 'Lecturer' || 
+                    subRolesData[id].permissions?.canBeAssignedClass
+                )
+            );
+
             const lecturersList: Lecturer[] = [];
             userMap.forEach((user, uid) => {
-                if (user.role === 'Staff' && user.subRoles?.includes('Lecturer')) {
-                    lecturersList.push({ uid, name: user.name });
+                if (user.role === 'Staff') {
+                    const userSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
+                    const userHasLecturerRole = userSubRoleIds.some((id: string) => lecturerRoleIds.has(id));
+                    if (userHasLecturerRole) {
+                        lecturersList.push({ uid, name: user.name });
+                    }
                 }
             });
             setLecturers(lecturersList);
@@ -176,7 +190,7 @@ export default function CoursesPage() {
 
             const isSemesterActive = (sem: any) => {
                 if (!sem || sem.status === 'Archived') return false;
-                if (!sem.endDate) return true; // If no date set, assume current if open
+                if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
                     // Active means the end date hasn't passed yet.
@@ -412,7 +426,7 @@ export default function CoursesPage() {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="space-y-2"><Label>Linked Programmes</Label><div className="grid grid-cols-2 gap-2 border p-4 max-h-48 overflow-y-auto bg-muted/20">{programmes.map(p => (<div key={p.id} className="flex items-center gap-2"><Checkbox checked={!!selectedProgrammes[p.id]} onCheckedChange={() => setSelectedProgrammes(prev => ({...prev, [p.id]: !prev[p.id]}))}/><Label className="font-normal text-sm">{p.name}</Label></div>))}</div></div>
+                                            <div className="space-y-2"><Label>Linked Programmes</Label><div className="grid grid-cols-2 gap-2 border p-4 max-h-48 overflow-y-auto bg-muted/20">{programmes.map(p => (<div key={p.id} className="flex items-center gap-2"><Checkbox id={`p-${p.id}`} checked={!!selectedProgrammes[p.id]} onCheckedChange={() => setSelectedProgrammes(prev => ({...prev, [p.id]: !prev[p.id]}))}/><Label className="font-normal text-sm">{p.name}</Label></div>))}</div></div>
                                         </div>
                                         <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Save'}</Button></DialogFooter>
                                     </form>
