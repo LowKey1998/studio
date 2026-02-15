@@ -119,7 +119,6 @@ export default function CoursesPage() {
     const [searchTerm, setSearchTerm] = React.useState('');
     const [yearFilter, setYearFilter] = React.useState('all');
 
-
     // Form state
     const [courseName, setCourseName] = React.useState('');
     const [courseCode, setCourseCode] = React.useState('');
@@ -149,11 +148,12 @@ export default function CoursesPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, coursesSnap, programmesSnap, registrationsSnap] = await Promise.all([
+            const [usersSnap, coursesSnap, programmesSnap, registrationsSnap, semestersSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
-                get(ref(db, 'registrations'))
+                get(ref(db, 'registrations')),
+                get(ref(db, 'semesters'))
             ]);
             
             const userMap = new Map<string, any>();
@@ -178,13 +178,17 @@ export default function CoursesPage() {
                 setProgrammes([]);
             }
 
+            const allSemesters = semestersSnap.val() || {};
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
             if (registrationsSnap.exists()) {
                 const regs = registrationsSnap.val();
                 for (const userId in regs) {
                     for (const semesterId in regs[userId]) {
                         const registration = regs[userId][semesterId];
-                        if (registration.status === 'Completed' || registration.status === 'Pending Payment') {
+                        const semesterInfo = allSemesters[semesterId];
+                        
+                        // Only count students in non-archived semesters
+                        if (semesterInfo && semesterInfo.status !== 'Archived' && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             registration.courses?.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
                                     courseEnrollments[courseId] = [];
@@ -195,7 +199,7 @@ export default function CoursesPage() {
                                          uid: userId, 
                                          name: studentData.name, 
                                          id: studentData.id, 
-                                         semesterName: registration.semesterName || 'Unknown' 
+                                         semesterName: registration.semesterName || semesterInfo.name || 'Unknown' 
                                      });
                                 }
                             });
@@ -203,7 +207,6 @@ export default function CoursesPage() {
                     }
                 }
             }
-
 
             if (coursesSnap.exists()) {
                 const coursesData = coursesSnap.val();
@@ -317,7 +320,6 @@ export default function CoursesPage() {
                 };
             }
             
-            // Update programme links
             programmes.forEach(prog => {
                 const isSelected = selectedProgrammes[prog.id];
                 const isCurrentlyLinked = prog.courseIds && prog.courseIds[courseId!];
@@ -449,102 +451,104 @@ export default function CoursesPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <CardTitle className="font-headline text-2xl">Course Catalog</CardTitle>
-                        <CardDescription>Manage individual course items, pricing, and programme associations.</CardDescription>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" asChild>
-                            <Link href="/admin/course-paths">
-                                <Route className="mr-2 h-4 w-4" />
-                                Configure Course Paths
-                            </Link>
-                        </Button>
-                        <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
-                            <DialogTrigger asChild>
-                                <Button>
-                                    <PlusCircle className="mr-2 h-4 w-4" />
-                                    Add New Course
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-2xl">
-                                <form onSubmit={handleFormSubmit}>
-                                    <DialogHeader>
-                                        <DialogTitle className="font-headline">{editingCourse ? 'Edit Course' : 'Create New Course'}</DialogTitle>
-                                        <DialogDescription>
-                                            Define academic parameters and assign a lecturer.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <Label htmlFor="courseName">Course Name *</Label>
-                                                <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
+                <CardHeader>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Course Catalog</CardTitle>
+                            <CardDescription>Manage individual course items, pricing, and programme associations.</CardDescription>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" asChild>
+                                <Link href="/admin/course-paths">
+                                    <Route className="mr-2 h-4 w-4" />
+                                    Configure Course Paths
+                                </Link>
+                            </Button>
+                            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
+                                <DialogTrigger asChild>
+                                    <Button>
+                                        <PlusCircle className="mr-2 h-4 w-4" />
+                                        Add New Course
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-2xl">
+                                    <form onSubmit={handleFormSubmit}>
+                                        <DialogHeader>
+                                            <DialogTitle className="font-headline">{editingCourse ? 'Edit' : 'Create New'} Course</DialogTitle>
+                                            <DialogDescription>
+                                                Define academic parameters and assign a lecturer.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="courseName">Course Name *</Label>
+                                                    <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="courseCode">Course Code *</Label>
+                                                    <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="courseCredits">Credits (Optional)</Label>
+                                                    <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
+                                                    <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label htmlFor="courseYear">Academic Year (Optional)</Label>
+                                                    <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
+                                                </div>
                                             </div>
                                             <div className="space-y-1">
-                                                <Label htmlFor="courseCode">Course Code *</Label>
-                                                <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
+                                                <Label htmlFor="lecturer">Lecturer (Optional)</Label>
+                                                <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
+                                                    <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
+                                                        {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
+                                                <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
+                                                <div className="space-y-0.5">
+                                                    <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
+                                                    <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Assign to Programmes (Optional)</Label>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
+                                                    {programmes.map(prog => (
+                                                        <div key={prog.id} className="flex items-center gap-2">
+                                                            <Checkbox
+                                                                id={`prog-${prog.id}`}
+                                                                checked={!!selectedProgrammes[prog.id]}
+                                                                onCheckedChange={() => handleProgrammeSelection(prog.id)}
+                                                            />
+                                                            <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="space-y-1">
-                                                <Label htmlFor="courseCredits">Credits (Optional)</Label>
-                                                <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
-                                                <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label htmlFor="courseYear">Academic Year (Optional)</Label>
-                                                <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label htmlFor="lecturer">Lecturer (Optional)</Label>
-                                            <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
-                                                <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
-                                                    {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
-                                            <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                            <div className="space-y-0.5">
-                                                <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
-                                                <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Assign to Programmes (Optional)</Label>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
-                                                {programmes.map(prog => (
-                                                    <div key={prog.id} className="flex items-center gap-2">
-                                                        <Checkbox
-                                                            id={`prog-${prog.id}`}
-                                                            checked={!!selectedProgrammes[prog.id]}
-                                                            onCheckedChange={() => handleProgrammeSelection(prog.id)}
-                                                        />
-                                                        <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <DialogFooter className="pt-4 border-t">
-                                        <DialogClose asChild>
-                                            <Button variant="outline" type="button">Cancel</Button>
-                                        </DialogClose>
-                                        <Button type="submit" disabled={formLoading}>
-                                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
-                                        </Button>
-                                    </DialogFooter>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
+                                        <DialogFooter className="pt-4 border-t">
+                                            <DialogClose asChild>
+                                                <Button variant="outline" type="button">Cancel</Button>
+                                            </DialogClose>
+                                            <Button type="submit" disabled={formLoading}>
+                                                {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
+                                            </Button>
+                                        </DialogFooter>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
@@ -605,11 +609,11 @@ export default function CoursesPage() {
                                     <AccordionContent className="px-0">
                                         <Table>
                                             <TableHeader>
-                                                    <TableRow className="bg-muted/30">
+                                                <TableRow className="bg-muted/30">
                                                     <TableHead className="pl-4">Code</TableHead>
                                                     <TableHead>Name</TableHead>
                                                     <TableHead>Lecturer(s)</TableHead>
-                                                    <TableHead>Students</TableHead>
+                                                    <TableHead>Active Students</TableHead>
                                                     {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
                                                     <TableHead className="text-right pr-4">Actions</TableHead>
                                                 </TableRow>
@@ -630,7 +634,7 @@ export default function CoursesPage() {
                                                                 <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
                                                             </Button>
                                                         </TableCell>
-                                                        {activeTab === 'archived' && <TableHead className="text-xs italic">{course.archiveReason || 'N/A'}</TableHead>}
+                                                        {activeTab === 'archived' && <TableCell className="text-xs italic">{course.archiveReason || 'N/A'}</TableCell>}
                                                         <TableCell className="text-right pr-4">
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
@@ -705,14 +709,12 @@ export default function CoursesPage() {
                     </DialogHeader>
                     <div className="flex-1 overflow-auto rounded-md border mt-4">
                         <Table>
-                            <TableHeader>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
-                                    <TableRow>
-                                        <TableHead className="pl-4">Student ID</TableHead>
-                                        <TableHead>Full Name</TableHead>
-                                        <TableHead className="pr-4 text-right">Active Semester</TableHead>
-                                    </TableRow>
-                                </TableHeader>
+                            <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                                <TableRow>
+                                    <TableHead className="pl-4">Student ID</TableHead>
+                                    <TableHead>Full Name</TableHead>
+                                    <TableHead className="pr-4 text-right">Active Semester</TableHead>
+                                </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {viewingStudents.length > 0 ? viewingStudents.map(s => (
