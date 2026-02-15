@@ -1,8 +1,9 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Copy, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
@@ -378,31 +379,6 @@ function TimetableManagementComponent() {
         }
     };
 
-    const handleCopyFromMaster = async () => {
-        if (effectiveSemesterId === 'master' || effectiveSemesterId === 'none') {
-            toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific intake with an active semester to copy to.' });
-            return;
-        }
-        
-        setSaving(true);
-        try {
-            const masterSnap = await get(ref(db, 'timetables/master'));
-            if (!masterSnap.exists()) {
-                toast({ variant: 'destructive', title: 'Master Schedule Empty' });
-                return;
-            }
-
-            const masterData = masterSnap.val();
-            const targetRef = ref(db, `timetables/${effectiveSemesterId}`);
-            await update(targetRef, masterData);
-            toast({ title: 'Schedule Copied', description: `Master baseline loaded into ${resolvedSemester?.name}` });
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Copy Failed', description: e.message });
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const confirmDeleteEntry = async () => {
         if (!entryToDelete) return;
         try {
@@ -487,9 +463,6 @@ function TimetableManagementComponent() {
                             <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={handleCopyFromMaster} disabled={saving || viewTarget === 'master' || effectiveSemesterId === 'none'}>
-                                <Copy className="mr-2 h-4 w-4"/> Load Master Baseline
-                            </Button>
                             <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
                                 {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
                             </Button>
