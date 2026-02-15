@@ -353,6 +353,20 @@ function TimetableManagementComponent() {
         }
     };
 
+    const handleRejectLive = async (entry: TimetableEntry, dateStr: string) => {
+        if(!confirm("Are you sure you want to reject this live request and keep the session physical?")) return;
+        setSaving(true);
+        try {
+            const path = `timetables/${entry.semesterId}/${entry.courseId}/${entry.id}/dateRequests/${dateStr}`;
+            await remove(ref(db, path));
+            toast({ title: 'Live Request Rejected' });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleCopyFromMaster = async () => {
         if (effectiveSemesterId === 'master' || effectiveSemesterId === 'none') {
             toast({ variant: 'destructive', title: 'Invalid Selection', description: 'Please select a specific intake with an active semester to copy to.' });
@@ -652,16 +666,26 @@ function TimetableManagementComponent() {
                                                                             </div>
                                                                             
                                                                             {isLiveRequestedOnDate && (
-                                                                                <div className="mt-2 pt-2 border-t">
+                                                                                <div className="mt-2 pt-2 border-t flex gap-1">
                                                                                     <Button 
                                                                                         variant="outline" 
                                                                                         size="sm" 
-                                                                                        className="w-full h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
+                                                                                        className="flex-1 h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
                                                                                         onClick={() => handleApproveLive(s.entry, dateStr)}
                                                                                         disabled={saving}
                                                                                     >
                                                                                         {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <Check className="h-2 w-2 mr-1"/>}
-                                                                                        Approve Live
+                                                                                        Approve
+                                                                                    </Button>
+                                                                                    <Button 
+                                                                                        variant="outline" 
+                                                                                        size="sm" 
+                                                                                        className="flex-1 h-6 text-[8px] font-black uppercase bg-red-100 text-red-700 border-red-200"
+                                                                                        onClick={() => handleRejectLive(s.entry, dateStr)}
+                                                                                        disabled={saving}
+                                                                                    >
+                                                                                        {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <X className="h-2 w-2 mr-1"/>}
+                                                                                        Reject
                                                                                     </Button>
                                                                                 </div>
                                                                             )}

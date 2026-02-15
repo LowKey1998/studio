@@ -1,14 +1,13 @@
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, set, onValue, update, serverTimestamp } from 'firebase/database';
+import { ref, get, set, onValue, update, serverTimestamp, remove } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, Layers, CalendarDays, Video, Loader2, ChevronLeft, ChevronRight, Clock, Search, ChevronsUpDown, Pencil, X } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, Search, ChevronsUpDown, Pencil, X, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
@@ -20,7 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Button } from '@/components/ui/button';
 
 type TimeSlot = {
     id: string;
@@ -40,6 +39,7 @@ type TimetableEntry = {
     semesterId: string;
     semesterName: string;
     lecturerNames: string;
+    studentCount: number;
     intakeName: string;
     isLiveSession?: boolean;
     isLiveRequested?: boolean;
@@ -61,6 +61,7 @@ const timeToMinutes = (time: string) => {
 };
 
 export default function StaffTimetablePage() {
+    const { user, userProfile, loading: authLoading } = useAuth();
     const [mergedTimetable, setMergedTimetable] = React.useState<MergedEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
@@ -227,7 +228,6 @@ export default function StaffTimetablePage() {
 
             const registrarIds = await getRegistrarIds();
             if (registrarIds.length > 0) {
-                // Batch notification into a single call
                 await createNotification(
                     registrarIds, 
                     `${currentUserProfile.name} requested a Live Session for ${merged.entry.courseCode} on ${format(date, 'PPP')}.`,
@@ -236,6 +236,22 @@ export default function StaffTimetablePage() {
             }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
+            setActionLoading(null);
+        }
+    };
+
+    const handleUnrequestLive = async (merged: MergedEntry, date: Date) => {
+        if (!currentUser) return;
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const actionKey = `${merged.key}-${dateStr}`;
+        setActionLoading(actionKey);
+        try {
+            const path = `timetables/${merged.entry.semesterId}/${merged.entry.courseId}/${merged.entry.id}/dateRequests/${dateStr}`;
+            await remove(ref(db, path));
+            toast({ title: 'Request Canceled', description: 'Session reverted to standard schedule.' });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
             setActionLoading(null);
         }
     };
@@ -326,10 +342,34 @@ export default function StaffTimetablePage() {
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {isLiveApprovedOnDate ? "DIGITAL ROOM" : m.entry.venue}</div>
                                                                             <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {m.totalStudents} Students</div>
                                                                             
-                                                                            {!isLiveApprovedOnDate && (
+                                                                            {(!m.entry.isLiveSession) && (
                                                                                 <div className="mt-2 pt-2 border-t flex items-center justify-between">
-                                                                                    {isLiveRequestedOnDate ? (
-                                                                                        <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Requested</Badge>
+                                                                                    {isLiveApprovedOnDate ? (
+                                                                                        <div className="flex items-center gap-1 w-full justify-between">
+                                                                                            <Badge variant="outline" className="border-blue-500 bg-blue-50 text-blue-700 text-[8px] h-4">Live Approved</Badge>
+                                                                                            <Button 
+                                                                                                variant="ghost" 
+                                                                                                size="icon" 
+                                                                                                className="h-4 w-4 text-muted-foreground hover:text-destructive"
+                                                                                                onClick={() => handleUnrequestLive(m, date)}
+                                                                                                disabled={actionLoading === `${m.key}-${dateStr}`}
+                                                                                            >
+                                                                                                <RotateCcw className="h-3 w-3" />
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    ) : isLiveRequestedOnDate ? (
+                                                                                        <div className="flex items-center gap-1 w-full justify-between">
+                                                                                            <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Requested</Badge>
+                                                                                            <Button 
+                                                                                                variant="ghost" 
+                                                                                                size="icon" 
+                                                                                                className="h-4 w-4 text-muted-foreground hover:text-destructive"
+                                                                                                onClick={() => handleUnrequestLive(m, date)}
+                                                                                                disabled={actionLoading === `${m.key}-${dateStr}`}
+                                                                                            >
+                                                                                                <X className="h-3 w-3" />
+                                                                                            </Button>
+                                                                                        </div>
                                                                                     ) : (
                                                                                         <Button 
                                                                                             variant="ghost" 
@@ -366,4 +406,27 @@ export default function StaffTimetablePage() {
             </Card>
         </div>
     );
+}
+
+function useAuth() {
+    const [user, setUser] = React.useState<User | null>(null);
+    const [userProfile, setUserProfile] = React.useState<any>(null);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            setUser(user);
+            if (user) {
+                const userRef = ref(db, `users/${user.uid}`);
+                const snapshot = await get(userRef);
+                if (snapshot.exists()) {
+                    setUserProfile(snapshot.val());
+                }
+            }
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    return { user, userProfile, loading };
 }
