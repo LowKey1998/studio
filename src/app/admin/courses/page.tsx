@@ -57,6 +57,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { isWithinInterval, parseISO, startOfDay } from 'date-fns';
 
 type Lecturer = {
     uid: string;
@@ -66,7 +67,7 @@ type Lecturer = {
 type StudentEnrollment = {
     uid: string;
     name: string;
-    id: string; // STU-001
+    id: string; 
     semesterName: string;
 }
 
@@ -115,11 +116,9 @@ export default function CoursesPage() {
     const [editingCourse, setEditingCourse] = React.useState<Course | null>(null);
     const [currentAdmin, setCurrentAdmin] = React.useState<CurrentAdmin | null>(null);
 
-    // Filter states
     const [searchTerm, setSearchTerm] = React.useState('');
     const [yearFilter, setYearFilter] = React.useState('all');
 
-    // Form state
     const [courseName, setCourseName] = React.useState('');
     const [courseCode, setCourseCode] = React.useState('');
     const [courseCredits, setCourseCredits] = React.useState('');
@@ -161,7 +160,6 @@ export default function CoursesPage() {
                 Object.entries(usersSnap.val() as Record<string, any>).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
-            // Fetch Lecturers
             const lecturersList: Lecturer[] = [];
             userMap.forEach((user, uid) => {
                 if (user.role === 'Staff' && user.subRoles?.includes('Lecturer')) {
@@ -170,7 +168,6 @@ export default function CoursesPage() {
             });
             setLecturers(lecturersList);
             
-            // Fetch Programmes
             if(programmesSnap.exists()) {
                 const programmesData = programmesSnap.val();
                 setProgrammes(Object.keys(programmesData).map(id => ({id, ...programmesData[id]})));
@@ -179,6 +176,24 @@ export default function CoursesPage() {
             }
 
             const allSemesters = semestersSnap.val() || {};
+            const now = startOfDay(new Date());
+
+            const isSemesterCurrent = (sem: any) => {
+                if (!sem || sem.status === 'Archived') return false;
+                if (sem.status === 'Open') return true; 
+                if (sem.startDate && sem.endDate) {
+                    try {
+                        return isWithinInterval(now, {
+                            start: parseISO(sem.startDate),
+                            end: parseISO(sem.endDate)
+                        });
+                    } catch (e) {
+                        return false;
+                    }
+                }
+                return false;
+            };
+
             const courseEnrollments: Record<string, StudentEnrollment[]> = {};
             if (registrationsSnap.exists()) {
                 const regs = registrationsSnap.val();
@@ -187,8 +202,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        // Only count students in non-archived semesters
-                        if (semesterInfo && semesterInfo.status !== 'Archived' && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
+                        if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             registration.courses?.forEach((courseId: string) => {
                                 if (!courseEnrollments[courseId]) {
                                     courseEnrollments[courseId] = [];
@@ -277,11 +291,7 @@ export default function CoursesPage() {
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!courseName || !courseCode) {
-            toast({
-                variant: 'destructive',
-                title: 'Missing Fields',
-                description: 'Please provide at least a Course Name and Course Code.',
-            });
+            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please provide Name and Code.' });
             return;
         }
         setFormLoading(true);
@@ -302,10 +312,7 @@ export default function CoursesPage() {
             const updates: Record<string, any> = {};
 
             if (editingCourse) {
-                updates[`/courses/${editingCourse.id}`] = {
-                    ...editingCourse,
-                    ...courseData
-                };
+                updates[`/courses/${editingCourse.id}`] = { ...editingCourse, ...courseData };
             } else {
                 const newCourseRef = push(ref(db, 'courses'));
                 courseId = newCourseRef.key!;
@@ -323,110 +330,24 @@ export default function CoursesPage() {
             programmes.forEach(prog => {
                 const isSelected = selectedProgrammes[prog.id];
                 const isCurrentlyLinked = prog.courseIds && prog.courseIds[courseId!];
-                
-                if (isSelected && !isCurrentlyLinked) {
-                    updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = true;
-                } else if (!isSelected && isCurrentlyLinked) {
-                    updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = null;
-                }
+                if (isSelected && !isCurrentlyLinked) updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = true;
+                else if (!isSelected && isCurrentlyLinked) updates[`/programmes/${prog.id}/courseIds/${courseId!}`] = null;
             });
             
             await update(ref(db), updates);
-
             toast({ title: editingCourse ? 'Course Updated' : 'Course Added' });
-            fetchData();
-            resetForm();
-            setIsDialogOpen(false);
+            fetchData(); resetForm(); setIsDialogOpen(false);
         } catch (error: any) {
-            console.error('Error saving course:', error);
-            toast({
-                variant: 'destructive',
-                title: 'Failed to save course',
-                description: error.message || 'An unexpected error occurred.',
-            });
-        } finally {
-            setFormLoading(false);
-        }
+            toast({ variant: 'destructive', title: 'Failed to save', description: error.message });
+        } finally { setFormLoading(false); }
     };
     
     const handleUpdateCourseStatus = async (courseId: string, status: 'active' | 'archived', reason: string = '') => {
         try {
-            const courseRef = ref(db, `courses/${courseId}`);
-            const updates: Partial<Course> = { status };
-
-            if (status === 'archived') {
-                updates.archiveReason = reason;
-            } else {
-                 updates.archiveReason = '';
-            }
-            
-            await update(courseRef, updates);
+            await update(ref(db, `courses/${courseId}`), { status, archiveReason: status === 'archived' ? reason : '' });
             fetchData();
-
-            toast({
-                title: `Course ${status === 'archived' ? 'Archived' : 'Restored'}`,
-                description: `The course has been successfully moved to ${status === 'archived' ? 'archives' : 'active courses'}.`,
-            });
-        } catch (error: any) {
-             toast({
-                variant: 'destructive',
-                title: `Failed to ${status === 'archived' ? 'archive' : 'restore'} course`,
-                description: error.message || 'An unexpected error occurred.',
-            });
-        }
-    };
-
-    const handleArchiveSubmit = () => {
-        if (!archivingCourse) return;
-        if (!archiveReason.trim()) {
-            toast({
-                variant: 'destructive',
-                title: 'Reason Required',
-                description: 'Please provide a reason for archiving the course.',
-            });
-            return;
-        }
-        handleUpdateCourseStatus(archivingCourse.id, 'archived', archiveReason);
-        setIsArchiveDialogOpen(false);
-        setArchivingCourse(null);
-        setArchiveReason('');
-    };
-    
-    const handleProgrammeSelection = (programmeId: string) => {
-        setSelectedProgrammes(prev => {
-            const newSelection = { ...prev };
-            if (newSelection[programmeId]) {
-                delete newSelection[programmeId];
-            } else {
-                newSelection[programmeId] = true;
-            }
-            return newSelection;
-        });
-    };
-
-    const handleViewStudents = (course: Course) => {
-        setSelectedCourseForList(course);
-        setViewingStudents((course.enrolledStudents || []).sort((a,b) => a.semesterName.localeCompare(b.semesterName) || a.name.localeCompare(b.name)));
-        setIsStudentListOpen(true);
-    };
-
-    const handleDownloadClassList = () => {
-        if (!selectedCourseForList) return;
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text(`Class List: ${selectedCourseForList.name} (${selectedCourseForList.code})`, 14, 22);
-        doc.setFontSize(11);
-        doc.text(`Total Enrolled: ${viewingStudents.length}`, 14, 30);
-        
-        autoTable(doc, {
-            startY: 35,
-            head: [['Student ID', 'Full Name', 'Active Semester']],
-            body: viewingStudents.map(s => [s.id, s.name, s.semesterName]),
-            theme: 'striped',
-            headStyles: { fillColor: [34, 34, 34] }
-        });
-        
-        doc.save(`ClassList_${selectedCourseForList.code}_${new Date().toISOString().split('T')[0]}.pdf`);
+            toast({ title: `Course ${status === 'archived' ? 'Archived' : 'Restored'}` });
+        } catch (error: any) { toast({ variant: 'destructive', title: 'Failed', description: error.message }); }
     };
 
     const filteredAndGroupedCourses = React.useMemo(() => {
@@ -440,9 +361,7 @@ export default function CoursesPage() {
 
         return filtered.reduce((acc, course) => {
             const yearKey = `Year ${course.year || 'Not Set'}`;
-            if (!acc[yearKey]) {
-                acc[yearKey] = [];
-            }
+            if (!acc[yearKey]) acc[yearKey] = [];
             acc[yearKey].push(course);
             return acc;
         }, {} as Record<string, Course[]>);
@@ -455,96 +374,38 @@ export default function CoursesPage() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle className="font-headline text-2xl">Course Catalog</CardTitle>
-                            <CardDescription>Manage individual course items, pricing, and programme associations.</CardDescription>
+                            <CardDescription>Manage courses by academic year and dates.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" asChild>
-                                <Link href="/admin/course-paths">
-                                    <Route className="mr-2 h-4 w-4" />
-                                    Configure Course Paths
-                                </Link>
-                            </Button>
-                            <Dialog open={isDialogOpen} onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) resetForm(); }}>
-                                <DialogTrigger asChild>
-                                    <Button>
-                                        <PlusCircle className="mr-2 h-4 w-4" />
-                                        Add New Course
-                                    </Button>
-                                </DialogTrigger>
+                            <Button variant="outline" asChild><Link href="/admin/course-paths"><Route className="mr-2 h-4 w-4" />Course Paths</Link></Button>
+                            <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
+                                <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Add Course</Button></DialogTrigger>
                                 <DialogContent className="sm:max-w-2xl">
                                     <form onSubmit={handleFormSubmit}>
-                                        <DialogHeader>
-                                            <DialogTitle className="font-headline">{editingCourse ? 'Edit' : 'Create New'} Course</DialogTitle>
-                                            <DialogDescription>
-                                                Define academic parameters and assign a lecturer.
-                                            </DialogDescription>
-                                        </DialogHeader>
+                                        <DialogHeader><DialogTitle>{editingCourse ? 'Edit' : 'New'} Course</DialogTitle></DialogHeader>
                                         <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="courseName">Course Name *</Label>
-                                                    <Input id="courseName" placeholder="e.g., Clinical Nursing II" value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="courseCode">Course Code *</Label>
-                                                    <Input id="courseCode" placeholder="e.g., NUR-201" value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} />
-                                                </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1"><Label>Name *</Label><Input value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} /></div>
+                                                <div className="space-y-1"><Label>Code *</Label><Input value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} /></div>
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="courseCredits">Credits (Optional)</Label>
-                                                    <Input id="courseCredits" type="number" placeholder="e.g., 3" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="courseCost">Cost (ZMW) (Optional)</Label>
-                                                    <Input id="courseCost" type="number" placeholder="e.g., 1500" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label htmlFor="courseYear">Academic Year (Optional)</Label>
-                                                    <Input id="courseYear" type="number" placeholder="e.g., 1" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/>
-                                                </div>
+                                            <div className="grid grid-cols-3 gap-4">
+                                                <div className="space-y-1"><Label>Credits</Label><Input type="number" value={courseCredits} onChange={e => setCourseCredits(e.target.value)} disabled={formLoading}/></div>
+                                                <div className="space-y-1"><Label>Cost (ZMW)</Label><Input type="number" value={courseCost} onChange={e => setCourseCost(e.target.value)} disabled={formLoading}/></div>
+                                                <div className="space-y-1"><Label>Year</Label><Input type="number" value={courseYear} onChange={e => setCourseYear(e.target.value)} disabled={formLoading}/></div>
                                             </div>
-                                            <div className="space-y-1">
-                                                <Label htmlFor="lecturer">Lecturer (Optional)</Label>
+                                            <div className="space-y-1"><Label>Lecturer</Label>
                                                 <Select onValueChange={setSelectedLecturerId} value={selectedLecturerId} disabled={formLoading}>
-                                                    <SelectTrigger><SelectValue placeholder="Select a lecturer" /></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">Unassigned / No Lecturer</SelectItem>
-                                                        {lecturers.map(lecturer => ( <SelectItem key={lecturer.uid} value={lecturer.uid}>{lecturer.name}</SelectItem> ))}
-                                                    </SelectContent>
+                                                    <SelectTrigger><SelectValue placeholder="Select lecturer" /></SelectTrigger>
+                                                    <SelectContent><SelectItem value="none">Unassigned</SelectItem>{lecturers.map(l => ( <SelectItem key={l.uid} value={l.uid}>{l.name}</SelectItem> ))}</SelectContent>
                                                 </Select>
                                             </div>
-                                            <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-primary/5">
-                                                <Switch id="separate-instance" checked={separateInstance} onCheckedChange={setSeparateInstance} />
-                                                <div className="space-y-0.5">
-                                                    <Label htmlFor="separate-instance" className="text-sm font-bold">Make separate instance per intake</Label>
-                                                    <p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p>
-                                                </div>
+                                            <div className="flex items-center space-x-2 p-4 border rounded-md bg-primary/5">
+                                                <Switch checked={separateInstance} onCheckedChange={setSeparateInstance} />
+                                                <div className="space-y-0.5"><Label className="text-sm font-bold">Make separate instance per intake</Label><p className="text-[10px] text-muted-foreground italic leading-tight">If enabled, this course will have independent session schedules for each intake cohort.</p></div>
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label>Assign to Programmes (Optional)</Label>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border p-4 max-h-48 overflow-y-auto bg-muted/20">
-                                                    {programmes.map(prog => (
-                                                        <div key={prog.id} className="flex items-center gap-2">
-                                                            <Checkbox
-                                                                id={`prog-${prog.id}`}
-                                                                checked={!!selectedProgrammes[prog.id]}
-                                                                onCheckedChange={() => handleProgrammeSelection(prog.id)}
-                                                            />
-                                                            <Label htmlFor={`prog-${prog.id}`} className="font-normal text-sm cursor-pointer">{prog.name}</Label>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            <div className="space-y-2"><Label>Linked Programmes</Label><div className="grid grid-cols-2 gap-2 border p-4 max-h-48 overflow-y-auto bg-muted/20">{programmes.map(p => (<div key={p.id} className="flex items-center gap-2"><Checkbox checked={!!selectedProgrammes[p.id]} onCheckedChange={() => setSelectedProgrammes(prev => ({...prev, [p.id]: !prev[p.id]}))}/><Label className="font-normal text-sm">{p.name}</Label></div>))}</div></div>
                                         </div>
-                                        <DialogFooter className="pt-4 border-t">
-                                            <DialogClose asChild>
-                                                <Button variant="outline" type="button">Cancel</Button>
-                                            </DialogClose>
-                                            <Button type="submit" disabled={formLoading}>
-                                                {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : editingCourse ? 'Save Changes' : 'Create Course'}
-                                            </Button>
-                                        </DialogFooter>
+                                        <DialogFooter><DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose><Button type="submit" disabled={formLoading}>{formLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : 'Save'}</Button></DialogFooter>
                                     </form>
                                 </DialogContent>
                             </Dialog>
@@ -555,184 +416,69 @@ export default function CoursesPage() {
 
             <Alert className="bg-blue-50 border-blue-200">
                 <Info className="h-4 w-4 text-blue-600" />
-                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Critical Configuration Step</AlertTitle>
-                <AlertDescription className="text-blue-700 text-sm">
-                    Courses created here represent the "Master Catalog". To make these courses available for student registration, you <strong>must</strong> map them to specific semesters within the <Link href="/admin/course-paths" className="font-bold underline">Intakes / Course Paths</Link> module.
-                </AlertDescription>
+                <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-wider">Note</AlertTitle>
+                <AlertDescription className="text-blue-700 text-sm">Enrollment counts automatically update based on active semester dates.</AlertDescription>
             </Alert>
 
             <Card>
                 <CardContent className="pt-6">
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-                        <TabsList>
-                            <TabsTrigger value="active">Active Catalog</TabsTrigger>
-                            <TabsTrigger value="archived">Archived / Legacy</TabsTrigger>
-                        </TabsList>
-                    </Tabs>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6"><TabsList><TabsTrigger value="active">Active</TabsTrigger><TabsTrigger value="archived">Archived</TabsTrigger></TabsList></Tabs>
                     <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 border rounded-lg bg-muted/10">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                                placeholder="Search code or name..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-8 bg-background"
-                            />
-                        </div>
-                        <Select value={yearFilter} onValueChange={setYearFilter}>
-                            <SelectTrigger className="w-full md:w-[180px] bg-background">
-                                <SelectValue placeholder="Year Filter" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Years</SelectItem>
-                                <SelectItem value="1">Year 1</SelectItem>
-                                <SelectItem value="2">Year 2</SelectItem>
-                                <SelectItem value="3">Year 3</SelectItem>
-                                <SelectItem value="4">Year 4</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <div className="relative flex-1"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-8 bg-background"/></div>
+                        <Select value={yearFilter} onValueChange={setYearFilter}><SelectTrigger className="w-40 bg-background"><SelectValue placeholder="Year" /></SelectTrigger><SelectContent><SelectItem value="all">All Years</SelectItem><SelectItem value="1">Year 1</SelectItem><SelectItem value="2">Year 2</SelectItem><SelectItem value="3">Year 3</SelectItem></SelectContent></Select>
                     </div>
-                    <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
-                        <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
-                            {loading ? (
-                                Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>)
-                            ) : Object.keys(filteredAndGroupedCourses).length > 0 ? (
-                            Object.entries(filteredAndGroupedCourses).sort(([a],[b]) => {
-                                const numA = parseInt(a.replace('Year ', ''));
-                                const numB = parseInt(b.replace('Year ', ''));
-                                if (isNaN(numA)) return 1;
-                                if (isNaN(numB)) return -1;
-                                return numA - numB;
-                            }).map(([year, courses]) => (
-                                <AccordionItem value={year} key={year} className="border rounded-lg bg-card overflow-hidden">
-                                    <AccordionTrigger className="font-bold text-lg px-4 hover:no-underline">{year} Courses <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
-                                    <AccordionContent className="px-0">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow className="bg-muted/30">
-                                                    <TableHead className="pl-4">Code</TableHead>
-                                                    <TableHead>Name</TableHead>
-                                                    <TableHead>Lecturer(s)</TableHead>
-                                                    <TableHead>Active Students</TableHead>
-                                                    {activeTab === 'archived' && <TableHead>Archive Reason</TableHead>}
-                                                    <TableHead className="text-right pr-4">Actions</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {courses.map((course) => (
-                                                    <TableRow key={course.id}>
-                                                        <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
-                                                        <TableCell>
-                                                            <div className="flex flex-col">
-                                                                <span className="font-medium">{course.name}</span>
-                                                                {course.credits && <span className="text-[10px] text-muted-foreground">{course.credits} Credits</span>}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="text-sm">{course.lecturerName}</TableCell>
-                                                        <TableCell>
-                                                            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleViewStudents(course)}>
-                                                                <Users className="h-3 w-3 mr-1"/> {course.studentCount || 0}
-                                                            </Button>
-                                                        </TableCell>
-                                                        {activeTab === 'archived' && <TableCell className="text-xs italic">{course.archiveReason || 'N/A'}</TableCell>}
-                                                        <TableCell className="text-right pr-4">
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                                    <DropdownMenuContent align="end">
-                                                                        {activeTab === 'active' ? (
-                                                                            <>
-                                                                            <DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit Details</DropdownMenuItem>
-                                                                            <DropdownMenuItem onClick={() => handleViewStudents(course)}><Users className="mr-2 h-4 w-4"/>View Class List</DropdownMenuItem>
-                                                                            <DropdownMenuSeparator />
-                                                                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}>
-                                                                                <Trash2 className="mr-2 h-4 w-4"/>Archive Course
-                                                                            </DropdownMenuItem>
-                                                                            </>
-                                                                        ) : (
-                                                                            <DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}><Undo2 className="mr-2 h-4 w-4"/>Restore Course</DropdownMenuItem>
-                                                                        )}
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            ))
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                                    <BookCopy className="h-12 w-12 opacity-20 mb-4" />
-                                    <p>No {activeTab} courses found matching the filters.</p>
-                                </div>
-                            )}
-                        </Accordion>
-
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Archive Course?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This course will be moved to the legacy tab. Please provide a reason for archiving.
-                                </AlertDialogDescription>
-                                <div className="space-y-2 pt-2">
-                                    <Label htmlFor="archiveReason">Reason for Archiving</Label>
-                                    <Input 
-                                        id="archiveReason" 
-                                        placeholder="e.g., Curriculum update, End of cycle" 
-                                        value={archiveReason}
-                                        onChange={(e) => setArchiveReason(e.target.value)}
-                                    />
-                                </div>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => { setArchivingCourse(null); setArchiveReason(''); }}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleArchiveSubmit} className="bg-destructive hover:bg-destructive/90">
-                                    Confirm Archive
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
+                    
+                    <Accordion type="multiple" defaultValue={Object.keys(filteredAndGroupedCourses)} className="w-full space-y-4">
+                        {loading ? Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-md"/>) : 
+                        Object.entries(filteredAndGroupedCourses).map(([year, courses]) => (
+                            <AccordionItem value={year} key={year} className="border rounded-lg bg-card">
+                                <AccordionTrigger className="font-bold text-lg px-4">{year} <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
+                                <AccordionContent className="px-0">
+                                    <Table>
+                                        <TableHeader><TableRow><TableHead className="pl-4">Code</TableHead><TableHead>Name</TableHead><TableHead>Lecturer</TableHead><TableHead>Active Students</TableHead><TableHead className="text-right pr-4">Actions</TableHead></TableRow></TableHeader>
+                                        <TableBody>{courses.map((course) => (
+                                            <TableRow key={course.id}>
+                                                <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
+                                                <TableCell className="font-medium text-sm">{course.name}</TableCell>
+                                                <TableCell className="text-sm">{course.lecturerName}</TableCell>
+                                                <TableCell><Button variant="ghost" size="sm" onClick={() => { setSelectedCourseForList(course); setViewingStudents(course.enrolledStudents || []); setIsStudentListOpen(true); }}><Users className="h-3 w-3 mr-1"/> {course.studentCount}</Button></TableCell>
+                                                <TableCell className="text-right pr-4">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            {activeTab === 'active' ? (<><DropdownMenuItem onClick={() => openEditDialog(course)}><Pencil className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem><DropdownMenuItem className="text-destructive" onClick={() => { setArchivingCourse(course); setIsArchiveDialogOpen(true); }}><Trash2 className="mr-2 h-4 w-4"/>Archive</DropdownMenuItem></>) 
+                                                            : (<DropdownMenuItem onClick={() => handleUpdateCourseStatus(course.id, 'active')}><Undo2 className="mr-2 h-4 w-4"/>Restore</DropdownMenuItem>)}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}</TableBody>
+                                    </Table>
+                                </AccordionContent>
+                            </AccordionItem>
+                        ))}
+                    </Accordion>
                 </CardContent>
             </Card>
 
             <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
                 <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
-                    <DialogHeader>
-                        <div className="flex justify-between items-center pr-8">
-                            <div>
-                                <DialogTitle>Enrolled Students</DialogTitle>
-                                <DialogDescription>List of students currently enrolled in {selectedCourseForList?.name}.</DialogDescription>
-                            </div>
-                            <Button onClick={handleDownloadClassList} size="sm" variant="outline" className="shrink-0"><Download className="mr-2 h-4 w-4"/>Download List</Button>
-                        </div>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Enrolled Students</DialogTitle><DialogDescription>Current active students for {selectedCourseForList?.name}.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-auto rounded-md border mt-4">
                         <Table>
-                            <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
-                                <TableRow>
-                                    <TableHead className="pl-4">Student ID</TableHead>
-                                    <TableHead>Full Name</TableHead>
-                                    <TableHead className="pr-4 text-right">Active Semester</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {viewingStudents.length > 0 ? viewingStudents.map(s => (
-                                    <TableRow key={s.uid}>
-                                        <TableCell className="font-mono text-xs pl-4">{s.id}</TableCell>
-                                        <TableCell className="font-medium text-sm">{s.name}</TableCell>
-                                        <TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell>
-                                    </TableRow>
-                                )) : (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="h-32 text-center text-muted-foreground italic">No students enrolled.</TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
+                            <TableHeader><TableRow><TableHead className="pl-4">ID</TableHead><TableHead>Name</TableHead><TableHead className="pr-4 text-right">Semester</TableHead></TableRow></TableHeader>
+                            <TableBody>{viewingStudents.map(s => (<TableRow key={s.uid}><TableCell className="font-mono text-xs pl-4">{s.id}</TableCell><TableCell className="font-medium text-sm">{s.name}</TableCell><TableCell className="text-xs pr-4 text-right">{s.semesterName}</TableCell></TableRow>))}</TableBody>
                         </Table>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader><AlertDialogTitle>Archive Course?</AlertDialogTitle><div className="space-y-2 pt-2"><Label>Reason</Label><Input value={archiveReason} onChange={e => setArchiveReason(e.target.value)} /></div></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleArchiveSubmit}>Archive</AlertDialogAction></AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
