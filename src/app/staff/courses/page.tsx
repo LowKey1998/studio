@@ -137,6 +137,8 @@ export default function StaffCoursesPage() {
                 const finalMergeMap = new Map<string, MergedCourse>();
                 
                 courseSemesterMap.forEach((val) => {
+                    // Grouping strategy: Key is courseId + session pattern. 
+                    // This groups Mon/Wed sessions for the same course into one card.
                     const sessionSignature = val.sessions
                         .sort((a, b) => a.day.localeCompare(b.day) || a.startTime.localeCompare(b.startTime))
                         .map(s => `${s.day}-${s.startTime}-${s.venue}`)
@@ -147,7 +149,9 @@ export default function StaffCoursesPage() {
                     if (finalMergeMap.has(mergeKey)) {
                         const existing = finalMergeMap.get(mergeKey)!;
                         existing.totalStudentCount += val.studentCount;
-                        existing.semesterNames.push(val.semName);
+                        if(!existing.semesterNames.includes(val.semName)) {
+                            existing.semesterNames.push(val.semName);
+                        }
                         existing.isMerged = true;
                     } else {
                         finalMergeMap.set(mergeKey, {
@@ -187,7 +191,7 @@ export default function StaffCoursesPage() {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, showMerged, toast]);
+    }, [currentUser, showMerged, toast, semesters, allCoursesData, studentCounts]);
 
     React.useEffect(() => {
         if (currentUser) fetchLecturerCourses();
@@ -217,7 +221,7 @@ export default function StaffCoursesPage() {
                     </div>
                     <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
                         <Switch id="merged-mode" checked={showMerged} onCheckedChange={setShowMerged} />
-                        <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Merge Simultaneous Classes</Label>
+                        <Label htmlFor="merged-mode" className="text-sm font-medium cursor-pointer">Group Sessions</Label>
                     </div>
                 </CardHeader>
             </Card>
@@ -231,7 +235,7 @@ export default function StaffCoursesPage() {
                                     <CardTitle className="text-lg leading-tight">{course.name}</CardTitle>
                                     <CardDescription className="font-mono font-bold mt-1">{course.code}</CardDescription>
                                 </div>
-                                {course.isMerged && <Badge variant="secondary" className="bg-primary/10 text-primary whitespace-nowrap"><Layers className="h-3 w-3 mr-1"/> Merged</Badge>}
+                                {course.isMerged && <Badge variant="secondary" className="bg-primary/10 text-primary whitespace-nowrap"><Layers className="h-3 w-3 mr-1"/> Combined</Badge>}
                                 {course.separateInstance && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Separate</Badge>}
                             </div>
                         </CardHeader>

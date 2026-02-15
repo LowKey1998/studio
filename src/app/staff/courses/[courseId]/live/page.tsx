@@ -2,30 +2,51 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { VideoCall } from '@/components/video-call';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Info, Play, MonitorPlay, Power, Loader2, Clock, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Info, Play, MonitorPlay, Power, Loader2, Clock, AlertTriangle, ClipboardCheck, Search, CheckCircle, XCircle, Save } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { db } from '@/lib/firebase';
+import { db, createNotification } from '@/lib/firebase';
 import { ref, onValue, set, update, get } from 'firebase/database';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+type Student = { uid: string; id: string; name: string; };
+type AttendanceStatus = "Present" | "Absent" | "Late" | "Excused Absence";
+type AttendanceRecord = Record<string, AttendanceStatus>;
 
 export default function LecturerLivePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const courseId = params.courseId as string;
+  const semesterIdFilter = searchParams.get('semesterId');
+  
   const [sessionActive, setSessionActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isLiveTimetableDay, setIsLiveTimetableDay] = useState(false);
   const [autoStartTime, setAutoStartTime] = useState<string | null>(null);
-  const { user } = useAuth();
+  const [courseData, setCourseData] = useState<any>(null);
+  
+  // Attendance State
+  const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord>({});
+  const [studentSearch, setStudentSearch] = useState('');
+  const [savingAttendance, setSavingAttendance] = useState(false);
+
+  const { user, userProfile } = useAuth();
 
   const channelName = `course-${courseId}`;
 
@@ -39,7 +60,13 @@ export default function LecturerLivePage() {
 
       const checkTimetable = async () => {
           const today = daysOfWeek[new Date().getDay()];
-          const timetablesSnap = await get(ref(db, 'timetables'));
+          const [timetablesSnap, courseSnap] = await Promise.all([
+              get(ref(db, 'timetables')),
+              get(ref(db, `courses/${courseId}`))
+          ]);
+
+          if (courseSnap.exists()) setCourseData(courseSnap.val());
+
           let isLive = false;
           let startTime = null;
 
@@ -66,6 +93,50 @@ export default function LecturerLivePage() {
       return () => unsub();
   }, [courseId, channelName]);
 
+  const fetchRoster = async () => {
+      if (!courseId || !user) return;
+      try {
+          const [regsSnap, usersSnap] = await Promise.all([
+              get(ref(db, 'registrations')),
+              get(ref(db, 'users'))
+          ]);
+
+          const allUsers = usersSnap.val() || {};
+          const allRegs = regsSnap.val() || {};
+          const list: Student[] = [];
+
+          for (const uid in allRegs) {
+              const userRegs = allRegs[uid];
+              const semesterIdsToCheck = (courseData?.separateInstance && semesterIdFilter) ? [semesterIdFilter] : Object.keys(userRegs);
+
+              for (const semId of semesterIdsToCheck) {
+                  const reg = userRegs[semId];
+                  if (reg?.courses?.includes(courseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                      if (allUsers[uid]) list.push({ uid, id: allUsers[uid].id, name: allUsers[uid].name });
+                      break;
+                  }
+              }
+          }
+          setStudents(list.sort((a,b) => a.name.localeCompare(b.name)));
+
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const path = (courseData?.separateInstance && semesterIdFilter) 
+            ? `attendance/${courseId}_${semesterIdFilter}/${todayStr}` 
+            : `attendance/${courseId}/${todayStr}`;
+            
+          const attSnap = await get(ref(db, path));
+          if (attSnap.exists()) {
+              setAttendance(attSnap.val());
+          } else {
+              const initial: AttendanceRecord = {};
+              list.forEach(s => initial[s.uid] = 'Present');
+              setAttendance(initial);
+          }
+      } catch (e) {
+          console.error(e);
+      }
+  };
+
   const handleStartSession = async () => {
       const sessionRef = ref(db, `liveSessions/${channelName}`);
       await update(sessionRef, {
@@ -85,7 +156,41 @@ export default function LecturerLivePage() {
       setSessionActive(false);
   };
 
-  if (loading) return <div className="p-6 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto" /><p className="mt-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Checking Timetable Status...</p></div>;
+  const handleSaveAttendance = async () => {
+      setSavingAttendance(true);
+      try {
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const path = (courseData?.separateInstance && semesterIdFilter) 
+            ? `attendance/${courseId}_${semesterIdFilter}/${todayStr}` 
+            : `attendance/${courseId}/${todayStr}`;
+            
+          await set(ref(db, path), attendance);
+          
+          const promises = Object.entries(attendance).map(([uid, status]) => {
+              if (status === 'Absent' || status === 'Late') {
+                  return createNotification(uid, `Attendance Alert: Marked as ${status} for ${courseData?.name} today.`, `/student/courses/${courseId}/attendance`);
+              }
+              return Promise.resolve();
+          });
+          await Promise.all(promises);
+
+          toast({ title: "Attendance Logged" });
+          setIsAttendanceOpen(false);
+      } catch (e) {
+          toast({ variant: 'destructive', title: "Save Failed" });
+      } finally {
+          setSavingAttendance(false);
+      }
+  };
+
+  const filteredStudents = students.filter(s => 
+      s.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
+      s.id.toLowerCase().includes(studentSearch.toLowerCase())
+  );
+
+  const { toast } = useToast();
+
+  if (loading) return <div className="p-12 text-center"><Loader2 className="animate-spin h-8 w-8 mx-auto text-primary" /><p className="mt-4 text-xs font-black uppercase tracking-widest text-muted-foreground">Synchronizing Classroom...</p></div>;
 
   if (!isLiveTimetableDay) {
       return (
@@ -141,9 +246,12 @@ export default function LecturerLivePage() {
         </Card>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col gap-4">
-          <div className="flex justify-end px-2">
+          <div className="flex justify-end gap-2 px-2">
+              <Button variant="outline" size="sm" onClick={() => { fetchRoster(); setIsAttendanceOpen(true); }} className="gap-2 font-black uppercase text-[10px] h-8 shadow-md">
+                  <ClipboardCheck className="h-3 w-3" /> Mark Attendance
+              </Button>
               <Button variant="destructive" size="sm" onClick={handleEndSession} className="gap-2 font-black uppercase text-[10px] h-8 shadow-md">
-                  <Power className="h-3 w-3" /> Terminate Session
+                  <Power className="h-3 w-3" /> End Session
               </Button>
           </div>
           <div className="flex-1 min-h-0">
@@ -151,6 +259,70 @@ export default function LecturerLivePage() {
           </div>
         </div>
       )}
+
+      <Dialog open={isAttendanceOpen} onOpenChange={setIsAttendanceOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+              <DialogHeader>
+                  <DialogTitle>Mark Live Session Attendance</DialogTitle>
+                  <DialogDescription>Mark attendance for students enrolled in this instance for today ({format(new Date(), 'PPP')}).</DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
+                  <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Search students..." className="pl-8" value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
+                  </div>
+                  <div className="flex-1 overflow-auto rounded-md border">
+                      <Table>
+                          <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                              <TableRow>
+                                  <TableHead>Student</TableHead>
+                                  <TableHead className="text-right">Status</TableHead>
+                              </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                              {filteredStudents.map(s => (
+                                  <TableRow key={s.uid}>
+                                      <TableCell>
+                                          <div className="flex flex-col">
+                                              <span className="font-bold text-sm">{s.name}</span>
+                                              <span className="text-[10px] font-mono text-muted-foreground uppercase">{s.id}</span>
+                                          </div>
+                                      </TableCell>
+                                      <TableCell>
+                                          <RadioGroup 
+                                              value={attendance[s.uid] || 'Present'} 
+                                              onValueChange={(v) => setAttendance(p => ({...p, [s.uid]: v as any}))}
+                                              className="flex justify-end gap-2"
+                                          >
+                                              <div className="flex flex-col items-center">
+                                                  <RadioGroupItem value="Present" id={`p-${s.uid}`} className="sr-only" />
+                                                  <Label htmlFor={`p-${s.uid}`} className={cn("px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer", attendance[s.uid] === 'Present' ? "bg-primary text-primary-foreground border-primary" : "bg-background")}>PRESENT</Label>
+                                              </div>
+                                              <div className="flex flex-col items-center">
+                                                  <RadioGroupItem value="Absent" id={`a-${s.uid}`} className="sr-only" />
+                                                  <Label htmlFor={`a-${s.uid}`} className={cn("px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer", attendance[s.uid] === 'Absent' ? "bg-red-600 text-white border-red-600" : "bg-background")}>ABSENT</Label>
+                                              </div>
+                                              <div className="flex flex-col items-center">
+                                                  <RadioGroupItem value="Late" id={`l-${s.uid}`} className="sr-only" />
+                                                  <Label htmlFor={`l-${s.uid}`} className={cn("px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer", attendance[s.uid] === 'Late' ? "bg-orange-500 text-white border-orange-500" : "bg-background")}>LATE</Label>
+                                              </div>
+                                          </RadioGroup>
+                                      </TableCell>
+                                  </TableRow>
+                              ))}
+                          </TableBody>
+                      </Table>
+                  </div>
+              </div>
+              <DialogFooter className="border-t pt-4">
+                  <DialogClose asChild><Button variant="outline">Discard</Button></DialogClose>
+                  <Button onClick={handleSaveAttendance} disabled={savingAttendance || students.length === 0}>
+                      {savingAttendance ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                      Save Attendance
+                  </Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
     </div>
   );
 }
