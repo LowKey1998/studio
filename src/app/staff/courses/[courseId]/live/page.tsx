@@ -39,7 +39,7 @@ export default function LecturerLivePage() {
   const [loading, setLoading] = useState(true);
   const [isLiveTimetableDay, setIsLiveTimetableDay] = useState(false);
   const [autoStartTime, setAutoStartTime] = useState<string | null>(null);
-  const [courseData, setCourseData] = setCourseData(null);
+  const [courseData, setCourseData] = useState<any>(null);
   
   // Attendance State
   const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
