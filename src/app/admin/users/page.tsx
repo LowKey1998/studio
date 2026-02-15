@@ -471,19 +471,19 @@ export default function UserManagementPage() {
         let errors = 0;
 
         for (let i = 0; i < bulkUsersToCreate.length; i++) {
-            const user = bulkUsersToCreate[i];
-            if (user.imported) continue;
+            const userRow = bulkUsersToCreate[i];
+            if (userRow.imported) continue;
             try {
-                const password = user.password || Math.random().toString(36).slice(-10);
+                const password = userRow.password || Math.random().toString(36).slice(-10);
                 await findOrCreateUser({
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role as any,
+                    id: userRow.id,
+                    name: userRow.name,
+                    email: userRow.email,
+                    role: userRow.role as any,
                     password: password,
-                    phoneNumber: user.phoneNumber,
-                    department: user.department,
-                    subRoles: user.subRoles
+                    phoneNumber: userRow.phoneNumber,
+                    department: userRow.department,
+                    subRoles: userRow.subRoles
                 });
                 
                 setBulkUsersToCreate(prev => {

@@ -102,7 +102,6 @@ export default function ProgrammesPage() {
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            // Use onValue for live updates to keep linked courses in sync
             const unsubSettings = onValue(ref(db, 'settings/institution'), (snapshot) => {
                 if (snapshot.exists()) setBillingPolicy(snapshot.val().billingPolicy || 'course');
             });

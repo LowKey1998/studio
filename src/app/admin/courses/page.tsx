@@ -159,7 +159,7 @@ export default function CoursesPage() {
                 Object.entries(usersSnap.val() as Record<string, any>).forEach(([uid, userData]) => userMap.set(uid, userData));
             }
 
-            // Correctly filter for staff with "Lecturer" sub-role
+            // Filter for staff with "Lecturer" sub-role or assignable class permission
             const subRolesData = subRolesSnap.val() || {};
             const lecturerRoleIds = new Set(
                 Object.keys(subRolesData).filter(id => 
@@ -193,7 +193,6 @@ export default function CoursesPage() {
                 if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
-                    // Active means the end date hasn't passed yet.
                     return !isAfter(now, end);
                 } catch (e) {
                     return true;
@@ -208,7 +207,6 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        // Count only those enrolled for semesters that have not yet ended
                         if (semesterInfo && isSemesterActive(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
@@ -460,12 +458,20 @@ export default function CoursesPage() {
                                 <AccordionTrigger className="font-bold text-lg px-4">{year} <Badge variant="outline" className="ml-2">{courses.length}</Badge></AccordionTrigger>
                                 <AccordionContent className="px-0">
                                     <Table>
-                                        <TableHeader><TableRow><TableHead className="pl-4">Code</TableHead><TableHead>Name</TableHead><TableHead>Lecturer</TableHead><TableHead>Active Students</TableHead><TableHead className="text-right pr-4">Actions</TableHead></TableRow></TableHeader>
-                                        <TableBody>{courses.map((course) => (
+                                        <TableHeader><TableRow><TableHead className="pl-4">Code</TableHead><TableHead>Name</TableHead><TableHead>Lecturer</TableHead><TableHead>Linked Programmes</TableHead><TableHead>Active Students</TableHead><TableHead className="text-right pr-4">Actions</TableHead></TableRow></TableHeader>
+                                        <TableBody>{courses.map((course) => {
+                                            const linkedProgs = programmes.filter(p => p.courseIds && p.courseIds[course.id]);
+                                            return (
                                             <TableRow key={course.id}>
                                                 <TableCell className="font-mono text-xs pl-4">{course.code}</TableCell>
                                                 <TableCell className="font-medium text-sm">{course.name}</TableCell>
                                                 <TableCell className="text-sm">{course.lecturerName}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                                        {linkedProgs.map(lp => <Badge key={lp.id} variant="secondary" className="text-[9px] truncate">{lp.name}</Badge>)}
+                                                        {linkedProgs.length === 0 && <span className="text-[10px] text-muted-foreground italic">Not Mapped</span>}
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell><Button variant="ghost" size="sm" onClick={() => { setSelectedCourseForList(course); setViewingStudents(course.enrolledStudents || []); setIsStudentListOpen(true); }}><Users className="h-3 w-3 mr-1"/> {course.studentCount}</Button></TableCell>
                                                 <TableCell className="text-right pr-4">
                                                     <DropdownMenu>
@@ -477,7 +483,7 @@ export default function CoursesPage() {
                                                     </DropdownMenu>
                                                 </TableCell>
                                             </TableRow>
-                                        ))}</TableBody>
+                                        )})}</TableBody>
                                     </Table>
                                 </AccordionContent>
                             </AccordionItem>
@@ -486,7 +492,7 @@ export default function CoursesPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isStudentListOpen} onOpenChange={setIsStudentListOpen}>
+            <Dialog open={isStudentListOpen} onOpenChange={isStudentListOpen ? () => setIsStudentListOpen(false) : undefined}>
                 <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
                     <DialogHeader><DialogTitle>Enrolled Students</DialogTitle><DialogDescription>Current active students for {selectedCourseForList?.name}.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-auto rounded-md border mt-4">
