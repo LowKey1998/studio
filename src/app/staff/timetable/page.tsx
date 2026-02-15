@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -342,7 +341,7 @@ export default function StaffTimetablePage() {
                                                                                 <div className="mt-2 pt-2 border-t flex items-center justify-between">
                                                                                     {isLiveApprovedOnDate ? (
                                                                                         <div className="flex items-center gap-1 w-full justify-between">
-                                                                                            <Badge variant="outline" className="border-blue-500 bg-blue-50 text-blue-700 text-[8px] h-4">Live Approved</Badge>
+                                                                                            <Badge variant="outline" className="border-blue-500 bg-blue-50 text-blue-700 text-[8px] h-4">Approved: {format(date, 'MMM dd')}</Badge>
                                                                                             <Button 
                                                                                                 variant="ghost" 
                                                                                                 size="icon" 
@@ -355,7 +354,7 @@ export default function StaffTimetablePage() {
                                                                                         </div>
                                                                                     ) : isLiveRequestedOnDate ? (
                                                                                         <div className="flex items-center gap-1 w-full justify-between">
-                                                                                            <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Requested</Badge>
+                                                                                            <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[8px] h-4">Requested: {format(date, 'MMM dd')}</Badge>
                                                                                             <Button 
                                                                                                 variant="ghost" 
                                                                                                 size="icon" 

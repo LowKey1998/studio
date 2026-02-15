@@ -706,27 +706,32 @@ function TimetableManagementComponent() {
                                                                             </div>
                                                                             
                                                                             {isLiveRequestedOnDate && (
-                                                                                <div className="mt-2 pt-2 border-t flex gap-1">
-                                                                                    <Button 
-                                                                                        variant="outline" 
-                                                                                        size="sm" 
-                                                                                        className="flex-1 h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
-                                                                                        onClick={() => handleApproveLive(s.entry, dateStr)}
-                                                                                        disabled={saving}
-                                                                                    >
-                                                                                        {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <Check className="h-2 w-2 mr-1"/>}
-                                                                                        Approve
-                                                                                    </Button>
-                                                                                    <Button 
-                                                                                        variant="outline" 
-                                                                                        size="sm" 
-                                                                                        className="flex-1 h-6 text-[8px] font-black uppercase bg-red-100 text-red-700 border-red-200"
-                                                                                        onClick={() => handleRejectLive(s.entry, dateStr)}
-                                                                                        disabled={saving}
-                                                                                    >
-                                                                                        {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <X className="h-2 w-2 mr-1"/>}
-                                                                                        Reject
-                                                                                    </Button>
+                                                                                <div className="mt-2 pt-2 border-t flex flex-col gap-1.5">
+                                                                                    <div className="text-[8px] font-black text-orange-600 uppercase tracking-widest text-center">
+                                                                                        Requested for: {format(date, 'MMM dd')}
+                                                                                    </div>
+                                                                                    <div className="flex gap-1">
+                                                                                        <Button 
+                                                                                            variant="outline" 
+                                                                                            size="sm" 
+                                                                                            className="flex-1 h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
+                                                                                            onClick={() => handleApproveLive(s.entry, dateStr)}
+                                                                                            disabled={saving}
+                                                                                        >
+                                                                                            {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <Check className="h-2 w-2 mr-1"/>}
+                                                                                            Approve
+                                                                                        </Button>
+                                                                                        <Button 
+                                                                                            variant="outline" 
+                                                                                            size="sm" 
+                                                                                            className="flex-1 h-6 text-[8px] font-black uppercase bg-red-100 text-red-700 border-red-200"
+                                                                                            onClick={() => handleRejectLive(s.entry, dateStr)}
+                                                                                            disabled={saving}
+                                                                                        >
+                                                                                            {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <X className="h-2 w-2 mr-1"/>}
+                                                                                            Reject
+                                                                                        </Button>
+                                                                                    </div>
                                                                                 </div>
                                                                             )}
 
