@@ -342,7 +342,7 @@ export default function StudentEnrollmentPage() {
                         return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => {
                             const course = allCourses[entry.courseId];
                             return (
-                            <div key={entry.id} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
+                            <div key={`${entry.semesterId}-${entry.courseId}-${entry.id}`} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
                                 setActiveSession(entry); 
                                 setDialogIntakeFilter(selectedIntake); 
                                 fetchEnrolledStudents(entry.courseId, course?.separateInstance ? selectedIntake : undefined); 

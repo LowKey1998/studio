@@ -52,7 +52,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Checkbox } from '@/components/checkbox';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ref, get, update, onValue, push, set } from 'firebase/database';
 import { auth, db } from '@/lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';

@@ -43,7 +43,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Checkbox } from '@/components/checkbox';
+import { Checkbox } from '@/components/ui/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { ref, get, serverTimestamp, update, push, onValue } from 'firebase/database';
@@ -192,8 +192,7 @@ export default function CoursesPage() {
                 if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
-                    // Active means during the semester end date hasn't passed (now <= end)
-                    return !isAfter(now, end);
+                    return !isAfter(now, end); // now <= end means end date hasn't passed
                 } catch (e) { return true; }
             };
 
@@ -205,7 +204,6 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        // Refined check: Count student if semester is not archived and its end date has not passed
                         if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {
