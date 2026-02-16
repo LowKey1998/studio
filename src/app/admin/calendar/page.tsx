@@ -88,7 +88,7 @@ export default function AdminCalendarPage() {
   const [requiredDeadlines, setRequiredDeadlines] = React.useState<RequiredDeadline[]>([]);
   const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
   const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = setSearchTerm = React.useState('');
+  const [searchTerm, setSearchTerm] = React.useState('');
 
 
   const { toast } = useToast();

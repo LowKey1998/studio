@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock } from 'lucide-react';
@@ -109,13 +108,15 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            const rawEntries: TimetableEntry[] = [];
+            // We use a Map to deduplicate. Key: CourseID-Day-StartTime
+            // Specific semester overrides ('semesterId') replace 'master' baseline entries.
+            const sessionMap = new Map<string, TimetableEntry>();
+
             for (const semesterId in tData) {
                 const isMaster = semesterId === 'master';
                 if (semesterId !== 'master' && !myActiveSemesterIds.has(semesterId)) continue;
                 
                 for (const cid in tData[semesterId]) {
-                    // Check if student is taking this course at all
                     if (!enrolledCourseIdsGlobal.has(cid)) continue;
 
                     const courseInfo = cData[cid];
@@ -125,42 +126,43 @@ export default function StudentTimetablePage() {
                         let shouldInclude = false;
                         
                         if (isMaster) {
-                            // Master entries are baseline
                             if (courseInfo?.separateInstance) {
-                                // If separate, only show if intake name matches exactly
                                 const entryIntakeName = entry.intakeName?.trim().toUpperCase();
                                 shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
                             } else {
-                                // Shared session: show to anyone enrolled in any active semester for this course
                                 shouldInclude = true;
                             }
                         } else {
-                            // Semester-specific entries (overrides)
-                            // Only show if the student is registered for THIS specific semester instance
                             shouldInclude = myActiveSemesterIds.has(semesterId) && enrolledCourseIdsBySemester[semesterId]?.includes(cid);
                         }
 
                         if (shouldInclude) {
-                            const lecturerNames = (courseInfo.lecturerIds || [])
-                                .map((uid: string) => usersData[uid]?.name)
-                                .filter(Boolean)
-                                .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                            const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
+                            const existing = sessionMap.get(sessionKey);
 
-                            rawEntries.push({
-                                ...entry,
-                                courseId: cid,
-                                courseCode: courseInfo.code,
-                                courseName: courseInfo.name,
-                                semesterId: semesterId,
-                                semesterName: allSemesters[semesterId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
-                                lecturerNames,
-                                studentCount: 0 
-                            });
+                            // Priority: Specific semester entries (non-master) win over Master Template
+                            if (!existing || (semesterId !== 'master' && existing.semesterId === 'master')) {
+                                const lecturerNames = (courseInfo.lecturerIds || [])
+                                    .map((uid: string) => usersData[uid]?.name)
+                                    .filter(Boolean)
+                                    .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+
+                                sessionMap.set(sessionKey, {
+                                    ...entry,
+                                    courseId: cid,
+                                    courseCode: courseInfo.code,
+                                    courseName: courseInfo.name,
+                                    semesterId: semesterId,
+                                    semesterName: allSemesters[semesterId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
+                                    lecturerNames,
+                                    studentCount: 0 
+                                });
+                            }
                         }
                     });
                 }
             }
-            setTimetable(rawEntries);
+            setTimetable(Array.from(sessionMap.values()));
         } catch (error) {
             console.error("Timetable Fetch Error:", error);
         } finally {

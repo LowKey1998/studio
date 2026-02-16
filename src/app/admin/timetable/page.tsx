@@ -370,15 +370,6 @@ function TimetableManagementComponent() {
         setIsAddOpen(true);
     };
 
-    const currentWeekInterval = React.useMemo(() => {
-        const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
-        return [0, 1, 2, 3, 4, 5, 6].map(i => {
-            const d = new Date(start);
-            d.setDate(start.getDate() + i);
-            return d;
-        });
-    }, [viewWeek]);
-
     const mergedSessions = React.useMemo(() => {
         const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; totalStudents: number; participants: { semesterId: string; name: string; standing: string; count: number }[] }> = {};
         
@@ -508,9 +499,9 @@ function TimetableManagementComponent() {
                 <CardContent className="space-y-4">
                     <Alert className="bg-blue-50 border-blue-200 shadow-sm">
                         <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-widest">Timetable Visibility Logic</AlertTitle>
+                        <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-widest">Active Semester & Visibility</AlertTitle>
                         <AlertDescription className="text-blue-700 text-sm leading-relaxed">
-                            Students only see sessions for <strong>Active Semesters</strong> where the current date is within the semester's <strong>Start and End Date</strong> window.
+                            <strong>Note:</strong> Students only see sessions for non-archived semesters where the current date falls within the semester's <strong>Start Date and End Date</strong> teaching window.
                             <br/><br/>
                             <strong>Pro Tip:</strong> Use the "Master Template" for baseline schedules, or select a specific <strong>Semester Instance</strong> from the dropdown below to override or add ad-hoc sessions for a specific cohort.
                         </AlertDescription>
@@ -594,9 +585,7 @@ function TimetableManagementComponent() {
                                                                                     <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                                     {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                                    <MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL ROOM" : s.entry.venue}
-                                                                                </div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL ROOM" : s.entry.venue}</div>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
                                                                                 <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                             </div>
