@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -253,24 +254,44 @@ export default function UserManagementPage() {
         setIsEditOpen(true);
     };
 
-    const openCredentialsPreview = (user: UserProfile) => {
+    const openCredentialsPreview = async (user: UserProfile) => {
         setSelectedUserForCreds(user);
-        setCredSubject('Your Portal Login Details');
-        setCredBody(`
-            <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                <h2 style="color: #4c1d95;">Welcome to the Portal!</h2>
-                <p>Hello ${user.name},</p>
-                <p>Your institutional account is active. You can now log in to the portal using the credentials provided below:</p>
-                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                    <p style="margin: 5px 0;"><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></p>
-                    <p style="margin: 5px 0;"><strong>User ID:</strong> ${user.id}</p>
-                    <p style="margin: 5px 0; color: #666; font-size: 12px;"><em>(If you do not have your password, please use the "Forgot Password" link on the login page to set a new one.)</em></p>
+        setLoading(true);
+        try {
+            const settingsSnap = await get(ref(db, 'settings/emailTemplates/credentials'));
+            const template = settingsSnap.exists() ? settingsSnap.val() : null;
+
+            let subject = 'Your Portal Login Details';
+            let body = `
+                <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4c1d95;">Welcome to the Portal!</h2>
+                    <p>Hello ${user.name},</p>
+                    <p>Your institutional account is active. You can now log in to the portal using the credentials provided below:</p>
+                    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                        <p style="margin: 5px 0;"><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></p>
+                        <p style="margin: 5px 0;"><strong>User ID:</strong> ${user.id}</p>
+                        <p style="margin: 5px 0; color: #666; font-size: 12px;"><em>(If you do not have your password, please use the "Forgot Password" link on the login page to set a new one.)</em></p>
+                    </div>
+                    <p>Best regards,<br/>The Administration</p>
                 </div>
-                <p>Once logged in, you will be able to access your course materials, results, and financial statements.</p>
-                <p>Best regards,<br/>The Administration</p>
-            </div>
-        `.trim());
-        setIsCredentialsOpen(true);
+            `.trim();
+
+            if (template && template.enabled) {
+                subject = template.subject;
+                body = template.body
+                    .replace(/\[Name\]/g, user.name)
+                    .replace(/\[UserID\]/g, user.id)
+                    .replace(/\[Link\]/g, `<a href="${window.location.origin}/login">${window.location.origin}/login</a>`);
+            }
+
+            setCredSubject(subject);
+            setCredBody(body);
+            setIsCredentialsOpen(true);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSendCredentials = async () => {
@@ -296,9 +317,6 @@ export default function UserManagementPage() {
         if (!editingUser) return;
         setLoading(true);
         try {
-            const settingsSnap = await get(ref(db, 'settings/emailTemplates'));
-            const templates = settingsSnap.val() || {};
-
             const dbData: any = {
                 role: role.charAt(0).toUpperCase() + role.slice(1),
                 phoneNumber,
@@ -313,13 +331,6 @@ export default function UserManagementPage() {
                 dbData.year = Number(year);
                 dbData.semesterId = semesterId;
                 dbData.guardian = { name: guardianName, email: guardianEmail, contact: guardianContact, relationship: guardianRelationship };
-            }
-
-            // Check for Email change notification
-            if (editingUser.email !== email && templates.emailChange?.enabled) {
-                const tpl = templates.emailChange;
-                const body = tpl.body.replace(/\[Name\]/g, name).replace(/\[NewEmail\]/g, email);
-                await set(ref(db, `temp_notifications/${editingUser.uid}`), { to: [email], subject: tpl.subject, body }); // Dummy for notification
             }
 
             await updateUserAccount({
@@ -339,32 +350,6 @@ export default function UserManagementPage() {
             setLoading(false);
         }
     };
-
-    const resetForm = () => {
-        setEditingUser(null);
-        setName('');
-        setEmail('');
-        setPhoneNumber('');
-        setRole('');
-        setSubRoleIds([]);
-        setProgrammeId('');
-        setIntakeId('');
-        setYear('');
-        setSemesterId('');
-        setDob('');
-        setGender('');
-        setNationalId('');
-        setPassport('');
-        setAddress('');
-        setBio('');
-        setSchool('');
-        setQualifications('');
-        setMedicalHistory('');
-        setGuardianName('');
-        setGuardianEmail('');
-        setGuardianContact('');
-        setGuardianRelationship('');
-    }
 
     const handleToggleSelection = (uid: string) => {
         setSelectedUids(prev => ({ ...prev, [uid]: !prev[uid] }));
@@ -418,22 +403,9 @@ export default function UserManagementPage() {
         if (!settingPasswordUser || !newPassword) return;
         setLoading(true);
         try {
-            const settingsSnap = await get(ref(db, 'settings/emailTemplates/passwordUpdate'));
-            const template = settingsSnap.exists() ? settingsSnap.val() : null;
-
-            let subject = passwordEmailSubject;
-            let body = passwordEmailBody;
-
-            if (template && template.enabled) {
-                subject = template.subject;
-                body = template.body;
-            }
-
             await setUserPassword({ 
                 uid: settingPasswordUser.uid, 
                 newPassword,
-                welcomeSubject: subject,
-                welcomeBody: body
             });
             toast({ title: 'Password Updated Successfully' });
             setIsSetPasswordOpen(false); 
@@ -740,16 +712,10 @@ export default function UserManagementPage() {
             </Dialog>
 
             <Dialog open={isSetPasswordOpen} onOpenChange={setIsSetPasswordOpen}>
-                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                <DialogContent className="max-w-2xl">
                     <DialogHeader><DialogTitle>Set Password for {settingPasswordUser?.name}</DialogTitle></DialogHeader>
-                    <div className="flex-1 overflow-auto py-4 space-y-6">
+                    <div className="py-4 space-y-4">
                         <div className="space-y-2"><Label>New Password</Label><Input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 6 chars" /></div>
-                        <Separator />
-                        <div className="space-y-4">
-                            <h4 className="font-bold text-sm uppercase text-muted-foreground flex items-center gap-2"><Mail className="h-4 w-4" />Branded Email Notification</h4>
-                            <div className="space-y-2"><Label>Subject</Label><Input value={passwordEmailSubject} onChange={e => setPasswordEmailSubject(e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" /></div>
-                        </div>
                     </div>
                     <DialogFooter><Button onClick={handleSetPassword} disabled={loading || newPassword.length < 6}>{loading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Update Password</Button></DialogFooter>
                 </DialogContent>

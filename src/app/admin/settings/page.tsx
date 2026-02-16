@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -49,6 +50,7 @@ type EmailTemplates = {
     passwordUpdate: EmailTemplate;
     idChange: EmailTemplate;
     emailChange: EmailTemplate;
+    credentials: EmailTemplate;
 };
 
 export default function SettingsPage() {
@@ -70,6 +72,7 @@ export default function SettingsPage() {
         passwordUpdate: { subject: 'Your New Portal Credentials', body: '<p>Hello [Name],</p><p>Your password has been updated.</p><p>UserID: [UserID]</p><p>Password: [Password]</p>', enabled: true },
         idChange: { subject: 'System ID Change Notification', body: '<p>Hello [Name],</p><p>Your User ID has been changed from [OldID] to [UserID].</p>', enabled: true },
         emailChange: { subject: 'Account Email Change', body: '<p>Hello [Name],</p><p>Your portal login email has been updated to [NewEmail].</p>', enabled: true },
+        credentials: { subject: 'Your Portal Login Details', body: '<p>Hello [Name],</p><p>Access your portal using the credentials below:</p><p>URL: [Link]</p><p>UserID: [UserID]</p>', enabled: true },
     });
 
     const [isDeptDialogOpen, setIsDeptDialogOpen] = React.useState(false);
@@ -92,7 +95,7 @@ export default function SettingsPage() {
                 if (data.registrationPolicy) setRegistrationPolicy(data.registrationPolicy);
                 if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
                 if (data.departments) setDepartments(Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })));
-                if (data.emailTemplates) setEmailTemplates(data.emailTemplates);
+                if (data.emailTemplates) setEmailTemplates(prev => ({ ...prev, ...data.emailTemplates }));
             }
              setLoading(false);
         });
@@ -295,18 +298,54 @@ export default function SettingsPage() {
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader><CardTitle className="font-headline text-2xl">Email Templates & Notifications</CardTitle><CardDescription>Branding for system-automated emails.</CardDescription></CardHeader>
+                <CardHeader><CardTitle className="font-headline text-2xl">Email Templates & Notifications</CardTitle><CardDescription>Manage and brand system-automated emails. Use [Name], [UserID], [Password], [OldID], [NewEmail], [Link] as placeholders.</CardDescription></CardHeader>
                 <CardContent>
-                    <Accordion type="multiple" defaultValue={['password-tpl']} className="w-full">
-                        <AccordionItem value="password-tpl">
-                            <AccordionTrigger className="font-bold">Password Reset Template</AccordionTrigger>
+                    <Accordion type="multiple" className="w-full">
+                        <AccordionItem value="credentials-tpl">
+                            <AccordionTrigger className="font-bold">Portal Credentials (Manual Send)</AccordionTrigger>
                             <AccordionContent className="space-y-4 pt-4">
                                 <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
-                                    <div className="space-y-0.5"><Label>Enable Automated Email</Label><p className="text-xs text-muted-foreground">Send when an admin sets a password.</p></div>
+                                    <div className="space-y-0.5"><Label>Enable Option</Label><p className="text-xs text-muted-foreground">Allow sending login details from User Management.</p></div>
+                                    <Switch checked={emailTemplates.credentials.enabled} onCheckedChange={val => handleTemplateChange('credentials', 'enabled', val)} />
+                                </div>
+                                <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.credentials.subject} onChange={e => handleTemplateChange('credentials', 'subject', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.credentials.body} onChange={e => handleTemplateChange('credentials', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="password-tpl">
+                            <AccordionTrigger className="font-bold">Password Update / Reset</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                                    <div className="space-y-0.5"><Label>Enable Notification</Label><p className="text-xs text-muted-foreground">Send automatically when an admin changes a user's password.</p></div>
                                     <Switch checked={emailTemplates.passwordUpdate.enabled} onCheckedChange={val => handleTemplateChange('passwordUpdate', 'enabled', val)} />
                                 </div>
                                 <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.passwordUpdate.subject} onChange={e => handleTemplateChange('passwordUpdate', 'subject', e.target.value)} /></div>
-                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={12} className="font-mono text-xs" /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.passwordUpdate.body} onChange={e => handleTemplateChange('passwordUpdate', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="id-tpl">
+                            <AccordionTrigger className="font-bold">System ID Change</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                                    <div className="space-y-0.5"><Label>Enable Notification</Label><p className="text-xs text-muted-foreground">Send when an admin updates a user's unique System ID.</p></div>
+                                    <Switch checked={emailTemplates.idChange.enabled} onCheckedChange={val => handleTemplateChange('idChange', 'enabled', val)} />
+                                </div>
+                                <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.idChange.subject} onChange={e => handleTemplateChange('idChange', 'subject', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.idChange.body} onChange={e => handleTemplateChange('idChange', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem value="email-tpl">
+                            <AccordionTrigger className="font-bold">Email Address Change</AccordionTrigger>
+                            <AccordionContent className="space-y-4 pt-4">
+                                <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                                    <div className="space-y-0.5"><Label>Enable Notification</Label><p className="text-xs text-muted-foreground">Send when an admin updates a user's primary login email.</p></div>
+                                    <Switch checked={emailTemplates.emailChange.enabled} onCheckedChange={val => handleTemplateChange('emailChange', 'enabled', val)} />
+                                </div>
+                                <div className="space-y-2"><Label>Email Subject</Label><Input value={emailTemplates.emailChange.subject} onChange={e => handleTemplateChange('emailChange', 'subject', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={emailTemplates.emailChange.body} onChange={e => handleTemplateChange('emailChange', 'body', e.target.value)} rows={10} className="font-mono text-xs" /></div>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>

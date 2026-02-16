@@ -9,8 +9,9 @@ import { z } from 'genkit';
 import { ai } from '@/ai/genkit';
 import { getAuth } from 'firebase-admin/auth';
 import { adminApp } from '@/lib/firebase-admin';
-import { ref, update } from 'firebase/database';
+import { ref, update, get } from 'firebase/database';
 import { db } from '@/lib/firebase';
+import { sendEmail } from './send-email-flow';
 
 const UpdateUserAccountInputSchema = z.object({
   uid: z.string().describe("The Firebase UID of the user."),
@@ -34,6 +35,14 @@ const updateUserAccountFlow = ai.defineFlow(
   async (input) => {
     const auth = getAuth(adminApp);
     
+    // Get existing data for comparison
+    const userRef = ref(db, `users/${input.uid}`);
+    const existingSnap = await get(userRef);
+    const existing = existingSnap.val() || {};
+
+    const templatesSnap = await get(ref(db, 'settings/emailTemplates'));
+    const templates = templatesSnap.val() || {};
+
     // Update Firebase Auth
     try {
         await auth.updateUser(input.uid, {
@@ -47,7 +56,6 @@ const updateUserAccountFlow = ai.defineFlow(
 
     // Update Realtime Database
     try {
-        const userRef = ref(db, `users/${input.uid}`);
         await update(userRef, {
             ...input.dbData,
             name: input.name,
@@ -57,6 +65,25 @@ const updateUserAccountFlow = ai.defineFlow(
     } catch (error: any) {
         console.error("Database update error:", error);
         throw new Error(`Failed to update database record: ${error.message}`);
+    }
+
+    // Handle Notifications
+    try {
+        // 1. Email Change
+        if (existing.email && existing.email !== input.email && templates.emailChange?.enabled) {
+            const tpl = templates.emailChange;
+            const body = tpl.body.replace(/\[Name\]/g, input.name).replace(/\[NewEmail\]/g, input.email);
+            await sendEmail({ to: [input.email], subject: tpl.subject, body });
+        }
+
+        // 2. ID Change
+        if (existing.id && input.dbData.id && existing.id !== input.dbData.id && templates.idChange?.enabled) {
+            const tpl = templates.idChange;
+            const body = tpl.body.replace(/\[Name\]/g, input.name).replace(/\[OldID\]/g, existing.id).replace(/\[UserID\]/g, input.dbData.id);
+            await sendEmail({ to: [input.email], subject: tpl.subject, body });
+        }
+    } catch (notifyError) {
+        console.warn("Notification failed after account update:", notifyError);
     }
   }
 );
