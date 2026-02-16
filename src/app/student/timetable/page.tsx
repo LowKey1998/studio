@@ -108,8 +108,8 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // We use a Map to deduplicate. Key: CourseID-Day-StartTime
-            // Specific semester overrides ('semesterId') replace 'master' baseline entries.
+            // Use a Map to deduplicate. Key: CourseID-Day-StartTime
+            // Priority: Specific semester overrides (non-master) replace 'master' baseline entries.
             const sessionMap = new Map<string, TimetableEntry>();
 
             for (const semesterId in tData) {
@@ -133,6 +133,7 @@ export default function StudentTimetablePage() {
                                 shouldInclude = true;
                             }
                         } else {
+                            // Only include semester-specific entries if the student is registered for that specific semester ID
                             shouldInclude = myActiveSemesterIds.has(semesterId) && enrolledCourseIdsBySemester[semesterId]?.includes(cid);
                         }
 
@@ -140,7 +141,7 @@ export default function StudentTimetablePage() {
                             const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
                             const existing = sessionMap.get(sessionKey);
 
-                            // Priority: Specific semester entries (non-master) win over Master Template
+                            // Priority: Specific semester entries win over Master Template
                             if (!existing || (semesterId !== 'master' && existing.semesterId === 'master')) {
                                 const lecturerNames = (courseInfo.lecturerIds || [])
                                     .map((uid: string) => usersData[uid]?.name)

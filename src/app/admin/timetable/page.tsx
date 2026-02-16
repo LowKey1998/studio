@@ -67,7 +67,7 @@ type TimetableEntry = {
     isLiveRequested?: boolean;
 };
 
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Course = { id: string; name: string; code: string; status: string; lecturerId: string; lecturerIds?: string[]; separateInstance?: boolean; };
 type Room = { id: string; name: string; capacity: number; };
 type Intake = { id: string; name: string; };
@@ -497,7 +497,7 @@ function TimetableManagementComponent() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Alert className="bg-blue-50 border-blue-200 shadow-sm">
+                    <Alert className="bg-blue-50 border-blue-200 shadow-md">
                         <Info className="h-4 w-4 text-blue-600" />
                         <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-widest">Active Semester & Visibility</AlertTitle>
                         <AlertDescription className="text-blue-700 text-sm leading-relaxed">
