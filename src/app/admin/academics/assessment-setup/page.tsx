@@ -7,6 +7,16 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,6 +63,10 @@ export default function AssessmentSetupPage() {
     const [linkingTemplate, setLinkingTemplate] = React.useState<AssessmentTemplate | null>(null);
     const [selectedCourseIds, setSelectedCourseIds] = React.useState<string[]>([]);
     const [courseSearch, setCourseSearch] = React.useState('');
+
+    // Delete Confirmation State
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+    const [templateToDelete, setTemplateToDelete] = React.useState<AssessmentTemplate | null>(null);
 
     const { toast } = useToast();
 
@@ -154,8 +168,14 @@ export default function AssessmentSetupPage() {
         }
     };
     
-    const handleDeleteTemplate = async (id: string) => {
-        if(!window.confirm("Are you sure? This will remove the template and unassign it from all courses.")) return;
+    const confirmDeleteTemplate = (template: AssessmentTemplate) => {
+        setTemplateToDelete(template);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleDeleteTemplate = async () => {
+        if(!templateToDelete) return;
+        const id = templateToDelete.id;
         
         try {
             const updates: Record<string, any> = {};
@@ -167,6 +187,8 @@ export default function AssessmentSetupPage() {
             });
             await update(ref(db), updates);
             toast({ title: 'Template deleted' });
+            setIsDeleteDialogOpen(false);
+            setTemplateToDelete(null);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Deletion failed' });
         }
@@ -241,7 +263,7 @@ export default function AssessmentSetupPage() {
                                             </div>
                                             <div className="flex gap-1">
                                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDialog(template)}><Pencil className="h-4 w-4"/></Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteTemplate(template.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => confirmDeleteTemplate(template)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                             </div>
                                         </div>
                                     </CardHeader>
@@ -376,6 +398,23 @@ export default function AssessmentSetupPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete the assessment template "{templateToDelete?.name}" and unassign it from all courses. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { setTemplateToDelete(null); setIsDeleteDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteTemplate} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete Template
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
