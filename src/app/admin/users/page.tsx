@@ -38,7 +38,8 @@ import {
     UserCog,
     KeyRound,
     Clock,
-    UserCheck
+    UserCheck,
+    Send
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -66,10 +67,11 @@ import { Separator } from '@/components/ui/separator';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { read, utils, writeFile } from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -122,6 +124,7 @@ export default function UserManagementPage() {
     const [isEditOpen, setIsEditOpen] = React.useState(false);
     const [isSetPasswordOpen, setIsSetPasswordOpen] = React.useState(false);
     const [isBulkCreateOpen, setIsBulkCreateOpen] = React.useState(false);
+    const [isCredentialsOpen, setIsCredentialsOpen] = React.useState(false);
     const [editingUser, setEditingUser] = React.useState<UserProfile | null>(null);
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -154,6 +157,10 @@ export default function UserManagementPage() {
     const [newPassword, setNewPassword] = React.useState('');
     const [passwordEmailSubject, setPasswordEmailSubject] = React.useState('Your New Portal Credentials');
     const [passwordEmailBody, setPasswordEmailBody] = React.useState(`<p>Hello [Name],</p><p>Your credentials have been updated. You can access the portal using the link below:</p><ul><li><strong>Portal Link:</strong> <a href="https://edutrack36.vercel.app">https://edutrack36.vercel.app</a></li><li><strong>User ID:</strong> [UserID]</li><li><strong>New Password:</strong> [Password]</li></ul><p>Best regards,<br/>The Administration</p>`);
+
+    const [selectedUserForCreds, setSelectedUserForCreds] = React.useState<UserProfile | null>(null);
+    const [credSubject, setCredSubject] = React.useState('Your Portal Login Details');
+    const [credBody, setCredBody] = React.useState('');
 
     const [bulkUsersToCreate, setBulkUsersToCreate] = React.useState<any[]>([]);
     const [isProcessingBulk, setIsProcessingBulk] = React.useState(false);
@@ -244,6 +251,44 @@ export default function UserManagementPage() {
         setGuardianContact(user.guardian?.contact || '');
         setGuardianRelationship(user.guardian?.relationship || '');
         setIsEditOpen(true);
+    };
+
+    const openCredentialsPreview = (user: UserProfile) => {
+        setSelectedUserForCreds(user);
+        setCredSubject('Your Portal Login Details');
+        setCredBody(`
+            <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #4c1d95;">Welcome to the Portal!</h2>
+                <p>Hello ${user.name},</p>
+                <p>Your institutional account is active. You can now log in to the portal using the credentials provided below:</p>
+                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Portal Link:</strong> <a href="${window.location.origin}/login">${window.location.origin}/login</a></p>
+                    <p style="margin: 5px 0;"><strong>User ID:</strong> ${user.id}</p>
+                    <p style="margin: 5px 0; color: #666; font-size: 12px;"><em>(If you do not have your password, please use the "Forgot Password" link on the login page to set a new one.)</em></p>
+                </div>
+                <p>Once logged in, you will be able to access your course materials, results, and financial statements.</p>
+                <p>Best regards,<br/>The Administration</p>
+            </div>
+        `.trim());
+        setIsCredentialsOpen(true);
+    };
+
+    const handleSendCredentials = async () => {
+        if (!selectedUserForCreds) return;
+        setLoading(true);
+        try {
+            await sendEmail({
+                to: [selectedUserForCreds.email],
+                subject: credSubject,
+                body: credBody,
+            });
+            toast({ title: 'Credentials Sent', description: `Email successfully sent to ${selectedUserForCreds.email}` });
+            setIsCredentialsOpen(false);
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Failed to Send', description: error.message });
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSaveEdit = async (e: React.FormEvent) => {
@@ -609,6 +654,7 @@ export default function UserManagementPage() {
                                                 <DropdownMenuContent align="end" className="w-48">
                                                     <DropdownMenuLabel>User Actions</DropdownMenuLabel>
                                                     <DropdownMenuItem onClick={() => handleOpenEdit(user)}><Pencil className="mr-2 h-4 w-4"/>Edit Profile</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => openCredentialsPreview(user)}><Mail className="mr-2 h-4 w-4"/>Send Credentials</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => { setSettingPasswordUser(user); setIsSetPasswordOpen(true); }}><KeyRound className="mr-2 h-4 w-4"/>Reset Password</DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onClick={() => handlePasswordResetRequest(user.email)}><Mail className="mr-2 h-4 w-4"/>Send Reset Link</DropdownMenuItem>
@@ -702,10 +748,36 @@ export default function UserManagementPage() {
                         <div className="space-y-4">
                             <h4 className="font-bold text-sm uppercase text-muted-foreground flex items-center gap-2"><Mail className="h-4 w-4" />Branded Email Notification</h4>
                             <div className="space-y-2"><Label>Subject</Label><Input value={passwordEmailSubject} onChange={e => setPasswordEmailSubject(e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Body (HTML)</Label><Textarea value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" /></div>
+                            <div className="space-y-2"><Label>Email Body (HTML)</Label><Textarea value={passwordEmailBody} onChange={e => setPasswordEmailBody(e.target.value)} rows={12} className="font-mono text-xs" /></div>
                         </div>
                     </div>
                     <DialogFooter><Button onClick={handleSetPassword} disabled={loading || newPassword.length < 6}>{loading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Update Password</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isCredentialsOpen} onOpenChange={setIsCredentialsOpen}>
+                <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Preview Credentials Email</DialogTitle>
+                        <DialogDescription>Review and edit the email before sending it to {selectedUserForCreds?.name}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4 space-y-4">
+                        <div className="space-y-1">
+                            <Label>Subject</Label>
+                            <Input value={credSubject} onChange={e => setCredSubject(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Body (HTML)</Label>
+                            <Textarea value={credBody} onChange={e => setCredBody(e.target.value)} rows={15} className="font-mono text-xs" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button onClick={handleSendCredentials} disabled={loading}>
+                            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                            Send Credentials
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
