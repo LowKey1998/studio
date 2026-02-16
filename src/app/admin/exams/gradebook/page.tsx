@@ -106,7 +106,7 @@ export default function GradebookPage() {
                 setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -208,7 +208,12 @@ export default function GradebookPage() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0" align="end">
-                                <div className="p-2"><Input placeholder="Search name or ID..." className="h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
+                                <div className="p-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input placeholder="Search name or ID..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
+                                    </div>
+                                </div>
                                 <Separator />
                                 <ScrollArea className="h-64">
                                     <div className="p-1">

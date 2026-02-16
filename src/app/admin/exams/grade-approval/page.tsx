@@ -105,7 +105,7 @@ export default function GradeApprovalPage() {
                 setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -151,7 +151,7 @@ export default function GradeApprovalPage() {
                 const studentUids: string[] = [];
                 for (const uid in regs) {
                     const reg = regs[uid][targetSemesterId];
-                    if (reg?.courses?.includes(selectedCourseId) && reg.status === 'Completed') studentUids.push(uid);
+                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) studentUids.push(uid);
                 }
                 
                 const results: GradeResult[] = studentUids.map(uid => {
@@ -218,7 +218,12 @@ export default function GradeApprovalPage() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0" align="end">
-                                <div className="p-2"><Input placeholder="Search name or ID..." className="h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
+                                <div className="p-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input placeholder="Search name or ID..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
+                                    </div>
+                                </div>
                                 <Separator />
                                 <ScrollArea className="h-64">
                                     <div className="p-1">
@@ -248,7 +253,7 @@ export default function GradeApprovalPage() {
                     <div className="space-y-4">
                         <div className="flex justify-between items-center"><h3 className="font-bold">Final Grades Preview</h3><Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge></div>
                         <div className="border rounded-lg shadow-sm"><Table>
-                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead>/TableHead> <TableHead>CA (40%)</TableHead><TableHead>Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
+                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
                             <TableBody>{gradeResults.map(res => (
                                 <TableRow key={res.student.uid}><TableCell className="font-medium">{res.student.name}</TableCell><TableCell className="font-mono text-xs">{res.student.id}</TableCell><TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.grade}</TableCell></TableRow>
                             ))}</TableBody>

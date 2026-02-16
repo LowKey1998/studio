@@ -287,7 +287,8 @@ export default function CAEntryPage() {
         if (!selectedCourseId) return;
         setSaving(true);
         try {
-            await set(ref(db, `assessments/${selectedCourseId}`), scores);
+            // Use update to avoid overwriting scores for other semesters taking this course
+            await update(ref(db, `assessments/${selectedCourseId}`), scores);
             toast({ title: "Results Recorded", description: `Scores saved for Year ${selectedYear}, Sem ${selectedSemesterInYear}.` });
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Save Failed", description: e.message });
@@ -513,7 +514,7 @@ export default function CAEntryPage() {
                     </Alert>
                 )}
             </CardContent>
-            {selectedCourseId && templateComponents.length > 0 && studentsInRoster.length > 0 && (
+            {selectedCourseId && templateComponents.length > 0 && filteredRoster.length > 0 && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save Scores</Button></CardFooter>
             )}
         </Card>

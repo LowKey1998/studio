@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue } from 'firebase/database';
+import { ref, get, set, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -114,7 +113,7 @@ export default function FinalExamEntryPage() {
                 setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -150,7 +149,7 @@ export default function FinalExamEntryPage() {
                 const allRegs = rSnap.val() || {};
                 for (const userId in allRegs) {
                     const reg = allRegs[userId][targetSemesterId];
-                    if (reg?.courses?.includes(selectedCourseId) && reg.status === 'Completed') enrolledUids.push(userId);
+                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.push(userId);
                 }
                 setStudentsInRoster(enrolledUids.map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
                 setScores(sSnap.exists() ? sSnap.val() : {});
@@ -170,7 +169,8 @@ export default function FinalExamEntryPage() {
         if (!selectedCourseId) return;
         setSaving(true);
         try {
-            await set(ref(db, `assessments/${selectedCourseId}`), scores);
+            // Use update to preserve other student results from different semesters
+            await update(ref(db, `assessments/${selectedCourseId}`), scores);
             toast({ title: "Exam Scores Saved" });
         } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed" }); }
         finally { setSaving(false); }
@@ -197,7 +197,12 @@ export default function FinalExamEntryPage() {
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0" align="end">
-                                <div className="p-2"><Input placeholder="Type name or ID..." className="h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
+                                <div className="p-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input placeholder="Type name or ID..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
+                                    </div>
+                                </div>
                                 <Separator />
                                 <ScrollArea className="h-64">
                                     <div className="p-1">
