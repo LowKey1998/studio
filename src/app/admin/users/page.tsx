@@ -533,7 +533,7 @@ export default function UserManagementPage() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
-                    </CardHeader>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 mb-6">

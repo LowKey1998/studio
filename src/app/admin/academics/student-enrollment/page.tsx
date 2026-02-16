@@ -339,10 +339,21 @@ export default function StudentEnrollmentPage() {
                     <CardContent className="overflow-x-auto"><div className="border rounded-lg min-w-[800px]"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>{teachingTimes.slots.map((s, i) => <TableHead key={i} className="text-center font-bold border-r text-xs">{s.startTime}-{s.endTime}</TableHead>)}</TableRow></TableHeader><TableBody>{displayDays.map(day => (<TableRow key={day}><TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{day}</TableCell>{teachingTimes.slots.map((slot, sIdx) => {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
                         const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
-                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{sessions.map(entry => {
+                        
+                        // Deduplicate sessions that might be repeated across semester nodes
+                        const uniqueSessions = sessions.reduce((acc, current) => {
+                            const key = `${current.courseId}-${current.day}-${current.startTime}-${current.venue}`;
+                            if (!acc.find(item => `${item.courseId}-${item.day}-${item.startTime}-${item.venue}` === key)) {
+                                acc.push(current);
+                            }
+                            return acc;
+                        }, [] as TimetableEntry[]);
+
+                        return (<TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">{uniqueSessions.map(entry => {
                             const course = allCourses[entry.courseId];
+                            const compositeKey = `${entry.semesterId}-${entry.courseId}-${entry.id}`;
                             return (
-                            <div key={`${entry.semesterId}-${entry.courseId}-${entry.id}`} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
+                            <div key={compositeKey} className={cn("cursor-pointer p-2 rounded-md border border-primary/20 bg-background hover:bg-primary/5 transition-all mb-2", activeSession?.id === entry.id && "ring-2 ring-primary")} onClick={() => { 
                                 setActiveSession(entry); 
                                 setDialogIntakeFilter(selectedIntake); 
                                 fetchEnrolledStudents(entry.courseId, course?.separateInstance ? selectedIntake : undefined); 
@@ -352,7 +363,7 @@ export default function StudentEnrollmentPage() {
                             }}>
                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
-                                {course?.separateInstance && <Badge className="text-[8px] h-3.5 px-1 mt-1 bg-blue-100 text-blue-700 border-blue-200">Separate Instance</Badge>}
+                                {course?.separateInstance && <Badge className="text-[8px] h-3.5 px-1 mt-1 bg-blue-100 text-blue-700 border-blue-200">Cohort-Specific</Badge>}
                             </div>
                         )})}</TableCell>);
                     })}</TableRow>))}</TableBody></Table></div></CardContent></Card>
@@ -427,7 +438,7 @@ export default function StudentEnrollmentPage() {
                                 <Input 
                                     placeholder="Search enrolled roster..." 
                                     value={searchEnrolled} 
-                                    onChange={e => setSearchEnrolled(e.target.value)} 
+                                    onChange={e => searchEnrolled && setSearchEnrolled(e.target.value)} 
                                     className="h-8"
                                 />
                             </div>

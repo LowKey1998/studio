@@ -395,7 +395,7 @@ export default function CoursesPage() {
                                 <DialogContent className="sm:max-w-2xl">
                                     <form onSubmit={handleFormSubmit}>
                                         <DialogHeader><DialogTitle>{editingCourse ? 'Edit' : 'New'} Course</DialogTitle></DialogHeader>
-                                        <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-4">
+                                        <div className="grid max-h-[70vh] gap-6 overflow-y-auto pr-4 py-4">
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1"><Label>Name *</Label><Input value={courseName} onChange={e => setCourseName(e.target.value)} disabled={formLoading} /></div>
                                                 <div className="space-y-1"><Label>Code *</Label><Input value={courseCode} onChange={e => setCourseCode(e.target.value)} disabled={formLoading} /></div>
