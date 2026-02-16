@@ -7,7 +7,7 @@ import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -75,7 +75,7 @@ export default function StudentTimetablePage() {
 
             const allSemesters = semestersSnap.val() || {};
             const allIntakes = intakesSnap.val() || {};
-            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
+            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name?.trim().toUpperCase() : null;
 
             const enrolledCourseIdsBySemester: Record<string, string[]> = {};
             const enrolledCourseIdsGlobal = new Set<string>();
@@ -112,6 +112,7 @@ export default function StudentTimetablePage() {
             const rawEntries: TimetableEntry[] = [];
             for (const semesterId in tData) {
                 const isMaster = semesterId === 'master';
+                if (semesterId !== 'master' && !myActiveSemesterIds.has(semesterId)) continue;
                 
                 for (const cid in tData[semesterId]) {
                     // Check if student is taking this course at all
@@ -127,7 +128,8 @@ export default function StudentTimetablePage() {
                             // Master entries are baseline
                             if (courseInfo?.separateInstance) {
                                 // If separate, only show if intake name matches exactly
-                                shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
+                                const entryIntakeName = entry.intakeName?.trim().toUpperCase();
+                                shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
                             } else {
                                 // Shared session: show to anyone enrolled in any active semester for this course
                                 shouldInclude = true;

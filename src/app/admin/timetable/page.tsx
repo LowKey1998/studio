@@ -160,7 +160,7 @@ function TimetableManagementComponent() {
                                 if (!counts[semId]) counts[semId] = {};
                                 const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
                                 coursesArr.forEach((cid: string) => {
-                                    counts[semId][cid] = (counts[semId][cid] || 0) + 1;
+                                    counts[semId][cid] = (counts[semId][cid] || 0) + it;
                                 });
                             }
                         }
@@ -539,6 +539,16 @@ function TimetableManagementComponent() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    <Alert className="bg-blue-50 border-blue-200">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="font-bold text-blue-800">Timetable Logic Guide</AlertTitle>
+                        <AlertDescription className="text-blue-700 text-sm leading-relaxed">
+                            The student timetable is strictly tied to <strong>Active Semesters</strong>. Students will only see class sessions for semesters where the current date is within the semester's <strong>Start and End Date</strong> window and the status is <strong>not Archived</strong>. 
+                            <br/><br/>
+                            Use the <strong>MASTER TEMPLATE</strong> to set common weekly baselines, and then activate/override them within individual semester nodes for specific cohorts.
+                        </AlertDescription>
+                    </Alert>
+
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg border">
                         <div className="w-72">
                             <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Viewing Schedule For</Label>
