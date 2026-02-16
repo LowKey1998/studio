@@ -793,7 +793,7 @@ export default function UserManagementPage() {
                                             </TableCell>
                                             <TableCell><Input value={u.department} onChange={e => handleUpdateBulkRow(i, 'department', e.target.value)} disabled={u.imported} className="h-8 text-xs"/></TableCell>
                                             <TableCell>
-                                                {u.imported ? <CheckCircle2 className="h-4 w-4 text-green-600"/> : (
+                                                {u.imported ? <UserCheck className="h-4 w-4 text-green-600"/> : (
                                                     <Button variant="ghost" size="icon" onClick={() => handleRemoveBulkRow(i)} disabled={isProcessingBulk}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                                 )}
                                             </TableCell>

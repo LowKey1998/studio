@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, Trash2, Percent, AlertCircle, Pencil, Link as LinkIcon, Search, Check, X, BookOpen } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, onValue, set, push, remove, update, get } from 'firebase/database';
+import { ref, onValue, push, remove, update, get } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { 
     AlertDialog, 

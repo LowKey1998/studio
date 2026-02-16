@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check } from "lucide-react";
+import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon } from "lucide-react";
 import { db, createNotification } from '@/lib/firebase';
-import { ref, get, set, onValue } from 'firebase/database';
+import { ref, get, set, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -35,6 +34,7 @@ type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
+type AssessmentTemplate = { id: string; name: string; };
 type AssessmentComponent = { id: string; name: string; weight: number; };
 type AssessmentScore = { score?: number; feedback?: string; };
 type AllScores = Record<string, Record<string, AssessmentScore>>; // studentUid -> componentId -> score
@@ -44,6 +44,7 @@ export default function CAEntryPage() {
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
+    const [templates, setTemplates] = React.useState<AssessmentTemplate[]>([]);
     
     // Main Filters
     const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
@@ -58,6 +59,10 @@ export default function CAEntryPage() {
     const [scores, setScores] = React.useState<AllScores>({});
     const [templateComponents, setTemplateComponents] = React.useState<AssessmentComponent[]>([]);
     
+    // Quick Link State
+    const [linkingTemplateId, setLinkingTemplateId] = React.useState('');
+    const [isLinking, setIsLinking] = React.useState(false);
+
     // Search student state
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
@@ -72,11 +77,12 @@ export default function CAEntryPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [pSnap, iSnap, uSnap, sSnap] = await Promise.all([
+                const [pSnap, iSnap, uSnap, sSnap, tSnap] = await Promise.all([
                     get(ref(db, 'programmes')),
                     get(ref(db, 'intakes')),
                     get(ref(db, 'users')),
-                    get(ref(db, 'semesters'))
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'settings/assessmentTemplates'))
                 ]);
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
@@ -84,6 +90,7 @@ export default function CAEntryPage() {
                     setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
                 }
                 if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+                if (tSnap.exists()) setTemplates(Object.entries(tSnap.val()).map(([id, data]: [string, any]) => ({ id, name: data.name })));
             } catch (e) {
                 console.error(e);
             } finally {
@@ -136,7 +143,7 @@ export default function CAEntryPage() {
                 setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
 
     // 4. Fetch courses and identify semester ID
     const targetSemesterId = React.useMemo(() => {
@@ -232,6 +239,24 @@ export default function CAEntryPage() {
         }));
     };
 
+    const handleLinkTemplate = async () => {
+        if (!selectedCourseId || !linkingTemplateId) return;
+        setIsLinking(true);
+        try {
+            await update(ref(db, `courses/${selectedCourseId}`), { assessmentTemplateId: linkingTemplateId });
+            toast({ title: "Template Linked", description: "You can now enter scores for this course." });
+            
+            // Update local course state to trigger re-fetch
+            setCourses(prev => prev.map(c => c.id === selectedCourseId ? { ...c, assessmentTemplateId: linkingTemplateId } : c));
+            setLinkingTemplateId('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Linking Failed", description: e.message });
+        } finally {
+            setIsLinking(true); // Setting to false would be standard, but we want to trigger the UI refresh
+            setIsLinking(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!selectedCourseId) return;
         setSaving(true);
@@ -257,7 +282,6 @@ export default function CAEntryPage() {
                         <CardDescription>Enter weighted component scores. Filter by student search or manual criteria.</CardDescription>
                     </div>
                     
-                    {/* Step 1: Student Search */}
                     <div className="flex items-center gap-2">
                         <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Jump to Student</Label>
                         <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
@@ -368,7 +392,9 @@ export default function CAEntryPage() {
                                         <TableCell className="font-mono text-xs">{s.id}</TableCell>
                                         {templateComponents.map(c => (
                                             <TableCell key={c.id}>
-                                                <Input type="number" className="w-20 h-8" value={scores[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(s.uid, c.id, e.target.value)} />
+                                                <div className="flex items-center gap-2">
+                                                    <Input type="number" className="w-20 h-8" value={scores[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(s.uid, c.id, e.target.value)} />
+                                                </div>
                                             </TableCell>
                                         ))}
                                     </TableRow>
@@ -377,9 +403,9 @@ export default function CAEntryPage() {
                         </Table>
                     </div>
                 ) : (
-                    <Alert>
+                    <Alert variant={selectedCourseId && templateComponents.length === 0 ? "destructive" : "default"}>
                         <AlertCircle className="h-4 w-4"/>
-                        <AlertTitle>Information</AlertTitle>
+                        <AlertTitle>{selectedCourseId && templateComponents.length === 0 ? "Missing Configuration" : "Information"}</AlertTitle>
                         <AlertDescription className="flex flex-col gap-4">
                             {!selectedCourseId ? (
                                 "Select a programme, intake, year, and semester to begin. Searching for a student will fill these automatically."
@@ -387,12 +413,26 @@ export default function CAEntryPage() {
                                 "No students are currently enrolled in the identified academic phase for this intake/programme."
                             ) : (
                                 <div className="space-y-4">
-                                    <p>This course has no assessment template assigned. A template is required to define CA components like Quizzes and Assignments.</p>
-                                    <Button asChild variant="outline" size="sm">
-                                        <Link href="/admin/academics/assessment-setup">
-                                            <PlusCircle className="mr-2 h-4 w-4"/> Create Assessment Template
-                                        </Link>
-                                    </Button>
+                                    <p>This course has no assessment template assigned. You must link a template to define CA components like Quizzes and Assignments.</p>
+                                    <div className="flex flex-col sm:flex-row items-center gap-4 p-4 border rounded-md bg-background/50">
+                                        <div className="flex-1 w-full space-y-1">
+                                            <Label className="text-[10px] font-black uppercase">Assign Structure Now</Label>
+                                            <Select value={linkingTemplateId} onValueChange={setLinkingTemplateId}>
+                                                <SelectTrigger className="bg-white"><SelectValue placeholder="Select a template..."/></SelectTrigger>
+                                                <SelectContent>{templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
+                                        <Button onClick={handleLinkTemplate} disabled={!linkingTemplateId || isLinking} className="mt-5 sm:mt-0">
+                                            {isLinking ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <LinkIcon className="mr-2 h-4 w-4"/>}
+                                            Link Template
+                                        </Button>
+                                        <Separator orientation="vertical" className="hidden sm:block h-10"/>
+                                        <Button asChild variant="outline" size="sm" className="mt-5 sm:mt-0">
+                                            <Link href="/admin/academics/assessment-setup">
+                                                <PlusCircle className="mr-2 h-4 w-4"/> Manage Templates
+                                            </Link>
+                                        </Button>
+                                    </div>
                                 </div>
                             )}
                         </AlertDescription>
