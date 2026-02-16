@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon } from "lucide-react";
+import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon, Info } from "lucide-react";
 import { db, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -100,7 +100,7 @@ export default function CAEntryPage() {
         fetchData();
     }, []);
 
-    // 2. Handle Student Selection from Search
+    // 2. Handle Student Selection from Search (Sets context)
     const handleSelectStudentFromSearch = (student: Student) => {
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
@@ -120,17 +120,18 @@ export default function CAEntryPage() {
         }
         setIsSearchOpen(false);
         setStudentSearchInput('');
-        toast({ title: `Loaded context for ${student.name}` });
+        toast({ title: `Filters set for ${student.name}` });
     };
 
-    // 3. Auto-Standing Logic (Triggered only when intake changes without a student search)
+    // 3. Auto-Standing Logic (When intake is selected manually)
     React.useEffect(() => {
-        if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
+        if (!selectedIntakeId) return;
 
         const intake = intakes.find(i => i.id === selectedIntakeId);
         if (!intake) return;
 
-        get(ref(db, 'settings/academicCalendar')).then(calendarSnap => {
+        const fetchStanding = async () => {
+            const calendarSnap = await get(ref(db, 'settings/academicCalendar'));
             const intakeStartStr = parseIntakeDate(intake.name);
             if (calendarSnap.exists() && intakeStartStr) {
                 const state = calculateAcademicState(
@@ -142,10 +143,11 @@ export default function CAEntryPage() {
                 setSelectedYear(String(state.year));
                 setSelectedSemesterInYear(String(state.semester));
             }
-        });
-    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
+        };
+        fetchStanding();
+    }, [selectedIntakeId, intakes]);
 
-    // 4. Fetch courses and identify semester ID
+    // 4. Resolve exact semester ID
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
         return allSemesters.find(s => 
@@ -155,6 +157,7 @@ export default function CAEntryPage() {
         )?.id || null;
     }, [allSemesters, selectedIntakeId, selectedYear, selectedSemesterInYear]);
 
+    // 5. Fetch available courses for selected phase
     React.useEffect(() => {
         if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) {
             setCourses([]);
@@ -184,7 +187,7 @@ export default function CAEntryPage() {
         fetchCourses();
     }, [selectedProgrammeId, selectedIntakeId, targetSemesterId]);
 
-    // 5. Load Roster and Scores
+    // 6. Load Roster and Existing Scores
     React.useEffect(() => {
         if (!selectedCourseId || !targetSemesterId) {
             setStudentsInRoster([]);
@@ -197,7 +200,7 @@ export default function CAEntryPage() {
             setLoading(true);
             try {
                 const course = courses.find(c => c.id === selectedCourseId);
-                if (!course) throw new Error("Course not found");
+                if (!course) throw new Error("Course context mismatch");
 
                 if (course.assessmentTemplateId) {
                     const tSnap = await get(ref(db, `settings/assessmentTemplates/${course.assessmentTemplateId}`));
@@ -244,15 +247,12 @@ export default function CAEntryPage() {
         setIsLinking(true);
         try {
             await update(ref(db, `courses/${selectedCourseId}`), { assessmentTemplateId: linkingTemplateId });
-            toast({ title: "Template Linked", description: "You can now enter scores for this course." });
-            
-            // Update local course state to trigger re-fetch
+            toast({ title: "Template Linked", description: "Grading structure applied to this course." });
             setCourses(prev => prev.map(c => c.id === selectedCourseId ? { ...c, assessmentTemplateId: linkingTemplateId } : c));
             setLinkingTemplateId('');
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Linking Failed", description: e.message });
         } finally {
-            setIsLinking(true); // Setting to false would be standard, but we want to trigger the UI refresh
             setIsLinking(false);
         }
     };
@@ -262,7 +262,7 @@ export default function CAEntryPage() {
         setSaving(true);
         try {
             await set(ref(db, `assessments/${selectedCourseId}`), scores);
-            toast({ title: "Scores Saved" });
+            toast({ title: "Results Recorded", description: `Scores saved for Year ${selectedYear}, Sem ${selectedSemesterInYear}.` });
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Save Failed", description: e.message });
         } finally {
@@ -279,17 +279,17 @@ export default function CAEntryPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <CardTitle className="text-2xl font-headline">Continuous Assessment Entry</CardTitle>
-                        <CardDescription>Enter weighted component scores. Filter by student search or manual criteria.</CardDescription>
+                        <CardDescription>Select an intake to auto-calculate standing, then record weighted scores.</CardDescription>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Jump to Student</Label>
+                        <Label className="text-xs font-black uppercase text-muted-foreground whitespace-nowrap">Step 1: Locate Student</Label>
                         <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal">
+                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30">
                                     <div className="flex items-center gap-2">
                                         <User className="h-4 w-4 text-primary" />
-                                        <span className="truncate">Search by Student Name or ID...</span>
+                                        <span className="truncate">Search by Name or ID...</span>
                                     </div>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -336,64 +336,86 @@ export default function CAEntryPage() {
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="space-y-1">
-                        <Label>Programme</Label>
+                        <Label className="text-[10px] font-black uppercase">Programme</Label>
                         <Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}>
-                            <SelectTrigger><SelectValue placeholder="Select programme..."/></SelectTrigger>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                             <SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-1">
-                        <Label>Intake</Label>
+                        <Label className="text-[10px] font-black uppercase">Intake</Label>
                         <Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}>
-                            <SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                             <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-1">
-                        <Label>Year</Label>
+                        <Label className="text-[10px] font-black uppercase">Study Year</Label>
                         <Select value={selectedYear} onValueChange={setSelectedYear}>
-                            <SelectTrigger><SelectValue placeholder="Year..."/></SelectTrigger>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder="Year..."/></SelectTrigger>
                             <SelectContent>
                                 {[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-1">
-                        <Label>Semester</Label>
+                        <Label className="text-[10px] font-black uppercase">Semester</Label>
                         <Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}>
-                            <SelectTrigger><SelectValue placeholder="Semester..."/></SelectTrigger>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder="Sem..."/></SelectTrigger>
                             <SelectContent>
                                 {[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-1">
-                        <Label>Course</Label>
+                        <Label className="text-[10px] font-black uppercase">Course</Label>
                         <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}>
-                            <SelectTrigger><SelectValue placeholder={courses.length > 0 ? "Select course..." : "No courses available"}/></SelectTrigger>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder={courses.length > 0 ? "Select course..." : "No courses"}/></SelectTrigger>
                             <SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-                {selectedCourseId && studentsInRoster.length > 0 && templateComponents.length > 0 && (
-                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter student roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+            <CardContent className="space-y-6">
+                {selectedCourseId && selectedYear && selectedSemesterInYear && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Result Scope Clarification</AlertTitle>
+                        <AlertDescription className="text-xs text-blue-700 italic">
+                            These results are being recorded for <strong>Year {selectedYear}, Semester {selectedSemesterInYear}</strong>. Only students currently enrolled in this specific academic phase for the selected intake/programme are listed below.
+                        </AlertDescription>
+                    </Alert>
                 )}
+
+                {selectedCourseId && studentsInRoster.length > 0 && templateComponents.length > 0 && (
+                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter visible roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+                )}
+                
                 {loading ? <Skeleton className="h-64 w-full" /> : 
                  selectedCourseId && templateComponents.length > 0 && filteredRoster.length > 0 ? (
                     <div className="overflow-x-auto border rounded-lg shadow-sm">
                         <Table>
-                            <TableHeader className="bg-muted/50"><TableRow><TableHead className="min-w-[150px]">Student</TableHead><TableHead>ID</TableHead>{templateComponents.map(c=><TableHead key={c.id}>{c.name} ({c.weight}%)</TableHead>)}</TableRow></TableHeader>
+                            <TableHeader className="bg-muted/50">
+                                <TableRow>
+                                    <TableHead className="min-w-[150px]">Student</TableHead>
+                                    <TableHead>System ID</TableHead>
+                                    {templateComponents.map(c=><TableHead key={c.id} className="text-center">{c.name} ({c.weight}%)</TableHead>)}
+                                </TableRow>
+                            </TableHeader>
                             <TableBody>
                                 {filteredRoster.map(s => (
                                     <TableRow key={s.uid}>
-                                        <TableCell className="font-medium">{s.name}</TableCell>
-                                        <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                                        <TableCell className="font-bold">{s.name}</TableCell>
+                                        <TableCell className="font-mono text-xs opacity-70 uppercase">{s.id}</TableCell>
                                         {templateComponents.map(c => (
-                                            <TableCell key={c.id}>
-                                                <div className="flex items-center gap-2">
-                                                    <Input type="number" className="w-20 h-8" value={scores[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(s.uid, c.id, e.target.value)} />
+                                            <TableCell key={c.id} className="text-center">
+                                                <div className="flex items-center justify-center">
+                                                    <Input 
+                                                        type="number" 
+                                                        className="w-20 h-8 text-center font-bold" 
+                                                        value={scores[s.uid]?.[c.id]?.score ?? ''} 
+                                                        onChange={e => handleScoreChange(s.uid, c.id, e.target.value)} 
+                                                    />
                                                 </div>
                                             </TableCell>
                                         ))}
@@ -408,15 +430,15 @@ export default function CAEntryPage() {
                         <AlertTitle>{selectedCourseId && templateComponents.length === 0 ? "Missing Configuration" : "Information"}</AlertTitle>
                         <AlertDescription className="flex flex-col gap-4">
                             {!selectedCourseId ? (
-                                "Select a programme, intake, year, and semester to begin. Searching for a student will fill these automatically."
+                                "Identify the cohort and course using the filters above to begin score entry."
                             ) : studentsInRoster.length === 0 ? (
-                                "No students are currently enrolled in the identified academic phase for this intake/programme."
+                                "No students match the selected academic phase. Ensure registration is completed for this Year/Semester."
                             ) : (
                                 <div className="space-y-4">
-                                    <p>This course has no assessment template assigned. You must link a template to define CA components like Quizzes and Assignments.</p>
+                                    <p>This course has no continuous assessment template assigned. You must link a structure to define component weights.</p>
                                     <div className="flex flex-col sm:flex-row items-center gap-4 p-4 border rounded-md bg-background/50">
                                         <div className="flex-1 w-full space-y-1">
-                                            <Label className="text-[10px] font-black uppercase">Assign Structure Now</Label>
+                                            <Label className="text-[10px] font-black uppercase">Apply Grading Structure</Label>
                                             <Select value={linkingTemplateId} onValueChange={setLinkingTemplateId}>
                                                 <SelectTrigger className="bg-white"><SelectValue placeholder="Select a template..."/></SelectTrigger>
                                                 <SelectContent>{templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
@@ -424,7 +446,7 @@ export default function CAEntryPage() {
                                         </div>
                                         <Button onClick={handleLinkTemplate} disabled={!linkingTemplateId || isLinking} className="mt-5 sm:mt-0">
                                             {isLinking ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <LinkIcon className="mr-2 h-4 w-4"/>}
-                                            Link Template
+                                            Link Structure
                                         </Button>
                                         <Separator orientation="vertical" className="hidden sm:block h-10"/>
                                         <Button asChild variant="outline" size="sm" className="mt-5 sm:mt-0">
@@ -440,7 +462,7 @@ export default function CAEntryPage() {
                 )}
             </CardContent>
             {selectedCourseId && templateComponents.length > 0 && studentsInRoster.length > 0 && (
-                <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save All Scores</Button></CardFooter>
+                <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save Scores</Button></CardFooter>
             )}
         </Card>
     );
