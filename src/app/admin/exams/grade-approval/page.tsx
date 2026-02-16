@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Badge } from "@/components/ui/badge";
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
@@ -21,7 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 type Student = { uid: string; id: string; name: string; programmeId?: string; intakeId?: string; };
 type Programme = { id: string; name: string; gradingScale?: Record<string, any>; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
 type GradeResult = { student: Student; caScore: number | null; finalExamScore: number | null; finalMark: number | null; grade: string; };
@@ -248,7 +248,7 @@ export default function GradeApprovalPage() {
                     <div className="space-y-4">
                         <div className="flex justify-between items-center"><h3 className="font-bold">Final Grades Preview</h3><Badge variant={gradeStatus === 'Approved' ? 'default' : 'secondary'}>{gradeStatus}</Badge></div>
                         <div className="border rounded-lg shadow-sm"><Table>
-                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead><TableHead>CA (40%)</TableHead><TableHead>Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
+                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead>/TableHead> <TableHead>CA (40%)</TableHead><TableHead>Exam (60%)</TableHead><TableHead>Final Mark</TableHead><TableHead>Grade</TableHead></TableRow></TableHeader>
                             <TableBody>{gradeResults.map(res => (
                                 <TableRow key={res.student.uid}><TableCell className="font-medium">{res.student.name}</TableCell><TableCell className="font-mono text-xs">{res.student.id}</TableCell><TableCell>{res.caScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell>{res.finalExamScore?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="font-bold">{res.grade}</TableCell></TableRow>
                             ))}</TableBody>
