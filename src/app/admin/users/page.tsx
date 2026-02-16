@@ -67,7 +67,7 @@ import { Separator } from '@/components/ui/separator';
 import { updateUserAccount } from '@/ai/flows/update-user-account';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { read, utils, writeFile } from 'xlsx';
 import { findOrCreateUser } from '@/ai/flows/find-or-create-user';
