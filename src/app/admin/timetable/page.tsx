@@ -160,7 +160,7 @@ function TimetableManagementComponent() {
                                 if (!counts[semId]) counts[semId] = {};
                                 const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
                                 coursesArr.forEach((cid: string) => {
-                                    counts[semId][cid] = (counts[semId][cid] || 0) + it;
+                                    counts[semId][cid] = (counts[semId][cid] || 0) + 1;
                                 });
                             }
                         }
@@ -222,6 +222,14 @@ function TimetableManagementComponent() {
             return;
         }
 
+        // Check if viewTarget is a direct semester ID
+        const directSemester = semesters.find(s => s.id === viewTarget);
+        if (directSemester) {
+            setResolvedSemester(directSemester);
+            setAcademicStanding(`Year ${directSemester.year}, Sem ${directSemester.semesterInYear}`);
+            return;
+        }
+
         const intake = intakes.find(i => i.id === viewTarget);
         if (!intake) return;
 
@@ -233,7 +241,7 @@ function TimetableManagementComponent() {
                 calendarSettings.standardCycles,
                 Object.values(calendarSettings.anomalies || {})
             );
-            setAcademicStanding(`Year ${state.year}, Semester ${state.semester}`);
+            setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
             
             const matched = semesters.find(s => 
                 s.intakeId === intake.id && 
@@ -332,47 +340,6 @@ function TimetableManagementComponent() {
             resetAddForm();
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Failed to save entry" });
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleApproveLive = async (entry: TimetableEntry, dateStr: string) => {
-        setSaving(true);
-        try {
-            const path = `timetables/${entry.semesterId}/${entry.courseId}/${entry.id}/dateRequests/${dateStr}`;
-            await update(ref(db, path), {
-                status: 'Approved',
-                approvedAt: serverTimestamp()
-            });
-            
-            toast({ title: 'Live Session Approved' });
-            
-            const course = allCourses.find(c => c.id === entry.courseId);
-            const lecturerId = course?.lecturerId;
-            if (lecturerId) {
-                await createNotification(
-                    lecturerId,
-                    `Your live session request for ${entry.courseCode} on ${dateStr} has been approved.`,
-                    `/staff/courses/${entry.courseId}/live?semesterId=${entry.semesterId}`
-                );
-            }
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Approval Failed' });
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleRejectLive = async (entry: TimetableEntry, dateStr: string) => {
-        if(!confirm("Are you sure you want to reject this live request and keep the session physical?")) return;
-        setSaving(true);
-        try {
-            const path = `timetables/${entry.semesterId}/${entry.courseId}/${entry.id}/dateRequests/${dateStr}`;
-            await remove(ref(db, path));
-            toast({ title: 'Live Request Rejected' });
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Action Failed' });
         } finally {
             setSaving(false);
         }
@@ -539,13 +506,13 @@ function TimetableManagementComponent() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Alert className="bg-blue-50 border-blue-200">
+                    <Alert className="bg-blue-50 border-blue-200 shadow-sm">
                         <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="font-bold text-blue-800">Timetable Logic Guide</AlertTitle>
+                        <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-widest">Timetable Visibility Logic</AlertTitle>
                         <AlertDescription className="text-blue-700 text-sm leading-relaxed">
-                            The student timetable is strictly tied to <strong>Active Semesters</strong>. Students will only see class sessions for semesters where the current date is within the semester's <strong>Start and End Date</strong> window and the status is <strong>not Archived</strong>. 
+                            Students only see sessions for <strong>Active Semesters</strong> where the current date is within the semester's <strong>Start and End Date</strong> window.
                             <br/><br/>
-                            Use the <strong>MASTER TEMPLATE</strong> to set common weekly baselines, and then activate/override them within individual semester nodes for specific cohorts.
+                            <strong>Pro Tip:</strong> Use the "Master Template" for baseline schedules, or select a specific <strong>Semester Instance</strong> from the dropdown below to override or add ad-hoc sessions for a specific cohort.
                         </AlertDescription>
                     </Alert>
 
@@ -557,7 +524,10 @@ function TimetableManagementComponent() {
                                 <SelectContent>
                                     <SelectItem value="master" className="font-bold text-primary">MASTER TEMPLATE (Baseline)</SelectItem>
                                     <Separator className="my-1"/>
-                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intakes</div>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Semesters</div>
+                                    {semesters.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    <Separator className="my-1"/>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intakes (Calculated Standing)</div>
                                     {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
@@ -572,32 +542,7 @@ function TimetableManagementComponent() {
                         <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
 
-                    {viewTarget !== 'master' && (
-                        <div className="flex items-center justify-between px-2 py-2 bg-primary/5 border rounded-lg">
-                            <div className="flex items-center gap-4">
-                                <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
-                                <div className="font-bold text-sm uppercase tracking-widest text-primary">
-                                    {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
-                                </div>
-                                <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
-                            </div>
-                            <Badge variant="outline" className="text-[10px] font-black uppercase opacity-60">Calendar View</Badge>
-                        </div>
-                    )}
-
-                    {viewTarget !== 'master' && !resolvedSemester && !loading && (
-                        <Alert className="bg-orange-50 border-orange-200">
-                            <AlertCircle className="h-4 w-4 text-orange-600" />
-                            <AlertTitle className="font-bold text-orange-800">Semester Instance Not Found</AlertTitle>
-                            <AlertDescription className="text-orange-700">
-                                No active semester instance was found for **{intakes.find(i=>i.id===viewTarget)?.name}** at the resolved standing of **{academicStanding}**. Please create this semester in Registration Management to enable specific scheduling.
-                            </AlertDescription>
-                        </Alert>
-                    )}
-
-                    {!hasSlots ? (
-                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Define **Time Slots** in Teaching Times Setup to enable the grid view.</AlertDescription></Alert>
-                    ) : (
+                    {hasSlots ? (
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
                             <Table>
                                 <TableHeader>
@@ -607,21 +552,16 @@ function TimetableManagementComponent() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {currentWeekInterval.map(date => {
-                                        const dayName = calendarDays[getDay(date)];
-                                        const isDayToday = isToday(date);
-                                        const dateStr = format(date, 'yyyy-MM-dd');
+                                    {calendarDays.slice(1, 6).map(dayName => {
+                                        const isDayToday = format(new Date(), 'EEEE') === dayName;
                                         const isEnabledDay = displayDays.includes(dayName);
 
-                                        if (!isEnabledDay && viewTarget === 'master') return null;
+                                        if (!isEnabledDay) return null;
 
                                         return (
-                                            <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
+                                            <TableRow key={dayName} className={cn(isDayToday && "bg-primary/5")}>
                                                 <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
-                                                    <div className="flex flex-col">
-                                                        <span className="uppercase text-[10px] opacity-70">{dayName}</span>
-                                                        {viewTarget !== 'master' && <span className="text-sm font-black">{format(date, 'MMM dd')}</span>}
-                                                    </div>
+                                                    <span className="uppercase text-[10px] opacity-70">{dayName}</span>
                                                 </TableCell>
                                                 {teachingTimes.slots.map((slot, sIdx) => {
                                                     const slotStart = timeToMinutes(slot.startTime);
@@ -639,98 +579,37 @@ function TimetableManagementComponent() {
                                                             onClick={() => handleCellClick(dayName, slot)}
                                                         >
                                                             <div className="space-y-2">
-                                                                {sessionsInSlot.map((s, eIdx) => {
-                                                                    const dateRequest = (s.entry as any).dateRequests?.[dateStr];
-                                                                    const isLiveRequestedOnDate = dateRequest?.status === 'Requested';
-                                                                    const isLiveApprovedOnDate = dateRequest?.status === 'Approved' || s.entry.isLiveSession;
-
-                                                                    return (
-                                                                        <div 
-                                                                            key={eIdx} 
-                                                                            className={cn(
-                                                                                "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                                isLiveApprovedOnDate ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
-                                                                                isLiveRequestedOnDate && "border-orange-400 bg-orange-50/20"
-                                                                            )}
-                                                                            onClick={(e) => e.stopPropagation()} 
-                                                                        >
-                                                                            <div className="flex justify-between items-start gap-1">
-                                                                                <div className="flex-1">
-                                                                                    <div className="flex items-center gap-1">
-                                                                                        <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
-                                                                                        {isLiveApprovedOnDate && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
-                                                                                        {isLiveRequestedOnDate && <AlertCircle className="h-3 w-3 text-orange-500 shrink-0" title="Live Link Requested"/>}
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                                        <MapPin className="h-2.5 w-2.5" /> {isLiveApprovedOnDate ? "DIGITAL ROOM" : s.entry.venue}
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
-                                                                                    <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
+                                                                {sessionsInSlot.map((s, eIdx) => (
+                                                                    <div 
+                                                                        key={eIdx} 
+                                                                        className={cn(
+                                                                            "p-2 rounded-md border bg-background shadow-sm relative transition-all",
+                                                                            s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
+                                                                        )}
+                                                                        onClick={(e) => e.stopPropagation()} 
+                                                                    >
+                                                                        <div className="flex justify-between items-start gap-1">
+                                                                            <div className="flex-1">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                                    {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
                                                                                 </div>
-                                                                                <div className="flex flex-col gap-1">
-                                                                                    <Button 
-                                                                                        variant="ghost" 
-                                                                                        size="icon" 
-                                                                                        className="h-5 w-5 hover:bg-primary/10" 
-                                                                                        onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}
-                                                                                    >
-                                                                                        <Pencil className="h-3 w-3" />
-                                                                                    </Button>
-                                                                                    <Button 
-                                                                                        variant="ghost" 
-                                                                                        size="icon" 
-                                                                                        className="h-5 w-5 text-destructive hover:bg-destructive/10" 
-                                                                                        onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}
-                                                                                    >
-                                                                                        <X className="h-3 w-3" />
-                                                                                    </Button>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                                    <MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL ROOM" : s.entry.venue}
                                                                                 </div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
+                                                                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                             </div>
-                                                                            
-                                                                            {isLiveRequestedOnDate && (
-                                                                                <div className="mt-2 pt-2 border-t flex flex-col gap-1.5">
-                                                                                    <div className="text-[8px] font-black text-orange-600 uppercase tracking-widest text-center">
-                                                                                        Requested for: {format(date, 'MMM dd')}
-                                                                                    </div>
-                                                                                    <div className="flex gap-1">
-                                                                                        <Button 
-                                                                                            variant="outline" 
-                                                                                            size="sm" 
-                                                                                            className="flex-1 h-6 text-[8px] font-black uppercase bg-orange-100 text-orange-700 border-orange-200"
-                                                                                            onClick={() => handleApproveLive(s.entry, dateStr)}
-                                                                                            disabled={saving}
-                                                                                        >
-                                                                                            {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <Check className="h-2 w-2 mr-1"/>}
-                                                                                            Approve
-                                                                                        </Button>
-                                                                                        <Button 
-                                                                                            variant="outline" 
-                                                                                            size="sm" 
-                                                                                            className="flex-1 h-6 text-[8px] font-black uppercase bg-red-100 text-red-700 border-red-200"
-                                                                                            onClick={() => handleRejectLive(s.entry, dateStr)}
-                                                                                            disabled={saving}
-                                                                                        >
-                                                                                            {saving ? <Loader2 className="h-2 w-2 animate-spin"/> : <X className="h-2 w-2 mr-1"/>}
-                                                                                            Reject
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                </div>
-                                                                            )}
-
-                                                                            <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
-                                                                                {s.participants.map((p, idx) => (
-                                                                                    <Badge 
-                                                                                        key={idx} 
-                                                                                        variant="secondary" 
-                                                                                        className="text-[8px] h-4"
-                                                                                    >
-                                                                                        {p.name} ({p.standing}): {p.count}
-                                                                                    </Badge>
-                                                                                ))}
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-primary/10" onClick={(e) => { e.stopPropagation(); setEditingEntry(s.entry); setDay(s.entry.day); setStartTime(s.entry.startTime); setEndTime(s.entry.endTime); setVenue(s.entry.venue); setIsLiveSession(!!s.entry.isLiveSession); setSelectedCourseId(s.entry.courseId); setIsAddOpen(true); }}><Pencil className="h-3 w-3" /></Button>
+                                                                                <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setEntryToDelete(s.entry); }}><X className="h-3 w-3" /></Button>
                                                                             </div>
                                                                         </div>
-                                                                    );
-                                                                })}
+                                                                        <div className="mt-2 flex flex-wrap gap-1 border-t pt-1">
+                                                                            {s.participants.map((p, idx) => (<Badge key={idx} variant="secondary" className="text-[8px] h-4">{p.name} ({p.standing}): {p.count}</Badge>))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                                 {sessionsInSlot.length === 0 && (
                                                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <PlusCircle className="h-6 w-6 text-primary/40" />
@@ -746,6 +625,8 @@ function TimetableManagementComponent() {
                                 </TableBody>
                             </Table>
                         </div>
+                    ) : (
+                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Define **Time Slots** in Teaching Times Setup to enable the grid view.</AlertDescription></Alert>
                     )}
                 </CardContent>
             </Card>
@@ -755,12 +636,12 @@ function TimetableManagementComponent() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Remove Session from Timetable?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong> in <strong>{entryToDelete?.venue}</strong>. This action cannot be undone.
+                            This will remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong>.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDeleteEntry} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove Session</AlertDialogAction>
+                        <AlertDialogAction onClick={confirmDeleteEntry} className="bg-destructive">Remove Session</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

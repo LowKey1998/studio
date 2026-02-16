@@ -124,7 +124,7 @@ export default function UserManagementPage() {
     const [isBulkCreateOpen, setIsBulkCreateOpen] = React.useState(false);
     const [editingUser, setEditingUser] = React.useState<UserProfile | null>(null);
     const [bulkActionLoading, setBulkActionLoading] = React.useState(false);
-    const [searchQuery, setSearchQuery] = React.useState('');
+    const [searchQuery, setSearchQuery] = setSearchQuery = React.useState('');
     const [roleFilter, setRoleFilter] = React.useState('All');
     
     const [name, setName] = React.useState('');

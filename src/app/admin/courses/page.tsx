@@ -192,7 +192,6 @@ export default function CoursesPage() {
                 if (!sem.endDate) return true; 
                 try {
                     const end = startOfDay(parseISO(sem.endDate));
-                    // Semester is considered "Current" for active count as long as end date hasn't passed
                     return !isAfter(now, end); 
                 } catch (e) { return true; }
             };
@@ -205,7 +204,6 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
-                        // Rule: Count students registered for semesters whose end date has NOT passed.
                         if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {

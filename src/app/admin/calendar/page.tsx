@@ -84,11 +84,11 @@ export default function AdminCalendarPage() {
   const [showAllEvents, setShowAllEvents] = React.useState(false);
   const [selectedDay, setSelectedDay] = React.useState<Date | undefined>();
   const [popoverOpen, setPopoverOpen] = React.useState(false);
-  const [deadlineSemester, setDeadlineSemester] = React.useState('');
+  const [deadlineSemester, setDeadlineSemester] = React.useState('all');
   const [requiredDeadlines, setRequiredDeadlines] = React.useState<RequiredDeadline[]>([]);
   const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
   const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = React.useState('');
+  const [searchTerm, setSearchTerm] = setSearchTerm = React.useState('');
 
 
   const { toast } = useToast();
@@ -111,7 +111,7 @@ export default function AdminCalendarPage() {
       if (semestersSnapshot.exists()) {
         const data = semestersSnapshot.val();
         Object.keys(data).forEach(key => semestersList.push({ id: key, ...data[key] }));
-        if (semestersList.length > 0) {
+        if (semestersList.length > 0 && deadlineSemester === 'all') {
             const latestSemester = semestersList.sort((a,b) => b.name.localeCompare(a.name))[0];
             setDeadlineSemester(latestSemester.name);
         }
@@ -147,10 +147,13 @@ export default function AdminCalendarPage() {
     };
 
     fetchEventsAndSemesters();
-  }, []);
+  }, [deadlineSemester]);
   
   const checkDeadlines = React.useCallback(() => {
-    if (!deadlineSemester) return;
+    if (!deadlineSemester || deadlineSemester === 'all') {
+        setRequiredDeadlines([]);
+        return;
+    }
     setDeadlineLoading(true);
     const selectedSemesterData = semesters.find(s => s.name === deadlineSemester);
     if (!selectedSemesterData) {
@@ -298,10 +301,11 @@ export default function AdminCalendarPage() {
   const filteredEvents = React.useMemo(() => {
     return events
       .filter(event => {
-        if (showAllEvents) return true;
+        if (showAllEvents || deadlineSemester === 'all') return true;
         if (event.isPublicHoliday) return true;
-        if (event.semester && event.semester === deadlineSemester) return true;
-        if (!event.semester || event.semester === 'General') return true;
+        const eSem = (event.semester || 'General').trim();
+        if (eSem === deadlineSemester.trim()) return true;
+        if (eSem === 'General') return true;
         return false;
       })
       .filter(event => event.title.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -470,8 +474,10 @@ export default function AdminCalendarPage() {
              <div className="flex items-center gap-4">
                 <Label htmlFor="semester-name" className="font-semibold">Target Semester:</Label>
                 <Select value={deadlineSemester} onValueChange={setDeadlineSemester}>
-                    <SelectTrigger className="max-w-sm bg-background"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="max-w-sm bg-background shadow-sm h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                        <SelectItem value="all" className="font-bold text-primary">Show All Semesters</SelectItem>
+                        <Separator className="my-1"/>
                         {semesters.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
