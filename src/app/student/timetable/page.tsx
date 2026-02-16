@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -52,7 +51,6 @@ export default function StudentTimetablePage() {
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
     
-    // Week Navigation
     const [viewWeek, setViewWeek] = React.useState(new Date());
 
     const fetchData = React.useCallback(async () => {
@@ -79,23 +77,23 @@ export default function StudentTimetablePage() {
             const allIntakes = intakesSnap.val() || {};
             const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name : null;
 
-            const activeSemesterIds = new Set<string>();
-            const enrolledCourseIds = new Set<string>();
+            const enrolledCourseIdsBySemester: Record<string, string[]> = {};
+            const enrolledCourseIdsGlobal = new Set<string>();
+            const myActiveSemesterIds = new Set<string>();
 
             Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                 const semInfo = allSemesters[semId];
                 if (!semInfo || semInfo.status === 'Archived') return;
                 
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    activeSemesterIds.add(semId);
-                    if (reg.courses) {
-                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
-                        coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
-                    }
+                    myActiveSemesterIds.add(semId);
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                    enrolledCourseIdsBySemester[semId] = coursesArr;
+                    coursesArr.forEach((cid: string) => enrolledCourseIdsGlobal.add(cid));
                 }
             });
 
-            if (activeSemesterIds.size === 0) {
+            if (myActiveSemesterIds.size === 0) {
                 setTimetable([]);
                 setLoading(false);
                 return;
@@ -114,45 +112,55 @@ export default function StudentTimetablePage() {
             const rawEntries: TimetableEntry[] = [];
             for (const semId in tData) {
                 const isMaster = semId === 'master';
-                if (!activeSemesterIds.has(semId) && !isMaster) continue;
-
+                
                 for (const cid in tData[semId]) {
-                    if (enrolledCourseIds.has(cid)) {
-                        const courseInfo = cData[cid];
-                        const lecturerNames = (courseInfo.lecturerIds || [])
-                            .map((uid: string) => usersData[uid]?.name)
-                            .filter(Boolean)
-                            .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+                    // Check if student is even taking this course
+                    if (!enrolledCourseIdsGlobal.has(cid)) continue;
 
-                        Object.values(tData[semId][cid]).forEach((entry: any) => {
-                            let shouldInclude = true;
-                            if (isMaster) {
-                                if (courseInfo.separateInstance) {
-                                    shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
-                                }
+                    const courseInfo = cData[cid];
+                    const entries = Object.values(tData[semId][cid]) as any[];
+
+                    entries.forEach(entry => {
+                        let shouldInclude = false;
+                        
+                        if (isMaster) {
+                            // Master entries are shared baselines
+                            if (courseInfo?.separateInstance) {
+                                // If separate, only show if intake matches
+                                shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
                             } else {
-                                shouldInclude = activeSemesterIds.has(semId);
+                                // If not separate, show the master entry to everyone taking the course
+                                shouldInclude = true;
                             }
+                        } else {
+                            // Semester-specific entries are overrides or cohort-specific adds
+                            // Only show if the student is registered for THIS specific semester instance
+                            shouldInclude = myActiveSemesterIds.has(semId) && enrolledCourseIdsBySemester[semId]?.includes(cid);
+                        }
 
-                            if (shouldInclude) {
-                                rawEntries.push({
-                                    ...entry,
-                                    courseId: cid,
-                                    courseCode: courseInfo.code,
-                                    courseName: courseInfo.name,
-                                    semesterId: semId,
-                                    semesterName: allSemesters[semId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
-                                    lecturerNames,
-                                    studentCount: 0 
-                                });
-                            }
-                        });
-                    }
+                        if (shouldInclude) {
+                            const lecturerNames = (courseInfo.lecturerIds || [])
+                                .map((uid: string) => usersData[uid]?.name)
+                                .filter(Boolean)
+                                .join(', ') || usersData[courseInfo.lecturerId]?.name || 'Unassigned';
+
+                            rawEntries.push({
+                                ...entry,
+                                courseId: cid,
+                                courseCode: courseInfo.code,
+                                courseName: courseInfo.name,
+                                semesterId: semId,
+                                semesterName: allSemesters[semId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
+                                lecturerNames,
+                                studentCount: 0 
+                            });
+                        }
+                    });
                 }
             }
             setTimetable(rawEntries);
         } catch (error) {
-            console.error(error);
+            console.error("Timetable Fetch Error:", error);
         } finally {
             setLoading(false);
         }
@@ -171,7 +179,6 @@ export default function StudentTimetablePage() {
         });
     }, [viewWeek]);
 
-    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
     const hasSlots = teachingTimes.slots.length > 0;
 
     return (
@@ -234,7 +241,6 @@ export default function StudentTimetablePage() {
                                                         <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
                                                             <div className="space-y-2">
                                                                 {sessionsInSlot.map((entry, eIdx) => {
-                                                                    // Check if session has a date-specific live approval
                                                                     const dateRequest = (entry as any).dateRequests?.[dateStr];
                                                                     const isLiveOnThisDate = dateRequest?.status === 'Approved' || entry.isLiveSession;
 
@@ -248,7 +254,7 @@ export default function StudentTimetablePage() {
                                                                             )}
                                                                         >
                                                                             <div className="flex justify-between items-start gap-1">
-                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
                                                                                 {isLiveOnThisDate ? <Video className="h-3 w-3 text-blue-600" /> : <Layers className="h-3 w-3 text-primary/40" />}
                                                                             </div>
                                                                             <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {isLiveOnThisDate ? "DIGITAL ROOM" : entry.venue}</div>

@@ -52,7 +52,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from '@/components/checkbox';
 import { ref, get, update, onValue, push, set } from 'firebase/database';
 import { auth, db } from '@/lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
@@ -518,20 +518,22 @@ export default function UserManagementPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}><FileUp className="mr-2 h-4 w-4"/>Bulk Create</Button>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button><PlusCircle className="mr-2 h-4 w-4"/>Add User</Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem asChild><Link href="/admin/admissions/add-student"><UserPlus className="mr-2 h-4 w-4"/>Add Student</Link></DropdownMenuItem>
-                                <DropdownMenuItem asChild><Link href="/admin/hr/add-staff"><UserCog className="mr-2 h-4 w-4"/>Add Staff Member</Link></DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
+                <CardHeader>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div><CardTitle className="font-headline text-2xl">User Management</CardTitle><CardDescription>Manage student and staff accounts across the institution.</CardDescription></div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}><FileUp className="mr-2 h-4 w-4"/>Bulk Create</Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button><PlusCircle className="mr-2 h-4 w-4"/>Add User</Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild><Link href="/admin/admissions/add-student"><UserPlus className="mr-2 h-4 w-4"/>Add Student</Link></DropdownMenuItem>
+                                    <DropdownMenuItem asChild><Link href="/admin/hr/add-staff"><UserCog className="mr-2 h-4 w-4"/>Add Staff Member</Link></DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    </CardHeader>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col md:flex-row gap-4 mb-6">

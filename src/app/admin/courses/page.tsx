@@ -43,7 +43,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from '@/components/checkbox';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { ref, get, serverTimestamp, update, push, onValue } from 'firebase/database';
