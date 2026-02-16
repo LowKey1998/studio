@@ -110,32 +110,32 @@ export default function StudentTimetablePage() {
             });
 
             const rawEntries: TimetableEntry[] = [];
-            for (const semId in tData) {
-                const isMaster = semId === 'master';
+            for (const semesterId in tData) {
+                const isMaster = semesterId === 'master';
                 
-                for (const cid in tData[semId]) {
-                    // Check if student is even taking this course
+                for (const cid in tData[semesterId]) {
+                    // Check if student is taking this course at all
                     if (!enrolledCourseIdsGlobal.has(cid)) continue;
 
                     const courseInfo = cData[cid];
-                    const entries = Object.values(tData[semId][cid]) as any[];
+                    const entries = Object.values(tData[semesterId][cid]) as any[];
 
                     entries.forEach(entry => {
                         let shouldInclude = false;
                         
                         if (isMaster) {
-                            // Master entries are shared baselines
+                            // Master entries are baseline
                             if (courseInfo?.separateInstance) {
-                                // If separate, only show if intake matches
+                                // If separate, only show if intake name matches exactly
                                 shouldInclude = studentIntakeName && entry.intakeName === studentIntakeName;
                             } else {
-                                // If not separate, show the master entry to everyone taking the course
+                                // Shared session: show to anyone enrolled in any active semester for this course
                                 shouldInclude = true;
                             }
                         } else {
-                            // Semester-specific entries are overrides or cohort-specific adds
+                            // Semester-specific entries (overrides)
                             // Only show if the student is registered for THIS specific semester instance
-                            shouldInclude = myActiveSemesterIds.has(semId) && enrolledCourseIdsBySemester[semId]?.includes(cid);
+                            shouldInclude = myActiveSemesterIds.has(semesterId) && enrolledCourseIdsBySemester[semesterId]?.includes(cid);
                         }
 
                         if (shouldInclude) {
@@ -149,8 +149,8 @@ export default function StudentTimetablePage() {
                                 courseId: cid,
                                 courseCode: courseInfo.code,
                                 courseName: courseInfo.name,
-                                semesterId: semId,
-                                semesterName: allSemesters[semId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
+                                semesterId: semesterId,
+                                semesterName: allSemesters[semesterId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
                                 lecturerNames,
                                 studentCount: 0 
                             });
