@@ -204,6 +204,7 @@ export default function CoursesPage() {
                         const registration = regs[userId][semesterId];
                         const semesterInfo = allSemesters[semesterId];
                         
+                        // Condition: Count as active only if registered for a semester whose end date hasn't passed
                         if (semesterInfo && isSemesterCurrent(semesterInfo) && (registration.status === 'Completed' || registration.status === 'Pending Payment')) {
                             const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
                             coursesArr.forEach((courseId: string) => {

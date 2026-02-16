@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -82,15 +81,17 @@ export default function StudentCoursesPage() {
             const currentIntakeName = studentIntakeId ? intakesSnap.val()?.[studentIntakeId]?.name : 'Your Intake';
             setIntakeName(currentIntakeName);
 
+            let calculatedState = null;
             if (calendarSnap.exists() && currentIntakeName) {
                 const intakeStartStr = parseIntakeDate(currentIntakeName);
                 if (intakeStartStr) {
-                    setAcademicState(calculateAcademicState(
+                    calculatedState = calculateAcademicState(
                         intakeStartStr, 
                         new Date(), 
                         calendarSnap.val().standardCycles, 
                         Object.values(calendarSnap.val().anomalies || {})
-                    ));
+                    );
+                    setAcademicState(calculatedState);
                 }
             }
 
@@ -113,10 +114,16 @@ export default function StudentCoursesPage() {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
+                    // Grouping Logic: Must match the student's specific intake
                     if (semesterInfo.intakeId !== studentIntakeId) continue;
 
-                    const isArchived = semesterInfo.status === 'Archived';
-                    const targetGroups = isArchived ? archivedGroups : activeGroups;
+                    // Separation Logic: Is this the student's CURRENT Year/Semester?
+                    const isCurrent = calculatedState && 
+                                      semesterInfo.year === calculatedState.year && 
+                                      semesterInfo.semesterInYear === calculatedState.semester;
+                    
+                    // If not the current standing, it goes to "Achieved" (archivedGroups)
+                    const targetGroups = isCurrent ? activeGroups : archivedGroups;
 
                     if (!targetGroups[semesterId]) {
                         targetGroups[semesterId] = {
@@ -232,9 +239,7 @@ export default function StudentCoursesPage() {
                     <div key={group.semesterId} className="space-y-4">
                         <div className="flex items-center gap-2 border-b pb-2">
                             <h3 className="text-xl font-bold">Year {group.year}, Semester {group.semesterInYear}</h3>
-                            {academicState?.year === group.year && academicState?.semester === group.semesterInYear && (
-                                <Badge className="bg-primary text-primary-foreground">Active Semester</Badge>
-                            )}
+                            <Badge className="bg-primary text-primary-foreground">Active Semester</Badge>
                         </div>
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {group.courses.map((course, idx) => (
@@ -290,9 +295,9 @@ export default function StudentCoursesPage() {
                     <CardContent className="pt-6">
                         <Alert>
                             <Info className="h-4 w-4" />
-                            <AlertTitle>No Classes Found</AlertTitle>
+                            <AlertTitle>Current Registration Incomplete</AlertTitle>
                             <AlertDescription>
-                                You are not enrolled in any active classes for the {intakeName} intake. Please complete your registration if you haven't already.
+                                You are not enrolled in any classes for your current Year {academicState?.year}, Semester {academicState?.semester}. Please complete your registration if you haven't already.
                             </AlertDescription>
                         </Alert>
                     </CardContent>
@@ -303,11 +308,11 @@ export default function StudentCoursesPage() {
                 <div className="space-y-8 mt-12 pt-8 border-t">
                     <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
                         <Archive className="h-5 w-5"/>
-                        Completed / Archived Semesters
+                        Completed / Achieved Periods
                     </div>
                     {archivedGroups.map((group) => (
                         <div key={group.semesterId} className="space-y-4">
-                            <h3 className="font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear} (Completed)</h3>
+                            <h3 className="font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear}</h3>
                             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 {group.courses.map((course, idx) => (
                                     <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-70">
