@@ -2,8 +2,8 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon, Info } from "lucide-react";
-import { db, createNotification } from '@/lib/firebase';
+import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon, Info, Trash2 } from "lucide-react";
+import { db } from '@/lib/firebase';
 import { ref, get, set, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,17 @@ import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle, 
+    AlertDialogTrigger 
+} from "@/components/ui/alert-dialog";
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -257,6 +268,21 @@ export default function CAEntryPage() {
         }
     };
 
+    const handleUnlinkTemplate = async () => {
+        if (!selectedCourseId) return;
+        setSaving(true);
+        try {
+            await update(ref(db, `courses/${selectedCourseId}`), { assessmentTemplateId: null });
+            toast({ title: "Template Unlinked", description: "The grading structure has been removed from this course." });
+            setTemplateComponents([]);
+            setCourses(prev => prev.map(c => c.id === selectedCourseId ? { ...c, assessmentTemplateId: undefined } : c));
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Unlink Failed", description: e.message });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!selectedCourseId) return;
         setSaving(true);
@@ -387,8 +413,34 @@ export default function CAEntryPage() {
                     </Alert>
                 )}
 
-                {selectedCourseId && studentsInRoster.length > 0 && templateComponents.length > 0 && (
-                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter visible roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+                {selectedCourseId && templateComponents.length > 0 && (
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="relative max-w-sm flex-1">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Filter visible roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} />
+                        </div>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-destructive h-8 ml-4">
+                                    <Trash2 className="h-4 w-4 mr-2"/> Unlink Structure
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Unlink Assessment Template?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will remove the current weighted grading structure from this course. 
+                                        You will not be able to enter CA scores until a new template is linked.
+                                        Existing raw scores in the database will be preserved but not visible under this view.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleUnlinkTemplate} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Unlink Structure</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
                 )}
                 
                 {loading ? <Skeleton className="h-64 w-full" /> : 
