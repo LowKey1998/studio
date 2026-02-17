@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, Info } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, set, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -86,20 +86,25 @@ export default function FinalExamEntryPage() {
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
-            const intake = intakes.find(i => i.id === student.intakeId);
-            if (intake) {
-                get(ref(db, 'settings/academicCalendar')).then(calSnap => {
-                    const startStr = parseIntakeDate(intake.name);
-                    if (calSnap.exists() && startStr) {
-                        const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                        setSelectedYear(String(state.year));
-                        setSelectedSemesterInYear(String(state.semester));
-                    }
-                });
+            
+            // Only auto-align Year and Semester if they are not already manually selected.
+            if (!selectedYear || !selectedSemesterInYear) {
+                const intake = intakes.find(i => i.id === student.intakeId);
+                if (intake) {
+                    get(ref(db, 'settings/academicCalendar')).then(calSnap => {
+                        const startStr = parseIntakeDate(intake.name);
+                        if (calSnap.exists() && startStr) {
+                            const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+                            setSelectedYear(String(state.year));
+                            setSelectedSemesterInYear(String(state.semester));
+                        }
+                    });
+                }
             }
         }
         setIsSearchOpen(false);
         setStudentSearchInput('');
+        toast({ title: `Context aligned to ${student.name}.` });
     };
 
     // Auto-Standing
@@ -111,11 +116,11 @@ export default function FinalExamEntryPage() {
             const startStr = parseIntakeDate(intake.name);
             if (calSnap.exists() && startStr) {
                 const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                setSelectedYear(String(state.year));
-                setSelectedSemesterInYear(String(state.semester));
+                if (!selectedYear) setSelectedYear(String(state.year));
+                if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
+    }, [selectedIntakeId, intakes]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -242,6 +247,16 @@ export default function FinalExamEntryPage() {
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
+                {selectedCourseId && selectedYear && selectedSemesterInYear && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Active Entry Scope</AlertTitle>
+                        <AlertDescription className="text-xs text-blue-700 italic">
+                            These results are being recorded for <strong>Year {selectedYear}, Semester {selectedSemesterInYear}</strong>. 
+                            You may enter scores for any student who was registered for this academic phase, including past results.
+                        </AlertDescription>
+                    </Alert>
+                )}
                 {selectedCourseId && studentsInRoster.length > 0 && (
                     <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                 )}

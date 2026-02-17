@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon, Info, Trash2 } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update } from 'firebase/database';
+import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -118,22 +118,26 @@ export default function CAEntryPage() {
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
-            // Calculate standing and set year/sem
-            const intake = intakes.find(i => i.id === student.intakeId);
-            if (intake) {
-                get(ref(db, 'settings/academicCalendar')).then(calSnap => {
-                    const startStr = parseIntakeDate(intake.name);
-                    if (calSnap.exists() && startStr) {
-                        const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                        setSelectedYear(String(state.year));
-                        setSelectedSemesterInYear(String(state.semester));
-                    }
-                });
+            
+            // Only auto-align Year and Semester if they are not already manually selected.
+            // This allows admins to find a student and then manually navigate to a past semester.
+            if (!selectedYear || !selectedSemesterInYear) {
+                const intake = intakes.find(i => i.id === student.intakeId);
+                if (intake) {
+                    get(ref(db, 'settings/academicCalendar')).then(calSnap => {
+                        const startStr = parseIntakeDate(intake.name);
+                        if (calSnap.exists() && startStr) {
+                            const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+                            setSelectedYear(String(state.year));
+                            setSelectedSemesterInYear(String(state.semester));
+                        }
+                    });
+                }
             }
         }
         setIsSearchOpen(false);
         setStudentSearchInput('');
-        toast({ title: `Filters set for ${student.name}` });
+        toast({ title: `Context aligned to ${student.name}.` });
     };
 
     // 3. Auto-Standing Logic (When intake is selected manually)
@@ -153,12 +157,13 @@ export default function CAEntryPage() {
                     calendarSnap.val().standardCycles,
                     Object.values(calendarSnap.val().anomalies || {})
                 );
-                setSelectedYear(String(state.year));
-                setSelectedSemesterInYear(String(state.semester));
+                // We only auto-populate if the fields are empty to avoid fighting manual historical lookups
+                if (!selectedYear) setSelectedYear(String(state.year));
+                if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
         };
         fetchStanding();
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes]); // dependencies ensure this runs when intake changes
 
     // 4. Resolve exact semester ID
     const targetSemesterId = React.useMemo(() => {
@@ -408,9 +413,10 @@ export default function CAEntryPage() {
                 {selectedCourseId && selectedYear && selectedSemesterInYear && (
                     <Alert className="bg-blue-50 border-blue-200">
                         <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Result Scope Clarification</AlertTitle>
+                        <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Active Entry Scope</AlertTitle>
                         <AlertDescription className="text-xs text-blue-700 italic">
-                            These results are being recorded for <strong>Year {selectedYear}, Semester {selectedSemesterInYear}</strong>. Only students currently enrolled in this specific academic phase for the selected intake/programme are listed below.
+                            These results are being recorded for <strong>Year {selectedYear}, Semester {selectedSemesterInYear}</strong>. 
+                            You may enter scores for any student who was registered for this academic phase, including past results.
                         </AlertDescription>
                     </Alert>
                 )}
