@@ -77,6 +77,7 @@ export default function CAEntryPage() {
     // Search student state
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
+    const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -113,6 +114,7 @@ export default function CAEntryPage() {
 
     // 2. Handle Student Selection from Search (Sets context)
     const handleSelectStudentFromSearch = (student: Student) => {
+        setSelectedSearchStudentName(student.name);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
@@ -287,7 +289,6 @@ export default function CAEntryPage() {
         if (!selectedCourseId) return;
         setSaving(true);
         try {
-            // Use update to avoid overwriting scores for other semesters taking this course
             await update(ref(db, `assessments/${selectedCourseId}`), scores);
             toast({ title: "Results Recorded", description: `Scores saved for Year ${selectedYear}, Sem ${selectedSemesterInYear}.` });
         } catch (e: any) {
@@ -316,7 +317,7 @@ export default function CAEntryPage() {
                                 <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30">
                                     <div className="flex items-center gap-2">
                                         <User className="h-4 w-4 text-primary" />
-                                        <span className="truncate">Search by Name or ID...</span>
+                                        <span className="truncate">{selectedSearchStudentName || "Search by Name or ID..."}</span>
                                     </div>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -326,7 +327,7 @@ export default function CAEntryPage() {
                                     <div className="relative">
                                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                         <Input 
-                                            placeholder="Type to search..." 
+                                            placeholder="Type to search all students..." 
                                             className="pl-8 h-9" 
                                             value={studentSearchInput}
                                             onChange={e => setStudentSearchInput(e.target.value)}
@@ -448,7 +449,7 @@ export default function CAEntryPage() {
                  selectedCourseId && templateComponents.length > 0 && filteredRoster.length > 0 ? (
                     <div className="overflow-x-auto border rounded-lg shadow-sm">
                         <Table>
-                            <TableHeader className="bg-muted/50">
+                            <TableHeader>
                                 <TableRow>
                                     <TableHead className="min-w-[150px]">Student</TableHead>
                                     <TableHead>System ID</TableHead>

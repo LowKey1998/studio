@@ -53,6 +53,7 @@ export default function FinalExamEntryPage() {
     
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
+    const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -81,6 +82,7 @@ export default function FinalExamEntryPage() {
     }, []);
 
     const handleSelectStudentFromSearch = (student: Student) => {
+        setSelectedSearchStudentName(student.name);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
@@ -169,7 +171,6 @@ export default function FinalExamEntryPage() {
         if (!selectedCourseId) return;
         setSaving(true);
         try {
-            // Use update to preserve other student results from different semesters
             await update(ref(db, `assessments/${selectedCourseId}`), scores);
             toast({ title: "Exam Scores Saved" });
         } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed" }); }
@@ -191,8 +192,11 @@ export default function FinalExamEntryPage() {
                         <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Jump to Student</Label>
                         <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal">
-                                    <div className="flex items-center gap-2"><User className="h-4 w-4 text-primary" /><span>Search Student...</span></div>
+                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30">
+                                    <div className="flex items-center gap-2">
+                                        <User className="h-4 w-4 text-primary" />
+                                        <span className="truncate">{selectedSearchStudentName || "Search by Name or ID..."}</span>
+                                    </div>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
@@ -200,7 +204,12 @@ export default function FinalExamEntryPage() {
                                 <div className="p-2">
                                     <div className="relative">
                                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input placeholder="Type name or ID..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
+                                        <Input 
+                                            placeholder="Type to search all students..." 
+                                            className="h-9 pl-8" 
+                                            value={studentSearchInput} 
+                                            onChange={e => setStudentSearchInput(e.target.value)} 
+                                        />
                                     </div>
                                 </div>
                                 <Separator />
@@ -208,9 +217,15 @@ export default function FinalExamEntryPage() {
                                     <div className="p-1">
                                         {searchableStudents.map(student => (
                                             <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}>
-                                                <div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div>
+                                                <div className="flex flex-col text-left">
+                                                    <span className="font-bold">{student.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground">{student.id}</span>
+                                                </div>
                                             </Button>
                                         ))}
+                                        {searchableStudents.length === 0 && (
+                                            <div className="p-4 text-center text-xs text-muted-foreground italic">No matches found.</div>
+                                        )}
                                     </div>
                                 </ScrollArea>
                             </PopoverContent>
