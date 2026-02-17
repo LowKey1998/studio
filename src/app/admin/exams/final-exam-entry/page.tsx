@@ -16,6 +16,7 @@ import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
 
 type Student = {
     uid: string;
@@ -27,7 +28,7 @@ type Student = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Course = { id: string; name: string; code: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
@@ -47,6 +48,7 @@ export default function FinalExamEntryPage() {
     
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [loadAllCourses, setLoadAllCourses] = React.useState(false);
     
     const [studentsInRoster, setStudentsInRoster] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
@@ -128,13 +130,23 @@ export default function FinalExamEntryPage() {
 
     // Courses
     React.useEffect(() => {
-        if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
         const fetchCourses = async () => {
-            const [coursePathsSnap, allCoursesSnap] = await Promise.all([ get(ref(db, 'coursePaths')), get(ref(db, 'courses')) ]);
-            if (coursePathsSnap.exists() && allCoursesSnap.exists()) {
+            const allCoursesSnap = await get(ref(db, 'courses'));
+            if (!allCoursesSnap.exists()) return;
+            const allCoursesData = allCoursesSnap.val();
+
+            if (loadAllCourses) {
+                setCourses(Object.keys(allCoursesData).map(id => ({ id, ...allCoursesData[id] })).filter(c => c.status === 'active'));
+                return;
+            }
+
+            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
+
+            const coursePathsSnap = await get(ref(db, 'coursePaths'));
+            if (coursePathsSnap.exists()) {
                 const paths = Object.values(coursePathsSnap.val() || {});
                 const userPath: any = paths.find((p: any) => p.intakeId === selectedIntakeId && p.programmeId === selectedProgrammeId);
-                const allCoursesData = allCoursesSnap.val();
+                
                 if (userPath?.semesters?.[targetSemesterId]) {
                     const courseIds = userPath.semesters[targetSemesterId].courses || [];
                     const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
@@ -150,7 +162,7 @@ export default function FinalExamEntryPage() {
             }
         };
         fetchCourses();
-    }, [selectedProgrammeId, selectedIntakeId, targetSemesterId]);
+    }, [selectedProgrammeId, selectedIntakeId, targetSemesterId, loadAllCourses]);
 
     // Roster & Scores
     React.useEffect(() => {
@@ -259,12 +271,24 @@ export default function FinalExamEntryPage() {
                     </div>
                 </div>
                 <Separator />
-                <div className="grid md:grid-cols-5 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
                     <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                     <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                     <div className="space-y-1"><Label>Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                     <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1"><Label>Course</Label><Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={courses.length === 0}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="space-y-1">
+                        <div className="flex items-center justify-between mb-1">
+                            <Label className="text-[10px] font-black uppercase">Course</Label>
+                            <div className="flex items-center gap-1.5">
+                                <Switch id="exam-all-courses" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
+                                <Label htmlFor="exam-all-courses" className="text-[8px] font-bold uppercase text-muted-foreground">Load All</Label>
+                            </div>
+                        </div>
+                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!loadAllCourses && courses.length === 0}>
+                            <SelectTrigger className="bg-background"><SelectValue placeholder={loadAllCourses ? "All courses..." : (courses.length > 0 ? "Select course..." : "No courses")}/></SelectTrigger>
+                            <SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -279,7 +303,7 @@ export default function FinalExamEntryPage() {
                     </Alert>
                 )}
                 {selectedCourseId && studentsInRoster.length > 0 && (
-                    <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+                    <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                 )}
                 {loading ? <Skeleton className="h-64 w-full" /> : 
                  selectedCourseId && filteredRoster.length > 0 ? (
