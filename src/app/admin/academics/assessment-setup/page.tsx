@@ -229,10 +229,20 @@ export default function AssessmentSetupPage() {
         }
     };
 
-    const filteredCourses = courses.filter(c => 
-        c.name.toLowerCase().includes(courseSearch.toLowerCase()) || 
-        c.code.toLowerCase().includes(courseSearch.toLowerCase())
-    );
+    const filteredCourses = React.useMemo(() => {
+        return courses.filter(c => 
+            c.name.toLowerCase().includes(courseSearch.toLowerCase()) || 
+            c.code.toLowerCase().includes(courseSearch.toLowerCase())
+        );
+    }, [courses, courseSearch]);
+
+    const selectAllFiltered = () => {
+        const filteredIds = filteredCourses.map(c => c.id);
+        setSelectedCourseIds(prev => {
+            const next = new Set([...prev, ...filteredIds]);
+            return Array.from(next);
+        });
+    };
 
     const toggleCourseSelection = (id: string) => {
         setSelectedCourseIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -357,6 +367,7 @@ export default function AssessmentSetupPage() {
                         <div className="flex items-center gap-2 px-1">
                             <Badge variant="secondary" className="text-[10px] font-bold uppercase">{selectedCourseIds.length} Courses Selected</Badge>
                             <Separator orientation="vertical" className="h-4 mx-2" />
+                            <Button variant="ghost" size="sm" className="h-6 text-[10px] font-bold text-primary hover:text-primary/80" onClick={selectAllFiltered}>Select All Visible</Button>
                             <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => setSelectedCourseIds([])}>Clear All</Button>
                         </div>
                         <ScrollArea className="flex-1 rounded-md border bg-muted/10 p-2">
