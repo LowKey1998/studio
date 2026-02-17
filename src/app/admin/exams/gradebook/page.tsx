@@ -47,6 +47,7 @@ export default function GradebookPage() {
     
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
+    const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
 
     const [loading, setLoading] = React.useState(true);
     const [loadingGrades, setLoadingGrades] = React.useState(false);
@@ -74,6 +75,7 @@ export default function GradebookPage() {
     }, []);
 
     const handleSelectStudentFromSearch = (student: Student) => {
+        setSelectedSearchStudentName(student.name);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
@@ -100,10 +102,10 @@ export default function GradebookPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && startStr) {
-                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                setSelectedYear(String(state.year));
-                setSelectedSemesterInYear(String(state.semester));
+            if (calSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+                if (!selectedYear) setSelectedYear(String(state.year));
+                if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
         });
     }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
@@ -188,7 +190,7 @@ export default function GradebookPage() {
         doc.save(`Gradebook_${selectedCourseId}.pdf`);
     };
 
-    const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase())).slice(0, 10);
+    const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase()));
 
     return (
         <Card className="shadow-lg border-0">
@@ -202,8 +204,11 @@ export default function GradebookPage() {
                         <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Find Student</Label>
                         <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal">
-                                    <div className="flex items-center gap-2"><User className="h-4 w-4 text-primary" /><span>Search Student...</span></div>
+                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30">
+                                    <div className="flex items-center gap-2">
+                                        <User className="h-4 w-4 text-primary" />
+                                        <span>{selectedSearchStudentName || "Search Student..."}</span>
+                                    </div>
                                     <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
@@ -245,7 +250,7 @@ export default function GradebookPage() {
                         <div className="border rounded-lg shadow-sm"><Table>
                             <TableHeader className="bg-muted/50"><TableRow><TableHead>Student</TableHead><TableHead>ID</TableHead>{templateComponents.map(c=><TableHead key={c.id} className="text-center">{c.name}</TableHead>)}<TableHead className="text-center font-bold">Final Mark</TableHead><TableHead className="text-center font-bold">Grade</TableHead></TableRow></TableHeader>
                             <TableBody>{gradeResults.map(res => (
-                                <TableRow key={res.student.uid}><TableCell className="font-medium">{res.student.name}</TableCell><TableCell className="font-mono text-xs">{res.student.id}</TableCell>{templateComponents.map(c=><TableCell key={c.id} className="text-center">{res.componentScores[c.id]?.toFixed(1) ?? '-'}</TableCell>)}<TableCell className="text-center font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="text-center font-bold">{res.grade}</TableCell></TableRow>
+                                <TableRow key={res.student.uid}><TableCell className="font-medium">{res.student.name}</TableCell><TableCell className="font-mono text-xs">{res.student.id}</TableCell>{templateComponents.map(c=><TableCell key={c.id} className="text-center">{res.componentScores[c.id]?.toFixed(1) ?? '-'}</TableCell>)}<TableCell className="text-right font-bold">{res.finalMark?.toFixed(1) ?? 'N/A'}</TableCell><TableCell className="text-center font-bold">{res.grade}</TableCell></TableRow>
                             ))}</TableBody>
                         </Table></div>
                     </div>
