@@ -112,15 +112,12 @@ export default function CAEntryPage() {
         fetchData();
     }, []);
 
-    // 2. Handle Student Selection from Search (Sets context)
+    // 2. Handle Student Selection from Search
     const handleSelectStudentFromSearch = (student: Student) => {
         setSelectedSearchStudentName(student.name);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
-            
-            // Only auto-align Year and Semester if they are not already manually selected.
-            // This allows admins to find a student and then manually navigate to a past semester.
             if (!selectedYear || !selectedSemesterInYear) {
                 const intake = intakes.find(i => i.id === student.intakeId);
                 if (intake) {
@@ -137,42 +134,29 @@ export default function CAEntryPage() {
         }
         setIsSearchOpen(false);
         setStudentSearchInput('');
-        toast({ title: `Context aligned to ${student.name}.` });
     };
 
     // 3. Auto-Standing Logic (When intake is selected manually)
     React.useEffect(() => {
-        if (!selectedIntakeId) return;
-
+        if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
         const intake = intakes.find(i => i.id === selectedIntakeId);
         if (!intake) return;
-
         const fetchStanding = async () => {
             const calendarSnap = await get(ref(db, 'settings/academicCalendar'));
             const intakeStartStr = parseIntakeDate(intake.name);
             if (calendarSnap.exists() && intakeStartStr) {
-                const state = calculateAcademicState(
-                    intakeStartStr,
-                    new Date(),
-                    calendarSnap.val().standardCycles,
-                    Object.values(calendarSnap.val().anomalies || {})
-                );
-                // We only auto-populate if the fields are empty to avoid fighting manual historical lookups
+                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSnap.val().standardCycles, Object.values(calendarSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
         };
         fetchStanding();
-    }, [selectedIntakeId, intakes]); // dependencies ensure this runs when intake changes
+    }, [selectedIntakeId, intakes]);
 
     // 4. Resolve exact semester ID
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
-        return allSemesters.find(s => 
-            s.intakeId === selectedIntakeId && 
-            s.year === Number(selectedYear) && 
-            s.semesterInYear === Number(selectedSemesterInYear)
-        )?.id || null;
+        return allSemesters.find(s => s.intakeId === selectedIntakeId && s.year === Number(selectedYear) && s.semesterInYear === Number(selectedSemesterInYear))?.id || null;
     }, [allSemesters, selectedIntakeId, selectedYear, selectedSemesterInYear]);
 
     // 5. Fetch available courses for selected phase
@@ -196,9 +180,15 @@ export default function CAEntryPage() {
 
                 if (userPath?.semesters?.[targetSemesterId]) {
                     const courseIds = userPath.semesters[targetSemesterId].courses || [];
-                    setCourses(courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c.status === 'active'));
+                    const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
+                    setCourses(foundCourses);
+                    
+                    if (selectedCourseId && !foundCourses.find(c => c.id === selectedCourseId)) {
+                        setSelectedCourseId('');
+                    }
                 } else {
                     setCourses([]);
+                    setSelectedCourseId('');
                 }
             }
         };
@@ -218,7 +208,13 @@ export default function CAEntryPage() {
             setLoading(true);
             try {
                 const course = courses.find(c => c.id === selectedCourseId);
-                if (!course) throw new Error("Course context mismatch");
+                if (!course) {
+                    setStudentsInRoster([]);
+                    setScores({});
+                    setTemplateComponents([]);
+                    setLoading(false);
+                    return;
+                }
 
                 if (course.assessmentTemplateId) {
                     const tSnap = await get(ref(db, `settings/assessmentTemplates/${course.assessmentTemplateId}`));
@@ -265,7 +261,7 @@ export default function CAEntryPage() {
         setIsLinking(true);
         try {
             await update(ref(db, `courses/${selectedCourseId}`), { assessmentTemplateId: linkingTemplateId });
-            toast({ title: "Template Linked", description: "Grading structure applied to this course." });
+            toast({ title: "Template Linked" });
             setCourses(prev => prev.map(c => c.id === selectedCourseId ? { ...c, assessmentTemplateId: linkingTemplateId } : c));
             setLinkingTemplateId('');
         } catch (e: any) {
@@ -280,11 +276,11 @@ export default function CAEntryPage() {
         setSaving(true);
         try {
             await update(ref(db, `courses/${selectedCourseId}`), { assessmentTemplateId: null });
-            toast({ title: "Template Unlinked", description: "The grading structure has been removed from this course." });
+            toast({ title: "Template Unlinked" });
             setTemplateComponents([]);
             setCourses(prev => prev.map(c => c.id === selectedCourseId ? { ...c, assessmentTemplateId: undefined } : c));
         } catch (e: any) {
-            toast({ variant: 'destructive', title: "Unlink Failed", description: e.message });
+            toast({ variant: 'destructive', title: "Unlink Failed" });
         } finally {
             setSaving(false);
         }
@@ -295,9 +291,9 @@ export default function CAEntryPage() {
         setSaving(true);
         try {
             await update(ref(db, `assessments/${selectedCourseId}`), scores);
-            toast({ title: "Results Recorded", description: `Scores saved for Year ${selectedYear}, Sem ${selectedSemesterInYear}.` });
+            toast({ title: "Results Recorded" });
         } catch (e: any) {
-            toast({ variant: 'destructive', title: "Save Failed", description: e.message });
+            toast({ variant: 'destructive', title: "Save Failed" });
         } finally {
             setSaving(false);
         }
@@ -438,8 +434,7 @@ export default function CAEntryPage() {
                                     <AlertDialogTitle>Unlink Assessment Template?</AlertDialogTitle>
                                     <AlertDialogDescription>
                                         This will remove the current weighted grading structure from this course. 
-                                        You will not be able to enter CA scores until a new template is linked.
-                                        Existing raw scores in the database will be preserved but not visible under this view.
+                                        Existing raw scores in the database will be preserved.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>

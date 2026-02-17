@@ -27,7 +27,7 @@ type Student = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
 type Course = { id: string; name: string; code: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
@@ -86,8 +86,6 @@ export default function FinalExamEntryPage() {
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
-            
-            // Only auto-align Year and Semester if they are not already manually selected.
             if (!selectedYear || !selectedSemesterInYear) {
                 const intake = intakes.find(i => i.id === student.intakeId);
                 if (intake) {
@@ -104,7 +102,6 @@ export default function FinalExamEntryPage() {
         }
         setIsSearchOpen(false);
         setStudentSearchInput('');
-        toast({ title: `Context aligned to ${student.name}.` });
     };
 
     // Auto-Standing
@@ -138,8 +135,16 @@ export default function FinalExamEntryPage() {
                 const allCoursesData = allCoursesSnap.val();
                 if (userPath?.semesters?.[targetSemesterId]) {
                     const courseIds = userPath.semesters[targetSemesterId].courses || [];
-                    setCourses(courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c.status === 'active'));
-                } else { setCourses([]); }
+                    const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
+                    setCourses(foundCourses);
+                    
+                    if (selectedCourseId && !foundCourses.find(c => c.id === selectedCourseId)) {
+                        setSelectedCourseId('');
+                    }
+                } else { 
+                    setCourses([]);
+                    setSelectedCourseId('');
+                }
             }
         };
         fetchCourses();
@@ -151,6 +156,14 @@ export default function FinalExamEntryPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
+                const course = courses.find(c => c.id === selectedCourseId);
+                if (!course) {
+                    setStudentsInRoster([]);
+                    setScores({});
+                    setLoading(false);
+                    return;
+                }
+
                 const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)) ]);
                 const enrolledUids: string[] = [];
                 const allRegs = rSnap.val() || {};
@@ -164,7 +177,7 @@ export default function FinalExamEntryPage() {
             finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourseId, targetSemesterId, allStudents]);
+    }, [selectedCourseId, targetSemesterId, allStudents, courses]);
 
     const handleScoreChange = (uid: string, value: string) => {
         const score = value === '' ? undefined : Number(value);
