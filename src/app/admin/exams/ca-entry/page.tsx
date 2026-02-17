@@ -78,6 +78,7 @@ export default function CAEntryPage() {
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
+    const [selectedSearchStudentUid, setSelectedSearchStudentUid] = React.useState<string | null>(null);
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -115,9 +116,11 @@ export default function CAEntryPage() {
     // 2. Handle Student Selection from Search
     const handleSelectStudentFromSearch = (student: Student) => {
         setSelectedSearchStudentName(student.name);
+        setSelectedSearchStudentUid(student.uid);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
+            // Only auto-update year/semester if not already manually set
             if (!selectedYear || !selectedSemesterInYear) {
                 const intake = intakes.find(i => i.id === student.intakeId);
                 if (intake) {
@@ -228,24 +231,30 @@ export default function CAEntryPage() {
                     get(ref(db, `assessments/${selectedCourseId}`))
                 ]);
 
-                const enrolledUids: string[] = [];
+                const enrolledUids = new Set<string>();
                 const allRegs = rSnap.val() || {};
 
                 for (const userId in allRegs) {
                     const reg = allRegs[userId][targetSemesterId];
                     if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                        enrolledUids.push(userId);
+                        enrolledUids.add(userId);
                     }
                 }
 
-                setStudentsInRoster(enrolledUids.map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                // IMPORTANT: If a student was specifically searched, force them into the roster
+                // to allow adding past results or "ad-hoc" marks.
+                if (selectedSearchStudentUid) {
+                    enrolledUids.add(selectedSearchStudentUid);
+                }
+
+                setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
                 setScores(sSnap.exists() ? sSnap.val() : {});
 
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourseId, targetSemesterId, courses, allStudents]);
+    }, [selectedCourseId, targetSemesterId, courses, allStudents, selectedSearchStudentUid]);
 
     const handleScoreChange = (studentUid: string, componentId: string, value: string) => {
         const numericValue = value === '' ? undefined : Number(value);

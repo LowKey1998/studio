@@ -54,6 +54,7 @@ export default function FinalExamEntryPage() {
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
+    const [selectedSearchStudentUid, setSelectedSearchStudentUid] = React.useState<string | null>(null);
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -83,6 +84,7 @@ export default function FinalExamEntryPage() {
 
     const handleSelectStudentFromSearch = (student: Student) => {
         setSelectedSearchStudentName(student.name);
+        setSelectedSearchStudentUid(student.uid);
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
@@ -111,13 +113,13 @@ export default function FinalExamEntryPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && startStr) {
-                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+            if (calSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
         });
-    }, [selectedIntakeId, intakes]);
+    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -165,19 +167,25 @@ export default function FinalExamEntryPage() {
                 }
 
                 const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)) ]);
-                const enrolledUids: string[] = [];
+                const enrolledUids = new Set<string>();
                 const allRegs = rSnap.val() || {};
                 for (const userId in allRegs) {
                     const reg = allRegs[userId][targetSemesterId];
-                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.push(userId);
+                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.add(userId);
                 }
-                setStudentsInRoster(enrolledUids.map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+
+                // Force include the specifically searched student to allow ad-hoc past data entry
+                if (selectedSearchStudentUid) {
+                    enrolledUids.add(selectedSearchStudentUid);
+                }
+
+                setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
                 setScores(sSnap.exists() ? sSnap.val() : {});
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourseId, targetSemesterId, allStudents, courses]);
+    }, [selectedCourseId, targetSemesterId, allStudents, courses, selectedSearchStudentUid]);
 
     const handleScoreChange = (uid: string, value: string) => {
         const score = value === '' ? undefined : Number(value);
