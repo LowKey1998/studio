@@ -130,7 +130,7 @@ export default function StudentDashboardPage() {
                 }
             }
 
-            const currentCourses: Course[] = [];
+            const coursesMap = new Map<string, Course>();
             let totalPresent = 0;
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
@@ -150,7 +150,7 @@ export default function StudentDashboardPage() {
                     coursesArr.forEach((cid: string) => {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
-                        if (c) {
+                        if (c && !coursesMap.has(cid)) {
                             const lecturerNames = (c.lecturerIds || [])
                                 .map((id: string) => allUsers[id]?.name)
                                 .filter(Boolean)
@@ -168,7 +168,7 @@ export default function StudentDashboardPage() {
                                 else if (diff <= 3) soon++;
                             });
 
-                            currentCourses.push({
+                            coursesMap.set(cid, {
                                 id: cid,
                                 name: c.name,
                                 code: c.code,
@@ -189,7 +189,7 @@ export default function StudentDashboardPage() {
                     });
                 }
             }
-            setEnrolledCourses(currentCourses);
+            setEnrolledCourses(Array.from(coursesMap.values()));
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
             let totalDue = 0;

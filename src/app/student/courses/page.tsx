@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock, AlertCircle, ClipboardCheck } from "lucide-react";
+import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock, AlertCircle, ClipboardCheck, GraduationCap } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -110,20 +111,21 @@ export default function StudentCoursesPage() {
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                if (registration.courses && registration.courses.length > 0) {
+                if (registration.courses && (Array.isArray(registration.courses) ? registration.courses.length > 0 : Object.keys(registration.courses).length > 0)) {
                     const semesterInfo = allSemesters[semesterId];
                     if (!semesterInfo) continue;
 
-                    // Grouping Logic: Must match the student's specific intake
-                    if (semesterInfo.intakeId !== studentIntakeId) continue;
-
-                    // Separation Logic: Is this the student's CURRENT Year/Semester?
-                    const isCurrent = calculatedState && 
+                    // Grouping Logic: Display by registration semester context
+                    const isCurrentStanding = calculatedState && 
                                       semesterInfo.year === calculatedState.year && 
                                       semesterInfo.semesterInYear === calculatedState.semester;
                     
-                    // If not the current standing, it goes to "Achieved" (archivedGroups)
-                    const targetGroups = isCurrent ? activeGroups : archivedGroups;
+                    const isArchivedStatus = semesterInfo.status === 'Archived';
+                    const isPastStanding = calculatedState && 
+                                          (semesterInfo.year < calculatedState.year || 
+                                          (semesterInfo.year === calculatedState.year && semesterInfo.semesterInYear < calculatedState.semester));
+
+                    const targetGroups = (isCurrentStanding || semesterInfo.status === 'Open') && !isArchivedStatus ? activeGroups : archivedGroups;
 
                     if (!targetGroups[semesterId]) {
                         targetGroups[semesterId] = {
@@ -185,7 +187,7 @@ export default function StudentCoursesPage() {
             }
 
             setSemesterGroups(Object.values(activeGroups).sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
-            setArchivedGroups(Object.values(archivedGroups).sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
+            setArchivedGroups(Object.values(archivedGroups).sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear));
 
         } catch (error) {
             console.error("Error fetching enrolled courses:", error);
@@ -306,19 +308,31 @@ export default function StudentCoursesPage() {
 
             {archivedGroups.length > 0 && (
                 <div className="space-y-8 mt-12 pt-8 border-t">
-                    <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
+                    <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground uppercase tracking-widest">
                         <Archive className="h-5 w-5"/>
                         Completed / Achieved Periods
                     </div>
                     {archivedGroups.map((group) => (
                         <div key={group.semesterId} className="space-y-4">
-                            <h3 className="font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear}</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-xl font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear}</h3>
+                                <Badge variant="outline" className="opacity-50">Archived</Badge>
+                            </div>
                             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 {group.courses.map((course, idx) => (
-                                    <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-70">
+                                    <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-80 border-dashed">
                                         <CardHeader>
-                                            <CardTitle className="font-headline text-base">{course.name}</CardTitle>
-                                            <CardDescription>{course.code}</CardDescription>
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <CardTitle className="font-headline text-base">{course.name}</CardTitle>
+                                                    <CardDescription>{course.code}</CardDescription>
+                                                </div>
+                                                {course.hasResultsPublished && (
+                                                    <Badge className="bg-green-50 text-green-700 border-green-200">
+                                                        <GraduationCap className="h-3 w-3 mr-1" /> Graded
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </CardHeader>
                                         <CardFooter>
                                         <Button asChild className="w-full" variant="secondary" size="sm">
