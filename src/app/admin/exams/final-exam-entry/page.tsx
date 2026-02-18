@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, Info } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, X, Info } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 
 type Student = {
     uid: string;
@@ -108,6 +109,11 @@ export default function FinalExamEntryPage() {
         setStudentSearchInput('');
     };
 
+    const handleClearSearch = () => {
+        setSelectedSearchStudentName(null);
+        setSelectedSearchStudentUid(null);
+    };
+
     // Auto-Standing
     React.useEffect(() => {
         if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
@@ -166,7 +172,7 @@ export default function FinalExamEntryPage() {
 
     // Roster & Scores
     React.useEffect(() => {
-        if (!selectedCourseId || (!targetSemesterId && !selectedSearchStudentUid)) { setStudentsInRoster([]); setScores({}); return; }
+        if (!selectedCourseId) { setStudentsInRoster([]); setScores({}); return; }
         const fetchData = async () => {
             setLoading(true);
             try {
@@ -178,33 +184,29 @@ export default function FinalExamEntryPage() {
                     return;
                 }
 
-                const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`)) ]);
-                const enrolledUids = new Set<string>();
-                const allRegs = rSnap.val() || {};
-                
+                // Scores
                 if (targetSemesterId) {
-                    for (const userId in allRegs) {
-                        const reg = allRegs[userId][targetSemesterId];
-                        if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.add(userId);
-                    }
-                }
-
-                if (selectedSearchStudentUid) {
-                    enrolledUids.add(selectedSearchStudentUid);
-                }
-
-                // Fallback to all students if none registered for this specific phase
-                if (enrolledUids.size === 0 && selectedCourseId) {
-                    setStudentsInRoster(allStudents);
+                    const sSnap = await get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`));
+                    setScores(sSnap.exists() ? sSnap.val() : {});
                 } else {
-                    setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                    setScores({});
                 }
-                setScores(sSnap.exists() ? sSnap.val() : {});
+
+                // Roster Calculation
+                let roster: Student[] = [];
+                if (selectedSearchStudentUid) {
+                    const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
+                    roster = found ? [found] : [];
+                } else if (selectedProgrammeId && selectedIntakeId) {
+                    roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
+                }
+                
+                setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourseId, targetSemesterId, allStudents, courses, selectedSearchStudentUid]);
+    }, [selectedCourseId, targetSemesterId, allStudents, courses, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId]);
 
     const handleScoreChange = (uid: string, value: string) => {
         const score = value === '' ? undefined : Number(value);
@@ -267,113 +269,123 @@ export default function FinalExamEntryPage() {
     const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase()));
 
     return (
-        <Card className="shadow-lg border-0">
-            <CardHeader className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <CardTitle className="text-2xl font-headline">Final Examination Entry</CardTitle>
-                        <CardDescription>Record final examination results for selected cohorts.</CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground whitespace-nowrap">Step 1: Jump to Student</Label>
-                        <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30">
-                                    <div className="flex items-center gap-2">
-                                        <User className="h-4 w-4 text-primary" />
-                                        <span className="truncate">{selectedSearchStudentName || "Search by Name or ID..."}</span>
-                                    </div>
-                                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0" align="end">
-                                <div className="p-2">
-                                    <div className="relative">
-                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input 
-                                            placeholder="Type to search all students..." 
-                                            className="h-9 pl-8" 
-                                            value={studentSearchInput} 
-                                            onChange={e => setStudentSearchInput(e.target.value)} 
-                                        />
-                                    </div>
-                                </div>
-                                <Separator />
-                                <ScrollArea className="h-64">
-                                    <div className="p-1">
-                                        {searchableStudents.map(student => (
-                                            <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}>
-                                                <div className="flex flex-col text-left">
-                                                    <span className="font-bold">{student.name}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{student.id}</span>
-                                                </div>
-                                            </Button>
-                                        ))}
-                                        {searchableStudents.length === 0 && (
-                                            <div className="p-4 text-center text-xs text-muted-foreground italic">No matches found.</div>
-                                        )}
-                                    </div>
-                                </ScrollArea>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                </div>
-                <Separator />
-                <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
-                    <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1"><Label>Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
-                    <div className="space-y-1">
-                        <div className="flex items-center justify-between mb-1">
-                            <Label className="text-[10px] font-black uppercase">Course</Label>
-                            <div className="flex items-center gap-1.5">
-                                <Switch id="exam-all-courses" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
-                                <Label htmlFor="exam-all-courses" className="text-[8px] font-bold uppercase text-muted-foreground">Load All</Label>
-                            </div>
+        <div className="space-y-6">
+            <Card className="shadow-lg border-0 bg-primary/5">
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Final Examination Entry</CardTitle>
+                            <CardDescription>Record final examination results for a specific cohort.</CardDescription>
                         </div>
-                        <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!loadAllCourses && courses.length === 0}>
-                            <SelectTrigger className="bg-background"><SelectValue placeholder={loadAllCourses ? "All courses..." : (courses.length > 0 ? "Select course..." : "No courses")}/></SelectTrigger>
-                            <SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                            {selectedSearchStudentUid && (
+                                <Button variant="ghost" size="sm" onClick={handleClearSearch} className="h-10 text-destructive">
+                                    <X className="h-4 w-4 mr-1"/> Clear Focus
+                                </Button>
+                            )}
+                            <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30 bg-background">
+                                        <div className="flex items-center gap-2">
+                                            <User className="h-4 w-4 text-primary" />
+                                            <span className="truncate">{selectedSearchStudentName || "Jump to Student..."}</span>
+                                        </div>
+                                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[300px] p-0" align="end">
+                                    <div className="p-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input 
+                                                placeholder="Search student body..." 
+                                                className="h-9 pl-8" 
+                                                value={studentSearchInput} 
+                                                onChange={e => setStudentSearchInput(e.target.value)} 
+                                            />
+                                        </div>
+                                    </div>
+                                    <Separator />
+                                    <ScrollArea className="h-64">
+                                        <div className="p-1">
+                                            {searchableStudents.map(student => (
+                                                <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}>
+                                                    <div className="flex flex-col text-left">
+                                                        <span className="font-bold">{student.name}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{student.id}</span>
+                                                    </div>
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                     </div>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {selectedCourseId && selectedYear && selectedSemesterInYear && (
-                    <Alert className="bg-blue-50 border-blue-200">
-                        <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Active Entry Scope</AlertTitle>
-                        <AlertDescription className="text-xs text-blue-700 italic">
-                            These results are being recorded for <strong>Year {selectedYear}, Semester {selectedSemesterInYear}</strong>. 
-                            You may enter scores for any student who was registered for this academic phase, including past results.
-                        </AlertDescription>
-                    </Alert>
-                )}
-                {selectedCourseId && (studentsInRoster.length > 0) && (
-                    <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
-                )}
-                {loading ? <Skeleton className="h-64 w-full" /> : 
-                 selectedCourseId && (filteredRoster.length > 0) ? (
-                    <div className="border rounded-lg shadow-sm">
-                        <Table>
-                            <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                {filteredRoster.map(s => (
-                                    <TableRow key={s.uid}>
-                                        <TableCell className="font-medium">{s.name}</TableCell>
-                                        <TableCell className="font-mono text-xs">{s.id}</TableCell>
-                                        <TableCell><Input type="number" className="w-24" value={scores[s.uid]?.finalExam?.score ?? ''} onChange={e => handleScoreChange(s.uid, e.target.value)} /></TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                </CardHeader>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
+                        <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label>Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1 lg:col-span-2">
+                            <div className="flex items-center justify-between mb-1">
+                                <Label className="text-[10px] font-black uppercase">Course</Label>
+                                <div className="flex items-center gap-1.5">
+                                    <Switch id="exam-all-courses" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
+                                    <Label htmlFor="exam-all-courses" className="text-[8px] font-bold uppercase text-muted-foreground">Load All</Label>
+                                </div>
+                            </div>
+                            <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!loadAllCourses && courses.length === 0}>
+                                <SelectTrigger className="bg-background"><SelectValue placeholder={loadAllCourses ? "All courses..." : (courses.length > 0 ? "Select course..." : "No courses")}/></SelectTrigger>
+                                <SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select criteria or search for a student to begin." : "No eligible students found for this selection."}</AlertDescription></Alert>}
-            </CardContent>
-            { (selectedCourseId && filteredRoster.length > 0) && (
-                <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Exam Scores</Button></CardFooter>
-            )}
-        </Card>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {selectedCourseId && selectedYear && selectedSemesterInYear && (
+                        <Alert className="bg-blue-50 border-blue-200">
+                            <Info className="h-4 w-4 text-blue-600" />
+                            <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Academic Target Phase: Year {selectedYear}, Sem {selectedSemesterInYear}</AlertTitle>
+                            <AlertDescription className="text-xs text-blue-700 italic">
+                                Final examination results are being recorded for the specified period.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {selectedCourseId && filteredRoster.length > 0 && (
+                        <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+                    )}
+                    {loading ? <Skeleton className="h-64 w-full" /> : 
+                    selectedCourseId && filteredRoster.length > 0 ? (
+                        <div className="border rounded-lg shadow-sm">
+                            <Table>
+                                <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
+                                <TableBody>
+                                    {filteredRoster.map(s => (
+                                        <TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}>
+                                            <TableCell className="font-medium">{s.name}</TableCell>
+                                            <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                                            <TableCell><Input type="number" className="w-24 text-center font-bold" value={scores[s.uid]?.finalExam?.score ?? ''} onChange={e => handleScoreChange(s.uid, e.target.value)} /></TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    ) : <Alert variant={selectedCourseId ? "default" : "secondary"}>
+                            <AlertCircle className="h-4 w-4"/>
+                            <AlertTitle>{selectedCourseId ? "No Students" : "Selection Required"}</AlertTitle>
+                            <AlertDescription>{!selectedCourseId ? "Select a Programme, Intake, and Course to begin." : "No matching students found in this cohort."}</AlertDescription>
+                        </Alert>}
+                </CardContent>
+                {selectedCourseId && filteredRoster.length > 0 && (
+                    <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Exam Scores</Button></CardFooter>
+                )}
+            </Card>
+        </div>
     );
 }
