@@ -18,7 +18,8 @@ import {
     ShieldAlert,
     Wallet,
     MapPin,
-    AlertCircle
+    AlertCircle,
+    ClipboardCheck
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -93,11 +94,12 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap] = await Promise.all([
                 get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
                 get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
                 get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments'))
+                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments')),
+                get(ref(db, 'settings/assessmentTemplates'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -113,6 +115,7 @@ export default function StudentDashboardPage() {
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
             const allSemesters = semSnap.val() || {};
             const allAssignments = studentAssSnap.val() || {};
+            const allTemplates = templatesSnap.val() || {};
 
             let currentIntakeNameVal = '';
             let currentStandingState: any = null;
@@ -250,15 +253,12 @@ export default function StudentDashboardPage() {
                                         shouldInclude = true;
                                     }
                                 } else {
-                                    // Specific semester entries always include if student is in that sem
                                     shouldInclude = activeSemesterIds.has(semId);
                                 }
 
                                 if (shouldInclude) {
                                     const sessionKey = `${cid}-${entry.startTime}-${entry.venue}`;
                                     const existing = scheduleMap.get(sessionKey);
-                                    
-                                    // Preference: Specific semester ID over 'master' baseline
                                     if (!existing || (semId !== 'master' && existing.semesterId === 'master')) {
                                         scheduleMap.set(sessionKey, { 
                                             ...entry, 
@@ -285,18 +285,48 @@ export default function StudentDashboardPage() {
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
 
             const grades: any[] = [];
-            enrolledIds.forEach(cid => {
-                const assessment = allAssessments[cid]?.[user.uid];
-                if (assessment) {
-                    Object.entries(assessment).forEach(([key, data]: [string, any]) => {
-                        if (data.score !== undefined) {
-                            grades.push({ 
-                                courseCode: allCourses[cid]?.code, 
-                                label: key === 'finalExam' ? 'Final Exam' : key,
-                                score: data.score
+            // Traverse semester-isolated assessments
+            Object.keys(allAssessments).forEach(semId => {
+                const semesterResults = allAssessments[semId];
+                // Check if semId is a courseId (legacy) or a semesterId
+                if (allSemesters[semId] || semId === 'master') {
+                    Object.keys(semesterResults).forEach(cid => {
+                        const studentScore = semesterResults[cid][user.uid];
+                        if (studentScore) {
+                            const course = allCourses[cid];
+                            const template = course?.assessmentTemplateId ? allTemplates[course.assessmentTemplateId] : null;
+
+                            Object.entries(studentScore).forEach(([key, data]: [string, any]) => {
+                                if (data.score !== undefined) {
+                                    let label = key === 'finalExam' ? 'Final Exam' : key;
+                                    if (template && template.components?.[key]) {
+                                        label = template.components[key].name;
+                                    }
+                                    grades.push({
+                                        courseCode: course?.code,
+                                        label,
+                                        score: data.score
+                                    });
+                                }
                             });
                         }
                     });
+                } else if (allCourses[semId]) {
+                    // Handle legacy structure where assessments[courseId][userId] exists
+                    const studentScore = allAssessments[semId][user.uid];
+                    if (studentScore) {
+                        const course = allCourses[semId];
+                        const template = course?.assessmentTemplateId ? allTemplates[course.assessmentTemplateId] : null;
+                        Object.entries(studentScore).forEach(([key, data]: [string, any]) => {
+                            if (data.score !== undefined) {
+                                let label = key === 'finalExam' ? 'Final Exam' : key;
+                                if (template && template.components?.[key]) {
+                                    label = template.components[key].name;
+                                }
+                                grades.push({ courseCode: course?.code, label, score: data.score });
+                            }
+                        });
+                    }
                 }
             });
             setRecentGrades(grades.slice(-3));
