@@ -1,8 +1,7 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname, useParams } from 'next/navigation';
+import { usePathname, useParams, useSearchParams } from 'next/navigation';
 import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -22,7 +21,9 @@ type Course = {
 
 export default function StaffCourseLayout({ children }: { children: React.ReactNode }) {
     const params = useParams();
+    const searchParams = useSearchParams();
     const courseId = params.courseId as string;
+    const semesterId = searchParams.get('semesterId');
     const pathname = usePathname();
     const [course, setCourse] = React.useState<Course | null>(null);
     const [loading, setLoading] = React.useState(true);
@@ -64,6 +65,10 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
         { name: 'Live Session', href: `/staff/courses/${courseId}/live`, icon: <MonitorPlay/> },
     ];
     
+    const getLinkHref = (baseHref: string) => {
+        return semesterId ? `${baseHref}?semesterId=${semesterId}` : baseHref;
+    };
+
     const checkActive = (href: string) => {
         if(href.endsWith('/assignments')) {
             return pathname === href || pathname === `/staff/courses/${courseId}`;
@@ -112,12 +117,12 @@ export default function StaffCourseLayout({ children }: { children: React.ReactN
                 </CardHeader>
             </Card>
 
-             <nav className="flex border-b overflow-x-auto">
+             <nav className="flex border-b overflow-x-auto scrollbar-hide">
                 {navItems.map((item) => {
                     const isActive = checkActive(item.href);
                     return (
-                        <Link key={item.name} href={item.href} passHref>
-                            <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap ${isActive ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                        <Link key={item.name} href={getLinkHref(item.href)} passHref>
+                            <button className={`flex items-center gap-2 py-4 px-6 text-sm font-medium whitespace-nowrap transition-all ${isActive ? 'border-b-2 border-primary text-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
                                 {React.cloneElement(item.icon as React.ReactElement, { className: 'h-4 w-4' })}
                                 {item.name}
                             </button>
