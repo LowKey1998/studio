@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, X, Info } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, X, Info, BookOpen, Layers } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +18,8 @@ import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
 
 type Student = {
@@ -34,7 +37,7 @@ type Course = { id: string; name: string; code: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
 type FinalExamScore = { finalExam?: AssessmentScore };
-type AllScores = Record<string, FinalExamScore>;
+type AllScores = Record<string, Record<string, FinalExamScore>>; // courseId -> studentUid -> finalExamScore
 
 export default function FinalExamEntryPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
@@ -48,7 +51,7 @@ export default function FinalExamEntryPage() {
     const [selectedSemesterInYear, setSelectedSemesterInYear] = React.useState('');
     
     const [courses, setCourses] = React.useState<Course[]>([]);
-    const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [selectedCourseIds, setSelectedCourseIds] = React.useState<string[]>([]);
     const [loadAllCourses, setLoadAllCourses] = React.useState(false);
     
     const [studentsInRoster, setStudentsInRoster] = React.useState<Student[]>([]);
@@ -146,7 +149,7 @@ export default function FinalExamEntryPage() {
                 return;
             }
 
-            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
+            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseIds([]); return; }
 
             const coursePathsSnap = await get(ref(db, 'coursePaths'));
             if (coursePathsSnap.exists()) {
@@ -157,13 +160,10 @@ export default function FinalExamEntryPage() {
                     const courseIds = userPath.semesters[targetSemesterId].courses || [];
                     const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
                     setCourses(foundCourses);
-                    
-                    if (selectedCourseId && !foundCourses.find(c => c.id === selectedCourseId)) {
-                        setSelectedCourseId('');
-                    }
+                    setSelectedCourseIds(prev => prev.filter(id => foundCourses.some(c => c.id === id)));
                 } else { 
                     setCourses([]);
-                    setSelectedCourseId('');
+                    setSelectedCourseIds([]);
                 }
             }
         };
@@ -172,27 +172,19 @@ export default function FinalExamEntryPage() {
 
     // Roster & Scores
     React.useEffect(() => {
-        if (!selectedCourseId) { setStudentsInRoster([]); setScores({}); return; }
+        if (selectedCourseIds.length === 0) { setStudentsInRoster([]); setScores({}); return; }
         const fetchData = async () => {
             setLoading(true);
             try {
-                const course = courses.find(c => c.id === selectedCourseId);
-                if (!course) {
-                    setStudentsInRoster([]);
-                    setScores({});
-                    setLoading(false);
-                    return;
+                const newScores: AllScores = {};
+                for (const courseId of selectedCourseIds) {
+                    if (targetSemesterId) {
+                        const sSnap = await get(ref(db, `assessments/${targetSemesterId}/${courseId}`));
+                        newScores[courseId] = sSnap.exists() ? sSnap.val() : {};
+                    }
                 }
+                setScores(newScores);
 
-                // Scores
-                if (targetSemesterId) {
-                    const sSnap = await get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`));
-                    setScores(sSnap.exists() ? sSnap.val() : {});
-                } else {
-                    setScores({});
-                }
-
-                // Roster Calculation
                 let roster: Student[] = [];
                 if (selectedSearchStudentUid) {
                     const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
@@ -202,64 +194,71 @@ export default function FinalExamEntryPage() {
                 } else {
                     roster = allStudents;
                 }
-                
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
         fetchData();
-    }, [selectedCourseId, targetSemesterId, allStudents, courses, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId]);
+    }, [selectedCourseIds, targetSemesterId, allStudents, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId]);
 
-    const handleScoreChange = (uid: string, value: string) => {
+    const handleScoreChange = (courseId: string, uid: string, value: string) => {
         const score = value === '' ? undefined : Number(value);
         if (score !== undefined && (score < 0 || score > 100)) return;
-        setScores(prev => ({ ...prev, [uid]: { ...prev[uid], finalExam: { ...(prev[uid]?.finalExam || {}), score } } }));
+        setScores(prev => ({
+            ...prev,
+            [courseId]: {
+                ...(prev[courseId] || {}),
+                [uid]: {
+                    ...(prev[courseId]?.[uid] || {}),
+                    finalExam: { ...(prev[courseId]?.[uid]?.finalExam || {}), score }
+                }
+            }
+        }));
     };
 
     const handleSave = async () => {
-        if (!selectedCourseId || !targetSemesterId) return;
+        if (selectedCourseIds.length === 0 || !targetSemesterId) return;
         setSaving(true);
         try {
             const updates: Record<string, any> = {};
             const semester = allSemesters.find(s => s.id === targetSemesterId);
 
-            // 1. Save scores to isolated semester path
-            updates[`assessments/${targetSemesterId}/${selectedCourseId}`] = scores;
+            for (const courseId of selectedCourseIds) {
+                updates[`assessments/${targetSemesterId}/${courseId}`] = scores[courseId] || {};
 
-            // 2. Ensure each student in the roster has a registration record for this semester
-            for (const student of studentsInRoster) {
-                const regRef = ref(db, `registrations/${student.uid}/${targetSemesterId}`);
-                const regSnap = await get(regRef);
-                
-                if (!regSnap.exists()) {
-                    const invRef = push(ref(db, `invoices/${student.uid}`));
-                    updates[`invoices/${student.uid}/${invRef.key}`] = {
-                        invoiceId: invRef.key,
-                        semester: semester?.name || 'Manual Entry',
-                        semesterId: targetSemesterId,
-                        dateCreated: new Date().toISOString(),
-                        totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
-                    };
+                for (const student of studentsInRoster) {
+                    const regRef = ref(db, `registrations/${student.uid}/${targetSemesterId}`);
+                    const regSnap = await get(regRef);
                     
-                    updates[`registrations/${student.uid}/${targetSemesterId}`] = {
-                        courses: [selectedCourseId],
-                        status: 'Completed',
-                        semesterName: semester?.name || 'Manual Entry',
-                        registrationDate: new Date().toISOString(),
-                        programmeId: student.programmeId || selectedProgrammeId,
-                        intakeId: student.intakeId || selectedIntakeId,
-                        invoiceId: invRef.key
-                    };
-                } else {
-                    const currentCourses = regSnap.val().courses || [];
-                    if (!currentCourses.includes(selectedCourseId)) {
-                        updates[`registrations/${student.uid}/${targetSemesterId}/courses`] = [...currentCourses, selectedCourseId];
+                    if (!regSnap.exists()) {
+                        const invRef = push(ref(db, `invoices/${student.uid}`));
+                        updates[`invoices/${student.uid}/${invRef.key}`] = {
+                            invoiceId: invRef.key,
+                            semester: semester?.name || 'Manual Entry',
+                            semesterId: targetSemesterId,
+                            dateCreated: new Date().toISOString(),
+                            totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                        };
+                        updates[`registrations/${student.uid}/${targetSemesterId}`] = {
+                            courses: [courseId],
+                            status: 'Completed',
+                            semesterName: semester?.name || 'Manual Entry',
+                            registrationDate: new Date().toISOString(),
+                            programmeId: student.programmeId || selectedProgrammeId,
+                            intakeId: student.intakeId || selectedIntakeId,
+                            invoiceId: invRef.key
+                        };
+                    } else {
+                        const currentCourses = regSnap.val().courses || [];
+                        if (!currentCourses.includes(courseId)) {
+                            updates[`registrations/${student.uid}/${targetSemesterId}/courses`] = [...currentCourses, courseId];
+                        }
                     }
                 }
             }
 
             await update(ref(db), updates);
-            toast({ title: "Exam Scores Saved", description: "Class instance updated." });
+            toast({ title: "Exam Scores Saved", description: `${selectedCourseIds.length} course(s) updated.` });
         } catch (e: any) { 
             toast({ variant: 'destructive', title: "Save Failed", description: e.message }); 
         } finally { 
@@ -299,12 +298,7 @@ export default function FinalExamEntryPage() {
                                     <div className="p-2">
                                         <div className="relative">
                                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                            <Input 
-                                                placeholder="Search student body..." 
-                                                className="h-9 pl-8" 
-                                                value={studentSearchInput} 
-                                                onChange={e => setStudentSearchInput(e.target.value)} 
-                                            />
+                                            <Input placeholder="Search student body..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
                                         </div>
                                     </div>
                                     <Separator />
@@ -312,10 +306,7 @@ export default function FinalExamEntryPage() {
                                         <div className="p-1">
                                             {searchableStudents.map(student => (
                                                 <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}>
-                                                    <div className="flex flex-col text-left">
-                                                        <span className="font-bold">{student.name}</span>
-                                                        <span className="text-[10px] text-muted-foreground">{student.id}</span>
-                                                    </div>
+                                                    <div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div>
                                                 </Button>
                                             ))}
                                         </div>
@@ -332,20 +323,14 @@ export default function FinalExamEntryPage() {
                     <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
                         <div className="space-y-1">
                             <Label>Programme</Label>
-                            <Select value={selectedProgrammeId} onValueChange={(val) => {
-                                setSelectedProgrammeId(val);
-                                handleClearSearch();
-                            }}>
+                            <Select value={selectedProgrammeId} onValueChange={(val) => { setSelectedProgrammeId(val); handleClearSearch(); }}>
                                 <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                                 <SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
                             <Label>Intake</Label>
-                            <Select value={selectedIntakeId} onValueChange={(val) => {
-                                setSelectedIntakeId(val);
-                                handleClearSearch();
-                            }}>
+                            <Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); handleClearSearch(); }}>
                                 <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                                 <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
@@ -354,56 +339,103 @@ export default function FinalExamEntryPage() {
                         <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
                             <div className="flex items-center justify-between mb-1">
-                                <Label className="text-[10px] font-black uppercase">Course</Label>
+                                <Label className="text-[10px] font-black uppercase">Course(s)</Label>
                                 <div className="flex items-center gap-1.5">
-                                    <Switch id="exam-all-courses" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
-                                    <Label htmlFor="exam-all-courses" className="text-[8px] font-bold uppercase text-muted-foreground">Load All</Label>
+                                    <Switch id="exam-load-all" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
+                                    <Label htmlFor="exam-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label>
                                 </div>
                             </div>
-                            <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!loadAllCourses && courses.length === 0}>
-                                <SelectTrigger className="bg-background"><SelectValue placeholder={loadAllCourses ? "All courses..." : (courses.length > 0 ? "Select course..." : "No courses")}/></SelectTrigger>
-                                <SelectContent>{courses.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                            </Select>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}>
+                                        <span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                    <ScrollArea className="h-64">
+                                        <div className="p-2 space-y-1">
+                                            {courses.map(c => (
+                                                <div key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded-md transition-colors">
+                                                    <Checkbox 
+                                                        id={`exam-course-${c.id}`} 
+                                                        checked={selectedCourseIds.includes(c.id)} 
+                                                        onCheckedChange={(checked) => setSelectedCourseIds(prev => checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} 
+                                                    />
+                                                    <Label htmlFor={`exam-course-${c.id}`} className="text-xs flex-1 cursor-pointer">
+                                                        <span className="font-bold">{c.code}</span> - {c.name}
+                                                    </Label>
+                                                </div>
+                                            ))}
+                                            {courses.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No courses found.</p>}
+                                        </div>
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {selectedCourseId && selectedYear && selectedSemesterInYear && (
+                    {selectedCourseIds.length > 0 && selectedYear && selectedSemesterInYear && (
                         <Alert className="bg-blue-50 border-blue-200">
                             <Info className="h-4 w-4 text-blue-600" />
                             <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Academic Target Phase: Year {selectedYear}, Sem {selectedSemesterInYear}</AlertTitle>
-                            <AlertDescription className="text-xs text-blue-700 italic">
-                                Final examination results are being recorded for the specified period.
-                            </AlertDescription>
+                            <AlertDescription className="text-xs text-blue-700 italic">Final examination results are being recorded for the specified period.</AlertDescription>
                         </Alert>
                     )}
-                    {selectedCourseId && filteredRoster.length > 0 && (
-                        <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
-                    )}
-                    {loading ? <Skeleton className="h-64 w-full" /> : 
-                    selectedCourseId && filteredRoster.length > 0 ? (
-                        <div className="border rounded-lg shadow-sm">
-                            <Table>
-                                <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {filteredRoster.map(s => (
-                                        <TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}>
-                                            <TableCell className="font-medium">{s.name}</TableCell>
-                                            <TableCell className="font-mono text-xs">{s.id}</TableCell>
-                                            <TableCell><Input type="number" className="w-24 text-center font-bold" value={scores[s.uid]?.finalExam?.score ?? ''} onChange={e => handleScoreChange(s.uid, e.target.value)} /></TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                    {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
+                        <div className="space-y-6">
+                            <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
+                            <Accordion type="multiple" defaultValue={selectedCourseIds} className="w-full space-y-4">
+                                {selectedCourseIds.map(courseId => {
+                                    const course = courses.find(c => c.id === courseId);
+                                    if (!course) return null;
+
+                                    return (
+                                        <AccordionItem value={courseId} key={courseId} className="border rounded-lg bg-card overflow-hidden shadow-sm">
+                                            <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline font-bold">
+                                                <div className="flex items-center gap-3">
+                                                    <BookOpen className="h-5 w-5 text-primary"/>
+                                                    <span>{course.code}: {course.name}</span>
+                                                </div>
+                                            </AccordionTrigger>
+                                            <AccordionContent className="p-4 pt-0">
+                                                <div className="border rounded-lg overflow-hidden">
+                                                    <Table>
+                                                        <TableHeader className="bg-muted/30">
+                                                            <TableRow>
+                                                                <TableHead>Student Name</TableHead>
+                                                                <TableHead>Student ID</TableHead>
+                                                                <TableHead className="w-[200px]">Final Exam Score (100)</TableHead>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {filteredRoster.map(s => (
+                                                                <TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}>
+                                                                    <TableCell className="font-medium text-xs">{s.name}</TableCell>
+                                                                    <TableCell className="font-mono text-[10px] opacity-70">{s.id}</TableCell>
+                                                                    <TableCell>
+                                                                        <Input type="number" className="w-20 h-8 mx-auto text-center font-bold text-xs" value={scores[courseId]?.[s.uid]?.finalExam?.score ?? ''} onChange={e => handleScoreChange(courseId, s.uid, e.target.value)} />
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ))}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    );
+                                })}
+                            </Accordion>
                         </div>
-                    ) : <Alert variant={selectedCourseId ? "default" : "secondary"}>
-                            <AlertCircle className="h-4 w-4"/>
-                            <AlertTitle>{selectedCourseId ? "No Students" : "Selection Required"}</AlertTitle>
-                            <AlertDescription>{!selectedCourseId ? "Select a Programme, Intake, and Course to begin." : "No matching students found in this cohort."}</AlertDescription>
-                        </Alert>}
+                    ) : <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                            <Layers className="mx-auto h-12 w-12 opacity-20 mb-4" />
+                            <h3 className="text-lg font-bold">No Course Selected</h3>
+                            <p className="text-sm max-w-xs mx-auto">{!selectedYear ? "Select academic phase details above." : "Please select courses to begin."}</p>
+                        </div>}
                 </CardContent>
-                {selectedCourseId && filteredRoster.length > 0 && (
-                    <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Exam Scores</Button></CardFooter>
+                {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
+                    <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Exam Scores</Button></CardFooter>
                 )}
             </Card>
         </div>
