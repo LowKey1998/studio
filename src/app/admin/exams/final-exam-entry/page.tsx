@@ -115,8 +115,8 @@ export default function FinalExamEntryPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && intakeStartStr) {
-                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+            if (calSnap.exists() && startStr) {
+                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
