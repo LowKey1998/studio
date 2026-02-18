@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock, AlertCircle, ClipboardCheck, GraduationCap } from "lucide-react";
+import { ChevronRight, Info, Archive, CalendarDays, UserCheck, Clock, AlertCircle, ClipboardCheck, GraduationCap, BookCopy } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { differenceInCalendarDays, parseISO, isBefore, startOfDay, format } from 'date-fns';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 type Course = {
     id: string;
@@ -38,11 +39,17 @@ type SemesterGroup = {
     year: number;
     semesterInYear: number;
     courses: Course[];
+    isCurrent: boolean;
+};
+
+type YearGroup = {
+    year: number;
+    semesters: SemesterGroup[];
+    isCurrentYear: boolean;
 };
 
 export default function StudentCoursesPage() {
-    const [semesterGroups, setSemesterGroups] = React.useState<SemesterGroup[]>([]);
-    const [archivedGroups, setArchivedGroups] = React.useState<SemesterGroup[]>([]);
+    const [yearGroups, setYearGroups] = React.useState<YearGroup[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const [intakeName, setIntakeName] = React.useState('');
@@ -82,7 +89,7 @@ export default function StudentCoursesPage() {
             const currentIntakeName = studentIntakeId ? intakesSnap.val()?.[studentIntakeId]?.name : 'Your Intake';
             setIntakeName(currentIntakeName);
 
-            let calculatedState = null;
+            let calculatedState: any = null;
             if (calendarSnap.exists() && currentIntakeName) {
                 const intakeStartStr = parseIntakeDate(currentIntakeName);
                 if (intakeStartStr) {
@@ -104,90 +111,87 @@ export default function StudentCoursesPage() {
             const userMap = new Map<string, string>();
             Object.keys(usersData).forEach(uid => userMap.set(uid, usersData[uid].name));
 
-            const activeGroups: Record<string, SemesterGroup> = {};
-            const archivedGroups: Record<string, SemesterGroup> = {};
-            
+            const tempYearMap: Record<number, Record<string, SemesterGroup>> = {};
             const registrationsData = registrationsSnap.val() || {};
             
             for (const semesterId in registrationsData) {
                 const registration = registrationsData[semesterId];
-                if (registration.courses && (Array.isArray(registration.courses) ? registration.courses.length > 0 : Object.keys(registration.courses).length > 0)) {
-                    const semesterInfo = allSemesters[semesterId];
-                    if (!semesterInfo) continue;
+                const semesterInfo = allSemesters[semesterId];
+                if (!semesterInfo) continue;
 
-                    // Grouping Logic: Display by registration semester context
-                    const isCurrentStanding = calculatedState && 
-                                      semesterInfo.year === calculatedState.year && 
-                                      semesterInfo.semesterInYear === calculatedState.semester;
-                    
-                    const isArchivedStatus = semesterInfo.status === 'Archived';
-                    const isPastStanding = calculatedState && 
-                                          (semesterInfo.year < calculatedState.year || 
-                                          (semesterInfo.year === calculatedState.year && semesterInfo.semesterInYear < calculatedState.semester));
+                const year = semesterInfo.year;
+                if (!tempYearMap[year]) tempYearMap[year] = {};
 
-                    const targetGroups = (isCurrentStanding || semesterInfo.status === 'Open') && !isArchivedStatus ? activeGroups : archivedGroups;
+                if (!tempYearMap[year][semesterId]) {
+                    tempYearMap[year][semesterId] = {
+                        semesterId,
+                        semesterName: semesterInfo.name,
+                        year: semesterInfo.year,
+                        semesterInYear: semesterInfo.semesterInYear,
+                        courses: [],
+                        isCurrent: calculatedState?.year === year && calculatedState?.semester === semesterInfo.semesterInYear
+                    };
+                }
 
-                    if (!targetGroups[semesterId]) {
-                        targetGroups[semesterId] = {
-                            semesterId,
+                const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {});
+                for (const courseId of coursesArr) {
+                    const courseInfo = coursesData[courseId];
+                    if (courseInfo) {
+                        const lecturerNames = (courseInfo.lecturerIds || [])
+                            .map((id: string) => userMap.get(id))
+                            .filter(Boolean)
+                            .join(', ') || userMap.get(courseInfo.lecturerId) || 'N/A';
+
+                        const courseAssignments = allAssignments[courseId] || allAssignments[`${courseId}_${semesterId}`] || {};
+                        let soon = 0;
+                        let late = 0;
+                        let earliestDueDate = null;
+
+                        Object.values(courseAssignments).forEach((a: any) => {
+                            if (a.submissions?.[currentUser.uid]) return; 
+                            
+                            const dueDate = parseISO(a.dueDate);
+                            const today = startOfDay(new Date());
+                            const diff = differenceInCalendarDays(dueDate, today);
+
+                            if (isBefore(dueDate, today)) {
+                                late++;
+                            } else if (diff <= 3) {
+                                soon++;
+                            }
+
+                            if (!earliestDueDate || isBefore(dueDate, parseISO(earliestDueDate))) {
+                                earliestDueDate = a.dueDate;
+                            }
+                        });
+
+                        tempYearMap[year][semesterId].courses.push({
+                            id: courseId,
+                            name: courseInfo.name,
+                            code: courseInfo.code,
+                            lecturerName: lecturerNames,
+                            semesterId: semesterId,
                             semesterName: semesterInfo.name,
                             year: semesterInfo.year,
                             semesterInYear: semesterInfo.semesterInYear,
-                            courses: []
-                        };
-                    }
-                    
-                    const coursesArr = Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses);
-                    for (const courseId of coursesArr) {
-                        const courseInfo = coursesData[courseId];
-                        if (courseInfo) {
-                            const lecturerNames = (courseInfo.lecturerIds || [])
-                                .map((id: string) => userMap.get(id))
-                                .filter(Boolean)
-                                .join(', ') || userMap.get(courseInfo.lecturerId) || 'N/A';
-
-                            const courseAssignments = allAssignments[courseId] || allAssignments[`${courseId}_${semesterId}`] || {};
-                            let soon = 0;
-                            let late = 0;
-                            let earliestDueDate = null;
-
-                            Object.values(courseAssignments).forEach((a: any) => {
-                                if (a.submissions?.[currentUser.uid]) return; 
-                                
-                                const dueDate = parseISO(a.dueDate);
-                                const today = startOfDay(new Date());
-                                const diff = differenceInCalendarDays(dueDate, today);
-
-                                if (isBefore(dueDate, today)) {
-                                    late++;
-                                } else if (diff <= 3) {
-                                    soon++;
-                                }
-
-                                if (!earliestDueDate || isBefore(dueDate, parseISO(earliestDueDate))) {
-                                    earliestDueDate = a.dueDate;
-                                }
-                            });
-
-                            targetGroups[semesterId].courses.push({
-                                id: courseId,
-                                name: courseInfo.name,
-                                code: courseInfo.code,
-                                lecturerName: lecturerNames,
-                                semesterId: semesterId,
-                                semesterName: semesterInfo.name,
-                                year: semesterInfo.year,
-                                semesterInYear: semesterInfo.semesterInYear,
-                                assignmentStatus: { dueSoon: soon, pastDue: late, earliestDueDate },
-                                hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId]
-                            });
-                        }
+                            assignmentStatus: { soon, late, earliestDueDate },
+                            hasResultsPublished: !!allResultsPublished[semesterId]?.[courseId]
+                        });
                     }
                 }
             }
 
-            setSemesterGroups(Object.values(activeGroups).sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
-            setArchivedGroups(Object.values(archivedGroups).sort((a,b) => b.year - a.year || b.semesterInYear - a.semesterInYear));
+            const formattedYearGroups: YearGroup[] = Object.entries(tempYearMap).map(([yearStr, semestersMap]) => {
+                const yearNum = Number(yearStr);
+                const semesters = Object.values(semestersMap).sort((a,b) => a.semesterInYear - b.semesterInYear);
+                return {
+                    year: yearNum,
+                    semesters,
+                    isCurrentYear: calculatedState?.year === yearNum
+                };
+            }).sort((a,b) => b.year - a.year);
+
+            setYearGroups(formattedYearGroups);
 
         } catch (error) {
             console.error("Error fetching enrolled courses:", error);
@@ -235,63 +239,78 @@ export default function StudentCoursesPage() {
                        </div>
                     ))}
                 </div>
-            ) : semesterGroups.length > 0 ? (
-                 <div className="space-y-10">
-                    {semesterGroups.map((group) => (
-                    <div key={group.semesterId} className="space-y-4">
-                        <div className="flex items-center gap-2 border-b pb-2">
-                            <h3 className="text-xl font-bold">Year {group.year}, Semester {group.semesterInYear}</h3>
-                            <Badge className="bg-primary text-primary-foreground">Active Semester</Badge>
-                        </div>
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {group.courses.map((course, idx) => (
-                                    <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-md transition-all duration-300 hover:shadow-xl border-t-2 border-t-primary/10">
-                                    <CardHeader>
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <CardTitle className="font-headline text-lg leading-tight">{course.name}</CardTitle>
-                                                <CardDescription className="font-bold font-mono text-primary/80">{course.code}</CardDescription>
+            ) : yearGroups.length > 0 ? (
+                 <Accordion type="multiple" defaultValue={yearGroups.filter(y => y.isCurrentYear).map(y => `year-${y.year}`)} className="w-full space-y-6">
+                    {yearGroups.map((yearGroup) => (
+                        <AccordionItem value={`year-${yearGroup.year}`} key={yearGroup.year} className="border-none">
+                            <AccordionTrigger className="hover:no-underline bg-muted/30 px-4 py-3 rounded-lg border">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-xl font-black uppercase tracking-tight">Academic Year {yearGroup.year}</h3>
+                                    {yearGroup.isCurrentYear && <Badge className="bg-primary text-primary-foreground text-[10px] h-5">Active Year</Badge>}
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-6 space-y-8">
+                                {yearGroup.semesters.map((semGroup) => (
+                                    <div key={semGroup.semesterId} className="space-y-4">
+                                        <div className="flex items-center justify-between border-b pb-2">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="text-lg font-bold">Semester {semGroup.semesterInYear}</h4>
+                                                <span className="text-xs text-muted-foreground italic">({semGroup.semesterName})</span>
                                             </div>
-                                            {course.hasResultsPublished && (
-                                                <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
-                                                    <ClipboardCheck className="h-3 w-3 mr-1" /> Results Out
-                                                </Badge>
-                                            )}
+                                            {semGroup.isCurrent && <Badge variant="outline" className="text-primary border-primary bg-primary/5">Current Semester</Badge>}
                                         </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="flex items-start text-sm text-muted-foreground">
-                                            <UserCheck className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
-                                            <span className="line-clamp-2">{course.lecturerName}</span>
+                                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                            {semGroup.courses.map((course, idx) => (
+                                                <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-md transition-all duration-300 hover:shadow-xl border-t-2 border-t-primary/10">
+                                                    <CardHeader>
+                                                        <div className="flex justify-between items-start">
+                                                            <div className="flex-1">
+                                                                <CardTitle className="font-headline text-lg leading-tight">{course.name}</CardTitle>
+                                                                <CardDescription className="font-bold font-mono text-primary/80">{course.code}</CardDescription>
+                                                            </div>
+                                                            {course.hasResultsPublished && (
+                                                                <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
+                                                                    <ClipboardCheck className="h-3 w-3 mr-1" /> Results Out
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </CardHeader>
+                                                    <CardContent className="space-y-4">
+                                                        <div className="flex items-start text-sm text-muted-foreground">
+                                                            <UserCheck className="mr-2 h-4 w-4 mt-0.5 shrink-0" />
+                                                            <span className="line-clamp-2">{course.lecturerName}</span>
+                                                        </div>
+
+                                                        {(course.assignmentStatus?.late || 0) > 0 && (
+                                                            <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-[10px] font-bold">
+                                                                <AlertCircle className="h-4 w-4" />
+                                                                <span>{course.assignmentStatus?.late} OVERDUE (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
+                                                            </div>
+                                                        )}
+
+                                                        {(course.assignmentStatus?.soon || 0) > 0 && (
+                                                            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-bold">
+                                                                <Clock className="h-4 w-4" />
+                                                                <span>{course.assignmentStatus?.soon} PENDING (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
+                                                            </div>
+                                                        )}
+                                                    </CardContent>
+                                                    <CardFooter>
+                                                        <Button asChild className="w-full">
+                                                            <Link href={`/student/courses/${course.id}/assignments?semesterId=${semGroup.semesterId}`}>
+                                                                Enter Classroom <ChevronRight className="ml-2 h-4 w-4" />
+                                                            </Link>
+                                                        </Button>
+                                                    </CardFooter>
+                                                </Card>
+                                            ))}
                                         </div>
-
-                                        {(course.assignmentStatus?.pastDue || 0) > 0 && (
-                                            <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-[10px] font-bold">
-                                                <AlertCircle className="h-4 w-4" />
-                                                <span>{course.assignmentStatus?.pastDue} OVERDUE (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
-                                            </div>
-                                        )}
-
-                                        {(course.assignmentStatus?.dueSoon || 0) > 0 && (
-                                            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-bold">
-                                                <Clock className="h-4 w-4" />
-                                                <span>{course.assignmentStatus?.dueSoon} PENDING (due {course.assignmentStatus?.earliestDueDate ? format(parseISO(course.assignmentStatus.earliestDueDate), 'MMM dd') : 'N/A'})</span>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                    <CardFooter>
-                                    <Button asChild className="w-full">
-                                        <Link href={`/student/courses/${course.id}/assignments?semesterId=${group.semesterId}`}>
-                                            Enter Classroom <ChevronRight className="ml-2 h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                    </CardFooter>
-                                </Card>
-                            ))}
-                        </div>
-                    </div>
+                                    </div>
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
                     ))}
-                </div>
+                </Accordion>
             ) : (
                 <Card>
                     <CardContent className="pt-6">
@@ -299,54 +318,11 @@ export default function StudentCoursesPage() {
                             <Info className="h-4 w-4" />
                             <AlertTitle>Current Registration Incomplete</AlertTitle>
                             <AlertDescription>
-                                You are not enrolled in any classes for your current Year {academicState?.year}, Semester {academicState?.semester}. Please complete your registration if you haven't already.
+                                You are not enrolled in any classes for your current standing. Please complete your registration if you haven't already.
                             </AlertDescription>
                         </Alert>
                     </CardContent>
                 </Card>
-            )}
-
-            {archivedGroups.length > 0 && (
-                <div className="space-y-8 mt-12 pt-8 border-t">
-                    <div className="flex items-center gap-2 text-lg font-semibold text-muted-foreground uppercase tracking-widest">
-                        <Archive className="h-5 w-5"/>
-                        Completed / Achieved Periods
-                    </div>
-                    {archivedGroups.map((group) => (
-                        <div key={group.semesterId} className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-xl font-bold text-muted-foreground">Year {group.year}, Semester {group.semesterInYear}</h3>
-                                <Badge variant="outline" className="opacity-50">Archived</Badge>
-                            </div>
-                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                {group.courses.map((course, idx) => (
-                                    <Card key={`${course.id}-${idx}`} className="flex flex-col justify-between shadow-sm opacity-80 border-dashed">
-                                        <CardHeader>
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <CardTitle className="font-headline text-base">{course.name}</CardTitle>
-                                                    <CardDescription>{course.code}</CardDescription>
-                                                </div>
-                                                {course.hasResultsPublished && (
-                                                    <Badge className="bg-green-50 text-green-700 border-green-200">
-                                                        <GraduationCap className="h-3 w-3 mr-1" /> Graded
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </CardHeader>
-                                        <CardFooter>
-                                        <Button asChild className="w-full" variant="secondary" size="sm">
-                                            <Link href={`/student/courses/${course.id}/assignments?semesterId=${group.semesterId}`}>
-                                                View Records <ChevronRight className="ml-2 h-4 w-4" />
-                                            </Link>
-                                        </Button>
-                                        </CardFooter>
-                                    </Card>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
             )}
         </div>
     );
