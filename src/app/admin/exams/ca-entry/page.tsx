@@ -254,6 +254,9 @@ export default function CAEntryPage() {
                 } else if (selectedProgrammeId && selectedIntakeId) {
                     // Cohort mode: all students in that programme and intake
                     roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
+                } else {
+                    // Fallback to full student body if no cohort selected and no student focused
+                    roster = allStudents;
                 }
                 
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
@@ -428,14 +431,20 @@ export default function CAEntryPage() {
                     <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Programme</Label>
-                            <Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}>
+                            <Select value={selectedProgrammeId} onValueChange={(val) => {
+                                setSelectedProgrammeId(val);
+                                handleClearSearch();
+                            }}>
                                 <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                                 <SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Intake</Label>
-                            <Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}>
+                            <Select value={selectedIntakeId} onValueChange={(val) => {
+                                setSelectedIntakeId(val);
+                                handleClearSearch();
+                            }}>
                                 <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
                                 <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>

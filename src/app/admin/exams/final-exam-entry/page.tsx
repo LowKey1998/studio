@@ -121,8 +121,8 @@ export default function FinalExamEntryPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && startStr) {
-                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+            if (calSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
@@ -199,6 +199,8 @@ export default function FinalExamEntryPage() {
                     roster = found ? [found] : [];
                 } else if (selectedProgrammeId && selectedIntakeId) {
                     roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
+                } else {
+                    roster = allStudents;
                 }
                 
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
@@ -328,8 +330,26 @@ export default function FinalExamEntryPage() {
             <Card>
                 <CardHeader>
                     <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
-                        <div className="space-y-1"><Label>Programme</Label><Select value={selectedProgrammeId} onValueChange={setSelectedProgrammeId}><SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label>Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1">
+                            <Label>Programme</Label>
+                            <Select value={selectedProgrammeId} onValueChange={(val) => {
+                                setSelectedProgrammeId(val);
+                                handleClearSearch();
+                            }}>
+                                <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
+                                <SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Intake</Label>
+                            <Select value={selectedIntakeId} onValueChange={(val) => {
+                                setSelectedIntakeId(val);
+                                handleClearSearch();
+                            }}>
+                                <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
+                                <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
                         <div className="space-y-1"><Label>Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
