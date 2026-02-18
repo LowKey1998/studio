@@ -141,7 +141,7 @@ export default function GradeApprovalPage() {
                 setGradeStatus(statusSnap.exists() ? statusSnap.val() : 'Pending');
 
                 const [uSnap, rSnap, aSnap, pSnap, tSnap] = await Promise.all([
-                    get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)), get(ref(db, 'programmes')), get(ref(db, 'settings/assessmentTemplates'))
+                    get(ref(db, 'users')), get(ref(db, 'registrations')), get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`)), get(ref(db, 'programmes')), get(ref(db, 'settings/assessmentTemplates'))
                 ]);
 
                 const regs = rSnap.val() || {};

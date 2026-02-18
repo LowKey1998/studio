@@ -234,7 +234,7 @@ export default function CAEntryPage() {
 
                 const [rSnap, sSnap] = await Promise.all([
                     get(ref(db, 'registrations')),
-                    get(ref(db, `assessments/${selectedCourseId}`))
+                    get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`))
                 ]);
 
                 const enrolledUids = new Set<string>();
@@ -249,7 +249,7 @@ export default function CAEntryPage() {
                     }
                 }
 
-                // IMPORTANT: If a student was specifically searched, force them into the roster
+                // If a student was specifically searched, force them into the roster
                 if (selectedSearchStudentUid) {
                     enrolledUids.add(selectedSearchStudentUid);
                 }
@@ -309,13 +309,51 @@ export default function CAEntryPage() {
     };
 
     const handleSave = async () => {
-        if (!selectedCourseId) return;
+        if (!selectedCourseId || !targetSemesterId) return;
         setSaving(true);
         try {
-            await update(ref(db, `assessments/${selectedCourseId}`), scores);
-            toast({ title: "Results Recorded" });
+            const updates: Record<string, any> = {};
+            const semester = allSemesters.find(s => s.id === targetSemesterId);
+            
+            // 1. Save scores to isolated semester path
+            updates[`assessments/${targetSemesterId}/${selectedCourseId}`] = scores;
+
+            // 2. Ensure each student in the roster has a registration record for this semester
+            for (const student of studentsInRoster) {
+                const regRef = ref(db, `registrations/${student.uid}/${targetSemesterId}`);
+                const regSnap = await get(regRef);
+                
+                if (!regSnap.exists()) {
+                    const invRef = push(ref(db, `invoices/${student.uid}`));
+                    updates[`invoices/${student.uid}/${invRef.key}`] = {
+                        invoiceId: invRef.key,
+                        semester: semester?.name || 'Manual Entry',
+                        semesterId: targetSemesterId,
+                        dateCreated: new Date().toISOString(),
+                        totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                    };
+                    
+                    updates[`registrations/${student.uid}/${targetSemesterId}`] = {
+                        courses: [selectedCourseId],
+                        status: 'Completed',
+                        semesterName: semester?.name || 'Manual Entry',
+                        registrationDate: new Date().toISOString(),
+                        programmeId: student.programmeId || selectedProgrammeId,
+                        intakeId: student.intakeId || selectedIntakeId,
+                        invoiceId: invRef.key
+                    };
+                } else {
+                    const currentCourses = regSnap.val().courses || [];
+                    if (!currentCourses.includes(selectedCourseId)) {
+                        updates[`registrations/${student.uid}/${targetSemesterId}/courses`] = [...currentCourses, selectedCourseId];
+                    }
+                }
+            }
+
+            await update(ref(db), updates);
+            toast({ title: "Results Recorded", description: "Class instance updated." });
         } catch (e: any) {
-            toast({ variant: 'destructive', title: "Save Failed" });
+            toast({ variant: 'destructive', title: "Save Failed", description: e.message });
         } finally {
             setSaving(false);
         }

@@ -93,8 +93,17 @@ export default function StudentResultsPage() {
                     }
                 }
 
-                const scoresSnap = await get(ref(db, `assessments/${courseId}/${currentUser.uid}`));
-                setScores(scoresSnap.exists() ? scoresSnap.val() : null);
+                // Fetch scores from semester-specific path if available, otherwise fallback
+                const path = semesterIdFilter ? `assessments/${semesterIdFilter}/${courseId}/${currentUser.uid}` : `assessments/${courseId}/${currentUser.uid}`;
+                const scoresSnap = await get(ref(db, path));
+                
+                if (scoresSnap.exists()) {
+                    setScores(scoresSnap.val());
+                } else {
+                    // Legacy fallback
+                    const legacySnap = await get(ref(db, `assessments/${courseId}/${currentUser.uid}`));
+                    setScores(legacySnap.exists() ? legacySnap.val() : null);
+                }
 
             } catch (error: any) {
                 console.error("Error fetching scores:", error);
@@ -128,7 +137,6 @@ export default function StudentResultsPage() {
                 dateSubmitted: new Date().toISOString()
             });
 
-            // Notification logic is secondary; don't let it crash the submission if it fails
             try {
                 const registrarIds = await getRegistrarIds();
                 if (registrarIds.length > 0) {

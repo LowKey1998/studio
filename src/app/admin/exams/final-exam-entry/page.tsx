@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, Info } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update } from 'firebase/database';
+import { ref, get, set, onValue, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -178,7 +178,7 @@ export default function FinalExamEntryPage() {
                     return;
                 }
 
-                const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)) ]);
+                const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`)) ]);
                 const enrolledUids = new Set<string>();
                 const allRegs = rSnap.val() || {};
                 
@@ -213,13 +213,54 @@ export default function FinalExamEntryPage() {
     };
 
     const handleSave = async () => {
-        if (!selectedCourseId) return;
+        if (!selectedCourseId || !targetSemesterId) return;
         setSaving(true);
         try {
-            await update(ref(db, `assessments/${selectedCourseId}`), scores);
-            toast({ title: "Exam Scores Saved" });
-        } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed" }); }
-        finally { setSaving(false); }
+            const updates: Record<string, any> = {};
+            const semester = allSemesters.find(s => s.id === targetSemesterId);
+
+            // 1. Save scores to isolated semester path
+            updates[`assessments/${targetSemesterId}/${selectedCourseId}`] = scores;
+
+            // 2. Ensure each student in the roster has a registration record for this semester
+            for (const student of studentsInRoster) {
+                const regRef = ref(db, `registrations/${student.uid}/${targetSemesterId}`);
+                const regSnap = await get(regRef);
+                
+                if (!regSnap.exists()) {
+                    const invRef = push(ref(db, `invoices/${student.uid}`));
+                    updates[`invoices/${student.uid}/${invRef.key}`] = {
+                        invoiceId: invRef.key,
+                        semester: semester?.name || 'Manual Entry',
+                        semesterId: targetSemesterId,
+                        dateCreated: new Date().toISOString(),
+                        totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                    };
+                    
+                    updates[`registrations/${student.uid}/${targetSemesterId}`] = {
+                        courses: [selectedCourseId],
+                        status: 'Completed',
+                        semesterName: semester?.name || 'Manual Entry',
+                        registrationDate: new Date().toISOString(),
+                        programmeId: student.programmeId || selectedProgrammeId,
+                        intakeId: student.intakeId || selectedIntakeId,
+                        invoiceId: invRef.key
+                    };
+                } else {
+                    const currentCourses = regSnap.val().courses || [];
+                    if (!currentCourses.includes(selectedCourseId)) {
+                        updates[`registrations/${student.uid}/${targetSemesterId}/courses`] = [...currentCourses, selectedCourseId];
+                    }
+                }
+            }
+
+            await update(ref(db), updates);
+            toast({ title: "Exam Scores Saved", description: "Class instance updated." });
+        } catch (e: any) { 
+            toast({ variant: 'destructive', title: "Save Failed", description: e.message }); 
+        } finally { 
+            setSaving(false); 
+        }
     };
 
     const filteredRoster = studentsInRoster.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || s.id.toLowerCase().includes(rosterSearch.toLowerCase()));

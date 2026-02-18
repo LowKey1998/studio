@@ -8,10 +8,10 @@ import { ref, get, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
@@ -139,7 +139,7 @@ export default function GradebookPage() {
             setLoadingGrades(true);
             try {
                 const [rSnap, aSnap, pSnap, tSnap, policySnap] = await Promise.all([
-                    get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)), 
+                    get(ref(db, 'registrations')), get(ref(db, `assessments/${targetSemesterId}/${selectedCourseId}`)), 
                     get(ref(db, 'programmes')), get(ref(db, 'settings/assessmentTemplates')), get(ref(db, 'settings/finalExamPolicy'))
                 ]);
 

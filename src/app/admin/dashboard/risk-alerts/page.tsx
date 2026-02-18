@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +40,7 @@ export default function RiskAlertsDashboardPage() {
                 }
 
                 const users = usersSnap.val();
-                const assessments = assessmentsSnap.val();
+                const assessmentsBySemester = assessmentsSnap.val();
                 const courses = coursesSnap.val();
                 const programmes = programmesSnap.val() || {};
 
@@ -50,20 +49,24 @@ export default function RiskAlertsDashboardPage() {
                 for (const userId in users) {
                     if (users[userId].role !== 'Student') continue;
 
-                    const studentAssessments = Object.keys(assessments)
-                        .map(courseId => ({ courseId, scores: assessments[courseId][userId] }))
-                        .filter(item => item.scores);
-                    
                     const failedCourses: { code: string; name: string }[] = [];
-                    studentAssessments.forEach(({ courseId, scores }) => {
-                        const finalScore = scores.finalExam?.score;
-                        if (finalScore !== undefined && finalScore < 50) {
-                            failedCourses.push({
-                                code: courses[courseId]?.code || 'N/A',
-                                name: courses[courseId]?.name || 'Unknown'
-                            });
+                    const foundCourseIds = new Set<string>();
+
+                    // Iterate through semesters then courses to find failures
+                    for (const semId in assessmentsBySemester) {
+                        for (const courseId in assessmentsBySemester[semId]) {
+                            const scores = assessmentsBySemester[semId][courseId][userId];
+                            if (scores?.finalExam?.score !== undefined && scores.finalExam.score < 50) {
+                                if (!foundCourseIds.has(courseId)) {
+                                    failedCourses.push({
+                                        code: courses[courseId]?.code || 'N/A',
+                                        name: courses[courseId]?.name || 'Unknown'
+                                    });
+                                    foundCourseIds.add(courseId);
+                                }
+                            }
                         }
-                    });
+                    }
 
                     if (failedCourses.length > 0) {
                         let riskLevel: AtRiskStudent['riskLevel'] = 'Low';
