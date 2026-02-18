@@ -1,8 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { get, ref, update } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import { Issuer } from 'openid-client';
+import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest) {
     try {
@@ -23,8 +23,21 @@ export async function GET(req: NextRequest) {
             response_types: ['code'],
         });
 
+        // Retrieve the state from the cookie for validation
+        const cookieStore = await cookies();
+        const state = cookieStore.get('qb_auth_state')?.value;
+
         const params = client.callbackParams(req.url);
-        const tokenSet = await client.callback(`${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`, params, { state: params.state });
+        
+        // Finalize the callback using the stored state
+        const tokenSet = await client.callback(
+            `${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`, 
+            params, 
+            { state }
+        );
+
+        // Clear the state cookie
+        cookieStore.delete('qb_auth_state');
 
         const realmId = params.realmId;
         const accessToken = tokenSet.access_token;
@@ -43,7 +56,7 @@ export async function GET(req: NextRequest) {
             tokenExpiry: new Date().getTime() + (tokenSet.expires_in! * 1000)
         });
 
-        // Redirect user back to the settings page
+        // Redirect user back to the integration dashboard
         return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/admin/addons/quickbooks`);
 
     } catch (error: any) {

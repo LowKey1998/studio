@@ -1,8 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { get, ref } from 'firebase/database';
 import { db } from '@/lib/firebase';
-import { Issuer } from 'openid-client';
+import { Issuer, generators } from 'openid-client';
+import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest) {
     try {
@@ -28,8 +28,22 @@ export async function GET(req: NextRequest) {
             response_types: ['code'],
         });
 
+        // Generate a random state for CSRF protection
+        const state = generators.state();
+        
+        // Store the state in a cookie to verify it in the callback
+        const cookieStore = await cookies();
+        cookieStore.set('qb_auth_state', state, { 
+            maxAge: 60 * 10, // 10 minutes
+            httpOnly: true, 
+            secure: process.env.NODE_ENV === 'production',
+            path: '/',
+            sameSite: 'lax'
+        });
+
         const authUrl = client.authorizationUrl({
             scope: 'com.intuit.quickbooks.accounting openid profile email phone address',
+            state,
         });
 
         return NextResponse.redirect(authUrl);
