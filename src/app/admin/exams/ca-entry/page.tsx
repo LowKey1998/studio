@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -206,7 +207,7 @@ export default function CAEntryPage() {
 
     // 6. Load Roster and Existing Scores
     React.useEffect(() => {
-        if (!selectedCourseId || !targetSemesterId) {
+        if (!selectedCourseId || (!targetSemesterId && !selectedSearchStudentUid)) {
             setStudentsInRoster([]);
             setScores({});
             setTemplateComponents([]);
@@ -240,10 +241,12 @@ export default function CAEntryPage() {
                 const enrolledUids = new Set<string>();
                 const allRegs = rSnap.val() || {};
 
-                for (const userId in allRegs) {
-                    const reg = allRegs[userId][targetSemesterId];
-                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                        enrolledUids.add(userId);
+                if (targetSemesterId) {
+                    for (const userId in allRegs) {
+                        const reg = allRegs[userId][targetSemesterId];
+                        if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                            enrolledUids.add(userId);
+                        }
                     }
                 }
 
@@ -468,7 +471,7 @@ export default function CAEntryPage() {
                 )}
                 
                 {loading ? <Skeleton className="h-64 w-full" /> : 
-                 selectedCourseId && templateComponents.length > 0 && filteredRoster.length > 0 ? (
+                 selectedCourseId && templateComponents.length > 0 && (filteredRoster.length > 0 || selectedSearchStudentUid) ? (
                     <div className="overflow-x-auto border rounded-lg shadow-sm">
                         <Table>
                             <TableHeader>
@@ -507,7 +510,7 @@ export default function CAEntryPage() {
                         <AlertDescription className="flex flex-col gap-4">
                             {!selectedCourseId ? (
                                 "Identify the cohort and course using the filters above to begin score entry."
-                            ) : studentsInRoster.length === 0 ? (
+                            ) : (studentsInRoster.length === 0 && !selectedSearchStudentUid) ? (
                                 "No students match the selected academic phase. Ensure registration is completed for this Year/Semester."
                             ) : (
                                 <div className="space-y-4">
@@ -537,7 +540,7 @@ export default function CAEntryPage() {
                     </Alert>
                 )}
             </CardContent>
-            {selectedCourseId && templateComponents.length > 0 && filteredRoster.length > 0 && (
+            {selectedCourseId && templateComponents.length > 0 && (filteredRoster.length > 0 || selectedSearchStudentUid) && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save Scores</Button></CardFooter>
             )}
         </Card>

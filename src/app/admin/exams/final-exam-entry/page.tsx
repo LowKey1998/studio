@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -166,7 +167,7 @@ export default function FinalExamEntryPage() {
 
     // Roster & Scores
     React.useEffect(() => {
-        if (!selectedCourseId || !targetSemesterId) { setStudentsInRoster([]); setScores({}); return; }
+        if (!selectedCourseId || (!targetSemesterId && !selectedSearchStudentUid)) { setStudentsInRoster([]); setScores({}); return; }
         const fetchData = async () => {
             setLoading(true);
             try {
@@ -181,9 +182,12 @@ export default function FinalExamEntryPage() {
                 const [rSnap, sSnap] = await Promise.all([ get(ref(db, 'registrations')), get(ref(db, `assessments/${selectedCourseId}`)) ]);
                 const enrolledUids = new Set<string>();
                 const allRegs = rSnap.val() || {};
-                for (const userId in allRegs) {
-                    const reg = allRegs[userId][targetSemesterId];
-                    if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.add(userId);
+                
+                if (targetSemesterId) {
+                    for (const userId in allRegs) {
+                        const reg = allRegs[userId][targetSemesterId];
+                        if (reg?.courses?.includes(selectedCourseId) && (reg.status === 'Completed' || reg.status === 'Pending Payment')) enrolledUids.add(userId);
+                    }
                 }
 
                 // Force include the specifically searched student to allow ad-hoc past data entry
@@ -302,11 +306,11 @@ export default function FinalExamEntryPage() {
                         </AlertDescription>
                     </Alert>
                 )}
-                {selectedCourseId && studentsInRoster.length > 0 && (
+                {selectedCourseId && (studentsInRoster.length > 0 || selectedSearchStudentUid) && (
                     <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                 )}
                 {loading ? <Skeleton className="h-64 w-full" /> : 
-                 selectedCourseId && filteredRoster.length > 0 ? (
+                 selectedCourseId && (filteredRoster.length > 0 || selectedSearchStudentUid) ? (
                     <div className="border rounded-lg shadow-sm">
                         <Table>
                             <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
@@ -323,7 +327,7 @@ export default function FinalExamEntryPage() {
                     </div>
                 ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select criteria or search for a student to begin." : "No eligible students found for this selection."}</AlertDescription></Alert>}
             </CardContent>
-            {studentsInRoster.length > 0 && (
+            { (studentsInRoster.length > 0 || selectedSearchStudentUid) && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Exam Scores</Button></CardFooter>
             )}
         </Card>
