@@ -52,6 +52,7 @@ type TimetableEntry = {
     courseCode: string;
     courseName: string;
     id: string;
+    semesterId: string;
 };
 
 type DeadlineEvent = {
@@ -92,10 +93,10 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, qSnap, settingsSnap, fSnap, semSnap, studentAssSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap] = await Promise.all([
                 get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
                 get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
-                get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'quizzes')), get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments'))
             ]);
 
@@ -114,19 +115,21 @@ export default function StudentDashboardPage() {
             const allAssignments = studentAssSnap.val() || {};
 
             let currentIntakeNameVal = '';
+            let currentStandingState: any = null;
+
             if (userProfile?.intakeId) {
                 currentIntakeNameVal = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
                 setIntakeName(currentIntakeNameVal);
 
                 const intakeStartStr = parseIntakeDate(currentIntakeNameVal);
                 if (intakeStartStr) {
-                    const state = calculateAcademicState(
+                    currentStandingState = calculateAcademicState(
                         intakeStartStr, 
                         getCurrentServerDate(), 
                         calSettings.standardCycles, 
                         Object.values(calSettings.anomalies || {})
                     );
-                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                    setAcademicStanding(`Year ${currentStandingState.year}, Sem ${currentStandingState.semester}`);
                 }
             }
 
@@ -228,7 +231,8 @@ export default function StudentDashboardPage() {
             }
 
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
-            const schedule: TimetableEntry[] = [];
+            const scheduleMap = new Map<string, TimetableEntry>();
+
             for (const semId in allTimetables) {
                 const isMaster = semId === 'master';
                 if (!activeSemesterIds.has(semId) && !isMaster) continue;
@@ -238,19 +242,39 @@ export default function StudentDashboardPage() {
                         const courseInfo = allCourses[cid];
                         Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
-                                let shouldInclude = true;
-                                if (isMaster && courseInfo?.separateInstance) {
-                                    shouldInclude = currentIntakeNameVal && entry.intakeName === currentIntakeNameVal;
+                                let shouldInclude = false;
+                                if (isMaster) {
+                                    if (courseInfo?.separateInstance) {
+                                        shouldInclude = currentIntakeNameVal && entry.intakeName?.trim().toUpperCase() === currentIntakeNameVal.trim().toUpperCase();
+                                    } else {
+                                        shouldInclude = true;
+                                    }
+                                } else {
+                                    // Specific semester entries always include if student is in that sem
+                                    shouldInclude = activeSemesterIds.has(semId);
                                 }
+
                                 if (shouldInclude) {
-                                    schedule.push({ ...entry, courseCode: courseInfo?.code, courseName: courseInfo?.name, id: cid });
+                                    const sessionKey = `${cid}-${entry.startTime}-${entry.venue}`;
+                                    const existing = scheduleMap.get(sessionKey);
+                                    
+                                    // Preference: Specific semester ID over 'master' baseline
+                                    if (!existing || (semId !== 'master' && existing.semesterId === 'master')) {
+                                        scheduleMap.set(sessionKey, { 
+                                            ...entry, 
+                                            courseCode: courseInfo?.code, 
+                                            courseName: courseInfo?.name, 
+                                            id: cid,
+                                            semesterId: semId
+                                        });
+                                    }
                                 }
                             }
                         });
                     }
                 }
             }
-            setTodaySchedule(schedule.sort((a,b) => a.startTime.localeCompare(b.startTime)));
+            setTodaySchedule(Array.from(scheduleMap.values()).sort((a,b) => a.startTime.localeCompare(b.startTime)));
 
             const deadlines: DeadlineEvent[] = [];
             Object.values(allCalendarEvents).forEach((ev: any) => {

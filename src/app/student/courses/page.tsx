@@ -40,6 +40,8 @@ type SemesterGroup = {
     semesterInYear: number;
     courses: Course[];
     isCurrent: boolean;
+    isUpcoming: boolean;
+    isArchived: boolean;
 };
 
 type YearGroup = {
@@ -123,13 +125,19 @@ export default function StudentCoursesPage() {
                 if (!tempYearMap[year]) tempYearMap[year] = {};
 
                 if (!tempYearMap[year][semesterId]) {
+                    const isCurrent = calculatedState?.year === year && calculatedState?.semester === semesterInfo.semesterInYear;
+                    const isArchived = (year < (calculatedState?.year || 0)) || (year === calculatedState?.year && semesterInfo.semesterInYear < (calculatedState?.semester || 0));
+                    const isUpcoming = (year > (calculatedState?.year || 0)) || (year === calculatedState?.year && semesterInfo.semesterInYear > (calculatedState?.semester || 0));
+
                     tempYearMap[year][semesterId] = {
                         semesterId,
                         semesterName: semesterInfo.name,
                         year: semesterInfo.year,
                         semesterInYear: semesterInfo.semesterInYear,
                         courses: [],
-                        isCurrent: calculatedState?.year === year && calculatedState?.semester === semesterInfo.semesterInYear
+                        isCurrent,
+                        isArchived,
+                        isUpcoming
                     };
                 }
 
@@ -257,7 +265,11 @@ export default function StudentCoursesPage() {
                                                 <h4 className="text-lg font-bold">Semester {semGroup.semesterInYear}</h4>
                                                 <span className="text-xs text-muted-foreground italic">({semGroup.semesterName})</span>
                                             </div>
-                                            {semGroup.isCurrent && <Badge variant="outline" className="text-primary border-primary bg-primary/5">Current Semester</Badge>}
+                                            <div className="flex gap-2">
+                                                {semGroup.isCurrent && <Badge variant="default" className="bg-blue-600 text-white border-blue-700 h-5 text-[9px] uppercase font-black tracking-widest">Current Standing</Badge>}
+                                                {semGroup.isArchived && <Badge variant="secondary" className="h-5 text-[9px] uppercase font-black opacity-60">Completed</Badge>}
+                                                {semGroup.isUpcoming && <Badge variant="outline" className="h-5 text-[9px] uppercase font-black opacity-60">Upcoming</Badge>}
+                                            </div>
                                         </div>
                                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                             {semGroup.courses.map((course, idx) => (
@@ -310,7 +322,7 @@ export default function StudentCoursesPage() {
                             </AccordionContent>
                         </AccordionItem>
                     ))}
-                </Accordion>
+                 </Accordion>
             ) : (
                 <Card>
                     <CardContent className="pt-6">
