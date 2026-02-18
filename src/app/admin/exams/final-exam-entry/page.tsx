@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -124,8 +123,8 @@ export default function FinalExamEntryPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && intakeStartStr) {
-                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+            if (calSnap.exists() && startStr) {
+                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
@@ -189,10 +188,24 @@ export default function FinalExamEntryPage() {
                 if (selectedSearchStudentUid) {
                     const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
                     roster = found ? [found] : [];
-                } else if (selectedProgrammeId && selectedIntakeId) {
-                    roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
                 } else {
-                    roster = allStudents;
+                    const registrationsSnap = await get(ref(db, 'registrations'));
+                    const allRegs = registrationsSnap.val() || {};
+                    const registeredUids = new Set<string>();
+
+                    if (targetSemesterId) {
+                        Object.keys(allRegs).forEach(uid => {
+                            if (allRegs[uid][targetSemesterId]) registeredUids.add(uid);
+                        });
+                    }
+
+                    if (registeredUids.size > 0) {
+                        roster = allStudents.filter(s => registeredUids.has(s.uid));
+                    } else if (selectedProgrammeId && selectedIntakeId) {
+                        roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
+                    } else {
+                        roster = allStudents;
+                    }
                 }
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
             } catch (e) { console.error(e); }
@@ -297,7 +310,7 @@ export default function FinalExamEntryPage() {
                                 <PopoverContent className="w-[300px] p-0" align="end">
                                     <div className="p-2">
                                         <div className="relative">
-                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                             <Input placeholder="Search student body..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
                                         </div>
                                     </div>
@@ -383,7 +396,7 @@ export default function FinalExamEntryPage() {
                             <AlertDescription className="text-xs text-blue-700 italic">Final examination results are being recorded for the specified period.</AlertDescription>
                         </Alert>
                     )}
-                    {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
+                    {selectedCourseIds.length > 0 && filteredRoster.length > 0 ? (
                         <div className="space-y-6">
                             <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                             <Accordion type="multiple" defaultValue={selectedCourseIds} className="w-full space-y-4">
@@ -428,11 +441,13 @@ export default function FinalExamEntryPage() {
                                 })}
                             </Accordion>
                         </div>
-                    ) : <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                    ) : (
+                        <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
                             <Layers className="mx-auto h-12 w-12 opacity-20 mb-4" />
                             <h3 className="text-lg font-bold">No Course Selected</h3>
                             <p className="text-sm max-w-xs mx-auto">{!selectedYear ? "Select academic phase details above." : "Please select courses to begin."}</p>
-                        </div>}
+                        </div>
+                    )}
                 </CardContent>
                 {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
                     <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Exam Scores</Button></CardFooter>

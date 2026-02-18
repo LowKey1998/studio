@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -223,10 +222,24 @@ export default function CAEntryPage() {
                 if (selectedSearchStudentUid) {
                     const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
                     roster = found ? [found] : [];
-                } else if (selectedProgrammeId && selectedIntakeId) {
-                    roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
                 } else {
-                    roster = allStudents;
+                    const registrationsSnap = await get(ref(db, 'registrations'));
+                    const allRegs = registrationsSnap.val() || {};
+                    const registeredUids = new Set<string>();
+
+                    if (targetSemesterId) {
+                        Object.keys(allRegs).forEach(uid => {
+                            if (allRegs[uid][targetSemesterId]) registeredUids.add(uid);
+                        });
+                    }
+
+                    if (registeredUids.size > 0) {
+                        roster = allStudents.filter(s => registeredUids.has(s.uid));
+                    } else if (selectedProgrammeId && selectedIntakeId) {
+                        roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
+                    } else {
+                        roster = allStudents;
+                    }
                 }
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
 

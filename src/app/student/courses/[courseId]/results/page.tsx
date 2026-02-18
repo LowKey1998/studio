@@ -48,6 +48,7 @@ type Appeal = {
     reason: string;
     status: 'Pending' | 'Under Review' | 'Resolved' | 'Declined';
     dateSubmitted: string;
+    courseId: string;
 };
 
 export default function StudentResultsPage() {
@@ -163,25 +164,25 @@ export default function StudentResultsPage() {
                 dateSubmitted: new Date().toISOString()
             });
 
-            // Fire and forget notifications to avoid "just loading" hang
+            // Fire and forget notifications to avoid UI hangs
             getRegistrarIds().then(registrarIds => {
                 if (registrarIds.length > 0) {
                     createNotification(
                         registrarIds, 
                         `${userData.name} submitted a grade appeal for ${courseData.code}.`,
                         '/admin/exams/student-appeals'
-                    ).catch(e => console.warn("Notif failed", e));
+                    ).catch(e => console.warn("Background notification failed:", e));
                 }
-            }).catch(e => console.warn("Notif fetch failed", e));
+            }).catch(e => console.warn("Failed to fetch registrar IDs for notification:", e));
             
-            toast({ title: 'Appeal Submitted', description: 'Your request has been sent for review.'});
+            toast({ variant: 'success', title: 'Appeal Submitted', description: 'Your request has been sent for review.'});
             setIsAppealDialogOpen(false);
             setAppealReason('');
             setAppealingAssessment('');
 
         } catch (error: any) {
             console.error("Appeal Submission Error:", error);
-            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message || 'An error occurred.' });
+            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message || 'An unexpected error occurred. Please try again.' });
         } finally {
             setFormLoading(false);
         }
