@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -251,12 +250,17 @@ export default function CAEntryPage() {
                 }
 
                 // IMPORTANT: If a student was specifically searched, force them into the roster
-                // to allow adding past results or "ad-hoc" marks.
                 if (selectedSearchStudentUid) {
                     enrolledUids.add(selectedSearchStudentUid);
                 }
 
-                setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                // If no registered students were found for this phase, fallback to all students as requested
+                if (enrolledUids.size === 0 && selectedCourseId) {
+                    setStudentsInRoster(allStudents);
+                } else {
+                    setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                }
+                
                 setScores(sSnap.exists() ? sSnap.val() : {});
 
             } catch (e) { console.error(e); }
@@ -471,7 +475,7 @@ export default function CAEntryPage() {
                 )}
                 
                 {loading ? <Skeleton className="h-64 w-full" /> : 
-                 selectedCourseId && templateComponents.length > 0 && (filteredRoster.length > 0 || selectedSearchStudentUid) ? (
+                 selectedCourseId && templateComponents.length > 0 ? (
                     <div className="overflow-x-auto border rounded-lg shadow-sm">
                         <Table>
                             <TableHeader>
@@ -500,6 +504,9 @@ export default function CAEntryPage() {
                                         ))}
                                     </TableRow>
                                 ))}
+                                {filteredRoster.length === 0 && (
+                                    <TableRow><TableCell colSpan={2 + templateComponents.length} className="text-center h-24 text-muted-foreground italic">No students found matching your filters.</TableCell></TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     </div>
@@ -510,8 +517,6 @@ export default function CAEntryPage() {
                         <AlertDescription className="flex flex-col gap-4">
                             {!selectedCourseId ? (
                                 "Identify the cohort and course using the filters above to begin score entry."
-                            ) : (studentsInRoster.length === 0 && !selectedSearchStudentUid) ? (
-                                "No students match the selected academic phase. Ensure registration is completed for this Year/Semester."
                             ) : (
                                 <div className="space-y-4">
                                     <p>This course has no continuous assessment template assigned. You must link a structure to define component weights.</p>
@@ -540,7 +545,7 @@ export default function CAEntryPage() {
                     </Alert>
                 )}
             </CardContent>
-            {selectedCourseId && templateComponents.length > 0 && (filteredRoster.length > 0 || selectedSearchStudentUid) && (
+            {selectedCourseId && templateComponents.length > 0 && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save Scores</Button></CardFooter>
             )}
         </Card>

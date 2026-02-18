@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ChevronDown, Flag, Loader2, ClipboardCheck, Info } from "lucide-react";
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, onValue, push, serverTimestamp } from 'firebase/database';
+import { ref, get, onValue, push, serverTimestamp, set } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -77,7 +77,6 @@ export default function StudentResultsPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // 1. Get Course and determine if results are published for this semester
                 const [courseSnap, publishedSnap] = await Promise.all([
                     get(ref(db, `courses/${courseId}`)),
                     semesterIdFilter ? get(ref(db, `resultsPublished/${semesterIdFilter}/${courseId}`)) : Promise.resolve({ exists: () => false, val: () => false } as any)
@@ -87,7 +86,6 @@ export default function StudentResultsPage() {
                 setCourseData(cData);
                 setIsPublished(publishedSnap.exists() ? publishedSnap.val() : false);
 
-                // 2. Fetch template components
                 if (cData?.assessmentTemplateId) {
                     const templateSnap = await get(ref(db, `settings/assessmentTemplates/${cData.assessmentTemplateId}`));
                     if (templateSnap.exists()) {
@@ -95,7 +93,6 @@ export default function StudentResultsPage() {
                     }
                 }
 
-                // 3. Fetch Student's specific scores
                 const scoresSnap = await get(ref(db, `assessments/${courseId}/${currentUser.uid}`));
                 setScores(scoresSnap.exists() ? scoresSnap.val() : null);
 
@@ -131,23 +128,28 @@ export default function StudentResultsPage() {
                 dateSubmitted: new Date().toISOString()
             });
 
-            const registrarIds = await getRegistrarIds();
-            const notificationPromises = registrarIds.map(id => 
-                createNotification(
-                    id, 
-                    `${userData.name} submitted a grade appeal for ${courseData.code}.`,
-                    '/admin/exams/student-appeals'
-                )
-            );
-            await Promise.all(notificationPromises);
+            // Notification logic is secondary; don't let it crash the submission if it fails
+            try {
+                const registrarIds = await getRegistrarIds();
+                if (registrarIds.length > 0) {
+                    await createNotification(
+                        registrarIds, 
+                        `${userData.name} submitted a grade appeal for ${courseData.code}.`,
+                        '/admin/exams/student-appeals'
+                    );
+                }
+            } catch (notifError) {
+                console.warn("Notification dispatch failed, but appeal was saved successfully:", notifError);
+            }
             
             toast({ title: 'Appeal Submitted', description: 'Your appeal has been sent for review.'});
             setIsAppealDialogOpen(false);
             setAppealReason('');
             setAppealingAssessment('');
 
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Submission Failed' });
+        } catch (error: any) {
+            console.error("Appeal Submission Error:", error);
+            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message || 'An error occurred while saving your appeal.' });
         } finally {
             setFormLoading(false);
         }
@@ -219,7 +221,7 @@ export default function StudentResultsPage() {
                 {hasAnyScore ? (
                     <div className="rounded-md border overflow-hidden shadow-sm">
                         <Table>
-                            <TableHeader className="bg-muted/50">
+                            <TableHeader>
                                 <TableRow>
                                     <TableHead>Assessment Component</TableHead>
                                     <TableHead className="text-center">Weight</TableHead>

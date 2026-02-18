@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -190,12 +189,16 @@ export default function FinalExamEntryPage() {
                     }
                 }
 
-                // Force include the specifically searched student to allow ad-hoc past data entry
                 if (selectedSearchStudentUid) {
                     enrolledUids.add(selectedSearchStudentUid);
                 }
 
-                setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                // Fallback to all students if none registered for this specific phase
+                if (enrolledUids.size === 0 && selectedCourseId) {
+                    setStudentsInRoster(allStudents);
+                } else {
+                    setStudentsInRoster(Array.from(enrolledUids).map(uid => allStudents.find(s => s.uid === uid)).filter(Boolean) as Student[]);
+                }
                 setScores(sSnap.exists() ? sSnap.val() : {});
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
@@ -306,11 +309,11 @@ export default function FinalExamEntryPage() {
                         </AlertDescription>
                     </Alert>
                 )}
-                {selectedCourseId && (studentsInRoster.length > 0 || selectedSearchStudentUid) && (
+                {selectedCourseId && (studentsInRoster.length > 0) && (
                     <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                 )}
                 {loading ? <Skeleton className="h-64 w-full" /> : 
-                 selectedCourseId && (filteredRoster.length > 0 || selectedSearchStudentUid) ? (
+                 selectedCourseId && (filteredRoster.length > 0) ? (
                     <div className="border rounded-lg shadow-sm">
                         <Table>
                             <TableHeader className="bg-muted/50"><TableRow><TableHead>Student Name</TableHead><TableHead>Student ID</TableHead><TableHead className="w-[200px]">Final Exam Score (100)</TableHead></TableRow></TableHeader>
@@ -327,7 +330,7 @@ export default function FinalExamEntryPage() {
                     </div>
                 ) : <Alert><AlertCircle className="h-4 w-4"/><AlertTitle>Information</AlertTitle><AlertDescription>{!selectedCourseId ? "Select criteria or search for a student to begin." : "No eligible students found for this selection."}</AlertDescription></Alert>}
             </CardContent>
-            { (studentsInRoster.length > 0 || selectedSearchStudentUid) && (
+            { (selectedCourseId && filteredRoster.length > 0) && (
                 <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Exam Scores</Button></CardFooter>
             )}
         </Card>
