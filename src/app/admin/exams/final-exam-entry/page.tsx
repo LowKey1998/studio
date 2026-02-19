@@ -2,9 +2,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, CalendarDays, User, ChevronsUpDown, X, Info, BookOpen, Layers } from "lucide-react";
+import { Loader2, Save, Search, User, ChevronsUpDown, X, Info, BookOpen, Layers } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push } from 'firebase/database';
+import { ref, get, push, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -93,18 +93,16 @@ export default function FinalExamEntryPage() {
         if (student.programmeId) setSelectedProgrammeId(student.programmeId);
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
-            if (!selectedYear || !selectedSemesterInYear) {
-                const intake = intakes.find(i => i.id === student.intakeId);
-                if (intake) {
-                    get(ref(db, 'settings/academicCalendar')).then(calSnap => {
-                        const startStr = parseIntakeDate(intake.name);
-                        if (calSnap.exists() && startStr) {
-                            const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
-                            setSelectedYear(String(state.year));
-                            setSelectedSemesterInYear(String(state.semester));
-                        }
-                    });
-                }
+            const intake = intakes.find(i => i.id === student.intakeId);
+            if (intake) {
+                get(ref(db, 'settings/academicCalendar')).then(calSnap => {
+                    const startStr = parseIntakeDate(intake.name);
+                    if (calSnap.exists() && startStr) {
+                        const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+                        setSelectedYear(String(state.year));
+                        setSelectedSemesterInYear(String(state.semester));
+                    }
+                });
             }
         }
         setIsSearchOpen(false);

@@ -133,7 +133,7 @@ export default function StudentResultsPage() {
                 });
 
             } catch (error: any) {
-                console.error("Error fetching data:", error);
+                console.error("Error fetching results:", error);
                 toast({ variant: 'destructive', title: "Error", description: "Could not load results." });
             } finally {
                 setLoading(false);

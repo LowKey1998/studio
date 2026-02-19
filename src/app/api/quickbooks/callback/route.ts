@@ -4,6 +4,10 @@ import { db } from '@/lib/firebase';
 import { Issuer } from 'openid-client';
 import { cookies } from 'next/headers';
 
+/**
+ * Handles the redirect back from QuickBooks.
+ * Verifies the 'state' parameter against the stored cookie and exchanges the code for tokens.
+ */
 export async function GET(req: NextRequest) {
     try {
         const settingsRef = ref(db, 'settings/integrations/quickbooks');
@@ -14,8 +18,9 @@ export async function GET(req: NextRequest) {
         }
         
         const { clientId, clientSecret } = snapshot.val();
+        
+        // 1. Get the issuer and initialize client
         const qboIssuer = await Issuer.discover('https://developer.api.intuit.com/.well-known/openid_configuration');
-
         const client = new qboIssuer.Client({
             client_id: clientId,
             client_secret: clientSecret,
@@ -23,31 +28,35 @@ export async function GET(req: NextRequest) {
             response_types: ['code'],
         });
 
-        // Retrieve the state from the cookie for validation
+        // 2. Retrieve and verify the state from the cookie
         const cookieStore = await cookies();
-        const state = cookieStore.get('qb_auth_state')?.value;
+        const storedState = cookieStore.get('qb_oauth_state')?.value;
+        
+        if (!storedState) {
+            throw new Error("Missing OAuth state cookie. The request may have timed out or been intercepted.");
+        }
 
         const params = client.callbackParams(req.url);
         
-        // Finalize the callback using the stored state
+        // 3. Finalize the token exchange using the stored state
         const tokenSet = await client.callback(
             `${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`, 
             params, 
-            { state }
+            { state: storedState }
         );
 
-        // Clear the state cookie
-        cookieStore.delete('qb_auth_state');
+        // 4. Clear the state cookie now that it's verified
+        cookieStore.delete('qb_oauth_state');
 
         const realmId = params.realmId;
         const accessToken = tokenSet.access_token;
         const refreshToken = tokenSet.refresh_token;
 
         if (!realmId || !accessToken || !refreshToken) {
-            throw new Error("Failed to retrieve necessary tokens from QuickBooks.");
+            throw new Error("QuickBooks did not return valid tokens.");
         }
         
-        // Securely store the tokens and realmId in your database
+        // 5. Update the database with the real production tokens
         await update(settingsRef, {
             accessToken,
             refreshToken,
@@ -56,11 +65,11 @@ export async function GET(req: NextRequest) {
             tokenExpiry: new Date().getTime() + (tokenSet.expires_in! * 1000)
         });
 
-        // Redirect user back to the integration dashboard
+        // 6. Redirect back to the UI
         return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/admin/addons/quickbooks`);
 
     } catch (error: any) {
-        console.error('QuickBooks Callback Error:', error);
-        return new NextResponse(`Error during QuickBooks authentication: ${error.message}`, { status: 500 });
+        console.error('QuickBooks Callback Handler Error:', error);
+        return new NextResponse(`Authentication Callback Error: ${error.message}`, { status: 500 });
     }
 }

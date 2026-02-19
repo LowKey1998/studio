@@ -2,38 +2,26 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, MessageSquare, Search, CalendarDays, PlusCircle, User, ChevronsUpDown, Check, Link as LinkIcon, Info, Trash2, X, BookOpen, Layers } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, set, onValue, update, push } from 'firebase/database';
+import { ref, get, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-    AlertDialog, 
-    AlertDialogAction, 
-    AlertDialogCancel, 
-    AlertDialogContent, 
-    AlertDialogDescription, 
-    AlertDialogFooter, 
-    AlertDialogHeader, 
-    AlertDialogTitle, 
-    AlertDialogTrigger 
-} from "@/components/ui/alert-dialog";
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 
 type Student = {
     uid: string;
@@ -48,7 +36,6 @@ type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; };
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
-type AssessmentComponent = { id: string; name: string; weight: number; };
 type AssessmentScore = { score?: number; feedback?: string; };
 type AllScores = Record<string, Record<string, Record<string, AssessmentScore>>>; // courseId -> studentUid -> componentId -> score
 
@@ -62,8 +49,8 @@ export default function CAEntryPage() {
     // Main Filters
     const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
-    const [selectedYear, setSelectedYear] = React.useState<string>('');
-    const [selectedSemesterInYear, setSelectedSemesterInYear] = React.useState<string>('');
+    const [selectedYear, setSelectedYear] = React.useState('');
+    const [selectedSemesterInYear, setSelectedSemesterInYear] = React.useState('');
     
     const [courses, setCourses] = React.useState<Course[]>([]);
     const [selectedCourseIds, setSelectedCourseIds] = React.useState<string[]>([]);
