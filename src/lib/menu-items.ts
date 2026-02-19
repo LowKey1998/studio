@@ -1,4 +1,4 @@
-import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Construction, ImageIcon, Building2, Terminal, Info, Folder, History, ClipboardPen, Utensils, Zap, Monitor, FileBadge, CalendarDays, FileCheck, ReceiptText, Calculator } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Library, PenSquare, BookCheck, FileText, Calendar, DollarSign, BarChart2, UserCheck as UserCheckIcon, BookUp, Users, Wallet, GanttChart, Building, Hand, Route, MessageSquare, ClipboardCheck, ClipboardEdit, HandCoins, Stethoscope, MonitorPlay, Heart, Bus, Handshake, Search, GitBranch, Shield, LandPlot, Users2, Star, Newspaper, GraduationCap, BookCopy, BookOpenCheck, Beaker, Telescope, Truck, Link, UserCog, Check, AlertTriangle, TrendingDown, UserX, CheckCircle2, SlidersHorizontal, UserPlus, Scale, FileUp, Map, Upload, KeyRound, Book, MapPin, Video, FileQuestion, RefreshCw, TrendingUp, Banknote, ShieldAlert, HeartPulse, Home, Barcode, BookMarked, Briefcase, Puzzle, Smartphone, GalleryVertical, Wrench, ClipboardList, Sparkles, Lightbulb, Mail, Target, Filter, FileSignature, Send, LineChart, Clock, Construction, ImageIcon, Building2, Terminal, Info, Folder, History, ClipboardPen, Utensils, Zap, Monitor, FileBadge, CalendarDays, FileCheck, ReceiptText, Calculator, BellRing } from 'lucide-react';
 
 export const allMenuItems = [
     {
@@ -300,6 +300,14 @@ export const allMenuItems = [
         ]
     },
     {
+        label: 'Communications',
+        icon: BellRing,
+        roles: ['Admin', 'Staff'],
+        items: [
+            { href: '/staff/notifications', label: 'My Notifications', icon: BellRing },
+        ]
+    },
+    {
         label: 'Add-ons',
         icon: Puzzle,
         roles: ['Admin'],
@@ -356,6 +364,13 @@ export const studentMenuItems = [
         icon: DollarSign,
         items: [
              { href: '/student/payments', label: 'Payments & Invoices', icon: Wallet },
+        ]
+    },
+    {
+        label: 'Communications',
+        icon: BellRing,
+        items: [
+            { href: '/student/notifications', label: 'Notifications', icon: BellRing },
         ]
     },
     {
