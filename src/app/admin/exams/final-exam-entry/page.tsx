@@ -31,12 +31,12 @@ type Student = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
 type Course = { id: string; name: string; code: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
 type FinalExamScore = { finalExam?: AssessmentScore };
-type AllScores = Record<string, Record<string, FinalExamScore>>; // courseId -> studentUid -> finalExamScore
+type AllScores = Record<string, Record<string, FinalExamScore>>;
 
 export default function FinalExamEntryPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
@@ -66,7 +66,6 @@ export default function FinalExamEntryPage() {
     const [rosterSearch, setRosterSearch] = React.useState('');
     const { toast } = useToast();
 
-    // Initial Data Fetch
     React.useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
@@ -114,7 +113,6 @@ export default function FinalExamEntryPage() {
         setSelectedSearchStudentUid(null);
     };
 
-    // Auto-Standing
     React.useEffect(() => {
         if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
         const intake = intakes.find(i => i.id === selectedIntakeId);
@@ -134,7 +132,6 @@ export default function FinalExamEntryPage() {
         return allSemesters.find(s => s.intakeId === selectedIntakeId && s.year === Number(selectedYear) && s.semesterInYear === Number(selectedSemesterInYear))?.id || null;
     }, [allSemesters, selectedIntakeId, selectedYear, selectedSemesterInYear]);
 
-    // Courses
     React.useEffect(() => {
         const fetchCourses = async () => {
             const allCoursesSnap = await get(ref(db, 'courses'));
@@ -167,7 +164,6 @@ export default function FinalExamEntryPage() {
         fetchCourses();
     }, [selectedProgrammeId, selectedIntakeId, targetSemesterId, loadAllCourses]);
 
-    // Roster & Scores
     React.useEffect(() => {
         if (selectedCourseIds.length === 0) { setStudentsInRoster([]); setScores({}); return; }
         const fetchData = async () => {
@@ -308,7 +304,7 @@ export default function FinalExamEntryPage() {
                                 <PopoverContent className="w-[300px] p-0" align="end">
                                     <div className="p-2">
                                         <div className="relative">
-                                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                             <Input placeholder="Search student body..." className="h-9 pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
                                         </div>
                                     </div>
@@ -413,7 +409,7 @@ export default function FinalExamEntryPage() {
                                             <AccordionContent className="p-4 pt-0">
                                                 <div className="border rounded-lg overflow-hidden">
                                                     <Table>
-                                                        <TableHeader className="bg-muted/30">
+                                                        <TableHeader>
                                                             <TableRow>
                                                                 <TableHead>Student Name</TableHead>
                                                                 <TableHead>Student ID</TableHead>

@@ -37,7 +37,7 @@ type Semester = { id: string; name: string; intakeId: string; year: number; seme
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
-type AllScores = Record<string, Record<string, Record<string, AssessmentScore>>>; // courseId -> studentUid -> componentId -> score
+type AllScores = Record<string, Record<string, Record<string, AssessmentScore>>>;
 
 export default function CAEntryPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
@@ -46,7 +46,6 @@ export default function CAEntryPage() {
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [templates, setTemplates] = React.useState<Record<string, { name: string, components: any }>>({});
     
-    // Main Filters
     const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedYear, setSelectedYear] = React.useState('');
@@ -59,7 +58,6 @@ export default function CAEntryPage() {
     const [studentsInRoster, setStudentsInRoster] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
     
-    // Search student state
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
@@ -70,7 +68,6 @@ export default function CAEntryPage() {
     const [rosterSearch, setRosterSearch] = React.useState('');
     const { toast } = useToast();
 
-    // 1. Initial Data Fetch
     React.useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
@@ -84,16 +81,11 @@ export default function CAEntryPage() {
                 ]);
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
-                if (uSnap.exists()) {
-                    setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
-                }
+                if (uSnap.exists()) setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
                 if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (tSnap.exists()) setTemplates(tSnap.val() || {});
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
         };
         fetchData();
     }, []);
@@ -125,7 +117,6 @@ export default function CAEntryPage() {
         setSelectedSearchStudentUid(null);
     };
 
-    // 3. Auto-Standing Logic
     React.useEffect(() => {
         if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
         const intake = intakes.find(i => i.id === selectedIntakeId);
@@ -142,13 +133,11 @@ export default function CAEntryPage() {
         fetchStanding();
     }, [selectedIntakeId, intakes]);
 
-    // 4. Resolve exact semester ID
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
         return allSemesters.find(s => s.intakeId === selectedIntakeId && s.year === Number(selectedYear) && s.semesterInYear === Number(selectedSemesterInYear))?.id || null;
     }, [allSemesters, selectedIntakeId, selectedYear, selectedSemesterInYear]);
 
-    // 5. Fetch available courses
     React.useEffect(() => {
         const fetchCourses = async () => {
             const allCoursesSnap = await get(ref(db, 'courses'));
@@ -160,11 +149,7 @@ export default function CAEntryPage() {
                 return;
             }
 
-            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) {
-                setCourses([]);
-                setSelectedCourseIds([]);
-                return;
-            }
+            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseIds([]); return; }
 
             const coursePathsSnap = await get(ref(db, 'coursePaths'));
             if (coursePathsSnap.exists()) {
@@ -176,23 +161,14 @@ export default function CAEntryPage() {
                     const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
                     setCourses(foundCourses);
                     setSelectedCourseIds(prev => prev.filter(id => foundCourses.some(c => c.id === id)));
-                } else {
-                    setCourses([]);
-                    setSelectedCourseIds([]);
-                }
+                } else { setCourses([]); setSelectedCourseIds([]); }
             }
         };
         fetchCourses();
     }, [selectedProgrammeId, selectedIntakeId, targetSemesterId, loadAllCourses]);
 
-    // 6. Load Roster and Existing Scores
     React.useEffect(() => {
-        if (selectedCourseIds.length === 0) {
-            setStudentsInRoster([]);
-            setScores({});
-            return;
-        }
-
+        if (selectedCourseIds.length === 0) { setStudentsInRoster([]); setScores({}); return; }
         const fetchRosterData = async () => {
             setLoading(true);
             try {
@@ -215,21 +191,16 @@ export default function CAEntryPage() {
                     const registeredUids = new Set<string>();
 
                     if (targetSemesterId) {
-                        Object.keys(allRegs).forEach(uid => {
-                            if (allRegs[uid][targetSemesterId]) registeredUids.add(uid);
-                        });
+                        Object.keys(allRegs).forEach(uid => { if (allRegs[uid][targetSemesterId]) registeredUids.add(uid); });
                     }
 
                     if (registeredUids.size > 0) {
                         roster = allStudents.filter(s => registeredUids.has(s.uid));
                     } else if (selectedProgrammeId && selectedIntakeId) {
                         roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
-                    } else {
-                        roster = allStudents;
-                    }
+                    } else { roster = allStudents; }
                 }
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
-
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
@@ -291,14 +262,10 @@ export default function CAEntryPage() {
                     }
                 }
             }
-
             await update(ref(db), updates);
             toast({ title: "Results Recorded", description: `${selectedCourseIds.length} course(s) updated.` });
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: "Save Failed", description: e.message });
-        } finally {
-            setSaving(false);
-        }
+        } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed", description: e.message }); }
+        finally { setSaving(false); }
     };
 
     const filteredRoster = studentsInRoster.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || s.id.toLowerCase().includes(rosterSearch.toLowerCase()));
@@ -313,7 +280,6 @@ export default function CAEntryPage() {
                             <CardTitle className="font-headline text-2xl">Continuous Assessment Entry</CardTitle>
                             <CardDescription>Record results for a specific cohort and academic phase.</CardDescription>
                         </div>
-                        
                         <div className="flex items-center gap-2">
                             {selectedSearchStudentUid && (
                                 <Button variant="ghost" size="sm" onClick={handleClearSearch} className="h-10 text-destructive">
@@ -323,30 +289,15 @@ export default function CAEntryPage() {
                             <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30 bg-background">
-                                        <div className="flex items-center gap-2">
-                                            <User className="h-4 w-4 text-primary" />
-                                            <span className="truncate">{selectedSearchStudentName || "Jump to Student..."}</span>
-                                        </div>
+                                        <div className="flex items-center gap-2"><User className="h-4 w-4 text-primary" /><span className="truncate">{selectedSearchStudentName || "Jump to Student..."}</span></div>
                                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-[300px] p-0" align="end">
                                     <div className="p-2">
-                                        <div className="relative">
-                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                            <Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} />
-                                        </div>
+                                        <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
                                     </div>
-                                    <Separator />
-                                    <ScrollArea className="h-64">
-                                        <div className="p-1">
-                                            {searchableStudents.map(student => (
-                                                <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}>
-                                                    <div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div>
-                                                </Button>
-                                            ))}
-                                        </div>
-                                    </ScrollArea>
+                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
                                 </PopoverContent>
                             </Popover>
                         </div>
@@ -357,83 +308,19 @@ export default function CAEntryPage() {
             <Card>
                 <CardHeader>
                     <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-4">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Programme</Label>
-                            <Select value={selectedProgrammeId} onValueChange={(val) => { setSelectedProgrammeId(val); handleClearSearch(); }}>
-                                <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
-                                <SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Intake</Label>
-                            <Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); handleClearSearch(); }}>
-                                <SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger>
-                                <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Study Year</Label>
-                            <Select value={selectedYear} onValueChange={setSelectedYear}>
-                                <SelectTrigger className="bg-background"><SelectValue placeholder="Year..."/></SelectTrigger>
-                                <SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Semester</Label>
-                            <Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}>
-                                <SelectTrigger className="bg-background"><SelectValue placeholder="Sem..."/></SelectTrigger>
-                                <SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={selectedProgrammeId} onValueChange={(val) => { setSelectedProgrammeId(val); handleClearSearch(); }}><SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); handleClearSearch(); }}><SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
-                            <div className="flex items-center justify-between mb-1">
-                                <Label className="text-[10px] font-black uppercase">Course(s)</Label>
-                                <div className="flex items-center gap-1.5">
-                                    <Switch id="ca-load-all" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" />
-                                    <Label htmlFor="ca-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label>
-                                </div>
-                            </div>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}>
-                                        <span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span>
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                                    <ScrollArea className="h-64">
-                                        <div className="p-2 space-y-1">
-                                            {courses.map(c => (
-                                                <div key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded-md transition-colors">
-                                                    <Checkbox 
-                                                        id={`course-${c.id}`} 
-                                                        checked={selectedCourseIds.includes(c.id)} 
-                                                        onCheckedChange={(checked) => setSelectedCourseIds(prev => checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} 
-                                                    />
-                                                    <Label htmlFor={`course-${c.id}`} className="text-xs flex-1 cursor-pointer">
-                                                        <span className="font-bold">{c.code}</span> - {c.name}
-                                                    </Label>
-                                                </div>
-                                            ))}
-                                            {courses.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No courses found for this criteria.</p>}
-                                        </div>
-                                    </ScrollArea>
-                                </PopoverContent>
-                            </Popover>
+                            <div className="flex items-center justify-between mb-1"><Label className="text-[10px] font-black uppercase">Course(s)</Label><div className="flex items-center gap-1.5"><Switch id="ca-load-all" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" /><Label htmlFor="ca-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label></div></div>
+                            <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}><span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span><ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start"><ScrollArea className="h-64"><div className="p-2 space-y-1">{courses.map(c => (<div key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded-md transition-colors"><Checkbox id={`course-${c.id}`} checked={selectedCourseIds.includes(c.id)} onCheckedChange={(checked) => setSelectedCourseIds(prev => checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} /><Label htmlFor={`course-${c.id}`} className="text-xs flex-1 cursor-pointer"><span className="font-bold">{c.code}</span> - {c.name}</Label></div>))}{courses.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No courses found for this criteria.</p>}</div></ScrollArea></PopoverContent></Popover>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {selectedCourseIds.length > 0 && selectedYear && selectedSemesterInYear && (
-                        <Alert className="bg-blue-50 border-blue-200">
-                            <Info className="h-4 w-4 text-blue-600" />
-                            <AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Recording for: Year {selectedYear}, Sem {selectedSemesterInYear}</AlertTitle>
-                            <AlertDescription className="text-xs text-blue-700 italic">Scores will be saved specifically for the chosen academic phase.</AlertDescription>
-                        </Alert>
-                    )}
-
-                    {loading ? <Skeleton className="h-64 w-full" /> : 
-                    selectedCourseIds.length > 0 ? (
+                    {selectedCourseIds.length > 0 && selectedYear && selectedSemesterInYear && (<Alert className="bg-blue-50 border-blue-200"><Info className="h-4 w-4 text-blue-600" /><AlertTitle className="text-xs font-black uppercase tracking-wider text-blue-800">Recording for: Year {selectedYear}, Sem {selectedSemesterInYear}</AlertTitle><AlertDescription className="text-xs text-blue-700 italic">Scores will be saved specifically for the chosen academic phase.</AlertDescription></Alert>)}
+                    {loading ? <Skeleton className="h-64 w-full" /> : selectedCourseIds.length > 0 ? (
                         <div className="space-y-6">
                             <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter visible roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)}/></div>
                             <Accordion type="multiple" defaultValue={selectedCourseIds} className="w-full space-y-4">
@@ -442,64 +329,19 @@ export default function CAEntryPage() {
                                     if (!course) return null;
                                     const template = course.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
                                     const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
-
                                     return (
                                         <AccordionItem value={courseId} key={courseId} className="border rounded-lg bg-card overflow-hidden shadow-sm">
-                                            <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline">
-                                                <div className="flex items-center gap-3">
-                                                    <BookOpen className="h-5 w-5 text-primary"/>
-                                                    <div className="text-left">
-                                                        <span className="font-bold">{course.code}: {course.name}</span>
-                                                        <p className="text-[10px] text-muted-foreground uppercase font-medium">{template?.name || "No Structure Assigned"}</p>
-                                                    </div>
-                                                </div>
-                                            </AccordionTrigger>
+                                            <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline"><div className="flex items-center gap-3"><BookOpen className="h-5 w-5 text-primary"/><div className="text-left"><span className="font-bold">{course.code}: {course.name}</span><p className="text-[10px] text-muted-foreground uppercase font-medium">{template?.name || "No Structure Assigned"}</p></div></div></AccordionTrigger>
                                             <AccordionContent className="p-4 pt-0">
-                                                {components.length > 0 ? (
-                                                    <div className="overflow-x-auto border rounded-md">
-                                                        <Table>
-                                                            <TableHeader className="bg-muted/30">
-                                                                <TableRow>
-                                                                    <TableHead className="min-w-[150px]">Student</TableHead>
-                                                                    {components.map(c=><TableHead key={c.id} className="text-center">{c.name} ({c.weight}%)</TableHead>)}
-                                                                </TableRow>
-                                                            </TableHeader>
-                                                            <TableBody>
-                                                                {filteredRoster.map(s => (
-                                                                    <TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}>
-                                                                        <TableCell>
-                                                                            <div className="flex flex-col"><span className="font-bold text-xs">{s.name}</span><span className="text-[10px] text-muted-foreground">{s.id}</span></div>
-                                                                        </TableCell>
-                                                                        {components.map(c => (
-                                                                            <TableCell key={c.id} className="text-center">
-                                                                                <Input type="number" className="w-16 h-8 mx-auto text-center font-bold text-xs" value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} />
-                                                                            </TableCell>
-                                                                        ))}
-                                                                    </TableRow>
-                                                                ))}
-                                                            </TableBody>
-                                                        </Table>
-                                                    </div>
-                                                ) : (
-                                                    <div className="p-10 border-2 border-dashed rounded-lg text-center bg-muted/10">
-                                                        <AlertCircle className="mx-auto h-8 w-8 text-muted-foreground opacity-50 mb-2"/>
-                                                        <p className="text-sm font-medium">This course has no grading structure linked.</p>
-                                                        <Button variant="link" size="sm" asChild className="mt-2"><Link href="/admin/academics/assessment-setup">Go to Assessment Setup &rarr;</Link></Button>
-                                                    </div>
-                                                )}
+                                                {components.length > 0 ? (<div className="overflow-x-auto border rounded-md"><Table><TableHeader className="bg-muted/30"><TableRow><TableHead className="min-w-[150px]">Student</TableHead>{components.map(c=><TableHead key={c.id} className="text-center">{c.name} ({c.weight}%)</TableHead>)}</TableRow></TableHeader><TableBody>{filteredRoster.map(s => (<TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{s.name}</span><span className="text-[10px] text-muted-foreground">{s.id}</span></div></TableCell>{components.map(c => (<TableCell key={c.id} className="text-center"><Input type="number" className="w-16 h-8 mx-auto text-center font-bold text-xs" value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} /></TableCell>))}</TableRow>))}</TableBody></Table></div>
+                                                ) : (<div className="p-10 border-2 border-dashed rounded-lg text-center bg-muted/10"><AlertCircle className="mx-auto h-8 w-8 text-muted-foreground opacity-50 mb-2"/><p className="text-sm font-medium">This course has no grading structure linked.</p><Button variant="link" size="sm" asChild className="mt-2"><Link href="/admin/academics/assessment-setup">Go to Assessment Setup &rarr;</Link></Button></div>)}
                                             </AccordionContent>
                                         </AccordionItem>
                                     );
                                 })}
                             </Accordion>
                         </div>
-                    ) : (
-                        <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
-                            <Layers className="mx-auto h-12 w-12 opacity-20 mb-4" />
-                            <h3 className="text-lg font-bold">No Course Selected</h3>
-                            <p className="text-sm max-w-xs mx-auto">Please select the courses you wish to grade from the filter bar above.</p>
-                        </div>
-                    )}
+                    ) : (<div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5"><Layers className="mx-auto h-12 w-12 opacity-20 mb-4" /><h3 className="text-lg font-bold">No Course Selected</h3><p className="text-sm max-w-xs mx-auto">Please select the courses you wish to grade from the filter bar above.</p></div>)}
                 </CardContent>
                 {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
                     <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Scores</Button></CardFooter>

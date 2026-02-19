@@ -21,10 +21,15 @@ export async function GET(req: NextRequest) {
         
         // 1. Get the issuer and initialize client
         const qboIssuer = await Issuer.discover('https://developer.api.intuit.com/.well-known/openid_configuration');
+        
+        // Dynamically determine the base URL from the request origin
+        const baseUrl = req.nextUrl.origin;
+        const redirectUri = `${baseUrl}/api/quickbooks/callback`;
+
         const client = new qboIssuer.Client({
             client_id: clientId,
             client_secret: clientSecret,
-            redirect_uris: [`${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`],
+            redirect_uris: [redirectUri],
             response_types: ['code'],
         });
 
@@ -40,7 +45,7 @@ export async function GET(req: NextRequest) {
         
         // 3. Finalize the token exchange using the stored state
         const tokenSet = await client.callback(
-            `${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`, 
+            redirectUri, 
             params, 
             { state: storedState }
         );
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest) {
         });
 
         // 6. Redirect back to the UI
-        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/admin/addons/quickbooks`);
+        return NextResponse.redirect(`${baseUrl}/admin/addons/quickbooks`);
 
     } catch (error: any) {
         console.error('QuickBooks Callback Handler Error:', error);

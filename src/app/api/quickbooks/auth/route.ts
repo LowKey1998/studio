@@ -26,10 +26,14 @@ export async function GET(req: NextRequest) {
         // 1. Discover the QuickBooks OpenID configuration
         const qboIssuer = await Issuer.discover('https://developer.api.intuit.com/.well-known/openid_configuration');
 
+        // Dynamically determine the base URL from the request origin
+        const baseUrl = req.nextUrl.origin;
+        const redirectUri = `${baseUrl}/api/quickbooks/callback`;
+
         const client = new qboIssuer.Client({
             client_id: clientId,
             client_secret: clientSecret,
-            redirect_uris: [`${process.env.NEXT_PUBLIC_BASE_URL}/api/quickbooks/callback`],
+            redirect_uris: [redirectUri],
             response_types: ['code'],
         });
 
@@ -41,7 +45,7 @@ export async function GET(req: NextRequest) {
         cookieStore.set('qb_oauth_state', state, { 
             maxAge: 60 * 15, // 15 minutes
             httpOnly: true, 
-            secure: process.env.NODE_ENV === 'production',
+            secure: process.env.NODE_ENV === 'production' || baseUrl.startsWith('https'),
             path: '/',
             sameSite: 'lax'
         });
