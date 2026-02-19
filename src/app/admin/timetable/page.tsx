@@ -1,23 +1,19 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Bot, Search, ChevronsUpDown, Info, Calendar as CalendarIcon, MapPin, GraduationCap, X, UserCheck, CalendarDays, Users, Video, Monitor, Pencil, ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { generateFullTimetable } from '@/ai/flows/generate-timetable';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Badge } from "@/components/ui/badge";
-import Link from 'next/link';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import {
     AlertDialog,
@@ -44,6 +40,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type TimeSlot = {
     id: string;
@@ -97,10 +95,8 @@ function TimetableManagementComponent() {
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
-    const [viewWeek, setViewWeek] = React.useState(new Date());
     const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
     const [roomFilter, setRoomFilter] = React.useState('all');
-    const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
 
     const [resolvedSemester, setResolvedSemester] = React.useState<Semester | null>(null);
@@ -143,7 +139,7 @@ function TimetableManagementComponent() {
                 case 0: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 3: setAllIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
+                case 3: setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
                 case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
@@ -222,33 +218,34 @@ function TimetableManagementComponent() {
             return;
         }
 
-        // Check if viewTarget is a direct semester ID
+        // Try to resolve as an Intake
+        const intake = intakes.find(i => i.id === viewTarget);
+        if (intake) {
+            const startStr = parseIntakeDate(intake.name);
+            if (startStr) {
+                const state = calculateAcademicState(
+                    startStr,
+                    new Date(),
+                    calendarSettings.standardCycles,
+                    Object.values(calendarSettings.anomalies || {})
+                );
+                setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                
+                const matched = semesters.find(s => 
+                    s.intakeId === intake.id && 
+                    s.year === state.year && 
+                    s.semesterInYear === state.semester
+                );
+                setResolvedSemester(matched || null);
+            }
+            return;
+        }
+
+        // Try to resolve as a specific Semester
         const directSemester = semesters.find(s => s.id === viewTarget);
         if (directSemester) {
             setResolvedSemester(directSemester);
             setAcademicStanding(`Year ${directSemester.year}, Sem ${directSemester.semesterInYear}`);
-            return;
-        }
-
-        const intake = intakes.find(i => i.id === viewTarget);
-        if (!intake) return;
-
-        const startStr = parseIntakeDate(intake.name);
-        if (startStr) {
-            const state = calculateAcademicState(
-                startStr,
-                new Date(),
-                calendarSettings.standardCycles,
-                Object.values(calendarSettings.anomalies || {})
-            );
-            setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
-            
-            const matched = semesters.find(s => 
-                s.intakeId === intake.id && 
-                s.year === state.year && 
-                s.semesterInYear === state.semester
-            );
-            setResolvedSemester(matched || null);
         }
     }, [viewTarget, intakes, semesters, calendarSettings]);
 
@@ -261,13 +258,12 @@ function TimetableManagementComponent() {
         return masterTimetable.filter(entry => {
             const matchesSemester = effectiveSemesterId === 'master' || entry.semesterId === effectiveSemesterId;
             const matchesRoom = roomFilter === 'all' || entry.venue === roomFilter;
-            const matchesIntake = intakeFilter === 'all' || entry.intakeName === intakes.find(i => i.id === intakeFilter)?.name;
             const matchesSearch = !searchTerm || 
                 entry.courseName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                 entry.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesSemester && matchesRoom && matchesIntake && matchesSearch;
+            return matchesSemester && matchesRoom && matchesSearch;
         });
-    }, [masterTimetable, effectiveSemesterId, roomFilter, intakeFilter, searchTerm, intakes]);
+    }, [masterTimetable, effectiveSemesterId, roomFilter, searchTerm]);
 
     const searchedCourses = React.useMemo(() => {
         if (!courseSearch) return allCourses;
@@ -314,7 +310,7 @@ function TimetableManagementComponent() {
         }
         setSaving(true);
         try {
-            const intake = selectedIntakeId ? intakes.find(i => i.id === selectedIntakeId) : (resolvedSemester ? intakes.find(i => i.id === resolvedSemester.intakeId) : null);
+            const intake = intakes.find(i => i.id === selectedIntakeId) || (resolvedSemester ? intakes.find(i => i.id === resolvedSemester.intakeId) : null);
             const intakeName = intake?.name || 'Master';
 
             const data = { 
@@ -417,7 +413,7 @@ function TimetableManagementComponent() {
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div>
                             <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
-                            <CardDescription>Manage shared and separate sessions across all active semesters.</CardDescription>
+                            <CardDescription>Select an intake cohort to view and manage their current academic schedule.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
@@ -497,41 +493,42 @@ function TimetableManagementComponent() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Alert className="bg-blue-50 border-blue-200 shadow-md">
-                        <Info className="h-4 w-4 text-blue-600" />
-                        <AlertTitle className="font-bold text-blue-800 uppercase text-xs tracking-widest">Active Semester & Visibility</AlertTitle>
-                        <AlertDescription className="text-blue-700 text-sm leading-relaxed">
-                            <strong>Note:</strong> Students only see sessions for non-archived semesters where the current date falls within the semester's <strong>Start Date and End Date</strong> teaching window.
-                            <br/><br/>
-                            <strong>Pro Tip:</strong> Use the "Master Template" for baseline schedules, or select a specific <strong>Semester Instance</strong> from the dropdown below to override or add ad-hoc sessions for a specific cohort.
-                        </AlertDescription>
-                    </Alert>
-
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg border">
                         <div className="w-72">
-                            <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Viewing Schedule For</Label>
+                            <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Step 1: Select Intake or Master</Label>
                             <Select value={viewTarget} onValueChange={setViewTarget}>
                                 <SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue /></SelectTrigger>
                                 <SelectContent>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intake Groups</div>
+                                    {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                    <Separator className="my-1"/>
                                     <SelectItem value="master" className="font-bold text-primary">MASTER TEMPLATE (Baseline)</SelectItem>
                                     <Separator className="my-1"/>
-                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Semesters</div>
+                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Specific Semester Instances</div>
                                     {semesters.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                    <Separator className="my-1"/>
-                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intakes (Calculated Standing)</div>
-                                    {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
                         {academicStanding && (
                             <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-primary/5 text-primary shadow-sm">
                                 <GraduationCap className="h-4 w-4" />
-                                {academicStanding}
+                                Standing: {academicStanding}
                             </Badge>
                         )}
                         <div className="flex-1 min-w-[200px]"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Search Course</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter code or name..." className="pl-8 bg-background shadow-sm h-10 border-primary/20" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
                         <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
+
+                    {viewTarget !== 'master' && !resolvedSemester && !loading && (
+                        <Alert variant="destructive" className="bg-orange-50 border-orange-200">
+                            <AlertCircle className="h-4 w-4 text-orange-600" />
+                            <AlertTitle className="font-bold text-orange-800 uppercase text-[10px] tracking-widest">Semester Missing</AlertTitle>
+                            <AlertDescription className="text-orange-700 text-sm">
+                                No active semester record found for the <strong>{intakes.find(i=>i.id===viewTarget)?.name}</strong> cohort at <strong>{academicStanding}</strong>. 
+                                Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
+                            </AlertDescription>
+                        </Alert>
+                    )}
 
                     {hasSlots ? (
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
@@ -585,7 +582,7 @@ function TimetableManagementComponent() {
                                                                                     <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                                     {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL ROOM" : s.entry.venue}</div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL" : s.entry.venue}</div>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>
                                                                                 <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 mt-1"><Users className="h-2.5 w-2.5" /> {s.totalStudents} Students</div>
                                                                             </div>
