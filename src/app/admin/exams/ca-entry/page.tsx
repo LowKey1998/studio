@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info, Settings2, Mail } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,11 +22,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 type Student = {
     uid: string;
     id: string;
     name: string;
+    email: string;
     programmeId?: string;
     intakeId?: string;
 };
@@ -58,6 +62,12 @@ export default function CAEntryPage() {
     const [studentsInRoster, setStudentsInRoster] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
     
+    // Email Notification State
+    const [isEmailConfigOpen, setIsEmailConfigOpen] = React.useState(false);
+    const [sendEmails, setSendEmails] = React.useState(true);
+    const [emailSubject, setEmailSubject] = React.useState('New Assessment Results: [CourseCode]');
+    const [emailBody, setEmailBody] = React.useState('Hello [Name],<br><br>Your results for [CourseName] have been updated for [Semester].<br><br>[Scores]<br><br>Regards,<br>Academics');
+
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
@@ -228,6 +238,7 @@ export default function CAEntryPage() {
         try {
             const updates: Record<string, any> = {};
             const semester = allSemesters.find(s => s.id === targetSemesterId);
+            const semesterName = semester?.name || 'Current Semester';
             
             for (const courseId of selectedCourseIds) {
                 updates[`assessments/${targetSemesterId}/${courseId}`] = scores[courseId] || {};
@@ -240,7 +251,7 @@ export default function CAEntryPage() {
                         const invRef = push(ref(db, `invoices/${student.uid}`));
                         updates[`invoices/${student.uid}/${invRef.key}`] = {
                             invoiceId: invRef.key,
-                            semester: semester?.name || 'Manual Entry',
+                            semester: semesterName,
                             semesterId: targetSemesterId,
                             dateCreated: new Date().toISOString(),
                             totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
@@ -248,7 +259,7 @@ export default function CAEntryPage() {
                         updates[`registrations/${student.uid}/${targetSemesterId}`] = {
                             courses: [courseId],
                             status: 'Completed',
-                            semesterName: semester?.name || 'Manual Entry',
+                            semesterName: semesterName,
                             registrationDate: new Date().toISOString(),
                             programmeId: student.programmeId || selectedProgrammeId,
                             intakeId: student.intakeId || selectedIntakeId,
@@ -263,7 +274,54 @@ export default function CAEntryPage() {
                 }
             }
             await update(ref(db), updates);
-            toast({ title: "Results Recorded", description: `${selectedCourseIds.length} course(s) updated.` });
+
+            // Handle Email Notifications
+            if (sendEmails) {
+                const emailPromises = studentsInRoster.map(async (student) => {
+                    if (!student.email) return;
+
+                    let studentCoursesHtml = "";
+                    let hasNewData = false;
+
+                    selectedCourseIds.forEach(courseId => {
+                        const course = courses.find(c => c.id === courseId);
+                        const template = course?.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
+                        const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
+                        const studentScores = scores[courseId]?.[student.uid];
+
+                        if (studentScores && Object.keys(studentScores).length > 0) {
+                            hasNewData = true;
+                            studentCoursesHtml += `<div style="margin-bottom: 15px;"><h4 style="margin: 0; color: #4c1d95;">${course?.code}: ${course?.name}</h4><ul style="margin: 5px 0; padding-left: 20px;">`;
+                            components.forEach(comp => {
+                                const score = studentScores[comp.id]?.score;
+                                if (score !== undefined) {
+                                    studentCoursesHtml += `<li>${comp.name}: <strong>${score}%</strong></li>`;
+                                }
+                            });
+                            studentCoursesHtml += "</ul></div>";
+                        }
+                    });
+
+                    if (hasNewData) {
+                        const finalSubject = emailSubject
+                            .replace(/\[Name\]/g, student.name)
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[Semester\]/g, semesterName);
+
+                        const finalBody = emailBody
+                            .replace(/\[Name\]/g, student.name)
+                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.name || '' : 'your enrolled courses')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[Semester\]/g, semesterName)
+                            .replace(/\[Scores\]/g, studentCoursesHtml);
+
+                        await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
+                    }
+                });
+                Promise.all(emailPromises);
+            }
+
+            toast({ title: "Results Recorded", description: `${selectedCourseIds.length} course(s) updated and notifications triggered.` });
         } catch (e: any) { toast({ variant: 'destructive', title: "Save Failed", description: e.message }); }
         finally { setSaving(false); }
     };
@@ -300,6 +358,9 @@ export default function CAEntryPage() {
                                     <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
                                 </PopoverContent>
                             </Popover>
+                            <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => setIsEmailConfigOpen(true)} title="Email Notification Settings">
+                                <Settings2 className="h-4 w-4"/>
+                            </Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -347,6 +408,40 @@ export default function CAEntryPage() {
                     <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Scores</Button></CardFooter>
                 )}
             </Card>
+
+            <Dialog open={isEmailConfigOpen} onOpenChange={setIsEmailConfigOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary"/> Results Notification Settings</DialogTitle>
+                        <DialogDescription>Configure the email sent to students after their scores are saved.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="flex items-center space-x-2 p-4 border rounded-md bg-muted/20">
+                            <Switch id="email-toggle" checked={sendEmails} onCheckedChange={setSendEmails} />
+                            <Label htmlFor="email-toggle" className="font-bold">Enable Email Notifications on Save</Label>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Subject</Label>
+                            <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Body (HTML)</Label>
+                            <Textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} rows={10} className="font-mono text-xs" />
+                            <div className="p-3 bg-muted/50 rounded text-[10px] space-y-1">
+                                <p className="font-bold">AVAILABLE PLACEHOLDERS:</p>
+                                <p><code>[Name]</code> - Student full name</p>
+                                <p><code>[CourseCode]</code> - Course code</p>
+                                <p><code>[CourseName]</code> - Course title</p>
+                                <p><code>[Semester]</code> - Semester name</p>
+                                <p><code>[Scores]</code> - The list of assessment components and their marks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Close & Save Preferences</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

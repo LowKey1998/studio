@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Search, User, ChevronsUpDown, X, Info, BookOpen, Layers } from "lucide-react";
+import { Loader2, Save, Search, User, ChevronsUpDown, X, Info, BookOpen, Layers, Settings2, Mail } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, push, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,11 +20,15 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { sendEmail } from '@/ai/flows/send-email-flow';
 
 type Student = {
     uid: string;
     id: string;
     name: string;
+    email: string;
     programmeId?: string;
     intakeId?: string;
 };
@@ -56,6 +60,12 @@ export default function FinalExamEntryPage() {
     const [studentsInRoster, setStudentsInRoster] = React.useState<Student[]>([]);
     const [scores, setScores] = React.useState<AllScores>({});
     
+    // Email Notification State
+    const [isEmailConfigOpen, setIsEmailConfigOpen] = React.useState(false);
+    const [sendEmails, setSendEmails] = React.useState(true);
+    const [emailSubject, setEmailSubject] = React.useState('Final Exam Results: [CourseCode]');
+    const [emailBody, setEmailBody] = React.useState('Hello [Name],<br><br>Your final examination score for [CourseName] has been recorded for [Semester].<br><br><strong>Score: [Score]%</strong><br><br>Please log in to the portal to view your official grade breakdown once published.');
+
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
@@ -229,6 +239,7 @@ export default function FinalExamEntryPage() {
         try {
             const updates: Record<string, any> = {};
             const semester = allSemesters.find(s => s.id === targetSemesterId);
+            const semesterName = semester?.name || 'Current Semester';
 
             for (const courseId of selectedCourseIds) {
                 updates[`assessments/${targetSemesterId}/${courseId}`] = scores[courseId] || {};
@@ -241,7 +252,7 @@ export default function FinalExamEntryPage() {
                         const invRef = push(ref(db, `invoices/${student.uid}`));
                         updates[`invoices/${student.uid}/${invRef.key}`] = {
                             invoiceId: invRef.key,
-                            semester: semester?.name || 'Manual Entry',
+                            semester: semesterName,
                             semesterId: targetSemesterId,
                             dateCreated: new Date().toISOString(),
                             totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
@@ -249,7 +260,7 @@ export default function FinalExamEntryPage() {
                         updates[`registrations/${student.uid}/${targetSemesterId}`] = {
                             courses: [courseId],
                             status: 'Completed',
-                            semesterName: semester?.name || 'Manual Entry',
+                            semesterName: semesterName,
                             registrationDate: new Date().toISOString(),
                             programmeId: student.programmeId || selectedProgrammeId,
                             intakeId: student.intakeId || selectedIntakeId,
@@ -265,7 +276,41 @@ export default function FinalExamEntryPage() {
             }
 
             await update(ref(db), updates);
-            toast({ title: "Exam Scores Saved", description: `${selectedCourseIds.length} course(s) updated.` });
+
+            // Handle Notifications
+            if (sendEmails) {
+                const emailPromises = studentsInRoster.map(async (student) => {
+                    if (!student.email) return;
+
+                    let studentExamHtml = "";
+                    let hasNewData = false;
+
+                    selectedCourseIds.forEach(courseId => {
+                        const course = courses.find(c => c.id === courseId);
+                        const examScore = scores[courseId]?.[student.uid]?.finalExam?.score;
+
+                        if (examScore !== undefined) {
+                            hasNewData = true;
+                            const finalSubject = emailSubject
+                                .replace(/\[Name\]/g, student.name)
+                                .replace(/\[CourseCode\]/g, course?.code || '')
+                                .replace(/\[Semester\]/g, semesterName);
+
+                            const finalBody = emailBody
+                                .replace(/\[Name\]/g, student.name)
+                                .replace(/\[CourseName\]/g, course?.name || '')
+                                .replace(/\[CourseCode\]/g, course?.code || '')
+                                .replace(/\[Semester\]/g, semesterName)
+                                .replace(/\[Score\]/g, String(examScore));
+
+                            await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
+                        }
+                    });
+                });
+                Promise.all(emailPromises);
+            }
+
+            toast({ title: "Exam Scores Saved", description: `${selectedCourseIds.length} course(s) updated and notifications sent.` });
         } catch (e: any) { 
             toast({ variant: 'destructive', title: "Save Failed", description: e.message }); 
         } finally { 
@@ -320,6 +365,9 @@ export default function FinalExamEntryPage() {
                                     </ScrollArea>
                                 </PopoverContent>
                             </Popover>
+                            <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => setIsEmailConfigOpen(true)} title="Email Notification Settings">
+                                <Settings2 className="h-4 w-4"/>
+                            </Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -447,6 +495,40 @@ export default function FinalExamEntryPage() {
                     <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Exam Scores</Button></CardFooter>
                 )}
             </Card>
+
+            <Dialog open={isEmailConfigOpen} onOpenChange={setIsEmailConfigOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary"/> Exam Notification Settings</DialogTitle>
+                        <DialogDescription>Configure the email sent to students after their final exam scores are saved.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="flex items-center space-x-2 p-4 border rounded-md bg-muted/20">
+                            <Switch id="exam-email-toggle" checked={sendEmails} onCheckedChange={setSendEmails} />
+                            <Label htmlFor="exam-email-toggle" className="font-bold">Enable Email Notifications on Save</Label>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Subject</Label>
+                            <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Body (HTML)</Label>
+                            <Textarea value={emailBody} onChange={e => emailBody && setEmailBody(e.target.value)} rows={10} className="font-mono text-xs" />
+                            <div className="p-3 bg-muted/50 rounded text-[10px] space-y-1">
+                                <p className="font-bold">AVAILABLE PLACEHOLDERS:</p>
+                                <p><code>[Name]</code> - Student full name</p>
+                                <p><code>[CourseCode]</code> - Course code</p>
+                                <p><code>[CourseName]</code> - Course title</p>
+                                <p><code>[Semester]</code> - Semester name</p>
+                                <p><code>[Score]</code> - The final exam mark</p>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Close & Save Preferences</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
