@@ -1,3 +1,4 @@
+
 'use server';
 
 import { adminApp } from '@/lib/firebase-admin';
@@ -6,16 +7,34 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 /**
  * Helper to fetch the institution logo URL for notification icons.
+ * Includes a safety timeout to prevent hanging the whole server action 
+ * if there are connectivity issues with the database.
  */
 async function getInstitutionLogo() {
+  const fallback = 'https://picsum.photos/seed/edutrack/200';
+  if (!adminApp) return fallback;
+
   try {
-    if (!adminApp) return 'https://picsum.photos/seed/edutrack/200';
     const db = getDatabase(adminApp);
-    const snap = await db.ref('settings/institution/logoUrl').get();
-    // Default system icon if no logo is configured
-    return snap.val() || 'https://picsum.photos/seed/edutrack/200';
+    const logoRef = db.ref('settings/institution/logoUrl');
+    
+    // 3-second timeout to prevent infinite spin in the UI
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+    
+    const snapshot: any = await Promise.race([
+      logoRef.get(),
+      timeout
+    ]);
+
+    if (!snapshot) {
+      console.warn("Institution logo fetch timed out. Using fallback.");
+      return fallback;
+    }
+
+    return snapshot.val() || fallback;
   } catch (e) {
-    return 'https://picsum.photos/seed/edutrack/200';
+    console.warn("Failed to fetch institution logo, using fallback:", e);
+    return fallback;
   }
 }
 
@@ -45,56 +64,55 @@ export async function subscribeToUserTopics(token: string, userId: string) {
  * Sends a notification to one or more users via their UID topics.
  */
 export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info', category: string = 'general') {
-  if (!adminApp) return { success: false, error: "Admin SDK not initialized" };
+  if (!adminApp) {
+    console.warn("Admin SDK not initialized. Recording notification to DB only.");
+  }
 
   try {
-    const db = getDatabase(adminApp);
-    const messaging = getMessaging(adminApp);
     const userIds = Array.isArray(userIdOrIds) ? userIdOrIds : [userIdOrIds];
-
-    // Check system-wide notification rules
-    const rulesSnap = await db.ref('settings/notificationRules').get();
-    const rules = rulesSnap.exists() ? rulesSnap.val() : {};
-    
-    // Default to true if the rule isn't defined
-    const isPushEnabled = rules[category] !== false;
-
-    // Fetch the institution logo for the notification icon
     const iconUrl = await getInstitutionLogo();
 
     const tasks = userIds.map(async (userId) => {
       // 1. ALWAYS Add to Realtime Database for the in-app notification center history
-      const notificationRef = db.ref(`notifications/${userId}`).push();
-      await notificationRef.set({
-        message,
-        link,
-        type,
-        category,
-        timestamp: Date.now(),
-        read: false,
-      });
+      if (adminApp) {
+        const db = getDatabase(adminApp);
+        const notificationRef = db.ref(`notifications/${userId}`).push();
+        await notificationRef.set({
+          message,
+          link,
+          type,
+          category,
+          timestamp: Date.now(),
+          read: false,
+        });
 
-      // 2. Conditionally Send Push Notification via Topic (UID) if category is enabled
-      if (isPushEnabled) {
-        try {
-          await messaging.send({
-            topic: userId,
-            notification: {
-              title: 'Edutrack360',
-              body: message,
-            },
-            webpush: {
-              fcmOptions: {
-                link: link,
-              },
+        // 2. Check system-wide notification rules for PUSH
+        const rulesSnap = await db.ref('settings/notificationRules').get();
+        const rules = rulesSnap.exists() ? rulesSnap.val() : {};
+        const isPushEnabled = rules[category] !== false;
+
+        if (isPushEnabled) {
+          try {
+            const messaging = getMessaging(adminApp);
+            await messaging.send({
+              topic: userId,
               notification: {
-                icon: iconUrl,
-                badge: '/icons/badge-72x72.png',
-              }
-            },
-          });
-        } catch (fcmError) {
-          console.warn(`FCM Push failed for user ${userId} (Category: ${category}):`, fcmError);
+                title: 'Edutrack360',
+                body: message,
+              },
+              webpush: {
+                fcmOptions: {
+                  link: link,
+                },
+                notification: {
+                  icon: iconUrl,
+                  badge: '/icons/badge-72x72.png',
+                }
+              },
+            });
+          } catch (fcmError) {
+            console.warn(`FCM Push failed for user ${userId}:`, fcmError);
+          }
         }
       }
     });
@@ -102,7 +120,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
     await Promise.all(tasks);
     return { success: true, count: userIds.length };
   } catch (error: any) {
-    console.error("Failed to send notification(s):", error);
+    console.error("Failed to process notification(s):", error);
     return { success: false, error: error.message };
   }
 }
@@ -111,7 +129,10 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
  * Sends a push notification to the global 'broadcast' topic.
  */
 export async function sendBroadcastNotification(message: string, link: string) {
+  console.log("Initiating broadcast notification send...");
+  
   if (!adminApp) {
+    console.error("Broadcast failed: Admin SDK not initialized.");
     return { 
       success: false, 
       error: "Firebase Admin SDK is not fully configured. Please ensure FIREBASE_ADMIN_PRIVATE_KEY and FIREBASE_ADMIN_CLIENT_EMAIL are set in your environment variables." 
@@ -120,9 +141,11 @@ export async function sendBroadcastNotification(message: string, link: string) {
 
   try {
     const messaging = getMessaging(adminApp);
+    console.log("Fetching institution logo for broadcast icon...");
     const iconUrl = await getInstitutionLogo();
     
-    await messaging.send({
+    console.log("Sending message to global 'broadcast' topic...");
+    const response = await messaging.send({
       topic: 'broadcast',
       notification: {
         title: 'Institutional Broadcast',
@@ -139,9 +162,10 @@ export async function sendBroadcastNotification(message: string, link: string) {
       },
     });
     
+    console.log("Broadcast successful. Response:", response);
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to send broadcast:", error);
-    return { success: false, error: error.message };
+    console.error("Broadcast failed with error:", error);
+    return { success: false, error: error.message || "An unexpected error occurred while sending the broadcast." };
   }
 }

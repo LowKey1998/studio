@@ -1,7 +1,7 @@
 
 "use client";
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
@@ -112,7 +112,7 @@ export default function StudentTimetablePage() {
                 }
             }
 
-            // If not registered for current standing, we might want to check for ANY active registration (for retakes/irregular paths)
+            // Fallback: If not registered for current standing, check for ANY active registration
             if (enrolledCourseIds.size === 0) {
                 Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
                     const semInfo = allSemesters[semId];
@@ -139,11 +139,11 @@ export default function StudentTimetablePage() {
 
             for (const semesterId in tData) {
                 const isMaster = semesterId === 'master';
-                // Only consider the current matching semester or the master template
+                // Filter: Only consider matching semester OR master template baseline
                 if (!isMaster && semesterId !== matchingSemesterId) continue;
                 
                 for (const cid in tData[semesterId]) {
-                    // Only include courses the student is actually enrolled in
+                    // Filter: Only include courses the student is actually enrolled in
                     if (!enrolledCourseIds.has(cid)) continue;
 
                     const courseInfo = cData[cid];
@@ -154,15 +154,15 @@ export default function StudentTimetablePage() {
                         
                         if (isMaster) {
                             if (courseInfo?.separateInstance) {
-                                // If course has separate sessions, only show the one matching the student's intake
+                                // Filter: Show only the session matching student's intake
                                 const entryIntakeName = entry.intakeName?.trim().toUpperCase();
                                 shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
                             } else {
-                                // Shared session
+                                // Shared baseline session
                                 shouldInclude = true;
                             }
                         } else {
-                            // Instance-specific override for the current semester
+                            // Instance override for current semester
                             shouldInclude = true;
                         }
 
@@ -170,7 +170,7 @@ export default function StudentTimetablePage() {
                             const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
                             const existing = sessionMap.get(sessionKey);
 
-                            // Priority: Specific semester entries win over Master Template baseline
+                            // Instance specific entries win over master template
                             if (!existing || (semesterId !== 'master' && existing.semesterId === 'master')) {
                                 const lecturerNames = (courseInfo.lecturerIds || [])
                                     .map((uid: string) => usersData[uid]?.name)
@@ -220,7 +220,7 @@ export default function StudentTimetablePage() {
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
-                    <CardDescription>Your personalized schedule for the current session. Only enrolled classes are displayed.</CardDescription>
+                    <CardDescription>Your personalized schedule for the current session. Navigation is date-specific.</CardDescription>
                 </CardHeader>
             </Card>
 
@@ -245,15 +245,12 @@ export default function StudentTimetablePage() {
                     {loading ? (
                         <Skeleton className="h-96 w-full" />
                     ) : !hasSlots ? (
-                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined by administration.</AlertDescription></Alert>
+                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined.</AlertDescription></Alert>
                     ) : timetable.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
                             <CalendarDays className="mx-auto h-12 w-12 opacity-20 mb-4" />
-                            <h3 className="text-lg font-bold">No Enrolled Classes Found</h3>
-                            <p className="text-sm max-w-xs mx-auto">You are either not registered for the current semester or your enrolled courses have not been scheduled yet.</p>
-                            <Button variant="outline" size="sm" asChild className="mt-6">
-                                <Link href="/student/registration">Go to Registration</Link>
-                            </Button>
+                            <h3 className="text-lg font-bold">No Classes Found</h3>
+                            <p className="text-sm max-w-xs mx-auto">No enrolled courses scheduled for your current academic standing.</p>
                         </div>
                     ) : (
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
