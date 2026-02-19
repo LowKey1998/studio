@@ -5,8 +5,27 @@ import { getDatabase } from 'firebase-admin/database';
 import { getMessaging } from 'firebase-admin/messaging';
 
 /**
- * Sends a notification to one or more users.
- * Supports individual or bulk dispatch to minimize server action round-trips.
+ * Subscribes a device token to user-specific and broadcast topics.
+ */
+export async function subscribeToUserTopics(token: string, userId: string) {
+  try {
+    const messaging = getMessaging(adminApp);
+    
+    // Subscribe to personal UID topic for targeted notifications
+    await messaging.subscribeToTopic(token, userId);
+    
+    // Subscribe to global broadcast topic for institution-wide alerts
+    await messaging.subscribeToTopic(token, 'broadcast');
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("FCM Subscription Error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Sends a notification to one or more users via their UID topics.
  */
 export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info') {
   try {
@@ -25,38 +44,60 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
         read: false,
       });
 
-      // 2. Fetch FCM Tokens for the user
-      const tokensSnap = await db.ref(`users/${userId}/fcmTokens`).get();
-      
-      if (tokensSnap.exists()) {
-        const tokens = Object.keys(tokensSnap.val());
-        
-        if (tokens.length > 0) {
-          // 3. Send Push Notification via FCM
-          await messaging.sendEachForMulticast({
-            tokens,
-            notification: {
-              title: 'Edutrack360',
-              body: message,
-            },
-            webpush: {
-              fcmOptions: {
-                link: link,
-              },
-              notification: {
-                icon: '/icons/icon-192x192.png',
-                badge: '/icons/badge-72x72.png',
-              }
-            },
-          });
-        }
-      }
+      // 2. Send Push Notification via Topic (UID)
+      await messaging.send({
+        topic: userId,
+        notification: {
+          title: 'Edutrack360',
+          body: message,
+        },
+        webpush: {
+          fcmOptions: {
+            link: link,
+          },
+          notification: {
+            icon: '/icons/icon-192x192.png',
+            badge: '/icons/badge-72x72.png',
+          }
+        },
+      });
     });
 
     await Promise.all(tasks);
     return { success: true, count: userIds.length };
   } catch (error: any) {
     console.error("Failed to send notification(s):", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Sends a push notification to the global 'broadcast' topic.
+ */
+export async function sendBroadcastNotification(message: string, link: string) {
+  try {
+    const messaging = getMessaging(adminApp);
+    
+    await messaging.send({
+      topic: 'broadcast',
+      notification: {
+        title: 'Institutional Broadcast',
+        body: message,
+      },
+      webpush: {
+        fcmOptions: {
+          link: link,
+        },
+        notification: {
+          icon: '/icons/icon-192x192.png',
+          badge: '/icons/badge-72x72.png',
+        }
+      },
+    });
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send broadcast:", error);
     return { success: false, error: error.message };
   }
 }

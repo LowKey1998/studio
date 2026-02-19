@@ -4,12 +4,13 @@ import { useEffect } from 'react';
 import { getToken, onMessage } from 'firebase/messaging';
 import { messaging, db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import { ref, set, onChildAdded, query, limitToLast, serverTimestamp } from 'firebase/database';
+import { ref, set, onChildAdded, query, limitToLast } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
+import { subscribeToUserTopics } from '@/app/actions/notifications';
 
 /**
  * Component responsible for managing Firebase Cloud Messaging (FCM) tokens
- * and listening for foreground notifications.
+ * and subscribing users to their specific UID and broadcast topics.
  */
 export function FCMManager() {
   const { user } = useAuth();
@@ -34,8 +35,13 @@ export function FCMManager() {
           const token = await getToken(messaging, { vapidKey });
           
           if (token) {
+            // 1. Store token in DB for metadata (optional, but good for auditing)
             const tokenRef = ref(db, `users/${user.uid}/fcmTokens/${token}`);
             await set(tokenRef, true);
+
+            // 2. Subscribe the token to topics via Server Action
+            // This links the token to the user's UID topic and the 'broadcast' topic
+            await subscribeToUserTopics(token, user.uid);
           }
         }
       } catch (error) {
@@ -54,7 +60,6 @@ export function FCMManager() {
     });
 
     // 2. Local fallback: Listen for new DB notifications while app is open
-    // This provides a reactive UI feel even if FCM delivery is delayed
     const notificationsRef = query(ref(db, `notifications/${user.uid}`), limitToLast(1));
     const unsubscribeDB = onChildAdded(notificationsRef, (snapshot) => {
         const data = snapshot.val();

@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, query, orderByChild, equalTo } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
-import { sendNotification } from "@/app/actions/notifications";
+import { sendNotification, sendBroadcastNotification } from "@/app/actions/notifications";
 import type { Notification } from "./types";
 
 const firebaseConfig = {
@@ -25,10 +25,17 @@ const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 /**
  * Creates a notification for a specific user or group of users using the server-side action.
- * This handles both database persistence and FCM push.
+ * This handles both database persistence and FCM push via the user's UID topic.
  */
 export const createNotification = async (userIdOrIds: string | string[], message: string, link: string, type: Notification['type'] = 'info') => {
   return await sendNotification(userIdOrIds, message, link, type);
+};
+
+/**
+ * Sends an institutional broadcast via the 'broadcast' FCM topic.
+ */
+export const createBroadcastNotification = async (message: string, link: string) => {
+  return await sendBroadcastNotification(message, link);
 };
 
 /**
