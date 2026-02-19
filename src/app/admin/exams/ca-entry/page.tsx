@@ -283,7 +283,7 @@ export default function CAEntryPage() {
                     let studentCoursesHtml = "";
                     let hasNewData = false;
 
-                    selectedCourseIds.forEach(courseId => {
+                    for (const courseId of selectedCourseIds) {
                         const course = courses.find(c => c.id === courseId);
                         const template = course?.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
                         const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
@@ -300,7 +300,7 @@ export default function CAEntryPage() {
                             });
                             studentCoursesHtml += "</ul></div>";
                         }
-                    });
+                    }
 
                     if (hasNewData) {
                         const finalSubject = emailSubject
@@ -318,7 +318,7 @@ export default function CAEntryPage() {
                         await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
                     }
                 });
-                Promise.all(emailPromises);
+                await Promise.all(emailPromises);
             }
 
             toast({ title: "Results Recorded", description: `${selectedCourseIds.length} course(s) updated and notifications triggered.` });
@@ -355,7 +355,7 @@ export default function CAEntryPage() {
                                     <div className="p-2">
                                         <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
                                     </div>
-                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
+                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
                                 </PopoverContent>
                             </Popover>
                             <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => setIsEmailConfigOpen(true)} title="Email Notification Settings">

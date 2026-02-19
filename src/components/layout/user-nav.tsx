@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,40 +11,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, User as UserIcon } from "lucide-react";
+import { LogOut, User as UserIcon } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileDialog } from "../profile-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { onValue, ref, update, serverTimestamp } from 'firebase/database';
+import { ref, update, serverTimestamp } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 
 export function UserNav() {
-  const { user, userProfile: initialProfile, loading } = useAuth();
-  const [userProfile, setUserProfile] = React.useState(initialProfile);
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    setUserProfile(initialProfile);
-  }, [initialProfile]);
-  
-  React.useEffect(() => {
-    if (!user) return;
-    
-    const userRef = ref(db, `users/${user.uid}`);
-    const unsubscribe = onValue(userRef, (snapshot) => {
-        if (snapshot.exists()) {
-            setUserProfile(p => ({...p, ...snapshot.val()}));
-        }
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
 
   const handleLogout = async () => {
     try {
@@ -84,7 +64,6 @@ export function UserNav() {
     }
     return name.substring(0, 2);
   }
-
 
   return (
     <>

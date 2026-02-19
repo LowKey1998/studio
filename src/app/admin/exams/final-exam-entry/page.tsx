@@ -129,8 +129,8 @@ export default function FinalExamEntryPage() {
         if (!intake) return;
         get(ref(db, 'settings/academicCalendar')).then(calSnap => {
             const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && startStr) {
-                const state = calculateAcademicState(startStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+            if (calSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
@@ -282,32 +282,37 @@ export default function FinalExamEntryPage() {
                 const emailPromises = studentsInRoster.map(async (student) => {
                     if (!student.email) return;
 
-                    let studentExamHtml = "";
                     let hasNewData = false;
+                    let studentExamListHtml = "<ul style='margin: 10px 0; padding-left: 20px;'>";
 
-                    selectedCourseIds.forEach(courseId => {
+                    for (const courseId of selectedCourseIds) {
                         const course = courses.find(c => c.id === courseId);
                         const examScore = scores[courseId]?.[student.uid]?.finalExam?.score;
 
                         if (examScore !== undefined) {
                             hasNewData = true;
-                            const finalSubject = emailSubject
-                                .replace(/\[Name\]/g, student.name)
-                                .replace(/\[CourseCode\]/g, course?.code || '')
-                                .replace(/\[Semester\]/g, semesterName);
-
-                            const finalBody = emailBody
-                                .replace(/\[Name\]/g, student.name)
-                                .replace(/\[CourseName\]/g, course?.name || '')
-                                .replace(/\[CourseCode\]/g, course?.code || '')
-                                .replace(/\[Semester\]/g, semesterName)
-                                .replace(/\[Score\]/g, String(examScore));
-
-                            await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
+                            studentExamListHtml += `<li>${course?.name} (${course?.code}): <strong>${examScore}%</strong></li>`;
                         }
-                    });
+                    }
+                    studentExamListHtml += "</ul>";
+
+                    if (hasNewData) {
+                        const finalSubject = emailSubject
+                            .replace(/\[Name\]/g, student.name)
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Recent Exams')
+                            .replace(/\[Semester\]/g, semesterName);
+
+                        const finalBody = emailBody
+                            .replace(/\[Name\]/g, student.name)
+                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.name || '' : 'multiple courses')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[Semester\]/g, semesterName)
+                            .replace(/\[Score\]/g, studentExamListHtml);
+
+                        await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
+                    }
                 });
-                Promise.all(emailPromises);
+                await Promise.all(emailPromises);
             }
 
             toast({ title: "Exam Scores Saved", description: `${selectedCourseIds.length} course(s) updated and notifications sent.` });
@@ -513,7 +518,7 @@ export default function FinalExamEntryPage() {
                         </div>
                         <div className="space-y-1">
                             <Label>Email Body (HTML)</Label>
-                            <Textarea value={emailBody} onChange={e => emailBody && setEmailBody(e.target.value)} rows={10} className="font-mono text-xs" />
+                            <Textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} rows={10} className="font-mono text-xs" />
                             <div className="p-3 bg-muted/50 rounded text-[10px] space-y-1">
                                 <p className="font-bold">AVAILABLE PLACEHOLDERS:</p>
                                 <p><code>[Name]</code> - Student full name</p>
