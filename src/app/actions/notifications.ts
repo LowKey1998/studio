@@ -5,6 +5,20 @@ import { getDatabase } from 'firebase-admin/database';
 import { getMessaging } from 'firebase-admin/messaging';
 
 /**
+ * Helper to fetch the institution logo URL for notification icons.
+ */
+async function getInstitutionLogo() {
+  try {
+    const db = getDatabase(adminApp);
+    const snap = await db.ref('settings/institution/logoUrl').get();
+    // Default system icon if no logo is configured
+    return snap.val() || '/icons/icon-192x192.png';
+  } catch (e) {
+    return '/icons/icon-192x192.png';
+  }
+}
+
+/**
  * Subscribes a device token to user-specific and broadcast topics.
  */
 export async function subscribeToUserTopics(token: string, userId: string) {
@@ -40,6 +54,9 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
     // Default to true if the rule isn't defined
     const isPushEnabled = rules[category] !== false;
 
+    // Fetch the institution logo for the notification icon
+    const iconUrl = await getInstitutionLogo();
+
     const tasks = userIds.map(async (userId) => {
       // 1. ALWAYS Add to Realtime Database for the in-app notification center history
       const notificationRef = db.ref(`notifications/${userId}`).push();
@@ -66,7 +83,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
                 link: link,
               },
               notification: {
-                icon: '/icons/icon-192x192.png',
+                icon: iconUrl,
                 badge: '/icons/badge-72x72.png',
               }
             },
@@ -91,6 +108,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
 export async function sendBroadcastNotification(message: string, link: string) {
   try {
     const messaging = getMessaging(adminApp);
+    const iconUrl = await getInstitutionLogo();
     
     await messaging.send({
       topic: 'broadcast',
@@ -103,7 +121,7 @@ export async function sendBroadcastNotification(message: string, link: string) {
           link: link,
         },
         notification: {
-          icon: '/icons/icon-192x192.png',
+          icon: iconUrl,
           badge: '/icons/badge-72x72.png',
         }
       },
