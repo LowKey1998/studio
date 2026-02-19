@@ -12,9 +12,9 @@ async function getInstitutionLogo() {
     const db = getDatabase(adminApp);
     const snap = await db.ref('settings/institution/logoUrl').get();
     // Default system icon if no logo is configured
-    return snap.val() || '/icons/icon-192x192.png';
+    return snap.val() || 'https://picsum.photos/seed/edutrack/200';
   } catch (e) {
-    return '/icons/icon-192x192.png';
+    return 'https://picsum.photos/seed/edutrack/200';
   }
 }
 
