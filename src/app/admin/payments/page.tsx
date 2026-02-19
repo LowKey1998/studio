@@ -3,10 +3,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -180,6 +181,7 @@ export default function PaymentsManagementPage() {
     const [isLinkingOpen, setIsLinkingOpen] = React.useState(false);
     const [linkingPayment, setLinkingPayment] = React.useState<UnlinkedPayment | null>(null);
     const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
+    const [linkResolution, setLinkResolution] = React.useState<'partial' | 'overwrite'>('partial');
 
     const { toast } = useToast();
 
@@ -463,10 +465,15 @@ export default function PaymentsManagementPage() {
                 updates[`invoices/${selectedLinkStudent}/${invoiceId}`] = {
                     invoiceId,
                     totalTuition: linkingPayment.totalDue || 0,
+                    totalMandatoryFees: 0,
+                    totalOptionalFees: 0,
                     dateCreated: new Date().toISOString(),
-                    semesterId: linkingPayment.semesterId
+                    semesterId: linkingPayment.semesterId,
+                    semester: semesters.find(s => s.id === linkingPayment.semesterId)?.name || 'Manual Link'
                 };
                 updates[`registrations/${selectedLinkStudent}/${linkingPayment.semesterId}/invoiceId`] = invoiceId;
+            } else if (linkResolution === 'overwrite' && linkingPayment.totalDue !== undefined) {
+                updates[`invoices/${selectedLinkStudent}/${invoiceId}/totalTuition`] = linkingPayment.totalDue;
             }
 
             const txRef = push(ref(db, 'transactions'));
@@ -479,7 +486,7 @@ export default function PaymentsManagementPage() {
                 status: 'successful',
                 paymentDate: linkingPayment.date,
                 method: 'Manual (Linked)',
-                comment: `Linked to account. Original Reference: ${linkingPayment.reference}`
+                comment: `Linked to account. Original Reference: ${linkingPayment.reference}. Resolution: ${linkResolution}`
             };
 
             updates[`unlinkedPayments/${linkingPayment.id}`] = null;
@@ -492,6 +499,8 @@ export default function PaymentsManagementPage() {
             
             await fetchPaymentData();
             setIsLinkingOpen(false);
+            setSelectedLinkStudent('');
+            setLinkResolution('partial');
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Linking Failed', description: e.message });
         } finally {
@@ -549,6 +558,25 @@ export default function PaymentsManagementPage() {
         Pending: 'secondary',
         Overdue: 'destructive',
     };
+
+    const linkingInconsistencies = React.useMemo(() => {
+        if (!linkingPayment || !selectedLinkStudent || !linkingPayment.semesterId) return [];
+        const studentInfo = paymentInfos.find(p => p.userId === selectedLinkStudent && p.semesterId === linkingPayment.semesterId);
+        const inconsistencies: string[] = [];
+
+        if (!studentInfo) {
+            inconsistencies.push(`The student is NOT currently registered for the semester: ${semesters.find(s => s.id === linkingPayment.semesterId)?.name}. A new registration and invoice will be created.`);
+        } else {
+            if (linkingPayment.totalDue !== undefined && Math.abs(linkingPayment.totalDue - studentInfo.totalDue) > 0.01) {
+                inconsistencies.push(`Amount mismatch: Unlinked record expected ZMW ${linkingPayment.totalDue.toFixed(2)} total due, but student's current invoice is ZMW ${studentInfo.totalDue.toFixed(2)}.`);
+            }
+            if (linkingPayment.amount > studentInfo.balance) {
+                inconsistencies.push(`Overpayment detected: The deposit (ZMW ${linkingPayment.amount.toFixed(2)}) is greater than the student's current outstanding balance (ZMW ${studentInfo.balance.toFixed(2)}).`);
+            }
+        }
+
+        return inconsistencies;
+    }, [linkingPayment, selectedLinkStudent, paymentInfos, semesters]);
 
     return (
         <div className="space-y-6">
@@ -734,16 +762,26 @@ export default function PaymentsManagementPage() {
             </Card>
 
             <Dialog open={isLinkingOpen} onOpenChange={setIsLinkingOpen}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-2xl">
                     <DialogHeader><DialogTitle>Link Unlinked Payment</DialogTitle></DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <div className="p-4 bg-muted/50 rounded-lg border space-y-1">
-                            <p className="text-xs font-bold text-muted-foreground uppercase">Reference</p>
-                            <p className="font-mono">{linkingPayment?.reference}</p>
-                            <Separator className="my-2"/>
-                            <p className="text-xs font-bold text-muted-foreground uppercase">Amount</p>
-                            <p className="text-xl font-black text-green-600">ZMW {linkingPayment?.amount.toFixed(2)}</p>
+                    <div className="py-4 space-y-6">
+                        <div className="p-4 bg-muted/50 rounded-lg border grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Reference</p>
+                                <p className="font-mono text-sm">{linkingPayment?.reference}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Amount</p>
+                                <p className="text-xl font-black text-green-600">ZMW {linkingPayment?.amount.toFixed(2)}</p>
+                            </div>
+                            {linkingPayment?.totalDue && (
+                                <div className="space-y-1 col-span-2 border-t pt-2 mt-2">
+                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Expected Total Due (Original Input)</p>
+                                    <p className="font-mono text-xs">ZMW {linkingPayment.totalDue.toFixed(2)}</p>
+                                </div>
+                            )}
                         </div>
+
                         <div className="space-y-1">
                             <Label>Target Student</Label>
                             <SearchableSelect 
@@ -753,10 +791,66 @@ export default function PaymentsManagementPage() {
                                 placeholder="Search and select student..." 
                             />
                         </div>
+
+                        {selectedLinkStudent && (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                                {linkingInconsistencies.length > 0 ? (
+                                    <Alert variant="destructive">
+                                        <AlertCircle className="h-4 w-4" />
+                                        <AlertTitle className="font-bold">Inconsistency Report</AlertTitle>
+                                        <AlertDescription className="space-y-2 mt-2">
+                                            <ul className="list-disc pl-5 text-xs space-y-1">
+                                                {linkingInconsistencies.map((msg, i) => <li key={i}>{msg}</li>)}
+                                            </ul>
+                                            <Separator className="my-2 bg-destructive/20" />
+                                            <div className="space-y-3">
+                                                <Label className="text-xs font-bold uppercase">How would you like to proceed?</Label>
+                                                <div className="grid grid-cols-1 gap-2">
+                                                    <Button 
+                                                        variant={linkResolution === 'overwrite' ? 'default' : 'outline'} 
+                                                        size="sm" 
+                                                        className="justify-start h-auto py-2 text-left" 
+                                                        onClick={() => setLinkResolution('overwrite')}
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold">Update & Link</span>
+                                                            <span className="text-[10px] opacity-70">Overwrite the student's current invoice total to match the unlinked record (ZMW {linkingPayment?.totalDue?.toFixed(2)}).</span>
+                                                        </div>
+                                                    </Button>
+                                                    <Button 
+                                                        variant={linkResolution === 'partial' ? 'default' : 'outline'} 
+                                                        size="sm" 
+                                                        className="justify-start h-auto py-2 text-left" 
+                                                        onClick={() => setLinkResolution('partial')}
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold">Link as Partial Payment</span>
+                                                            <span className="text-[10px] opacity-70">Keep student's current invoice total. Just apply the ZMW {linkingPayment?.amount.toFixed(2)} as a payment.</span>
+                                                        </div>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </AlertDescription>
+                                    </Alert>
+                                ) : (
+                                    <Alert className="bg-green-50 border-green-200">
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                        <AlertTitle className="text-green-800">Perfect Match</AlertTitle>
+                                        <AlertDescription className="text-green-700 text-xs">The unlinked record details align perfectly with the selected student's account for this semester.</AlertDescription>
+                                    </Alert>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                        <Button onClick={handleLinkPayment} disabled={formLoading || !selectedLinkStudent}>Confirm & Link</Button>
+                        <Button 
+                            onClick={handleLinkPayment} 
+                            disabled={formLoading || !selectedLinkStudent}
+                        >
+                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <LinkIcon className="mr-2 h-4 w-4" />}
+                            Link Payment to Account
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
