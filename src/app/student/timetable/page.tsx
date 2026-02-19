@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import Link from 'next/link';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type TimeSlot = {
     id: string;
@@ -49,21 +51,22 @@ export default function StudentTimetablePage() {
     const [timetable, setTimetable] = React.useState<TimetableEntry[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [loading, setLoading] = React.useState(true);
-    
     const [viewWeek, setViewWeek] = React.useState(new Date());
+    const [academicStanding, setAcademicStanding] = React.useState<string>('');
 
     const fetchData = React.useCallback(async () => {
         if (!user?.uid || !userProfile) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap, calendarSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/teachingTimes')),
                 get(ref(db, 'users')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'intakes'))
+                get(ref(db, 'intakes')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
 
             if (!regsSnap.exists()) {
@@ -74,28 +77,51 @@ export default function StudentTimetablePage() {
 
             const allSemesters = semestersSnap.val() || {};
             const allIntakes = intakesSnap.val() || {};
-            const studentIntakeName = userProfile.intakeId ? allIntakes[userProfile.intakeId]?.name?.trim().toUpperCase() : null;
+            const calSettings = calendarSnap.val() || {};
+            const studentIntake = userProfile.intakeId ? allIntakes[userProfile.intakeId] : null;
+            const studentIntakeName = studentIntake?.name?.trim().toUpperCase();
 
-            const enrolledCourseIdsBySemester: Record<string, string[]> = {};
-            const enrolledCourseIdsGlobal = new Set<string>();
-            const myActiveSemesterIds = new Set<string>();
-
-            Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
-                const semInfo = allSemesters[semId];
-                if (!semInfo || semInfo.status === 'Archived') return;
-                
-                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    myActiveSemesterIds.add(semId);
-                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
-                    enrolledCourseIdsBySemester[semId] = coursesArr;
-                    coursesArr.forEach((cid: string) => enrolledCourseIdsGlobal.add(cid));
+            // 1. Calculate Current Standing
+            let matchingSemesterId: string | null = null;
+            if (studentIntakeName && calSettings) {
+                const intakeStartStr = parseIntakeDate(studentIntake.name);
+                if (intakeStartStr) {
+                    const state = calculateAcademicState(
+                        intakeStartStr, 
+                        new Date(), 
+                        calSettings.standardCycles, 
+                        Object.values(calSettings.anomalies || {})
+                    );
+                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                    
+                    // Find the semester record that matches this standing
+                    matchingSemesterId = Object.keys(allSemesters).find(sId => {
+                        const s = allSemesters[sId];
+                        return s.intakeId === userProfile.intakeId && s.year === state.year && s.semesterInYear === state.semester;
+                    }) || null;
                 }
-            });
+            }
 
-            if (myActiveSemesterIds.size === 0) {
-                setTimetable([]);
-                setLoading(false);
-                return;
+            // 2. Identify Enrolled Courses for the CURRENT Semester
+            const enrolledCourseIds = new Set<string>();
+            if (matchingSemesterId && regsSnap.val()[matchingSemesterId]) {
+                const reg = regsSnap.val()[matchingSemesterId];
+                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
+                    coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
+                }
+            }
+
+            // If not registered for current standing, we might want to check for ANY active registration (for retakes/irregular paths)
+            if (enrolledCourseIds.size === 0) {
+                Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
+                    const semInfo = allSemesters[semId];
+                    if (semInfo?.status === 'Open' && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
+                        coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
+                        if (!matchingSemesterId) matchingSemesterId = semId;
+                    }
+                });
             }
 
             const cData = coursesSnap.val() || {};
@@ -108,16 +134,17 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // Use a Map to deduplicate. Key: CourseID-Day-StartTime
-            // Priority: Specific semester overrides (non-master) replace 'master' baseline entries.
+            // 3. Filter Timetable Entries
             const sessionMap = new Map<string, TimetableEntry>();
 
             for (const semesterId in tData) {
                 const isMaster = semesterId === 'master';
-                if (semesterId !== 'master' && !myActiveSemesterIds.has(semesterId)) continue;
+                // Only consider the current matching semester or the master template
+                if (!isMaster && semesterId !== matchingSemesterId) continue;
                 
                 for (const cid in tData[semesterId]) {
-                    if (!enrolledCourseIdsGlobal.has(cid)) continue;
+                    // Only include courses the student is actually enrolled in
+                    if (!enrolledCourseIds.has(cid)) continue;
 
                     const courseInfo = cData[cid];
                     const entries = Object.values(tData[semesterId][cid]) as any[];
@@ -127,21 +154,23 @@ export default function StudentTimetablePage() {
                         
                         if (isMaster) {
                             if (courseInfo?.separateInstance) {
+                                // If course has separate sessions, only show the one matching the student's intake
                                 const entryIntakeName = entry.intakeName?.trim().toUpperCase();
                                 shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
                             } else {
+                                // Shared session
                                 shouldInclude = true;
                             }
                         } else {
-                            // Only include semester-specific entries if the student is registered for that specific semester ID
-                            shouldInclude = myActiveSemesterIds.has(semesterId) && enrolledCourseIdsBySemester[semesterId]?.includes(cid);
+                            // Instance-specific override for the current semester
+                            shouldInclude = true;
                         }
 
                         if (shouldInclude) {
                             const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
                             const existing = sessionMap.get(sessionKey);
 
-                            // Priority: Specific semester entries win over Master Template
+                            // Priority: Specific semester entries win over Master Template baseline
                             if (!existing || (semesterId !== 'master' && existing.semesterId === 'master')) {
                                 const lecturerNames = (courseInfo.lecturerIds || [])
                                     .map((uid: string) => usersData[uid]?.name)
@@ -154,7 +183,7 @@ export default function StudentTimetablePage() {
                                     courseCode: courseInfo.code,
                                     courseName: courseInfo.name,
                                     semesterId: semesterId,
-                                    semesterName: allSemesters[semesterId]?.name || (isMaster ? 'Master Schedule' : 'Ad-hoc'),
+                                    semesterName: allSemesters[semesterId]?.name || 'Current Session',
                                     lecturerNames,
                                     studentCount: 0 
                                 });
@@ -191,7 +220,7 @@ export default function StudentTimetablePage() {
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
-                    <CardDescription>Your personalized schedule. Sessions vary by week based on live link approvals.</CardDescription>
+                    <CardDescription>Your personalized schedule for the current session. Only enrolled classes are displayed.</CardDescription>
                 </CardHeader>
             </Card>
 
@@ -203,7 +232,12 @@ export default function StudentTimetablePage() {
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
                 </div>
-                <Badge variant="secondary" className="text-[10px] font-black uppercase">Cohort Schedule</Badge>
+                {academicStanding && (
+                    <Badge variant="secondary" className="gap-1.5 font-black uppercase tracking-widest text-[10px]">
+                        <Clock className="h-3 w-3" />
+                        {academicStanding}
+                    </Badge>
+                )}
             </div>
 
             <Card className="shadow-lg">
@@ -213,7 +247,14 @@ export default function StudentTimetablePage() {
                     ) : !hasSlots ? (
                         <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Institutional time slots have not been defined by administration.</AlertDescription></Alert>
                     ) : timetable.length === 0 ? (
-                        <Alert><Info className="h-4 w-4" /><AlertTitle>No Scheduled Classes</AlertTitle><AlertDescription>You are either not registered for an active semester or your courses haven't been scheduled yet.</AlertDescription></Alert>
+                        <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                            <CalendarDays className="mx-auto h-12 w-12 opacity-20 mb-4" />
+                            <h3 className="text-lg font-bold">No Enrolled Classes Found</h3>
+                            <p className="text-sm max-w-xs mx-auto">You are either not registered for the current semester or your enrolled courses have not been scheduled yet.</p>
+                            <Button variant="outline" size="sm" asChild className="mt-6">
+                                <Link href="/student/registration">Go to Registration</Link>
+                            </Button>
+                        </div>
                     ) : (
                         <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
                             <Table>
