@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck, BookCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
@@ -1065,4 +1065,3 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
-
