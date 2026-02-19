@@ -324,7 +324,17 @@ export default function StudentEnrollmentPage() {
                     <div><CardTitle>Enrollment Management</CardTitle><CardDescription>Manage class lists by intake schedule.</CardDescription></div>
                     <Button variant="outline" onClick={() => setIsConfigOpen(true)}><Settings2 className="mr-2 h-4 w-4"/>Email Settings</Button>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-6">
+                    <Alert className="bg-primary/5 border-primary/20">
+                        <Info className="h-4 w-4 text-primary" />
+                        <AlertTitle className="font-bold text-xs uppercase tracking-widest">How Enrollment Works</AlertTitle>
+                        <AlertDescription className="text-sm space-y-2 mt-2 leading-relaxed">
+                            <p><strong>1. Intake Detection:</strong> Selecting an intake automatically determines the cohort's expected academic phase (Year & Semester) using institutional calendar rules.</p>
+                            <p><strong>2. Teaching Windows:</strong> The class grid below only displays sessions for semesters whose <strong>Start and End Dates</strong> encompass today's date. This prevents accidental enrollment into closed or future sessions.</p>
+                            <p><strong>3. Auto-Sync:</strong> All changes are queued and synchronized automatically when your connection is stable. Each record uses a unique client-side key to prevent duplicates during sync.</p>
+                        </AlertDescription>
+                    </Alert>
+
                     <div className="max-w-md">
                         <Label>Select Schedule Intake</Label>
                         <div className="flex items-center gap-4 mt-1">
@@ -387,7 +397,7 @@ export default function StudentEnrollmentPage() {
                                 setSearchEnrolled(''); 
                             }}>
                                 <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
-                                <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2 w-2" /> {entry.venue}</p>
+                                <p className="text-[9px] text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-2.5 w-2.5" /> {entry.venue}</p>
                                 {course?.separateInstance && <Badge className="text-[8px] h-3.5 px-1 mt-1 bg-blue-100 text-blue-700 border-blue-200">Cohort-Specific</Badge>}
                             </div>
                         )})}</TableCell>);

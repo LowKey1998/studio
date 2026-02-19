@@ -143,7 +143,7 @@ function TimetableManagementComponent() {
                 case 0: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 3: setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
+                case 3: setAllIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
                 case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
