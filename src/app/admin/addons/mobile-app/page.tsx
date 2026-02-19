@@ -23,10 +23,10 @@ export default function MobileAppPage() {
         
         setSending(true);
         try {
-            // Directly call the server action to ensure correct proxying and promise resolution
+            console.log("[UI] Initiating broadcast request...");
             const result = await sendBroadcastNotification(`${title}: ${message}`, '/dashboard');
             
-            if (result.success) {
+            if (result && result.success) {
                 toast({ 
                     variant: 'success', 
                     title: 'Broadcast Sent', 
@@ -35,18 +35,18 @@ export default function MobileAppPage() {
                 setTitle(''); 
                 setMessage('');
             } else {
-                // If success is false, handle the explicit error returned by the server
-                throw new Error(result.error || 'Server rejected the broadcast request.');
+                throw new Error(result?.error || 'Server rejected the broadcast request.');
             }
         } catch (e: any) {
-            console.error('Broadcast Error:', e);
+            console.error('[UI] Broadcast Error Caught:', e);
             toast({ 
                 variant: 'destructive', 
                 title: 'Broadcast Failed', 
                 description: e.message || 'Check your internet connection and try again.' 
             });
         } finally {
-            // This now always runs because we catch all errors and the server action is guaranteed to return
+            // This now always runs to ensure the button stops spinning
+            console.log("[UI] Broadcast request cycle complete.");
             setSending(false);
         }
     };

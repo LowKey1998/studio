@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,59 +68,65 @@ export default function StudentTimetablePage() {
                 get(ref(db, 'settings/academicCalendar'))
             ]);
 
-            if (!regsSnap.exists()) {
-                setTimetable([]);
-                setLoading(false);
-                return;
-            }
-
             const allSemesters = semestersSnap.val() || {};
             const allIntakes = intakesSnap.val() || {};
             const calSettings = calendarSnap.val() || {};
             const studentIntake = userProfile.intakeId ? allIntakes[userProfile.intakeId] : null;
             const studentIntakeName = studentIntake?.name?.trim().toUpperCase();
 
-            // 1. Calculate Current Standing
-            let matchingSemesterId: string | null = null;
-            if (studentIntakeName && calSettings) {
-                const intakeStartStr = parseIntakeDate(studentIntake.name);
-                if (intakeStartStr) {
-                    const state = calculateAcademicState(
-                        intakeStartStr, 
-                        new Date(), 
-                        calSettings.standardCycles, 
-                        Object.values(calSettings.anomalies || {})
-                    );
-                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
-                    
-                    // Find the semester record that matches this standing
-                    matchingSemesterId = Object.keys(allSemesters).find(sId => {
-                        const s = allSemesters[sId];
-                        return s.intakeId === userProfile.intakeId && s.year === state.year && s.semesterInYear === state.semester;
-                    }) || null;
-                }
+            if (!studentIntake || !calSettings) {
+                setTimetable([]);
+                setLoading(false);
+                return;
             }
 
-            // 2. Identify Enrolled Courses for the CURRENT Semester
+            // 1. Calculate Current Academic Standing strictly based on Intake Date
+            const intakeStartStr = parseIntakeDate(studentIntake.name);
+            if (!intakeStartStr) {
+                setTimetable([]);
+                setLoading(false);
+                return;
+            }
+
+            const state = calculateAcademicState(
+                intakeStartStr, 
+                new Date(), 
+                calSettings.standardCycles, 
+                Object.values(calSettings.anomalies || {})
+            );
+            
+            const currentYear = state.year;
+            const currentSemesterInYear = state.semester;
+            setAcademicStanding(`Year ${currentYear}, Sem ${currentSemesterInYear}`);
+
+            // 2. Find the specific semester record that represents this standing for this intake
+            const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {
+                return s.intakeId === userProfile.intakeId && 
+                       s.year === currentYear && 
+                       s.semesterInYear === currentSemesterInYear;
+            });
+            
+            const matchingSemesterId = matchingSemesterEntry ? matchingSemesterEntry[0] : null;
+
+            if (!matchingSemesterId) {
+                setTimetable([]);
+                setLoading(false);
+                return;
+            }
+
+            // 3. Identify courses enrolled in THIS specific semester strictly
             const enrolledCourseIds = new Set<string>();
-            if (matchingSemesterId && regsSnap.val()[matchingSemesterId]) {
-                const reg = regsSnap.val()[matchingSemesterId];
-                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
-                    coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
-                }
-            }
-
-            // Fallback: If not registered for current standing, check for ANY active registration
-            if (enrolledCourseIds.size === 0) {
-                Object.entries(regsSnap.val()).forEach(([semId, reg]: [string, any]) => {
-                    const semInfo = allSemesters[semId];
-                    if (semInfo?.status === 'Open' && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
-                        const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
-                        coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
-                        if (!matchingSemesterId) matchingSemesterId = semId;
-                    }
-                });
+            const userRegs = regsSnap.val() || {};
+            const currentReg = userRegs[matchingSemesterId];
+            
+            if (currentReg && (currentReg.status === 'Completed' || currentReg.status === 'Pending Payment')) {
+                const coursesArr = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
+                coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
+            } else {
+                // If not registered for current standing, we do not show fallback classes
+                setTimetable([]);
+                setLoading(false);
+                return;
             }
 
             const cData = coursesSnap.val() || {};
@@ -134,35 +139,37 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // 3. Filter Timetable Entries
+            // 4. Construct Timetable from matching Semester node and Master Template
             const sessionMap = new Map<string, TimetableEntry>();
+            const relevantSemesterNodes = ['master', matchingSemesterId];
 
-            for (const semesterId in tData) {
-                const isMaster = semesterId === 'master';
-                // Filter: Only consider matching semester OR master template baseline
-                if (!isMaster && semesterId !== matchingSemesterId) continue;
-                
-                for (const cid in tData[semesterId]) {
-                    // Filter: Only include courses the student is actually enrolled in
+            relevantSemesterNodes.forEach(semId => {
+                const isMaster = semId === 'master';
+                const semesterSessions = tData[semId];
+                if (!semesterSessions) return;
+
+                for (const cid in semesterSessions) {
+                    // Rule: Course MUST be in the student's enrolled list for the specific calculated semester
                     if (!enrolledCourseIds.has(cid)) continue;
 
                     const courseInfo = cData[cid];
-                    const entries = Object.values(tData[semesterId][cid]) as any[];
+                    if (!courseInfo) continue;
 
+                    const entries = Object.values(semesterSessions[cid]) as any[];
                     entries.forEach(entry => {
                         let shouldInclude = false;
                         
                         if (isMaster) {
-                            if (courseInfo?.separateInstance) {
-                                // Filter: Show only the session matching student's intake
+                            if (courseInfo.separateInstance) {
+                                // For master entries of separate courses, check intake name match
                                 const entryIntakeName = entry.intakeName?.trim().toUpperCase();
                                 shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
                             } else {
-                                // Shared baseline session
+                                // Common shared baseline course
                                 shouldInclude = true;
                             }
                         } else {
-                            // Instance override for current semester
+                            // Instance specific entry for the current standing semester
                             shouldInclude = true;
                         }
 
@@ -170,8 +177,8 @@ export default function StudentTimetablePage() {
                             const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
                             const existing = sessionMap.get(sessionKey);
 
-                            // Instance specific entries win over master template
-                            if (!existing || (semesterId !== 'master' && existing.semesterId === 'master')) {
+                            // Instance specific entries override baseline master entries
+                            if (!existing || (semId !== 'master' && existing.semesterId === 'master')) {
                                 const lecturerNames = (courseInfo.lecturerIds || [])
                                     .map((uid: string) => usersData[uid]?.name)
                                     .filter(Boolean)
@@ -182,8 +189,8 @@ export default function StudentTimetablePage() {
                                     courseId: cid,
                                     courseCode: courseInfo.code,
                                     courseName: courseInfo.name,
-                                    semesterId: semesterId,
-                                    semesterName: allSemesters[semesterId]?.name || 'Current Session',
+                                    semesterId: semId,
+                                    semesterName: allSemesters[semId]?.name || 'Current Standing',
                                     lecturerNames,
                                     studentCount: 0 
                                 });
@@ -191,10 +198,11 @@ export default function StudentTimetablePage() {
                         }
                     });
                 }
-            }
+            });
+
             setTimetable(Array.from(sessionMap.values()));
         } catch (error) {
-            console.error("Timetable Fetch Error:", error);
+            console.error("Timetable logic error:", error);
         } finally {
             setLoading(false);
         }

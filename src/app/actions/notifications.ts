@@ -1,4 +1,3 @@
-
 'use server';
 
 import { adminApp } from '@/lib/firebase-admin';
@@ -27,13 +26,13 @@ async function getInstitutionLogo() {
     ]);
 
     if (!snapshot) {
-      console.warn("Institution logo fetch timed out. Using fallback.");
+      console.warn("[SERVER] Institution logo fetch timed out. Using fallback.");
       return fallback;
     }
 
     return snapshot.val() || fallback;
   } catch (e) {
-    console.warn("Failed to fetch institution logo, using fallback:", e);
+    console.warn("[SERVER] Failed to fetch institution logo, using fallback:", e);
     return fallback;
   }
 }
@@ -65,7 +64,7 @@ export async function subscribeToUserTopics(token: string, userId: string) {
  */
 export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info', category: string = 'general') {
   if (!adminApp) {
-    console.warn("Admin SDK not initialized. Recording notification to DB only.");
+    console.warn("[SERVER] Admin SDK not initialized. Recording notification to DB only.");
   }
 
   try {
@@ -111,7 +110,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
               },
             });
           } catch (fcmError) {
-            console.warn(`FCM Push failed for user ${userId}:`, fcmError);
+            console.warn(`[SERVER] FCM Push failed for user ${userId}:`, fcmError);
           }
         }
       }
@@ -120,7 +119,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
     await Promise.all(tasks);
     return { success: true, count: userIds.length };
   } catch (error: any) {
-    console.error("Failed to process notification(s):", error);
+    console.error("[SERVER] Failed to process notification(s):", error);
     return { success: false, error: error.message };
   }
 }
@@ -129,10 +128,10 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
  * Sends a push notification to the global 'broadcast' topic.
  */
 export async function sendBroadcastNotification(message: string, link: string) {
-  console.log("Initiating broadcast notification send...");
+  console.log("[SERVER] Initiating broadcast notification send...");
   
   if (!adminApp) {
-    console.error("Broadcast failed: Admin SDK not initialized.");
+    console.error("[SERVER] Broadcast failed: Admin SDK not initialized.");
     return { 
       success: false, 
       error: "Firebase Admin SDK is not fully configured. Please ensure FIREBASE_ADMIN_PRIVATE_KEY and FIREBASE_ADMIN_CLIENT_EMAIL are set in your environment variables." 
@@ -141,10 +140,11 @@ export async function sendBroadcastNotification(message: string, link: string) {
 
   try {
     const messaging = getMessaging(adminApp);
-    console.log("Fetching institution logo for broadcast icon...");
+    
+    console.log("[SERVER] Resolving institution logo...");
     const iconUrl = await getInstitutionLogo();
     
-    console.log("Sending message to global 'broadcast' topic...");
+    console.log("[SERVER] Sending message to global 'broadcast' topic...");
     const response = await messaging.send({
       topic: 'broadcast',
       notification: {
@@ -162,10 +162,13 @@ export async function sendBroadcastNotification(message: string, link: string) {
       },
     });
     
-    console.log("Broadcast successful. Response:", response);
+    console.log("[SERVER] Broadcast successful. Response ID:", response);
     return { success: true };
   } catch (error: any) {
-    console.error("Broadcast failed with error:", error);
-    return { success: false, error: error.message || "An unexpected error occurred while sending the broadcast." };
+    console.error("[SERVER] Broadcast failed with error:", error);
+    return { 
+      success: false, 
+      error: error.message || "An unexpected error occurred while sending the broadcast." 
+    };
   }
 }
