@@ -36,11 +36,13 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
