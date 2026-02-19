@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,7 +124,6 @@ export default function StudentTimetablePage() {
                 const coursesArr = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
                 coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
             } else {
-                // If not registered for current standing, we do not show fallback classes
                 setTimetable([]);
                 setLoading(false);
                 return;
@@ -159,17 +159,14 @@ export default function StudentTimetablePage() {
                     entries.forEach(entry => {
                         let shouldInclude = false;
                         
+                        const entryIntake = entry.intakeName?.trim().toUpperCase();
+                        const studentIntake = studentIntakeName;
+
                         if (isMaster) {
-                            if (courseInfo.separateInstance) {
-                                // For master entries of separate courses, check intake name match
-                                const entryIntakeName = entry.intakeName?.trim().toUpperCase();
-                                shouldInclude = studentIntakeName && entryIntakeName === studentIntakeName;
-                            } else {
-                                // Common shared baseline course
-                                shouldInclude = true;
-                            }
+                            // Rule: For Master node, include if it matches student's intake OR is marked as global 'MASTER'
+                            shouldInclude = (studentIntake && entryIntake === studentIntake) || (entryIntake === 'MASTER');
                         } else {
-                            // Instance specific entry for the current standing semester
+                            // Instance specific entry always matches if student is enrolled in that specific sem
                             shouldInclude = true;
                         }
 

@@ -19,7 +19,9 @@ import {
     Wallet,
     MapPin,
     AlertCircle,
-    ClipboardCheck
+    ClipboardCheck,
+    Layers,
+    Video
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -54,6 +56,7 @@ type TimetableEntry = {
     courseName: string;
     id: string;
     semesterId: string;
+    isLiveSession?: boolean;
 };
 
 type DeadlineEvent = {
@@ -245,7 +248,7 @@ export default function StudentDashboardPage() {
                 }
             }
 
-            // Daily Schedule strictly filtered by CURRENT Standing and Enrollment
+            // Daily Schedule strictly filtered by CURRENT Intake and Enrollment
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const scheduleMap = new Map<string, TimetableEntry>();
 
@@ -261,19 +264,23 @@ export default function StudentDashboardPage() {
                         Object.entries(semesterSessions[cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
                                 let shouldInclude = false;
+                                
+                                const entryIntake = entry.intakeName?.trim().toUpperCase();
+                                const studentIntake = currentIntakeNameVal?.trim().toUpperCase();
+
                                 if (nodeId === 'master') {
-                                    if (courseInfo?.separateInstance) {
-                                        shouldInclude = currentIntakeNameVal && entry.intakeName?.trim().toUpperCase() === currentIntakeNameVal.trim().toUpperCase();
-                                    } else {
-                                        shouldInclude = true;
-                                    }
+                                    // Rule: For Master node, include if it specifically matches student's intake OR is marked as global 'MASTER'
+                                    shouldInclude = (studentIntake && entryIntake === studentIntake) || (entryIntake === 'MASTER');
                                 } else {
-                                    shouldInclude = true; // Instance specific entry always matches if student is enrolled in that sem
+                                    // Instance specific entry always matches if student is enrolled in that specific sem
+                                    shouldInclude = true;
                                 }
 
                                 if (shouldInclude) {
                                     const sessionKey = `${cid}-${entry.startTime}-${entry.venue}`;
                                     const existing = scheduleMap.get(sessionKey);
+                                    
+                                    // Instance specific entries override baseline master entries
                                     if (!existing || (nodeId !== 'master' && existing.semesterId === 'master')) {
                                         scheduleMap.set(sessionKey, { 
                                             ...entry, 
@@ -400,8 +407,14 @@ export default function StudentDashboardPage() {
                                             <span className="text-[9px] text-muted-foreground font-bold uppercase">{entry.endTime}</span>
                                         </div>
                                         <div className="flex-1">
-                                            <p className="font-bold text-sm">{entry.courseCode}: {entry.courseName}</p>
-                                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1"><MapPin className="h-3 w-3 text-primary/60" /> {entry.venue}</div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-sm">{entry.courseCode}: {entry.courseName}</p>
+                                                {entry.isLiveSession && <Video className="h-3 w-3 text-blue-600" />}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
+                                                <MapPin className="h-3 w-3 text-primary/60" /> 
+                                                {entry.isLiveSession ? "DIGITAL ROOM" : entry.venue}
+                                            </div>
                                         </div>
                                         <Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10" asChild><Link href={`/student/courses/${entry.id}/assignments`}><ChevronRight className="h-4 w-4 text-primary"/></Link></Button>
                                     </div>
