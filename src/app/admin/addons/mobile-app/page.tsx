@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Smartphone, Bell, MessageSquare, BookOpen, Send, Loader2 } from 'lucide-react';
+import { Smartphone, Send, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,7 +24,7 @@ export default function MobileAppPage() {
         setSending(true);
         try {
             // Directly call the server action to ensure correct proxying and promise resolution
-            const result = await sendBroadcastNotification(`${title}: ${message}`, '/student/dashboard');
+            const result = await sendBroadcastNotification(`${title}: ${message}`, '/dashboard');
             
             if (result.success) {
                 toast({ 
@@ -35,6 +35,7 @@ export default function MobileAppPage() {
                 setTitle(''); 
                 setMessage('');
             } else {
+                // If success is false, handle the explicit error returned by the server
                 throw new Error(result.error || 'Server rejected the broadcast request.');
             }
         } catch (e: any) {
@@ -45,6 +46,7 @@ export default function MobileAppPage() {
                 description: e.message || 'Check your internet connection and try again.' 
             });
         } finally {
+            // This now always runs because we catch all errors and the server action is guaranteed to return
             setSending(false);
         }
     };

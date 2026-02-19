@@ -9,6 +9,7 @@ import { getMessaging } from 'firebase-admin/messaging';
  */
 async function getInstitutionLogo() {
   try {
+    if (!adminApp) return 'https://picsum.photos/seed/edutrack/200';
     const db = getDatabase(adminApp);
     const snap = await db.ref('settings/institution/logoUrl').get();
     // Default system icon if no logo is configured
@@ -22,6 +23,8 @@ async function getInstitutionLogo() {
  * Subscribes a device token to user-specific and broadcast topics.
  */
 export async function subscribeToUserTopics(token: string, userId: string) {
+  if (!adminApp) return { success: false, error: "Admin SDK not initialized" };
+  
   try {
     const messaging = getMessaging(adminApp);
     
@@ -42,6 +45,8 @@ export async function subscribeToUserTopics(token: string, userId: string) {
  * Sends a notification to one or more users via their UID topics.
  */
 export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info', category: string = 'general') {
+  if (!adminApp) return { success: false, error: "Admin SDK not initialized" };
+
   try {
     const db = getDatabase(adminApp);
     const messaging = getMessaging(adminApp);
@@ -106,6 +111,13 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
  * Sends a push notification to the global 'broadcast' topic.
  */
 export async function sendBroadcastNotification(message: string, link: string) {
+  if (!adminApp) {
+    return { 
+      success: false, 
+      error: "Firebase Admin SDK is not fully configured. Please ensure FIREBASE_ADMIN_PRIVATE_KEY and FIREBASE_ADMIN_CLIENT_EMAIL are set in your environment variables." 
+    };
+  }
+
   try {
     const messaging = getMessaging(adminApp);
     const iconUrl = await getInstitutionLogo();
