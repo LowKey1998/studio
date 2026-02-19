@@ -1,12 +1,11 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
@@ -1066,3 +1065,4 @@ export default function RegistrationManagementPage() {
         </div>
     );
 }
+
