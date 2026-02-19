@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, Trash2, Palette, DollarSign, Info } from 'lucide-react';
+import { Loader2, Save, Wand2, Trash2, Palette, DollarSign, Info, ReceiptText, Percent, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, storage } from '@/lib/firebase';
 import { ref, update, onValue } from 'firebase/database';
@@ -16,6 +16,7 @@ import { removeBackground } from '@/ai/flows/remove-background-flow';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 
 type NamePart = {
   text: string;
@@ -31,6 +32,13 @@ type Institution = {
   sidebarTextColor?: string;
   nameParts?: NamePart[];
   billingPolicy?: 'course' | 'semester';
+  // Invoice Settings
+  currencyCode?: string;
+  currencySymbol?: string;
+  invoicePrefix?: string;
+  invoiceFooter?: string;
+  taxLabel?: string;
+  taxRate?: number;
 };
 
 export default function InstitutionSettingsPage() {
@@ -40,7 +48,13 @@ export default function InstitutionSettingsPage() {
         topBarColor: '#ffffff',
         sidebarColor: '#ffffff',
         sidebarTextColor: '#000000',
-        billingPolicy: 'course'
+        billingPolicy: 'course',
+        currencyCode: 'ZMW',
+        currencySymbol: 'K',
+        invoicePrefix: 'INV',
+        invoiceFooter: 'Please use your Student ID as the reference for all bank deposits.',
+        taxLabel: 'VAT',
+        taxRate: 0
     });
     const [logoFile, setLogoFile] = React.useState<File | null>(null);
     const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
@@ -62,7 +76,13 @@ export default function InstitutionSettingsPage() {
                     sidebarColor: data.sidebarColor || '#ffffff',
                     sidebarTextColor: data.sidebarTextColor || '#000000',
                     nameParts: data.nameParts || (data.name ? data.name.split(' ').map((word: string) => ({ text: word, color: '#000000' })) : []),
-                    billingPolicy: data.billingPolicy || 'course'
+                    billingPolicy: data.billingPolicy || 'course',
+                    currencyCode: data.currencyCode || 'ZMW',
+                    currencySymbol: data.currencySymbol || 'K',
+                    invoicePrefix: data.invoicePrefix || 'INV',
+                    invoiceFooter: data.invoiceFooter || 'Please use your Student ID as the reference for all bank deposits.',
+                    taxLabel: data.taxLabel || 'VAT',
+                    taxRate: data.taxRate ?? 0
                 });
             }
             setLoading(false);
@@ -167,7 +187,13 @@ export default function InstitutionSettingsPage() {
                 sidebarColor: institution.sidebarColor,
                 sidebarTextColor: institution.sidebarTextColor,
                 nameParts: institution.nameParts,
-                billingPolicy: institution.billingPolicy
+                billingPolicy: institution.billingPolicy,
+                currencyCode: institution.currencyCode,
+                currencySymbol: institution.currencySymbol,
+                invoicePrefix: institution.invoicePrefix,
+                invoiceFooter: institution.invoiceFooter,
+                taxLabel: institution.taxLabel,
+                taxRate: Number(institution.taxRate)
             };
 
             await update(settingsRef, updates);
@@ -239,6 +265,47 @@ export default function InstitutionSettingsPage() {
                                     </Label>
                                 </div>
                             </RadioGroup>
+                        </div>
+                     </div>
+
+                     <Separator />
+
+                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-start">
+                        <Label className="pt-2 text-base font-bold flex items-center gap-2"><ReceiptText className="h-4 w-4"/> Invoice Format Settings</Label>
+                        <div className="sm:col-span-2 space-y-6 max-w-2xl">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="invoice-prefix">Invoice Prefix</Label>
+                                    <Input id="invoice-prefix" value={institution.invoicePrefix} onChange={(e) => setInstitution(p => ({...p, invoicePrefix: e.target.value.toUpperCase()}))} placeholder="e.g., INV" />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="currency-code">Currency Code</Label>
+                                    <Input id="currency-code" value={institution.currencyCode} onChange={(e) => setInstitution(p => ({...p, currencyCode: e.target.value.toUpperCase()}))} placeholder="e.g., ZMW" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label htmlFor="currency-symbol">Currency Symbol</Label>
+                                    <Input id="currency-symbol" value={institution.currencySymbol} onChange={(e) => setInstitution(p => ({...p, currencySymbol: e.target.value}))} placeholder="e.g., K" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="tax-label">Tax Label</Label>
+                                        <Input id="tax-label" value={institution.taxLabel} onChange={(e) => setInstitution(p => ({...p, taxLabel: e.target.value.toUpperCase()}))} placeholder="e.g., VAT" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="tax-rate">Tax Rate (%)</Label>
+                                        <div className="relative">
+                                            <Input id="tax-rate" type="number" value={institution.taxRate} onChange={(e) => setInstitution(p => ({...p, taxRate: Number(e.target.value)}))} className="pr-8" />
+                                            <Percent className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="invoice-footer" className="flex items-center gap-2"><FileText className="h-3 w-3"/> Invoice Footer Notes</Label>
+                                <Textarea id="invoice-footer" value={institution.invoiceFooter} onChange={(e) => setInstitution(p => ({...p, invoiceFooter: e.target.value}))} placeholder="Payment instructions, bank details, or legal notes..." rows={4} />
+                            </div>
                         </div>
                      </div>
 
