@@ -162,7 +162,7 @@ export default function StudentEnrollmentPage() {
             const tData = timetablesSnap.val() || {};
             const sData = semSnap.val() || {};
             for (const semId in tData) {
-                const semInfo = sData[semId] || { name: 'Master' };
+                const semInfo = sData[semId] || { name: semId === 'master' ? 'Master Schedule' : 'Manual Entry', status: 'Active' };
                 for (const cId in tData[semId]) {
                     if (!coursesSnap.val()?.[cId]) continue;
                     Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
@@ -272,6 +272,15 @@ export default function StudentEnrollmentPage() {
         );
     }, [selectedIntake, intakes, calendarSettings]);
 
+    const matchingSemester = React.useMemo(() => {
+        if (!selectedIntake || !intakeStanding) return null;
+        return semesters.find(s => 
+            s.intakeId === selectedIntake && 
+            s.year === intakeStanding.year && 
+            s.semesterInYear === intakeStanding.semester
+        );
+    }, [selectedIntake, intakeStanding, semesters]);
+
     const groupedEnrolled = React.useMemo(() => {
         const filtered = enrolledStudents.filter(s => 
             s.name.toLowerCase().includes(searchEnrolled.toLowerCase()) || 
@@ -334,11 +343,27 @@ export default function StudentEnrollmentPage() {
                 </CardContent>
             </Card>
 
-            {selectedIntake && hasSlots && (
-                <Card><CardHeader><CardTitle>Schedule Grid</CardTitle></CardHeader>
+            {selectedIntake && !matchingSemester && !loading && (
+                <Alert variant="destructive" className="bg-orange-50 border-orange-200">
+                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <AlertTitle className="font-bold text-orange-800">Registration Blocked</AlertTitle>
+                    <AlertDescription className="text-orange-700">
+                        No active semester record found for <strong>{intakes.find(i=>i.id===selectedIntake)?.name}</strong> at <strong>Year {intakeStanding?.year}, Sem {intakeStanding?.semester}</strong>. 
+                        Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {selectedIntake && hasSlots && matchingSemester && (
+                <Card><CardHeader><CardTitle>Schedule Grid: {matchingSemester.name}</CardTitle></CardHeader>
                     <CardContent className="overflow-x-auto"><div className="border rounded-lg min-w-[800px]"><Table><TableHeader><TableRow className="bg-muted/50"><TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>{teachingTimes.slots.map((s, i) => <TableHead key={i} className="text-center font-bold border-r text-xs">{s.startTime}-{s.endTime}</TableHead>)}</TableRow></TableHeader><TableBody>{displayDays.map(day => (<TableRow key={day}><TableCell className="font-bold text-xs uppercase text-center border-r bg-muted/20">{day}</TableCell>{teachingTimes.slots.map((slot, sIdx) => {
                         const start = timeToMinutes(slot.startTime); const end = timeToMinutes(slot.endTime);
-                        const sessions = masterTimetable.filter(e => e.intakeName === intakes.find(i=>i.id===selectedIntake)?.name && e.day === day && timeToMinutes(e.startTime) >= start && timeToMinutes(e.startTime) < end);
+                        const sessions = masterTimetable.filter(e => 
+                            e.semesterId === matchingSemester.id && 
+                            e.day === day && 
+                            timeToMinutes(e.startTime) >= start && 
+                            timeToMinutes(e.startTime) < end
+                        );
                         
                         // Deduplicate sessions that might be repeated across semester nodes
                         const uniqueSessions = sessions.reduce((acc, current) => {
@@ -438,7 +463,7 @@ export default function StudentEnrollmentPage() {
                                 <Input 
                                     placeholder="Search enrolled roster..." 
                                     value={searchEnrolled} 
-                                    onChange={e => searchEnrolled && setSearchEnrolled(e.target.value)} 
+                                    onChange={e => setSearchEnrolled(e.target.value)} 
                                     className="h-8"
                                 />
                             </div>
