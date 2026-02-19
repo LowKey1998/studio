@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, update, push } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -297,7 +297,7 @@ export default function CAEntryPage() {
                                     <div className="p-2">
                                         <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
                                     </div>
-                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
+                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
                                 </PopoverContent>
                             </Popover>
                         </div>
