@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, BellRing } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -30,6 +29,15 @@ type IDPrefixes = {
 type LeavePolicy = { maxDays: number; };
 type OverduePolicy = 'doNothing' | 'suspendAccess';
 type PaymentMethods = { flutterwave: { enabled: boolean }; }
+type NotificationRules = {
+    registration: boolean;
+    grading: boolean;
+    attendance: boolean;
+    leave: boolean;
+    library: boolean;
+    financial: boolean;
+};
+
 type Integrations = { 
     quickbooks?: { enabled?: boolean; clientId?: string; clientSecret?: string; syncInvoices?: boolean; syncExpenses?: boolean; syncPayroll?: boolean; }; 
     sage?: { enabled?: boolean; apiKey?: string; }; 
@@ -59,6 +67,14 @@ export default function SettingsPage() {
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
+    const [notificationRules, setNotificationRules] = React.useState<NotificationRules>({
+        registration: true,
+        grading: true,
+        attendance: true,
+        leave: true,
+        library: true,
+        financial: true
+    });
     const [integrations, setIntegrations] = React.useState<Integrations>({ 
         quickbooks: { enabled: false }, 
         sage: { enabled: false }, 
@@ -93,6 +109,7 @@ export default function SettingsPage() {
                 if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
                 if (data.overduePolicy) setOverduePolicy(data.overduePolicy);
                 if (data.registrationPolicy) setRegistrationPolicy(data.registrationPolicy);
+                if (data.notificationRules) setNotificationRules(prev => ({ ...prev, ...data.notificationRules }));
                 if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
                 if (data.departments) setDepartments(Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })));
                 if (data.emailTemplates) setEmailTemplates(prev => ({ ...prev, ...data.emailTemplates }));
@@ -136,6 +153,7 @@ export default function SettingsPage() {
                 registrationPolicy: registrationPolicy,
                 integrations: integrations,
                 emailTemplates: emailTemplates,
+                notificationRules: notificationRules,
             });
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -160,6 +178,10 @@ export default function SettingsPage() {
             ...prev,
             [key]: { ...prev[key], [field]: value }
         }));
+    };
+
+    const toggleNotificationRule = (key: keyof NotificationRules) => {
+        setNotificationRules(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
     if (loading) return <Skeleton className="h-screen w-full" />;
@@ -191,6 +213,59 @@ export default function SettingsPage() {
                                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteDepartment(dept.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Push Notification Rules</CardTitle>
+                    <CardDescription>Configure which automated system events trigger a push notification to users.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Registration Alerts</Label>
+                                <p className="text-xs text-muted-foreground">Approval and decline notifications.</p>
+                            </div>
+                            <Switch checked={notificationRules.registration} onCheckedChange={() => toggleNotificationRule('registration')} />
+                        </div>
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Grading Alerts</Label>
+                                <p className="text-xs text-muted-foreground">When new results are published.</p>
+                            </div>
+                            <Switch checked={notificationRules.grading} onCheckedChange={() => toggleNotificationRule('grading')} />
+                        </div>
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Attendance Alerts</Label>
+                                <p className="text-xs text-muted-foreground">Absence and late arrival warnings.</p>
+                            </div>
+                            <Switch checked={notificationRules.attendance} onCheckedChange={() => toggleNotificationRule('attendance')} />
+                        </div>
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Leave & HR Alerts</Label>
+                                <p className="text-xs text-muted-foreground">Staff and student leave approvals.</p>
+                            </div>
+                            <Switch checked={notificationRules.leave} onCheckedChange={() => toggleNotificationRule('leave')} />
+                        </div>
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Library Alerts</Label>
+                                <p className="text-xs text-muted-foreground">Book loan and return updates.</p>
+                            </div>
+                            <Switch checked={notificationRules.library} onCheckedChange={() => toggleNotificationRule('library')} />
+                        </div>
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/10">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Financial Alerts</Label>
+                                <p className="text-xs text-muted-foreground">Payment confirmations and scholarship news.</p>
+                            </div>
+                            <Switch checked={notificationRules.financial} onCheckedChange={() => toggleNotificationRule('financial')} />
                         </div>
                     </div>
                 </CardContent>

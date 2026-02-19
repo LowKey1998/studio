@@ -27,40 +27,54 @@ export async function subscribeToUserTopics(token: string, userId: string) {
 /**
  * Sends a notification to one or more users via their UID topics.
  */
-export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info') {
+export async function sendNotification(userIdOrIds: string | string[], message: string, link: string, type: string = 'info', category: string = 'general') {
   try {
     const db = getDatabase(adminApp);
     const messaging = getMessaging(adminApp);
     const userIds = Array.isArray(userIdOrIds) ? userIdOrIds : [userIdOrIds];
 
+    // Check system-wide notification rules
+    const rulesSnap = await db.ref('settings/notificationRules').get();
+    const rules = rulesSnap.exists() ? rulesSnap.val() : {};
+    
+    // Default to true if the rule isn't defined
+    const isPushEnabled = rules[category] !== false;
+
     const tasks = userIds.map(async (userId) => {
-      // 1. Add to Realtime Database for the in-app notification center
+      // 1. ALWAYS Add to Realtime Database for the in-app notification center history
       const notificationRef = db.ref(`notifications/${userId}`).push();
       await notificationRef.set({
         message,
         link,
         type,
+        category,
         timestamp: Date.now(),
         read: false,
       });
 
-      // 2. Send Push Notification via Topic (UID)
-      await messaging.send({
-        topic: userId,
-        notification: {
-          title: 'Edutrack360',
-          body: message,
-        },
-        webpush: {
-          fcmOptions: {
-            link: link,
-          },
-          notification: {
-            icon: '/icons/icon-192x192.png',
-            badge: '/icons/badge-72x72.png',
-          }
-        },
-      });
+      // 2. Conditionally Send Push Notification via Topic (UID) if category is enabled
+      if (isPushEnabled) {
+        try {
+          await messaging.send({
+            topic: userId,
+            notification: {
+              title: 'Edutrack360',
+              body: message,
+            },
+            webpush: {
+              fcmOptions: {
+                link: link,
+              },
+              notification: {
+                icon: '/icons/icon-192x192.png',
+                badge: '/icons/badge-72x72.png',
+              }
+            },
+          });
+        } catch (fcmError) {
+          console.warn(`FCM Push failed for user ${userId} (Category: ${category}):`, fcmError);
+        }
+      }
     });
 
     await Promise.all(tasks);

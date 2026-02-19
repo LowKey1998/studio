@@ -27,8 +27,14 @@ const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
  * Creates a notification for a specific user or group of users using the server-side action.
  * This handles both database persistence and FCM push via the user's UID topic.
  */
-export const createNotification = async (userIdOrIds: string | string[], message: string, link: string, type: Notification['type'] = 'info') => {
-  return await sendNotification(userIdOrIds, message, link, type);
+export const createNotification = async (
+  userIdOrIds: string | string[], 
+  message: string, 
+  link: string, 
+  type: Notification['type'] = 'info', 
+  category: string = 'general'
+) => {
+  return await sendNotification(userIdOrIds, message, link, type, category);
 };
 
 /**
