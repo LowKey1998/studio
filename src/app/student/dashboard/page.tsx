@@ -86,7 +86,7 @@ export default function StudentDashboardPage() {
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
     React.useEffect(() => {
-        if (!user) return;
+        if (!user || !userProfile) return;
 
         setLoading(true);
         
@@ -118,21 +118,29 @@ export default function StudentDashboardPage() {
             const allTemplates = templatesSnap.val() || {};
 
             let currentIntakeNameVal = '';
-            let currentStandingState: any = null;
+            let matchingSemesterId: string | null = null;
 
             if (userProfile?.intakeId) {
                 currentIntakeNameVal = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
                 setIntakeName(currentIntakeNameVal);
 
                 const intakeStartStr = parseIntakeDate(currentIntakeNameVal);
-                if (intakeStartStr) {
-                    currentStandingState = calculateAcademicState(
+                if (intakeStartStr && calSettings) {
+                    const state = calculateAcademicState(
                         intakeStartStr, 
                         getCurrentServerDate(), 
                         calSettings.standardCycles, 
                         Object.values(calSettings.anomalies || {})
                     );
-                    setAcademicStanding(`Year ${currentStandingState.year}, Sem ${currentStandingState.semester}`);
+                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+
+                    // Find the semester record matching this standing
+                    const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {
+                        return s.intakeId === userProfile.intakeId && 
+                               s.year === state.year && 
+                               s.semesterInYear === state.semester;
+                    });
+                    matchingSemesterId = matchingSemesterEntry ? matchingSemesterEntry[0] : null;
                 }
             }
 
@@ -140,29 +148,22 @@ export default function StudentDashboardPage() {
             let totalPresent = 0;
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
-            let activeSemesterIds = new Set<string>();
-            let activeSemesterId: string | null = null;
 
-            for (const semId in allRegistrations) {
-                const reg = allRegistrations[semId];
-                const semInfo = allSemesters[semId];
-                if (!semInfo || semInfo.status === 'Archived') continue;
-
-                if (reg.courses) {
-                    if (semInfo.status === 'Open') activeSemesterId = semId;
-                    activeSemesterIds.add(semId);
-
-                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
+            // Only process courses for the CURRENT calculated semester
+            if (matchingSemesterId && allRegistrations[matchingSemesterId]) {
+                const reg = allRegistrations[matchingSemesterId];
+                if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses || {});
                     coursesArr.forEach((cid: string) => {
                         enrolledIds.add(cid);
                         const c = allCourses[cid];
-                        if (c && !coursesMap.has(cid)) {
+                        if (c) {
                             const lecturerNames = (c.lecturerIds || [])
                                 .map((id: string) => allUsers[id]?.name)
                                 .filter(Boolean)
                                 .join(', ') || allUsers[c.lecturerId]?.name || 'N/A';
 
-                            const courseAssignments = allAssignments[cid] || allAssignments[`${cid}_${semId}`] || {};
+                            const courseAssignments = allAssignments[cid] || allAssignments[`${cid}_${matchingSemesterId}`] || {};
                             let soon = 0;
                             let late = 0;
                             Object.values(courseAssignments).forEach((a: any) => {
@@ -182,7 +183,17 @@ export default function StudentDashboardPage() {
                                 assignmentAlert: late > 0 ? { type: 'late', count: late } : soon > 0 ? { type: 'soon', count: soon } : undefined
                             });
                         }
-                        
+                    });
+                }
+            }
+            setEnrolledCourses(Array.from(coursesMap.values()));
+
+            // Overall attendance across all historical enrollments
+            for (const semId in allRegistrations) {
+                const reg = allRegistrations[semId];
+                if (reg.courses && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
+                    const coursesArr = Array.isArray(reg.courses) ? reg.courses : Object.keys(reg.courses);
+                    coursesArr.forEach((cid: string) => {
                         const cAtt = allAttendance[cid];
                         if (cAtt) {
                             Object.values(cAtt).forEach((day: any) => {
@@ -195,20 +206,21 @@ export default function StudentDashboardPage() {
                     });
                 }
             }
-            setEnrolledCourses(Array.from(coursesMap.values()));
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
+            // Financial Calculations
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
-                const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
+                const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) + (inv.lateFee || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
                 totalDue += due;
             });
             const totalPaid = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
             const currentBalance = Math.max(0, totalDue - totalPaid);
             setFeeBalance(currentBalance);
 
-            if (activeSemesterId && currentBalance > 0) {
-                const semester = allSemesters[activeSemesterId];
+            // Financial Threshold & Deadlines
+            if (matchingSemesterId && currentBalance > 0) {
+                const semester = allSemesters[matchingSemesterId];
                 const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
                 const grace = semester.gracePeriodDays || 0;
                 
@@ -226,56 +238,60 @@ export default function StudentDashboardPage() {
                     const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
                     if (paidPercentage < threshold) {
                         setFinancialWarning({
-                            message: `Your current payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
+                            message: `Standing Alert: Your payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
                             restriction: true
                         });
                     }
                 }
             }
 
+            // Daily Schedule strictly filtered by CURRENT Standing and Enrollment
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const scheduleMap = new Map<string, TimetableEntry>();
 
-            for (const semId in allTimetables) {
-                const isMaster = semId === 'master';
-                if (!activeSemesterIds.has(semId) && !isMaster) continue;
+            if (matchingSemesterId && enrolledIds.size > 0) {
+                const relevantNodes = ['master', matchingSemesterId];
+                relevantNodes.forEach(nodeId => {
+                    const semesterSessions = allTimetables[nodeId];
+                    if (!semesterSessions) return;
 
-                for (const cid in allTimetables[semId]) {
-                    if (enrolledIds.has(cid)) {
+                    for (const cid in semesterSessions) {
+                        if (!enrolledIds.has(cid)) continue;
                         const courseInfo = allCourses[cid];
-                        Object.entries(allTimetables[semId][cid]).forEach(([entryId, entry]: [string, any]) => {
+                        Object.entries(semesterSessions[cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
                                 let shouldInclude = false;
-                                if (isMaster) {
+                                if (nodeId === 'master') {
                                     if (courseInfo?.separateInstance) {
                                         shouldInclude = currentIntakeNameVal && entry.intakeName?.trim().toUpperCase() === currentIntakeNameVal.trim().toUpperCase();
                                     } else {
                                         shouldInclude = true;
                                     }
                                 } else {
-                                    shouldInclude = activeSemesterIds.has(semId);
+                                    shouldInclude = true; // Instance specific entry always matches if student is enrolled in that sem
                                 }
 
                                 if (shouldInclude) {
                                     const sessionKey = `${cid}-${entry.startTime}-${entry.venue}`;
                                     const existing = scheduleMap.get(sessionKey);
-                                    if (!existing || (semId !== 'master' && existing.semesterId === 'master')) {
+                                    if (!existing || (nodeId !== 'master' && existing.semesterId === 'master')) {
                                         scheduleMap.set(sessionKey, { 
                                             ...entry, 
                                             courseCode: courseInfo?.code, 
                                             courseName: courseInfo?.name, 
                                             id: cid,
-                                            semesterId: semId
+                                            semesterId: nodeId
                                         });
                                     }
                                 }
                             }
                         });
                     }
-                }
+                });
             }
             setTodaySchedule(Array.from(scheduleMap.values()).sort((a,b) => a.startTime.localeCompare(b.startTime)));
 
+            // General Calendar Deadlines
             const deadlines: DeadlineEvent[] = [];
             Object.values(allCalendarEvents).forEach((ev: any) => {
                 if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(getCurrentServerDate())) {
@@ -284,49 +300,25 @@ export default function StudentDashboardPage() {
             });
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
 
+            // Recent Grades across all time
             const grades: any[] = [];
-            // Traverse semester-isolated assessments
-            Object.keys(allAssessments).forEach(semId => {
-                const semesterResults = allAssessments[semId];
-                // Check if semId is a courseId (legacy) or a semesterId
-                if (allSemesters[semId] || semId === 'master') {
-                    Object.keys(semesterResults).forEach(cid => {
-                        const studentScore = semesterResults[cid][user.uid];
+            Object.keys(allAssessments).forEach(nodeId => {
+                const results = allAssessments[nodeId];
+                if (allSemesters[nodeId] || nodeId === 'master') {
+                    Object.keys(results).forEach(cid => {
+                        const studentScore = results[cid][user.uid];
                         if (studentScore) {
                             const course = allCourses[cid];
                             const template = course?.assessmentTemplateId ? allTemplates[course.assessmentTemplateId] : null;
-
                             Object.entries(studentScore).forEach(([key, data]: [string, any]) => {
                                 if (data.score !== undefined) {
                                     let label = key === 'finalExam' ? 'Final Exam' : key;
-                                    if (template && template.components?.[key]) {
-                                        label = template.components[key].name;
-                                    }
-                                    grades.push({
-                                        courseCode: course?.code,
-                                        label,
-                                        score: data.score
-                                    });
+                                    if (template && template.components?.[key]) label = template.components[key].name;
+                                    grades.push({ courseCode: course?.code, label, score: data.score });
                                 }
                             });
                         }
                     });
-                } else if (allCourses[semId]) {
-                    // Handle legacy structure where assessments[courseId][userId] exists
-                    const studentScore = allAssessments[semId][user.uid];
-                    if (studentScore) {
-                        const course = allCourses[semId];
-                        const template = course?.assessmentTemplateId ? allTemplates[course.assessmentTemplateId] : null;
-                        Object.entries(studentScore).forEach(([key, data]: [string, any]) => {
-                            if (data.score !== undefined) {
-                                let label = key === 'finalExam' ? 'Final Exam' : key;
-                                if (template && template.components?.[key]) {
-                                    label = template.components[key].name;
-                                }
-                                grades.push({ courseCode: course?.code, label, score: data.score });
-                            }
-                        });
-                    }
                 }
             });
             setRecentGrades(grades.slice(-3));
@@ -369,7 +361,7 @@ export default function StudentDashboardPage() {
                     <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
                 </Card>
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
                     <CardContent><div className="text-2xl font-black">{enrolledCourses.length}</div></CardContent>
                 </Card>
                 <Card className="shadow-md">
