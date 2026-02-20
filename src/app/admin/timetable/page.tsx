@@ -8,7 +8,7 @@ import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
