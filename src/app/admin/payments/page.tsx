@@ -99,7 +99,7 @@ type Transaction = {
 
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentThreshold?: number; gracePeriodDays?: number; };
-type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; };
+type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
 // --- MAIN PAGE COMPONENT ---
@@ -193,7 +193,7 @@ export default function PaymentsManagementPage() {
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
                 if (users[uid].role?.toLowerCase() === 'student') {
-                    studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId });
+                    studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
                 }
             }
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
@@ -356,26 +356,55 @@ export default function PaymentsManagementPage() {
     };
 
     const handleRecordPaymentDialog = () => {
-        const info = paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === paymentSelectedSemesterId);
-        if(!info || !paymentAmount || !paymentMethod) {
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        const semester = semesters.find(s => s.id === paymentSelectedSemesterId);
+        
+        if(!student || !semester || !paymentAmount || !paymentMethod) {
             toast({ variant: 'destructive', title: 'Missing fields' });
             return;
         }
 
-        // Handle manual total update if set
-        if ((info.totalDue <= 0 || !info.totalDue) && manualTotalDue) {
-            const invoiceRef = ref(db, `invoices/${info.userId}/${info.invoiceId}`);
-            update(invoiceRef, { totalTuition: parseFloat(manualTotalDue) });
+        const amount = parseFloat(paymentAmount);
+        const info = paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === paymentSelectedSemesterId);
+        
+        const updates: Record<string, any> = {};
+        let targetInvoiceId = info?.invoiceId;
+
+        if (!info) {
+            const invRef = push(ref(db, `invoices/${student.uid}`));
+            targetInvoiceId = invRef.key!;
+            const total = manualTotalDue ? parseFloat(manualTotalDue) : 0;
+            
+            updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
+                invoiceId: targetInvoiceId,
+                semester: semester.name,
+                semesterId: semester.id,
+                dateCreated: new Date().toISOString(),
+                totalTuition: total,
+                totalMandatoryFees: 0,
+                totalOptionalFees: 0
+            };
+            
+            updates[`registrations/${student.uid}/${semester.id}`] = {
+                status: 'Completed',
+                semesterName: semester.name,
+                registrationDate: new Date().toISOString(),
+                programmeId: student.programmeId || '',
+                intakeId: student.intakeId,
+                invoiceId: targetInvoiceId,
+                courses: [] 
+            };
+        } else if (info.totalDue <= 0 && manualTotalDue) {
+            updates[`invoices/${info.userId}/${info.invoiceId}/totalTuition`] = parseFloat(manualTotalDue);
         }
 
-        const amount = parseFloat(paymentAmount);
         const txRef = push(ref(db, 'transactions'));
         const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
         
-        set(txRef, {
+        updates[`transactions/${txRef.key}`] = {
             transactionId: txId,
-            userId: info.userId,
-            invoiceId: info.invoiceId,
+            userId: student.uid,
+            invoiceId: targetInvoiceId,
             amount: amount,
             currency: 'ZMW',
             status: 'successful',
@@ -383,11 +412,13 @@ export default function PaymentsManagementPage() {
             method: paymentMethod,
             comment: paymentComment,
             recordedBy: userData?.name || 'Accountant',
-        }).catch((e) => {
+        };
+
+        update(ref(db), updates).catch((e) => {
             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
         });
 
-        toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${info.studentName}.` });
+        toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${student.name}.` });
         setIsRecordPaymentOpen(false);
         resetDialog();
     };
@@ -577,12 +608,16 @@ export default function PaymentsManagementPage() {
 
     const studentSemestersForPayment = React.useMemo(() => {
         if (!paymentSelectedUserId) return [];
-        return paymentInfos.filter(p => p.userId === paymentSelectedUserId);
-    }, [paymentSelectedUserId, paymentInfos]);
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        if (!student || !student.intakeId) return [];
+        
+        return semesters.filter(s => s.intakeId === student.intakeId)
+            .sort((a, b) => a.year - b.year || a.semesterInYear - b.semesterInYear);
+    }, [paymentSelectedUserId, allStudents, semesters]);
 
     const activePaymentInfo = React.useMemo(() => {
-        return studentSemestersForPayment.find(p => p.semesterId === paymentSelectedSemesterId) || null;
-    }, [studentSemestersForPayment, paymentSelectedSemesterId]);
+        return paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === paymentSelectedSemesterId) || null;
+    }, [paymentInfos, paymentSelectedUserId, paymentSelectedSemesterId]);
 
     const currentTotalDue = activePaymentInfo ? (manualTotalDue ? parseFloat(manualTotalDue) : activePaymentInfo.totalDue) : 0;
     const currentBalanceCalc = activePaymentInfo ? (currentTotalDue - activePaymentInfo.totalPaid) : 0;
@@ -884,12 +919,12 @@ export default function PaymentsManagementPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {studentSemestersForPayment.map(p => (
-                                                <SelectItem key={p.semesterId} value={p.semesterId || ''}>
-                                                    {semesters.find(sem=>sem.id===p.semesterId)?.name}
+                                                <SelectItem key={p.id} value={p.id}>
+                                                    {p.name}
                                                 </SelectItem>
                                             ))}
                                             {studentSemestersForPayment.length === 0 && (
-                                                <div className="p-4 text-center text-xs text-muted-foreground italic">No invoices found for this student.</div>
+                                                <div className="p-4 text-center text-xs text-muted-foreground italic">No periods defined for this intake.</div>
                                             )}
                                         </SelectContent>
                                     </Select>
@@ -897,7 +932,7 @@ export default function PaymentsManagementPage() {
                             )}
                         </div>
 
-                        {activePaymentInfo && (
+                        {activePaymentInfo ? (
                             <div className="p-3 rounded-lg border bg-muted/20 space-y-2 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
                                     <Calculator className="h-3 w-3" /> Semester Financial Summary
@@ -931,13 +966,32 @@ export default function PaymentsManagementPage() {
                                     </div>
                                 </div>
                             </div>
+                        ) : paymentSelectedSemesterId && (
+                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2 animate-in fade-in slide-in-from-top-2">
+                                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                    <Calculator className="h-3 w-3" /> New Academic Credit
+                                </h4>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center text-xs font-medium">
+                                        <span>Total Expected:</span>
+                                        <Input 
+                                            type="number" 
+                                            placeholder="ZMW 0.00" 
+                                            className="h-7 w-32 text-xs font-bold"
+                                            value={manualTotalDue}
+                                            onChange={(e) => setManualTotalDue(e.target.value)}
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground italic">No previous balance for this period. Setting a total will create an invoice.</p>
+                                </div>
+                            </div>
                         )}
 
                         <div className="space-y-1 pt-2 border-t">
                             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Payment Information</Label>
                             <div className="space-y-4 pt-2">
                                 <div className="space-y-1">
-                                    <Label>Amount to Credit (ZMW)</Label>
+                                    <Label>Record payment of (ZMW)</Label>
                                     <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -971,7 +1025,7 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !activePaymentInfo || (activePaymentInfo.totalDue <= 0 && !manualTotalDue)}>
+                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedSemesterId}>
                             Finalize Payment
                         </Button>
                     </DialogFooter>
