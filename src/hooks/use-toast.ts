@@ -145,6 +145,17 @@ type Toast = Omit<ToasterToast, "id">
 function toast({ ...props }: Toast) {
   const id = genId()
 
+  // Automated global error logging for destructive toasts
+  if (props.variant === 'destructive') {
+    import('@/lib/error-logger').then(({ logError }) => {
+      logError(
+        String(props.description || props.title || 'Unnamed UI Error'), 
+        'UI Destructive Toast', 
+        { title: props.title, description: props.description }
+      );
+    });
+  }
+
   const update = (props: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",

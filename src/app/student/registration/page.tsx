@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from 'date-fns';
 import { Label } from '@/components/ui/label';
+import { logError } from '@/lib/error-logger';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };
@@ -83,7 +84,8 @@ export default function StudentRegistrationPage() {
             if (userPath.semesters) {
                 for (const semId in userPath.semesters) {
                     const details = sData[semId];
-                    if (!details || details.status === 'Archived') continue;
+                    // Defensive check: Skip if semester doesn't belong to the user's intake to avoid cross-cohort contamination
+                    if (!details || details.status === 'Archived' || details.intakeId !== profile.intakeId) continue;
                     
                     const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
                     const isRegistered = !!(regs[semId]?.courses?.length > 0);
@@ -122,7 +124,10 @@ export default function StudentRegistrationPage() {
                 }
             }
             setSemestersForPath(list.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
-        } catch (error) { toast({ variant: 'destructive', title: 'Error' }); }
+        } catch (error: any) { 
+            logError(error.message, 'Registration Fetch', error);
+            toast({ variant: 'destructive', title: 'Error loading semesters' }); 
+        }
         finally { setLoading(false); }
     }, [currentUser, toast]);
 

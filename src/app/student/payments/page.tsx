@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sendEmail } from '@/ai/flows/send-email-flow';
+import { logError } from '@/lib/error-logger';
 
 type Invoice = { 
     invoiceId: string; 
@@ -46,6 +47,7 @@ type Transaction = {
 type Semester = {
     id: string;
     name: string;
+    intakeId: string;
     mandatoryFees?: Record<string, { name: string; amount: number }>;
     optionalFees?: Record<string, { name: string; amount: number }>;
 };
@@ -90,7 +92,8 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap] = await Promise.all([
+            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap] = await Promise.all([
+                get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'semesters')),
@@ -98,6 +101,7 @@ export default function StudentPaymentsPage() {
                 get(ref(db, 'settings/institution')),
             ]);
 
+            const userProfile = userSnap.val() || {};
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
             setAllCourses(coursesData);
@@ -115,28 +119,38 @@ export default function StudentPaymentsPage() {
                 .map(([key, data]) => ({ key, ...(data as any) }))
                 .filter(t => t.userId === currentUser.uid && t.status === 'successful');
 
-            const summaries: PaymentSummary[] = invoices.map(invoice => {
-                const semesterId = invoice.semesterId;
-                const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
-                const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
-                const totalPaid = invoiceTransactions.reduce((sum, t) => sum + t.amount, 0);
-                const balance = Math.max(0, totalDue - totalPaid);
+            const summaries: PaymentSummary[] = invoices
+                .map(invoice => {
+                    const semesterId = invoice.semesterId;
+                    const semesterInfo = semestersData[semesterId];
+                    
+                    // Defensive Filter: Ensure we only show invoices for semesters belonging to the student's intake
+                    if (semesterInfo && semesterInfo.intakeId !== userProfile.intakeId) {
+                        return null;
+                    }
 
-                return {
-                    semesterId,
-                    semesterName: invoice.semester,
-                    invoice,
-                    totalDue,
-                    totalPaid,
-                    balance,
-                    status: balance <= 0.01 ? 'Paid' : 'Pending',
-                    transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
-                };
-            });
+                    const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
+                    const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
+                    const totalPaid = invoiceTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+                    const balance = Math.max(0, totalDue - totalPaid);
+
+                    return {
+                        semesterId,
+                        semesterName: invoice.semester,
+                        invoice,
+                        totalDue,
+                        totalPaid,
+                        balance,
+                        status: balance <= 0.01 ? 'Paid' : 'Pending',
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+                    };
+                })
+                .filter((s): s is PaymentSummary => s !== null);
 
             setPayments(summaries.sort((a, b) => b.invoice.dateCreated.localeCompare(a.invoice.dateCreated)));
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Failed to load payments', description: error.message });
+            logError(error.message, 'Payments Fetch', error);
+            toast({ variant: 'destructive', title: 'Failed to load payments' });
         } finally {
             setLoading(false);
         }
@@ -196,7 +210,8 @@ export default function StudentPaymentsPage() {
             } else {
                 toast({ variant: 'destructive', title: 'Invoice Not Found' });
             }
-        } catch (e) {
+        } catch (e: any) {
+            logError(e.message, 'Invoice PDF Generation', e);
             toast({ variant: 'destructive', title: 'Download Failed' });
         } finally {
             setActionLoading(null);
@@ -207,10 +222,10 @@ export default function StudentPaymentsPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="shadow-lg border-0">
+            <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
-                    <CardDescription>View your billing history and payment records.</CardDescription>
+                    <CardDescription>View your billing history and payment records for your academic cycle.</CardDescription>
                 </CardHeader>
             </Card>
 
