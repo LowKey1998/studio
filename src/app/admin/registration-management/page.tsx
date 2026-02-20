@@ -473,15 +473,10 @@ export default function RegistrationManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
-    const [timetables, setTimetables] = React.useState<Record<string, any>>({});
-    const [users, setUsers] = React.useState<Record<string, any>>({});
-    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
-    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const [generating, setGenerating] = React.useState(false);
 
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
@@ -511,7 +506,7 @@ export default function RegistrationManagementPage() {
         const refs = [
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
-            ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'timetables'), ref(db, 'users'),
+            ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'users'),
             ref(db, 'settings/academicCalendar'), ref(db, 'registrations')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
@@ -526,27 +521,9 @@ export default function RegistrationManagementPage() {
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(data); break;
-                case 9: setTimetables(data); break;
-                case 10: setUsers(data); break;
-                case 11: setCalendarSettings(data); break;
-                case 12: {
-                    const counts: Record<string, Record<string, number>> = {};
-                    for (const userId in data) {
-                        for (const semId in data[userId]) {
-                            const reg = data[userId][semId];
-                            if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
-                                if (!counts[semId]) counts[semId] = {};
-                                const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
-                                coursesArr.forEach((cid: string) => {
-                                    counts[semId][cid] = (counts[semId][cid] || 0) + 1;
-                                });
-                            }
-                        }
-                    }
-                    setStudentCounts(counts);
-                } break;
+                case 10: setCalendarSettings(data); break;
             }
-            if(i === 12) setLoading(false);
+            if(i === 11) setLoading(false);
         }));
         return () => unsubs.forEach(unsub => unsub());
     }, []);
@@ -652,6 +629,18 @@ export default function RegistrationManagementPage() {
         }
     };
 
+    const handleSaveChanges = async () => {
+        setSaving(true);
+        try { 
+            await set(ref(db, `semesterOfferings`), activePathSemesters);
+            toast({ variant: 'success', title: 'Settings Saved', description: `Registration settings have been updated.` });
+        } catch (error: any) { 
+            toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' });
+        } finally { 
+            setSaving(false); 
+        }
+    };
+
     const getDeadlineSummary = React.useCallback((semester: Semester) => {
         const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
         const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
@@ -694,39 +683,6 @@ export default function RegistrationManagementPage() {
 
         return { summary, isMissing: shouldWarnMissing, hasPlans: plans.length > 0, isOutOfRange };
     }, [allPaymentPlans, calendarEvents, semesters]);
-
-    // Handle Preloading for Bulk Deadlines
-    React.useEffect(() => {
-        if (!isBulkDeadlineOpen || !bulkSelectedPlanId || !bulkSelectedProgrammeId) return;
-
-        const targets: Semester[] = [];
-        allIntakes.forEach(intake => {
-            const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === bulkSelectedProgrammeId);
-            if (!path || !calendarSettings) return;
-            const intakeStartStr = parseIntakeDate(intake.name);
-            if (!intakeStartStr) return;
-            const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-            const matched = semesters.find(s => s.intakeId === intake.id && s.year === state.year && s.semesterInYear === state.semester);
-            if (matched) targets.push(matched);
-        });
-
-        if (targets.length > 0) {
-            const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
-            if (plan) {
-                const newBulkDates: Record<number, Date | null> = {};
-                // Preload from the first target semester's existing events if possible
-                const firstSem = targets[0];
-                for (let i = 0; i < plan.installments; i++) {
-                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${firstSem.name}`;
-                    const existing = Object.values(calendarEvents).find((e: any) => e.title?.trim() === fullTitle.trim()) as any;
-                    if (existing) {
-                        newBulkDates[i] = parseISO(existing.date);
-                    }
-                }
-                setBulkDeadlineDates(newBulkDates);
-            }
-        }
-    }, [isBulkDeadlineOpen, bulkSelectedPlanId, bulkSelectedProgrammeId, allIntakes, allCoursePaths, calendarSettings, semesters, allPaymentPlans, calendarEvents]);
 
     const handleSaveBulkDeadlines = async () => {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
