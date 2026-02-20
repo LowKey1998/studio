@@ -4,13 +4,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, DollarSign, Percent, CheckCircle2, History, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
+import { 
+    Info, 
+    MapPin, 
+    UserCheck, 
+    Users, 
+    CalendarDays, 
+    Layers, 
+    ChevronLeft, 
+    ChevronRight, 
+    Video, 
+    Loader2, 
+    Clock, 
+    RotateCcw, 
+    X, 
+    Pencil, 
+    PlusCircle, 
+    Bot, 
+    ChevronsUpDown, 
+    Monitor, 
+    Search, 
+    AlertCircle, 
+    GraduationCap,
+    Calendar as CalendarIcon,
+    AlertTriangle,
+    DollarSign,
+    Percent,
+    CheckCircle2,
+    History
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday, startOfDay, isWithinInterval } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
@@ -46,7 +73,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { DateRange } from 'react-day-picker';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 // --- CONSTANTS ---
@@ -101,7 +127,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [customName, setCustomName] = React.useState('');
     const [useCustomName, setUseCustomName] = React.useState(false);
     
-    const [semesterDates, setSemesterDates] = React.useState<DateRange | undefined>();
+    const [semesterDates, setSemesterDates] = React.useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
     const [selectedPaymentPlans, setSelectedPaymentPlans] = React.useState<Record<string, boolean>>({});
     const [mandatoryFees, setMandatoryFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
     const [optionalFees, setOptionalFees] = React.useState<Record<string, Omit<Fee, 'id'>>>({});
@@ -145,7 +171,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const resetForm = () => {
         setIntakeId(''); setYear('1'); setSemesterInYear('1'); setCustomName(''); setUseCustomName(false);
-        setSemesterDates(undefined); setSelectedPaymentPlans({}); setMandatoryFees({}); setOptionalFees({});
+        setSemesterDates({ from: undefined, to: undefined }); setSelectedPaymentPlans({}); setMandatoryFees({}); setOptionalFees({});
         setPaymentThreshold(75); setGracePeriodDays(7); setLateRegistrationActive(false); setLateRegistrationFee(0);
     };
 
@@ -348,7 +374,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                     {semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick a date range</span>}
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={setSemesterDates} numberOfMonths={2} /></PopoverContent>
+                            <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={(range: any) => setSemesterDates(range)} numberOfMonths={2} /></PopoverContent>
                         </Popover>
                     </div>
 
@@ -435,8 +461,15 @@ export default function RegistrationManagementPage() {
     const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
     const [timetables, setTimetables] = React.useState<Record<string, any>>({});
     const [users, setUsers] = React.useState<Record<string, any>>({});
+    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
+    // States for fixing runtime errors
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    const [generating, setGenerating] = React.useState(false);
+
     // Per-semester deadline state
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
@@ -458,11 +491,12 @@ export default function RegistrationManagementPage() {
     const { toast } = useToast();
     
     React.useEffect(() => {
+        setLoading(true);
         const refs = [
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
             ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'timetables'), ref(db, 'users'),
-            ref(db, 'settings/academicCalendar')
+            ref(db, 'settings/academicCalendar'), ref(db, 'registrations')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -479,8 +513,24 @@ export default function RegistrationManagementPage() {
                 case 9: setTimetables(data); break;
                 case 10: setUsers(data); break;
                 case 11: setCalendarSettings(data); break;
+                case 12: {
+                    const counts: Record<string, Record<string, number>> = {};
+                    for (const userId in data) {
+                        for (const semId in data[userId]) {
+                            const reg = data[userId][semId];
+                            if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
+                                if (!counts[semId]) counts[semId] = {};
+                                const coursesArr = Array.isArray(reg.courses) ? reg.courses : (reg.courses ? Object.keys(reg.courses) : []);
+                                coursesArr.forEach((cid: string) => {
+                                    counts[semId][cid] = (counts[semId][cid] || 0) + 1;
+                                });
+                            }
+                        }
+                    }
+                    setStudentCounts(counts);
+                } break;
             }
-            if(i === 11) setLoading(false);
+            if(i === 12) setLoading(false);
         }));
         return () => unsubs.forEach(unsub => unsub());
     }, []);
