@@ -24,12 +24,15 @@ import {
     PencilLine,
     Check,
     RotateCcw,
-    Trash2
+    Trash2,
+    UserPlus,
+    Settings2,
+    Send
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, set, push, onValue, serverTimestamp } from 'firebase/database';
+import { ref, get, update, set, push, onValue, serverTimestamp, remove } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -102,6 +105,7 @@ export default function PaymentsManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+    const [institutionSettings, setInstitutionSettings] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
     
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -149,7 +153,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap, instSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -159,7 +163,8 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'calendarEvents'))
+                get(ref(db, 'calendarEvents')),
+                get(ref(db, 'settings/institution'))
             ]);
             
             const users = usersSnap.val() || {};
@@ -171,6 +176,7 @@ export default function PaymentsManagementPage() {
             
             setCalendarSettings(calSnap.val() || {});
             setFinancialSettings(finSnap.val() || { paymentThreshold: 75 });
+            setInstitutionSettings(instSnap.val() || { name: 'Edutrack360' });
             setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
             setAllIntakes(Object.keys(intakesSnap.val() || {}).map(id => ({ id, ...intakesSnap.val()[id] })));
             setAllPaymentPlans(Object.keys(plansSnap.val() || {}).map(id => ({ id, ...plansSnap.val()[id] })));
@@ -254,7 +260,8 @@ export default function PaymentsManagementPage() {
     const selectedStudentContext = React.useMemo(() => {
         if (!paymentSelectedUserId || !calendarSettings) return null;
         const student = allStudents.find(s => s.uid === paymentSelectedUserId);
-        const intake = allIntakes.find(i => i.id === student?.intakeId);
+        if (!student) return null;
+        const intake = allIntakes.find(i => i.id === student.intakeId);
         if (!intake) return null;
         const intakeDateStr = parseIntakeDate(intake.name);
         if (!intakeDateStr) return { intakeName: intake.name, standing: 'Invalid Intake Date' };
@@ -723,7 +730,7 @@ export default function PaymentsManagementPage() {
                     <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedYear || !paymentSelectedSemInYear || formLoading}>
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Save className="h-4 w-4 mr-2"/>} Record Payment
+                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Save className="mr-2 h-4 w-4 mr-2"/>} Record Payment
                         </Button>
                     </DialogFooter>
                 </DialogContent>
