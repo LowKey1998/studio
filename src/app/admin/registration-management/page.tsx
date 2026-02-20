@@ -112,7 +112,7 @@ type TimeSlot = {
     endTime: string;
 };
 
-type Course = { id: string; name: string; code: string; status: string; lecturerIds?: string[]; lecturerId?: string; };
+type Course = { id: string; name: string; code: string; status: string; lecturerIds?: string[]; lecturerId?: string; separateInstance?: boolean; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; tuitionFee?: number; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
@@ -473,6 +473,8 @@ export default function RegistrationManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
+    const [allTimetables, setAllTimetables] = React.useState<Record<string, any>>({});
+    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     const [loading, setLoading] = React.useState(true);
@@ -507,7 +509,7 @@ export default function RegistrationManagementPage() {
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
             ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'users'),
-            ref(db, 'settings/academicCalendar'), ref(db, 'registrations')
+            ref(db, 'settings/academicCalendar'), ref(db, 'registrations'), ref(db, 'timetables')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -521,7 +523,9 @@ export default function RegistrationManagementPage() {
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(data); break;
+                case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
+                case 12: setAllTimetables(data); break;
             }
             if(i === 11) setLoading(false);
         }));
@@ -828,15 +832,39 @@ export default function RegistrationManagementPage() {
                                         const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === programme.id);
                                         if (!path || !path.semesters) return null;
                                         
-                                        const sortedSemesters = Object.entries(path.semesters)
+                                        const semesterItems = Object.entries(path.semesters)
                                             .map(([semId, semData]) => {
                                                 const semesterDetails = semesters.find(s => s.id === semId);
-                                                return { semId, semData, semesterDetails };
+                                                if (!semesterDetails) return null;
+
+                                                // 1. Map Course Objects for the card list
+                                                const courses = (semData.courses || []).map(cid => {
+                                                    const c = allCourses[cid];
+                                                    const lNames = (c?.lecturerIds || [])
+                                                        .map(uid => allUsers[uid]?.name)
+                                                        .filter(Boolean)
+                                                        .join(', ') || allUsers[c?.lecturerId || '']?.name || 'Unassigned';
+                                                    
+                                                    const tEntries = allTimetables[semId]?.[cid] 
+                                                        ? Object.values(allTimetables[semId][cid]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`)
+                                                        : (allTimetables['master']?.[cid] 
+                                                            ? Object.values(allTimetables['master'][cid])
+                                                                .filter((t: any) => !c?.separateInstance || t.intakeName === intake.name)
+                                                                .map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`)
+                                                            : []);
+
+                                                    return { id: cid, ...c, lecturerNames: lNames, timetable: tEntries };
+                                                });
+
+                                                // 2. Fetch Deadlines
+                                                const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(semesterDetails);
+
+                                                return { semId, semData, semesterDetails, courses, deadlines, isMissing, isOutOfRange, hasPlans };
                                             })
-                                            .filter(item => item.semesterDetails)
+                                            .filter((item): item is NonNullable<typeof item> => !!item)
                                             .sort((a, b) => {
-                                                if (a.semesterDetails!.year !== b.semesterDetails!.year) return a.semesterDetails!.year - b.semesterDetails!.year;
-                                                return a.semesterDetails!.semesterInYear - b.semesterDetails!.semesterInYear;
+                                                if (a.semesterDetails.year !== b.semesterDetails.year) return a.semesterDetails.year - b.semesterDetails.year;
+                                                return a.semesterDetails.semesterInYear - b.semesterDetails.semesterInYear;
                                             });
 
                                         return (
@@ -850,15 +878,13 @@ export default function RegistrationManagementPage() {
                                                     </Button>
                                                 </CardHeader>
                                                 <CardContent className="space-y-4">
-                                                    {sortedSemesters.map(({ semId, semData, semesterDetails }) => {
-                                                        const semDetails = semesterDetails!;
+                                                    {semesterItems.map(({ semId, semData, semesterDetails, courses, deadlines, isMissing, isOutOfRange, hasPlans }) => {
                                                         const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                         const historyItems = semData.history ? Object.values(semData.history) : [];
-                                                        const { isMissing, hasPlans, isOutOfRange } = getDeadlineSummary(semDetails);
                                                         
                                                         const isCurrentStanding = currentState && 
-                                                            semDetails.year === currentState.year && 
-                                                            semDetails.semesterInYear === currentState.semester;
+                                                            semesterDetails.year === currentState.year && 
+                                                            semesterDetails.semesterInYear === currentState.semester;
 
                                                         return (
                                                             <div key={semId} className={cn(
@@ -868,7 +894,7 @@ export default function RegistrationManagementPage() {
                                                                 <div className="flex justify-between items-start">
                                                                     <div className="space-y-1">
                                                                         <div className="flex items-center gap-2">
-                                                                            <Label className="font-bold text-base">{semDetails.name}</Label>
+                                                                            <Label className="font-bold text-base">{semesterDetails.name}</Label>
                                                                             {isCurrentStanding && (
                                                                                 <Badge className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700 h-5 text-[9px] uppercase font-black tracking-widest">Current Standing</Badge>
                                                                             )}
@@ -906,14 +932,59 @@ export default function RegistrationManagementPage() {
                                                                             <Button variant="ghost" size="icon" onClick={() => openHistoryDialog(historyItems)} title="View History"><History className="h-4 w-4 text-blue-600"/></Button>
                                                                         )}
                                                                         <div className="flex gap-1">
-                                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingSemester(semDetails); setIsEditDialogOpen(true); }} title="Edit Semester Settings"><Pencil className="h-4 w-4"/></Button>
+                                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingSemester(semesterDetails); setIsEditDialogOpen(true); }} title="Edit Semester Settings"><Pencil className="h-4 w-4"/></Button>
                                                                             <Button variant="ghost" size="icon" className="text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
                                                                         </div>
                                                                     </div>
                                                                 </div>
 
+                                                                {/* COURSES & DEADLINES IN CARD */}
+                                                                <div className="grid md:grid-cols-2 gap-6 pt-4 border-t">
+                                                                    <div className="space-y-3">
+                                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                                                            <BookCopy className="h-3 w-3" /> Proposed Courses
+                                                                        </Label>
+                                                                        <div className="grid gap-2">
+                                                                            {courses.map(c => (
+                                                                                <div key={c.id} className="p-2 border rounded bg-muted/20">
+                                                                                    <p className="font-bold text-xs">{c.code}: {c.name}</p>
+                                                                                    <div className="flex justify-between items-center mt-1">
+                                                                                        <span className="text-[9px] text-muted-foreground">{c.lecturerNames}</span>
+                                                                                        <div className="flex gap-1">
+                                                                                            {c.timetable.map((t, idx) => (
+                                                                                                <Badge key={idx} variant="outline" className="h-4 text-[8px] bg-background">{t}</Badge>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                            {courses.length === 0 && <p className="text-xs text-muted-foreground italic">No courses mapped.</p>}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="space-y-3">
+                                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                                                            <Clock className="h-3 w-3" /> Payment Deadlines
+                                                                        </Label>
+                                                                        <div className="space-y-2">
+                                                                            {deadlines.length > 0 ? deadlines.map((d, i) => (
+                                                                                <div key={i} className="flex justify-between items-center text-[10px] p-2 rounded border border-dashed">
+                                                                                    <span className="font-medium">{d.title}</span>
+                                                                                    {d.date ? (
+                                                                                        <span className={cn("font-bold", !isDateInSemesterRange(parseISO(d.date), semesterDetails) ? "text-destructive" : "text-foreground")}>
+                                                                                            {format(parseISO(d.date), 'dd MMM yyyy')}
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <span className="text-destructive font-bold">Missing</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            )) : <p className="text-xs text-muted-foreground italic">No deadlines required.</p>}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
                                                                 <div className="flex gap-2 pt-2 border-t">
-                                                                    <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semDetails)}><CalendarIcon className="mr-2 h-4 w-4"/>Set Deadlines</Button>
+                                                                    <Button variant="outline" size="sm" onClick={() => handleOpenDeadlineDialog(semesterDetails)}><CalendarIcon className="mr-2 h-4 w-4"/>Set Deadlines</Button>
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/course-paths?intakeId=${intake.id}&programmeId=${programme.id}`}><BookCopy className="mr-2 h-4"/>Edit Path</Link></Button>
                                                                     <Button variant="outline" size="sm" asChild><Link href={`/admin/timetable?semesterId=${semId}`}><Clock className="mr-2 h-4"/>Manage Timetable</Link></Button>
                                                                 </div>
@@ -930,7 +1001,12 @@ export default function RegistrationManagementPage() {
                         })}
                     </Accordion>}
                 </CardContent>
-                <CardFooter className="justify-end"><Button onClick={handleSaveChanges} disabled={saving}>Save All Changes</Button></CardFooter>
+                <CardFooter className="justify-end border-t pt-6">
+                    <Button onClick={handleSaveChanges} disabled={saving}>
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                        Save All Changes
+                    </Button>
+                </CardFooter>
             </Card>
 
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
