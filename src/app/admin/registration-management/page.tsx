@@ -1052,13 +1052,13 @@ export default function RegistrationManagementPage() {
             </Card>
 
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogContent className="sm:max-xl">
+                <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-xl">
+                <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
                 </DialogContent>
             </Dialog>
@@ -1144,7 +1144,7 @@ export default function RegistrationManagementPage() {
                     <DialogFooter className="border-t pt-4">
                         <Button variant="outline" onClick={() => setEditingDeadlinesFor(null)}>Cancel</Button>
                         <Button onClick={handleSaveAllDeadlines} disabled={saving}>
-                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
                             Save All Settings
                         </Button>
                     </DialogFooter>
