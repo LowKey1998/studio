@@ -7,6 +7,12 @@ import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
+import { 
     Info, 
     MapPin, 
     UserCheck, 
@@ -525,7 +531,7 @@ export default function RegistrationManagementPage() {
         try { 
             await set(ref(db, `semesterOfferings`), activePathSemesters);
             toast({ variant: 'success', title: 'Global Sync Complete' });
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed' }); }
+        } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed', description: error.message || 'An unexpected error occurred.' }); }
         finally { setSaving(false); }
     };
 

@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { studentMenuItems } from "@/lib/menu-items";
+import { Badge } from "@/components/ui/badge";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, userProfile, loading } = useAuth();
@@ -95,12 +96,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 setIsDefaulter(defaulterStatus);
 
                 if (defaulterStatus) {
-                    // Check if current path is restricted
-                    const restrictedCategories = fSettings.defaulterRestrictions?.sidebar || {};
-                    const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
+                    const restrictedFuncs = fSettings.defaulterRestrictions || {};
+                    const restrictedCategories = restrictedFuncs.sidebar || {};
                     
+                    let isPathBlocked = false;
+
+                    // 1. Check functional block restrictions
+                    if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
+                        isPathBlocked = true;
+                    }
+                    if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
+                        isPathBlocked = true;
+                    }
+                    if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
+                        isPathBlocked = true;
+                    }
+
+                    // 2. Check sidebar category restrictions
+                    const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
                     if (currentCategory && restrictedCategories[currentCategory.label]) {
-                        // Special check for essential pages that should never be blocked
+                        isPathBlocked = true;
+                    }
+
+                    // 3. Final decision
+                    if (isPathBlocked) {
                         const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
                         if (!isEssential) {
                             setIsRestrictedRoute(true);
@@ -154,7 +173,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                   <span className="font-bold opacity-60">Status:</span>
                                   <Badge variant="destructive" className="font-black uppercase tracking-tighter text-[9px]">Arrears</Badge>
                               </div>
-                              <p className="italic opacity-70 leading-snug">Access to eLearning, Innovation, and Campus Life modules is suspended until standing is restored.</p>
+                              <p className="italic opacity-70 leading-snug">Access to restricted modules is suspended until standing is restored.</p>
                           </div>
                       </CardContent>
                       <CardFooter className="flex flex-col gap-2 p-6 bg-muted/5">

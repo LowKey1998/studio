@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -371,7 +370,7 @@ export default function SettingsPage() {
                                     <AlertDescription className="text-xs leading-relaxed italic space-y-2">
                                         <p>The **Grace Period** defines how many days a student is allowed to remain in "Good Standing" after an installment deadline has passed.</p>
                                         <p>1. **Late Fees**: If enabled, the late fee is applied immediately once the standard deadline is missed.</p>
-                                        <p>2. **Portal Restrictions**: If "Suspend Portal Access" is active, students will lose access to academic materials and results only AFTER the deadline PLUS the grace period has elapsed, provided they haven't met the payment threshold.</p>
+                                        <p>2. **Portal Restrictions**: If "Suspend Portal Access" is active, students will automatically lose access to restricted pages and sidebar sections (as configured in Financial Controls) only AFTER the deadline PLUS the grace period has elapsed, provided they haven't met the payment threshold.</p>
                                     </AlertDescription>
                                 </Alert>
                             </AccordionContent>
@@ -452,5 +451,3 @@ export default function SettingsPage() {
         </form>
     );
 }
-
-    
