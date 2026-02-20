@@ -3,12 +3,12 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock, AlertTriangle, CalendarDays, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -73,11 +73,12 @@ type Transaction = {
     method?: string;
     comment?: string;
     semesterName?: string;
+    semesterId?: string;
     academicStanding?: string;
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; paymentThreshold?: number; gracePeriodDays?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
@@ -124,7 +125,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search..." 
                         className="h-9" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                     />
                 </div>
                 <Separator />
@@ -282,6 +283,7 @@ export default function PaymentsManagementPage() {
                 transactionsList.push({
                     key: txId,
                     ...tx,
+                    semesterId,
                     semesterName: semesterInfo?.name,
                     academicStanding: semesterInfo ? `Y${semesterInfo.year}S${semesterInfo.semesterInYear}` : undefined
                 });
@@ -526,6 +528,46 @@ export default function PaymentsManagementPage() {
             return acc;
         }, { totalDue: 0, totalPaid: 0, totalBalance: 0 });
     }, [filteredData]);
+
+    const revenueMetrics = React.useMemo(() => {
+        const now = getCurrentServerDate();
+        const startOfW = startOfWeek(now, { weekStartsOn: 1 });
+        const endOfW = endOfWeek(now, { weekStartsOn: 1 });
+        const startOfM = startOfMonth(now);
+        const endOfM = endOfMonth(now);
+
+        const metrics = {
+            today: 0,
+            week: 0,
+            month: 0,
+            bySemester: new Map<string, { total: number, start?: string, end?: string, name: string }>()
+        };
+
+        rawTransactions.forEach(tx => {
+            const date = parseISO(tx.paymentDate);
+            const amount = tx.amount || 0;
+
+            if (isToday(date)) metrics.today += amount;
+            if (isWithinInterval(date, { start: startOfW, end: endOfW })) metrics.week += amount;
+            if (isWithinInterval(date, { start: startOfM, end: endOfM })) metrics.month += amount;
+
+            if (tx.semesterId) {
+                if (!metrics.bySemester.has(tx.semesterId)) {
+                    const semInfo = semesters.find(s => s.id === tx.semesterId);
+                    metrics.bySemester.set(tx.semesterId, { 
+                        total: 0, 
+                        name: semInfo?.name || 'Unknown',
+                        start: semInfo?.startDate,
+                        end: semInfo?.endDate
+                    });
+                }
+                const semData = metrics.bySemester.get(tx.semesterId)!;
+                semData.total += amount;
+            }
+        });
+
+        return metrics;
+    }, [rawTransactions, semesters]);
     
     const handleExport = () => {
         const doc = new jsPDF();
@@ -588,32 +630,104 @@ export default function PaymentsManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-                         <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Due</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">ZMW {summaryStats.totalDue.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Paid</CardTitle><PiggyBank className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">ZMW {summaryStats.totalPaid.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Balance</CardTitle><Scale className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">ZMW {summaryStats.totalBalance.toFixed(2)}</div></CardContent></Card>
-                         <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Students</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent></Card>
+                    <div className="space-y-6">
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <Card className="bg-card border-0 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Overall Due</CardTitle>
+                                    <Scale className="h-4 w-4 text-muted-foreground" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-black text-destructive">ZMW {summaryStats.totalBalance.toFixed(2)}</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-card border-0 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collection</CardTitle>
+                                    <TrendingUp className="h-4 w-4 text-green-600" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-card border-0 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle>
+                                    <Clock className="h-4 w-4 text-primary" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-black">ZMW {revenueMetrics.week.toFixed(2)}</div>
+                                </CardContent>
+                            </Card>
+                            <Card className="bg-card border-0 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
+                                    <PiggyBank className="h-4 w-4 text-primary" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-black">ZMW {revenueMetrics.month.toFixed(2)}</div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card className="border-0 shadow-sm bg-background/50">
+                            <CardHeader>
+                                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                                    <CalendarDays className="h-4 w-4 text-primary" />
+                                    Revenue by Semester
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {Array.from(revenueMetrics.bySemester.values()).sort((a,b) => b.total - a.total).map((sem, i) => (
+                                        <div key={i} className="p-4 rounded-xl border bg-card flex flex-col justify-between group hover:border-primary/30 transition-all">
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] font-black uppercase text-primary tracking-tighter">{sem.name}</p>
+                                                <p className="text-xl font-black">ZMW {sem.total.toFixed(2)}</p>
+                                            </div>
+                                            <div className="mt-4 flex items-center gap-2 text-[9px] font-bold text-muted-foreground opacity-60">
+                                                <Clock className="h-3 w-3" />
+                                                <span>{sem.start ? format(parseISO(sem.start), 'MMM d, yyyy') : 'TBA'} — {sem.end ? format(parseISO(sem.end), 'MMM d, yyyy') : 'TBA'}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {revenueMetrics.bySemester.size === 0 && (
+                                        <div className="col-span-full py-8 text-center text-xs text-muted-foreground italic border-2 border-dashed rounded-lg">
+                                            No semester-linked revenue recorded yet.
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
+
+                    <Separator className="my-8" />
 
                     <div className="flex flex-wrap gap-4 mb-4 items-end">
                         <div className="flex-1 min-w-[200px]">
-                            <Label>Search</Label>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1 mb-1 block">Quick Search</Label>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                <Input className="pl-8 h-10 shadow-sm" placeholder="Student name or ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
-                        <div className="w-48"><Label>Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="w-48"><Label>Semester</Label><Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="w-48">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1 mb-1 block">Programme</Label>
+                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-10 shadow-sm"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
+                        <div className="w-48">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1 mb-1 block">Semester</Label>
+                            <Select value={semesterFilter} onValueChange={setSemesterFilter}><SelectTrigger className="h-10 shadow-sm"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
                         <div className="flex gap-2">
-                             <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export</Button>
+                             <Button variant="outline" className="h-10" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export</Button>
                             <Dialog open={isBulkRecordOpen} onOpenChange={(open) => { if(!open) setBulkPaymentRows([]); setIsBulkRecordOpen(open); }}>
-                                <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
+                                <DialogTrigger asChild><Button className="h-10 shadow-md"><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button></DialogTrigger>
                                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
                                     <DialogHeader><DialogTitle>Record Manual Payments</DialogTitle><DialogDescription>Select students or record unlinked deposits.</DialogDescription></DialogHeader>
                                     <div className="flex-1 overflow-auto border rounded-md">
                                         <Table>
-                                            <TableHeader className="sticky top-0 bg-background z-10">
+                                            <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                                                 <TableRow>
                                                     <TableHead className="w-[300px]">Student / Ref</TableHead>
                                                     <TableHead className="w-[200px]">Semester</TableHead>
@@ -677,83 +791,96 @@ export default function PaymentsManagementPage() {
                             </Dialog>
                         </div>
                      </div>
-                     <Tabs defaultValue="studentPayments">
-                        <TabsList className="grid w-full grid-cols-3"><TabsTrigger value="studentPayments">Students</TabsTrigger><TabsTrigger value="unlinkedPayments">Unlinked ({unlinkedPayments.length})</TabsTrigger><TabsTrigger value="transactionHistory">Recent History</TabsTrigger></TabsList>
+                     <Tabs defaultValue="studentPayments" className="bg-background rounded-lg border shadow-sm">
+                        <TabsList className="grid w-full grid-cols-3 bg-muted/50 rounded-none border-b">
+                            <TabsTrigger value="studentPayments" className="rounded-none data-[state=active]:bg-background">Active Receivables</TabsTrigger>
+                            <TabsTrigger value="unlinkedPayments" className="rounded-none data-[state=active]:bg-background">Unlinked Deposits ({unlinkedPayments.length})</TabsTrigger>
+                            <TabsTrigger value="transactionHistory" className="rounded-none data-[state=active]:bg-background">Transaction Audit</TabsTrigger>
+                        </TabsList>
                         <TabsContent value="studentPayments">
                             <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead>ID</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Active Standing</TableHead>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead>System ID</TableHead>
+                                        <TableHead>Student</TableHead>
+                                        <TableHead>Academic Standing</TableHead>
                                         <TableHead className="text-right">Total Due</TableHead>
                                         <TableHead className="text-right">Total Paid</TableHead>
                                         <TableHead className="text-right">Balance</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead></TableHead>
+                                        <TableHead className="w-10"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredData.map((p, i) => (
-                                        <TableRow key={`${p.userId}-${i}`} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setHistoryStudent(p); setIsHistoryOpen(true); }}>
-                                            <TableCell className="font-mono text-xs">{p.studentId}</TableCell>
-                                            <TableCell className="font-medium">{p.studentName}</TableCell>
-                                            <TableCell><Badge variant="outline" className="text-[10px] bg-background">{semesters.find(s=>s.id===p.semesterId)?.name}</Badge></TableCell>
+                                        <TableRow key={`${p.userId}-${i}`} className="cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { setHistoryStudent(p); setIsHistoryOpen(true); }}>
+                                            <TableCell className="font-mono text-[10px] font-bold opacity-60">{p.studentId}</TableCell>
+                                            <TableCell className="font-bold text-sm">{p.studentName}</TableCell>
+                                            <TableCell><Badge variant="outline" className="text-[9px] bg-muted/20 font-black uppercase tracking-tighter">{semesters.find(s=>s.id===p.semesterId)?.name}</Badge></TableCell>
                                             <TableCell className="text-right text-xs">ZMW {p.totalDue.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 text-xs font-bold">ZMW {p.totalPaid.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-black text-xs">ZMW {p.balance.toFixed(2)}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[p.status]} className="h-5 text-[10px]">{p.status}</Badge></TableCell>
-                                            <TableCell onClick={e=>e.stopPropagation()}><Button variant="ghost" size="icon" onClick={() => { setHistoryStudent(p); setIsHistoryOpen(true); }} className="h-8 w-8"><History className="h-4 w-4 text-muted-foreground"/></Button></TableCell>
+                                            <TableCell className="text-right font-black text-sm">ZMW {p.balance.toFixed(2)}</TableCell>
+                                            <TableCell><Badge variant={statusVariant[p.status]} className="h-5 text-[9px] font-black uppercase">{p.status}</Badge></TableCell>
+                                            <TableCell onClick={e=>e.stopPropagation()}><Button variant="ghost" size="icon" onClick={() => { setHistoryStudent(p); setIsHistoryOpen(true); }} className="h-8 w-8"><History className="h-4 w-4 text-muted-foreground opacity-40 hover:opacity-100"/></Button></TableCell>
                                         </TableRow>
                                     ))}
+                                    {filteredData.length === 0 && (
+                                        <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground italic">No student accounts found matching filters.</TableCell></TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </TabsContent>
                          <TabsContent value="unlinkedPayments">
                              <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Reference</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                        <TableHead></TableHead>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead>Date Recorded</TableHead>
+                                        <TableHead>Reference String</TableHead>
+                                        <TableHead className="text-right">Amount (ZMW)</TableHead>
+                                        <TableHead className="w-[150px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {unlinkedPayments.map(p => (
                                         <TableRow key={p.id}>
                                             <TableCell className="text-xs">{format(parseISO(p.date), 'PPP')}</TableCell>
-                                            <TableCell className="font-mono text-xs">{p.reference}</TableCell>
-                                            <TableCell className="text-right font-bold text-xs">ZMW {p.amount.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => { setLinkingPayment(p); setIsLinkingOpen(true); }}>Link to Student</Button></TableCell>
+                                            <TableCell className="font-mono text-xs font-bold text-primary underline decoration-dotted">{p.reference}</TableCell>
+                                            <TableCell className="text-right font-black text-sm">ZMW {p.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right"><Button size="sm" variant="outline" className="h-8 font-bold text-[10px] uppercase" onClick={() => { setLinkingPayment(p); setIsLinkingOpen(true); }}>Link to Student</Button></TableCell>
                                         </TableRow>
                                     ))}
+                                    {unlinkedPayments.length === 0 && (
+                                        <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">No unlinked payments currently in queue.</TableCell></TableRow>
+                                    )}
                                 </TableBody>
                              </Table>
                          </TabsContent>
                          <TabsContent value="transactionHistory">
                             <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Student</TableHead>
-                                        <TableHead>Standing</TableHead>
-                                        <TableHead>Amount</TableHead>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead>Execution Date</TableHead>
+                                        <TableHead>Student Account</TableHead>
+                                        <TableHead>Semester Standing</TableHead>
+                                        <TableHead className="text-right">Amount</TableHead>
                                         <TableHead>Method</TableHead>
-                                        <TableHead></TableHead>
+                                        <TableHead className="w-10"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {rawTransactions.map(tx => (
                                         <TableRow key={tx.key}>
-                                            <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                            <TableCell className="sm font-medium">{allStudents.find(s=>s.uid===tx.userId)?.name}</TableCell>
-                                            <TableCell><Badge variant="secondary" className="text-[9px]">{tx.academicStanding}</Badge></TableCell>
-                                            <TableCell className="font-bold text-green-600 text-xs">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                            <TableCell className="text-[10px] font-bold uppercase text-muted-foreground">{tx.method}</TableCell>
-                                            <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => {if(confirm("Permanently delete this transaction record?")) remove(ref(db, `transactions/${tx.key}`));}} className="h-8 w-8"><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
+                                            <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy HH:mm')}</TableCell>
+                                            <TableCell className="text-sm font-bold">{allStudents.find(s=>s.uid===tx.userId)?.name}</TableCell>
+                                            <TableCell><Badge variant="secondary" className="text-[9px] font-black bg-muted/20">{tx.academicStanding}</Badge></TableCell>
+                                            <TableCell className="font-black text-green-600 text-sm text-right">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{tx.method}</TableCell>
+                                            <TableCell className="text-right"><Button variant="ghost" size="icon" onClick={() => {if(confirm("Permanently delete this transaction record? This cannot be undone.")) remove(ref(db, `transactions/${tx.key}`));}} className="h-8 w-8 hover:bg-destructive/10"><Trash2 className="h-4 w-4 text-destructive opacity-40 hover:opacity-100"/></Button></TableCell>
                                         </TableRow>
                                     ))}
+                                    {rawTransactions.length === 0 && (
+                                        <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">No successful transactions found in system audit.</TableCell></TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                          </TabsContent>
@@ -768,7 +895,7 @@ export default function PaymentsManagementPage() {
                         <div className="p-4 bg-muted/50 rounded-lg border grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Reference</p>
-                                <p className="font-mono text-sm">{linkingPayment?.reference}</p>
+                                <p className="font-mono text-sm font-bold">{linkingPayment?.reference}</p>
                             </div>
                             <div className="space-y-1">
                                 <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Amount</p>
@@ -777,13 +904,13 @@ export default function PaymentsManagementPage() {
                             {linkingPayment?.totalDue && (
                                 <div className="space-y-1 col-span-2 border-t pt-2 mt-2">
                                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Expected Total Due (Original Input)</p>
-                                    <p className="font-mono text-xs">ZMW {linkingPayment.totalDue.toFixed(2)}</p>
+                                    <p className="font-mono text-xs italic">ZMW {linkingPayment.totalDue.toFixed(2)}</p>
                                 </div>
                             )}
                         </div>
 
                         <div className="space-y-1">
-                            <Label>Target Student</Label>
+                            <Label className="font-bold">Target Student Account</Label>
                             <SearchableSelect 
                                 value={selectedLinkStudent} 
                                 onValueChange={setSelectedLinkStudent} 
@@ -795,37 +922,37 @@ export default function PaymentsManagementPage() {
                         {selectedLinkStudent && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
                                 {linkingInconsistencies.length > 0 ? (
-                                    <Alert variant="destructive">
+                                    <Alert variant="destructive" className="border-2">
                                         <AlertCircle className="h-4 w-4" />
-                                        <AlertTitle className="font-bold">Inconsistency Report</AlertTitle>
-                                        <AlertDescription className="space-y-2 mt-2">
+                                        <AlertTitle className="font-black uppercase text-xs">Integrity Warning</AlertTitle>
+                                        <AlertDescription className="space-y-4 mt-2">
                                             <ul className="list-disc pl-5 text-xs space-y-1">
                                                 {linkingInconsistencies.map((msg, i) => <li key={i}>{msg}</li>)}
                                             </ul>
                                             <Separator className="my-2 bg-destructive/20" />
                                             <div className="space-y-3">
-                                                <Label className="text-xs font-bold uppercase">How would you like to proceed?</Label>
+                                                <Label className="text-[10px] font-black uppercase text-destructive tracking-widest">Resolution Strategy</Label>
                                                 <div className="grid grid-cols-1 gap-2">
                                                     <Button 
-                                                        variant={linkResolution === 'overwrite' ? 'default' : 'outline'} 
+                                                        variant={linkResolution === 'overwrite' ? 'destructive' : 'outline'} 
                                                         size="sm" 
-                                                        className="justify-start h-auto py-2 text-left" 
+                                                        className="justify-start h-auto py-2.5 text-left border-destructive/30" 
                                                         onClick={() => setLinkResolution('overwrite')}
                                                     >
                                                         <div className="flex flex-col">
-                                                            <span className="font-bold">Update & Link</span>
-                                                            <span className="text-[10px] opacity-70">Overwrite the student's current invoice total to match the unlinked record (ZMW {linkingPayment?.totalDue?.toFixed(2)}).</span>
+                                                            <span className="font-bold">Force Sync & Link</span>
+                                                            <span className="text-[10px] opacity-70">Overwrite student's current semester invoice to match original record (ZMW {linkingPayment?.totalDue?.toFixed(2)}).</span>
                                                         </div>
                                                     </Button>
                                                     <Button 
-                                                        variant={linkResolution === 'partial' ? 'default' : 'outline'} 
+                                                        variant={linkResolution === 'partial' ? 'secondary' : 'outline'} 
                                                         size="sm" 
-                                                        className="justify-start h-auto py-2 text-left" 
+                                                        className="justify-start h-auto py-2.5 text-left" 
                                                         onClick={() => setLinkResolution('partial')}
                                                     >
                                                         <div className="flex flex-col">
-                                                            <span className="font-bold">Link as Partial Payment</span>
-                                                            <span className="text-[10px] opacity-70">Keep student's current invoice total. Just apply the ZMW {linkingPayment?.amount.toFixed(2)} as a payment.</span>
+                                                            <span className="font-bold">Apply as Partial Credit</span>
+                                                            <span className="text-[10px] opacity-70">Keep existing invoice as is. Just deduct ZMW {linkingPayment?.amount.toFixed(2)} from current balance.</span>
                                                         </div>
                                                     </Button>
                                                 </div>
@@ -835,21 +962,22 @@ export default function PaymentsManagementPage() {
                                 ) : (
                                     <Alert className="bg-green-50 border-green-200">
                                         <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                        <AlertTitle className="text-green-800">Perfect Match</AlertTitle>
-                                        <AlertDescription className="text-green-700 text-xs">The unlinked record details align perfectly with the selected student's account for this semester.</AlertDescription>
+                                        <AlertTitle className="text-green-800 font-bold uppercase text-[10px]">Ready to Link</AlertTitle>
+                                        <AlertDescription className="text-green-700 text-xs font-medium">The unlinked deposit details match this student's account standing perfectly.</AlertDescription>
                                     </Alert>
                                 )}
                             </div>
                         )}
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t pt-4">
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                         <Button 
                             onClick={handleLinkPayment} 
                             disabled={formLoading || !selectedLinkStudent}
+                            className="shadow-lg"
                         >
                             {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <LinkIcon className="mr-2 h-4 w-4" />}
-                            Link Payment to Account
+                            Resolve & Link Payment
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -857,37 +985,40 @@ export default function PaymentsManagementPage() {
 
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Financial Ledger: {historyStudent?.studentName}</DialogTitle><DialogDescription>Detailed transaction history for all semesters.</DialogDescription></DialogHeader>
-                    <div className="flex-1 overflow-auto py-4 border rounded-md my-4">
+                    <DialogHeader><DialogTitle>Financial Ledger: {historyStudent?.studentName}</DialogTitle><DialogDescription>Consolidated transaction history for the selected account.</DialogDescription></DialogHeader>
+                    <div className="flex-1 overflow-auto py-4 border rounded-md my-4 shadow-inner bg-muted/5">
                         <Table>
-                            <TableHeader className="sticky top-0 bg-background z-10">
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Academic Standing</TableHead>
-                                    <TableHead>Method</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
+                            <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                                <TableRow className="hover:bg-transparent">
+                                    <TableHead className="text-[10px] font-black uppercase">Post Date</TableHead>
+                                    <TableHead className="text-[10px] font-black uppercase">Academic Phase</TableHead>
+                                    <TableHead className="text-[10px] font-black uppercase">Method</TableHead>
+                                    <TableHead className="text-right text-[10px] font-black uppercase">Amount</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {rawTransactions.filter(t => t.userId === historyStudent?.userId).map(tx => (
-                                    <TableRow key={tx.key} className="hover:bg-transparent">
-                                        <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                    <TableRow key={tx.key} className="hover:bg-transparent border-b-0">
+                                        <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy HH:mm')}</TableCell>
                                         <TableCell>
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-bold">{tx.semesterName}</span>
-                                                <span className="text-[10px] text-muted-foreground">{tx.academicStanding}</span>
+                                                <span className="text-[10px] text-muted-foreground font-black opacity-60">{tx.academicStanding}</span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-[10px] font-bold uppercase">{tx.method}</TableCell>
+                                        <TableCell className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{tx.method}</TableCell>
                                         <TableCell className="text-right font-black text-green-600 text-sm">ZMW {tx.amount.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
+                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).length === 0 && (
+                                    <TableRow><TableCell colSpan={4} className="h-32 text-center text-xs text-muted-foreground italic">No historical transactions found for this account.</TableCell></TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     </div>
                     <DialogFooter className="border-t pt-4 flex flex-col sm:flex-row justify-between w-full gap-2">
                         <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close Ledger</Button>
-                        <Button onClick={() => { if(historyStudent) { setBulkPaymentRows([{ key: Date.now(), userId: historyStudent.userId, semesterId: historyStudent.semesterId || undefined, invoiceId: historyStudent.invoiceId, totalDue: historyStudent.totalDue.toFixed(2), totalPaid: historyStudent.totalPaid, amount: '', comment: '' }]); setIsHistoryOpen(false); setIsBulkRecordOpen(true); } }} className="shadow-lg">
+                        <Button onClick={() => { if(historyStudent) { setBulkPaymentRows([{ key: Date.now(), userId: historyStudent.userId, semesterId: historyStudent.semesterId || undefined, invoiceId: historyStudent.invoiceId, totalDue: historyStudent.totalDue.toFixed(2), totalPaid: historyStudent.totalPaid, amount: '', comment: '' }]); setIsHistoryOpen(false); setIsBulkRecordOpen(true); } }} className="shadow-lg font-bold">
                             <PlusCircle className="mr-2 h-4 w-4" /> Record New Payment
                         </Button>
                     </DialogFooter>
