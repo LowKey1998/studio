@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, addMonths } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
@@ -131,9 +131,10 @@ type CreateOrEditDialogContentProps = {
     allPaymentPlans: PaymentPlan[];
     feeTemplates: FeeTemplate[];
     allIntakes: Intake[];
+    calendarSettings: any;
 };
 
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes }: CreateOrEditDialogContentProps) {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes, calendarSettings }: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
     const [intakeId, setIntakeId] = React.useState('');
     const [year, setYear] = React.useState('');
@@ -182,6 +183,23 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             resetForm();
         }
     }, [editingSemester]);
+
+    // Auto-calculate suggested dates
+    React.useEffect(() => {
+        if (!editingSemester && intakeId && year && semesterInYear && calendarSettings) {
+            const intake = allIntakes.find(i => i.id === intakeId);
+            if (!intake) return;
+            const intakeDateStr = parseIntakeDate(intake.name);
+            if (!intakeDateStr) return;
+
+            const baseDate = parseISO(intakeDateStr);
+            const totalMonthsOffset = (Number(year) - 1) * 12 + (Number(semesterInYear) - 1) * 6;
+            const start = addMonths(baseDate, totalMonthsOffset);
+            const end = addMonths(start, 5); // 6 month block
+            
+            setSemesterDates({ from: start, to: end });
+        }
+    }, [intakeId, year, semesterInYear, editingSemester, allIntakes, calendarSettings]);
 
     const resetForm = () => {
         setIntakeId(''); setYear('1'); setSemesterInYear('1'); setCustomName(''); setUseCustomName(false);
@@ -517,7 +535,7 @@ export default function RegistrationManagementPage() {
                 case 0: setAllIntakes(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 1: setAllProgrammes(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 2: setAllCourses(data); break;
-                case 3: setAllCoursePaths(Object.values(data)); break;
+                case 3: setAllCoursePaths(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 4: setActivePathSemesters(data); break;
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
@@ -687,51 +705,6 @@ export default function RegistrationManagementPage() {
 
         return { summary, isMissing: shouldWarnMissing, hasPlans: plans.length > 0, isOutOfRange };
     }, [allPaymentPlans, calendarEvents, semesters]);
-
-    React.useEffect(() => {
-        if (!bulkSelectedProgrammeId || !bulkSelectedPlanId || !allPaymentPlans.length || !calendarSettings) return;
-        
-        const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
-        if (!plan) return;
-
-        let foundExisting = false;
-        for (const intake of allIntakes) {
-            const intakeStartStr = parseIntakeDate(intake.name);
-            if (!intakeStartStr) continue;
-
-            const state = calculateAcademicState(
-                intakeStartStr,
-                new Date(),
-                calendarSettings.standardCycles,
-                Object.values(calendarSettings.anomalies || {})
-            );
-
-            const sem = semesters.find(s => 
-                s.intakeId === intake.id && 
-                s.year === state.year && 
-                s.semesterInYear === state.semester
-            );
-
-            if (sem) {
-                const dates: Record<number, Date | null> = {};
-                let hasAnyDate = false;
-                for (let i = 0; i < plan.installments; i++) {
-                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
-                    const event = Object.values(calendarEvents).find((e: any) => e.title?.trim() === fullTitle.trim()) as any;
-                    if (event) {
-                        dates[i] = parseISO(event.date);
-                        hasAnyDate = true;
-                    }
-                }
-                if (hasAnyDate) {
-                    setBulkDeadlineDates(dates);
-                    foundExisting = true;
-                    break;
-                }
-            }
-        }
-        if (!foundExisting) setBulkDeadlineDates({});
-    }, [bulkSelectedProgrammeId, bulkSelectedPlanId, allIntakes, semesters, allPaymentPlans, calendarEvents, calendarSettings]);
 
     const handleSaveBulkDeadlines = async () => {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
@@ -1053,13 +1026,13 @@ export default function RegistrationManagementPage() {
 
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                 <DialogContent className="sm:max-w-xl">
-                    <CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
+                    <CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} calendarSettings={calendarSettings} />
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                 <DialogContent className="sm:max-w-xl">
-                    <CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
+                    <CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} calendarSettings={calendarSettings} />
                 </DialogContent>
             </Dialog>
             

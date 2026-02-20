@@ -13,6 +13,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 type Course = {
     id: string;
