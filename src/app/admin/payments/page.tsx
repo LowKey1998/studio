@@ -64,6 +64,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { PaymentCountdown } from '@/components/payment-countdown';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 // --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
@@ -129,13 +130,15 @@ export default function PaymentsManagementPage() {
     // States for Record Payment Dialog
     const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
     const [paymentSelectedUserId, setPaymentSelectedUserId] = React.useState('');
+    const [paymentSelectedYear, setPaymentSelectedYear] = React.useState('');
+    const [paymentSelectedSemInYear, setPaymentSelectedSemInYear] = React.useState('');
     const [paymentSelectedSemesterId, setPaymentSelectedSemesterId] = React.useState('');
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
-    const [transactionId, setTransactionId] = React.useState('');
     const [paymentComment, setPaymentComment] = React.useState('');
     const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
     const [manualTotalDue, setManualTotalDue] = React.useState('');
+    const [dateReceived, setDateReceived] = React.useState<Date | undefined>(new Date());
 
     // States for Edit Request Dialog
     const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
@@ -348,20 +351,22 @@ export default function PaymentsManagementPage() {
 
     const resetDialog = () => {
         setPaymentSelectedUserId('');
+        setPaymentSelectedYear('');
+        setPaymentSelectedSemInYear('');
         setPaymentSelectedSemesterId('');
         setPaymentAmount('');
         setPaymentMethod('Cash');
-        setTransactionId('');
         setPaymentComment('');
         setDialogSearchTerm('');
         setManualTotalDue('');
+        setDateReceived(new Date());
     };
 
     const handleRecordPaymentDialog = () => {
         const student = allStudents.find(s => s.uid === paymentSelectedUserId);
         const semester = semesters.find(s => s.id === paymentSelectedSemesterId);
         
-        if(!student || !semester || !paymentAmount || !paymentMethod) {
+        if(!student || !semester || !paymentAmount || !paymentMethod || !dateReceived) {
             toast({ variant: 'destructive', title: 'Missing fields' });
             return;
         }
@@ -401,7 +406,7 @@ export default function PaymentsManagementPage() {
         }
 
         const txRef = push(ref(db, 'transactions'));
-        const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
+        const txId = `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
         
         updates[`transactions/${txRef.key}`] = {
             transactionId: txId,
@@ -410,7 +415,8 @@ export default function PaymentsManagementPage() {
             amount: amount,
             currency: 'ZMW',
             status: 'successful',
-            paymentDate: new Date().toISOString(),
+            paymentDate: format(dateReceived, 'yyyy-MM-dd'),
+            recordedAt: serverTimestamp(),
             method: paymentMethod,
             comment: paymentComment,
             recordedBy: userData?.name || 'Accountant',
@@ -621,21 +627,55 @@ export default function PaymentsManagementPage() {
         return list.filter(s => s.name.toLowerCase().includes(lower) || s.id.toLowerCase().includes(lower));
     }, [allStudents, dialogSearchTerm]);
 
-    const studentSemestersForPayment = React.useMemo(() => {
+    const studentStandingInfo = React.useMemo(() => {
+        if (!paymentSelectedUserId || !calendarSettings) return null;
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        if (!student || !student.intakeId) return null;
+        const intake = allIntakes.find(i => i.id === student.intakeId);
+        if (!intake) return null;
+        const intakeStartStr = parseIntakeDate(intake.name);
+        if (!intakeStartStr) return null;
+        const state = calculateAcademicState(
+            intakeStartStr,
+            new Date(),
+            calendarSettings.standardCycles,
+            Object.values(calendarSettings.anomalies || {})
+        );
+        return { intakeName: intake.name, standing: `Year ${state.year}, Sem ${state.semester}` };
+    }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
+
+    const availableYearsForStudent = React.useMemo(() => {
         if (!paymentSelectedUserId) return [];
         const student = allStudents.find(s => s.uid === paymentSelectedUserId);
         if (!student || !student.intakeId) return [];
-        
-        return semesters.filter(s => s.intakeId === student.intakeId)
-            .sort((a, b) => a.year - b.year || a.semesterInYear - b.semesterInYear);
+        const sems = semesters.filter(s => s.intakeId === student.intakeId);
+        return Array.from(new Set(sems.map(s => s.year))).sort((a, b) => a - b);
     }, [paymentSelectedUserId, allStudents, semesters]);
+
+    const availableSemsInYear = React.useMemo(() => {
+        if (!paymentSelectedUserId || !paymentSelectedYear) return [];
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        if (!student || !student.intakeId) return [];
+        return semesters.filter(s => s.intakeId === student.intakeId && s.year === Number(paymentSelectedYear))
+            .sort((a, b) => a.semesterInYear - b.semesterInYear);
+    }, [paymentSelectedUserId, paymentSelectedYear, allStudents, semesters]);
+
+    React.useEffect(() => {
+        if (paymentSelectedYear && paymentSelectedSemInYear && paymentSelectedUserId) {
+            const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+            const sem = semesters.find(s => s.intakeId === student?.intakeId && s.year === Number(paymentSelectedYear) && s.semesterInYear === Number(paymentSelectedSemInYear));
+            setPaymentSelectedSemesterId(sem?.id || '');
+        } else {
+            setPaymentSelectedSemesterId('');
+        }
+    }, [paymentSelectedYear, paymentSelectedSemInYear, paymentSelectedUserId, allStudents, semesters]);
 
     const activePaymentInfo = React.useMemo(() => {
         return paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === paymentSelectedSemesterId) || null;
     }, [paymentInfos, paymentSelectedUserId, paymentSelectedSemesterId]);
 
-    const currentTotalDue = activePaymentInfo ? (manualTotalDue ? parseFloat(manualTotalDue) : activePaymentInfo.totalDue) : 0;
-    const currentBalanceCalc = activePaymentInfo ? (currentTotalDue - activePaymentInfo.totalPaid) : 0;
+    const currentTotalDue = activePaymentInfo ? (manualTotalDue ? parseFloat(manualTotalDue) : activePaymentInfo.totalDue) : (manualTotalDue ? parseFloat(manualTotalDue) : 0);
+    const currentBalanceCalc = activePaymentInfo ? (currentTotalDue - activePaymentInfo.totalPaid) : currentTotalDue;
 
     return (
         <div className="space-y-6">
@@ -851,7 +891,7 @@ export default function PaymentsManagementPage() {
                                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }} title="Full History">
                                                         <History className="h-4 w-4 text-muted-foreground" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setPaymentSelectedUserId(info.userId); setPaymentSelectedSemesterId(info.semesterId || ''); setIsRecordPaymentOpen(true); }} title="Record Payment">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setPaymentSelectedUserId(info.userId); setPaymentSelectedYear(String(semesters.find(s=>s.id===info.semesterId)?.year || '')); setPaymentSelectedSemInYear(String(semesters.find(s=>s.id===info.semesterId)?.semesterInYear || '')); setIsRecordPaymentOpen(true); }} title="Record Payment">
                                                         <PlusCircle className="h-4 w-4" />
                                                     </Button>
                                                 </div>
@@ -867,12 +907,12 @@ export default function PaymentsManagementPage() {
 
             {/* Record Payment Dialog */}
             <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Record Institutional Credit</DialogTitle>
-                        <DialogDescription>Select a student and specify the academic period for this payment.</DialogDescription>
+                        <DialogDescription>Apply a payment to a specific student and academic period.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
+                    <div className="flex-1 overflow-y-auto pr-2 py-4 space-y-6">
                         <div className="space-y-4">
                             <div className="space-y-1">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">1. Find Student</Label>
@@ -880,7 +920,8 @@ export default function PaymentsManagementPage() {
                                     value={paymentSelectedUserId} 
                                     onValueChange={(val) => {
                                         setPaymentSelectedUserId(val);
-                                        setPaymentSelectedSemesterId('');
+                                        setPaymentSelectedYear('');
+                                        setPaymentSelectedSemInYear('');
                                     }}
                                 >
                                     <SelectTrigger className="bg-background">
@@ -926,37 +967,52 @@ export default function PaymentsManagementPage() {
                                 </Select>
                             </div>
 
+                            {paymentSelectedUserId && studentStandingInfo && (
+                                <div className="p-3 rounded-lg border bg-muted/30 animate-in fade-in zoom-in-95 duration-300">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Standing</span>
+                                        <Badge variant="outline" className="h-5 text-[9px] bg-background border-primary/20">{studentStandingInfo.intakeName}</Badge>
+                                    </div>
+                                    <p className="text-sm font-black text-primary pt-1">{studentStandingInfo.standing}</p>
+                                </div>
+                            )}
+
                             {paymentSelectedUserId && (
-                                <div className="space-y-1 animate-in fade-in slide-in-from-left-2">
+                                <div className="space-y-4 animate-in fade-in slide-in-from-left-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">2. Select Academic Period</Label>
-                                    <Select value={paymentSelectedSemesterId} onValueChange={setPaymentSelectedSemesterId}>
-                                        <SelectTrigger className="bg-background">
-                                            <SelectValue placeholder="Which year/semester?" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {studentSemestersForPayment.map(p => (
-                                                <SelectItem key={p.id} value={p.id}>
-                                                    {p.name}
-                                                </SelectItem>
-                                            ))}
-                                            {studentSemestersForPayment.length === 0 && (
-                                                <div className="p-4 text-center text-xs text-muted-foreground italic">No periods defined for this intake.</div>
-                                            )}
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] opacity-60">Year</Label>
+                                            <Select value={paymentSelectedYear} onValueChange={setPaymentSelectedYear}>
+                                                <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {availableYearsForStudent.map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] opacity-60">Semester</Label>
+                                            <Select value={paymentSelectedSemInYear} onValueChange={setPaymentSelectedSemInYear} disabled={!paymentSelectedYear}>
+                                                <SelectTrigger><SelectValue placeholder="Sem" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {availableSemsInYear.map(s => <SelectItem key={s.semesterInYear} value={String(s.semesterInYear)}>Sem {s.semesterInYear}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        {activePaymentInfo ? (
-                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2 animate-in fade-in slide-in-from-top-2">
+                        {activePaymentInfo || (paymentSelectedYear && paymentSelectedSemInYear) ? (
+                            <div className="p-3 rounded-lg border bg-primary/5 space-y-2 animate-in fade-in slide-in-from-top-2">
                                 <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                    <Calculator className="h-3 w-3" /> Semester Financial Summary
+                                    <Calculator className="h-3 w-3" /> Period Financial Summary
                                 </h4>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center text-xs font-medium">
-                                        <span>Total Due:</span>
-                                        {(activePaymentInfo.totalDue > 0) ? (
+                                        <span>Total Expected:</span>
+                                        {(activePaymentInfo && activePaymentInfo.totalDue > 0) ? (
                                             <span className="font-mono">ZMW {activePaymentInfo.totalDue.toFixed(2)}</span>
                                         ) : (
                                             <div className="flex items-center gap-2">
@@ -964,85 +1020,86 @@ export default function PaymentsManagementPage() {
                                                 <Input 
                                                     type="number" 
                                                     placeholder="Set Total" 
-                                                    className="h-7 w-24 text-[10px] font-bold"
+                                                    className="h-7 w-24 text-[10px] font-bold bg-background"
                                                     value={manualTotalDue}
                                                     onChange={(e) => setManualTotalDue(e.target.value)}
                                                 />
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex justify-between text-xs text-green-600 font-medium">
-                                        <span>Amount Already Paid:</span>
-                                        <span className="font-mono">ZMW {activePaymentInfo.totalPaid.toFixed(2)}</span>
-                                    </div>
+                                    {activePaymentInfo && (
+                                        <div className="flex justify-between text-xs text-green-600 font-medium">
+                                            <span>Already Paid:</span>
+                                            <span className="font-mono">ZMW {activePaymentInfo.totalPaid.toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <Separator className="my-1"/>
-                                    <div className="flex justify-between text-sm font-black text-destructive">
+                                    <div className="flex justify-between text-sm font-black text-destructive pt-1">
                                         <span>Current Balance:</span>
                                         <span className="font-mono">ZMW {currentBalanceCalc.toFixed(2)}</span>
                                     </div>
                                 </div>
                             </div>
-                        ) : paymentSelectedSemesterId && (
-                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2 animate-in fade-in slide-in-from-top-2">
-                                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                    <Calculator className="h-3 w-3" /> New Academic Credit
-                                </h4>
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center text-xs font-medium">
-                                        <span>Total Expected:</span>
-                                        <Input 
-                                            type="number" 
-                                            placeholder="ZMW 0.00" 
-                                            className="h-7 w-32 text-xs font-bold"
-                                            value={manualTotalDue}
-                                            onChange={(e) => setManualTotalDue(e.target.value)}
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground italic">No previous balance for this period. Setting a total will create an invoice.</p>
-                                </div>
-                            </div>
-                        )}
+                        ) : null}
 
-                        <div className="space-y-1 pt-2 border-t">
+                        <div className="space-y-4 pt-2 border-t">
                             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Payment Information</Label>
-                            <div className="space-y-4 pt-2">
+                            
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <Label>Record payment of (ZMW)</Label>
-                                    <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <Label>Method</Label>
-                                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Cash">Cash</SelectItem>
-                                                <SelectItem value="Bank Deposit">Bank Deposit</SelectItem>
-                                                <SelectItem value="Transfer">Transfer</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label>Ref #</Label>
-                                        <Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF ID" />
-                                    </div>
+                                    <Label>Date Received</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="w-full justify-start text-left font-normal h-9">
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {dateReceived ? format(dateReceived, 'PPP') : <span>Select date</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar mode="single" selected={dateReceived} onSelect={setDateReceived} initialFocus />
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label>Comment / Internal Note</Label>
-                                    <Textarea 
-                                        value={paymentComment} 
-                                        onChange={e => setPaymentComment(e.target.value)} 
-                                        placeholder="Add payment context or details..." 
-                                        rows={3}
-                                    />
+                                    <Label>Payment Method</Label>
+                                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Cash">Cash</SelectItem>
+                                            <SelectItem value="Bank Deposit">Bank Deposit</SelectItem>
+                                            <SelectItem value="Transfer">Transfer</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
+
+                            <div className="space-y-1">
+                                <Label>Amount to Credit (ZMW)</Label>
+                                <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label>Private Note / Description</Label>
+                                <Textarea 
+                                    value={paymentComment} 
+                                    onChange={e => setPaymentComment(e.target.value)} 
+                                    placeholder="e.g., Partial payment for tuition..." 
+                                    rows={3}
+                                />
+                            </div>
+
+                            <Alert className="bg-muted/50 border-none py-2">
+                                <Info className="h-3 w-3" />
+                                <AlertDescription className="text-[10px] font-medium leading-tight">
+                                    The <strong>Recorded Date</strong> will be automatically set to the exact time this entry is saved (Firebase Server Time) for audit purposes.
+                                </AlertDescription>
+                            </Alert>
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedSemesterId}>
-                            Finalize Payment
+                            Finalize & Record
                         </Button>
                     </DialogFooter>
                 </DialogContent>
