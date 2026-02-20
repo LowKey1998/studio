@@ -1,18 +1,20 @@
 const CACHE_NAME = 'edutrack360-v1';
-const ASSETS_TO_CACHE = [
+const urlsToCache = [
   '/',
   '/login',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        // We use a map to catch individual failures so one missing file doesn't crash the whole worker
+        return Promise.allSettled(
+          urlsToCache.map(url => cache.add(url))
+        );
+      })
   );
 });
 
@@ -32,8 +34,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
+    caches.match(event.request)
+      .then((response) => {
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      })
   );
 });

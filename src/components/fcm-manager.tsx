@@ -32,15 +32,35 @@ export function FCMManager() {
             return;
           }
 
-          const token = await getToken(messaging, { vapidKey });
+          // Register the background worker and pass config
+          const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          
+          // Send config to the worker
+          const config = {
+            apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+            authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+            projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+            storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+            messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+            appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+          };
+
+          if (registration.active) {
+            registration.active.postMessage({ type: 'SET_CONFIG', config });
+          } else {
+            registration.addEventListener('activate', () => {
+              registration.active?.postMessage({ type: 'SET_CONFIG', config });
+            });
+          }
+
+          const token = await getToken(messaging, { 
+            vapidKey,
+            serviceWorkerRegistration: registration
+          });
           
           if (token) {
-            // 1. Store token in DB for metadata (optional, but good for auditing)
             const tokenRef = ref(db, `users/${user.uid}/fcmTokens/${token}`);
             await set(tokenRef, true);
-
-            // 2. Subscribe the token to topics via Server Action
-            // This links the token to the user's UID topic and the 'broadcast' topic
             await subscribeToUserTopics(token, user.uid);
           }
         }
@@ -51,7 +71,6 @@ export function FCMManager() {
 
     initializeFCM();
 
-    // 1. Listen for real FCM messages (foreground)
     const unsubscribeFCM = onMessage(messaging, (payload) => {
       toast({
         title: payload.notification?.title || 'System Alert',
@@ -59,11 +78,9 @@ export function FCMManager() {
       });
     });
 
-    // 2. Local fallback: Listen for new DB notifications while app is open
     const notificationsRef = query(ref(db, `notifications/${user.uid}`), limitToLast(1));
     const unsubscribeDB = onChildAdded(notificationsRef, (snapshot) => {
         const data = snapshot.val();
-        // Only show if it's very recent (within last 10 seconds)
         if (data && Date.now() - data.timestamp < 10000) {
             toast({
                 title: 'Edutrack360',
