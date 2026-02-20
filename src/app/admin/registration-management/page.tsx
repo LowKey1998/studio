@@ -2,10 +2,10 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck, BookCopy } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck, BookCopy, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { db, auth, createNotification, getAllStudentAndStaffIds, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
@@ -451,6 +452,62 @@ export default function RegistrationManagementPage() {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
+    const semestersByProgramme = React.useMemo(() => {
+        const result: Record<string, Semester[]> = {};
+        allProgrammes.forEach(p => result[p.id] = []);
+        
+        semesters.forEach(s => {
+            const pathsUsingSem = allCoursePaths.filter(path => path.semesters && path.semesters[s.id]);
+            pathsUsingSem.forEach(path => {
+                if (!result[path.programmeId].find(existing => existing.id === s.id)) {
+                    result[path.programmeId].push(s);
+                }
+            });
+        });
+        return result;
+    }, [allProgrammes, semesters, allCoursePaths]);
+
+    // Preload bulk deadlines logic
+    React.useEffect(() => {
+        if (!bulkSelectedProgrammeId || !bulkSelectedPlanId || !isBulkDeadlineOpen) return;
+
+        const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
+        const targetSems = semestersByProgramme[bulkSelectedProgrammeId];
+        if (!plan || !targetSems || targetSems.length === 0) return;
+
+        // Attempt to preload from the first semester that has these deadlines set
+        let foundAny = false;
+        const newBulkDates: Record<number, Date | undefined> = {};
+        const eventsArray = Object.values(calendarEvents) as any[];
+
+        for (const sem of targetSems) {
+            let semMatchCount = 0;
+            const tempDates: Record<number, Date | undefined> = {};
+
+            for (let i = 0; i < plan.installments; i++) {
+                const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
+                const existingEvent = eventsArray.find(e => e.title?.trim() === fullTitle.trim());
+                if (existingEvent) {
+                    tempDates[i] = parseISO(existingEvent.date);
+                    semMatchCount++;
+                }
+            }
+
+            // If we found at least one date for this plan in this semester, preload the whole set from here
+            if (semMatchCount > 0) {
+                Object.assign(newBulkDates, tempDates);
+                foundAny = true;
+                break; 
+            }
+        }
+
+        if (foundAny) {
+            setBulkDeadlineDates(newBulkDates);
+        } else {
+            setBulkDeadlineDates({});
+        }
+    }, [bulkSelectedProgrammeId, bulkSelectedPlanId, isBulkDeadlineOpen, allPaymentPlans, semestersByProgramme, calendarEvents]);
+
     const handleSaveChanges = async () => {
         setSaving(true);
         try { 
@@ -631,56 +688,8 @@ export default function RegistrationManagementPage() {
         }
     };
 
-    const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
-        setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
-        setIsHistoryDialogOpen(true);
-    };
-
-    const globalMissingDeadlines = React.useMemo(() => {
-        return semesters.filter(s => {
-            if (s.status === 'Archived') return false;
-            const { isMissing, hasPlans } = getDeadlineSummary(s);
-            return hasPlans && isMissing;
-        });
-    }, [semesters, calendarEvents, allPaymentPlans]);
-
-    const semestersByProgramme = React.useMemo(() => {
-        const result: Record<string, Semester[]> = {};
-        allProgrammes.forEach(p => result[p.id] = []);
-        
-        semesters.forEach(s => {
-            const pathsUsingSem = allCoursePaths.filter(path => path.semesters && path.semesters[s.id]);
-            pathsUsingSem.forEach(path => {
-                if (!result[path.programmeId].find(existing => existing.id === s.id)) {
-                    result[path.programmeId].push(s);
-                }
-            });
-        });
-        return result;
-    }, [allProgrammes, semesters, allCoursePaths]);
-
     return (
         <div className="space-y-6">
-            {globalMissingDeadlines.length > 0 && !loading && (
-                <Alert variant="destructive" className="bg-orange-50 border-orange-200 text-orange-800">
-                    <AlertCircle className="h-4 w-4 text-orange-600" />
-                    <AlertTitle className="font-bold">Missing Payment Deadlines</AlertTitle>
-                    <AlertDescription className="space-y-2">
-                        <p>The following active semesters have linked payment plans but are missing installment deadlines in the Academic Calendar:</p>
-                        <ul className="list-disc pl-5 text-sm">
-                            {globalMissingDeadlines.map(s => <li key={s.id}>{s.name}</li>)}
-                        </ul>
-                        <Button 
-                            variant="link" 
-                            className="p-0 h-auto text-orange-700 font-bold hover:text-orange-900 underline"
-                            onClick={() => setIsBulkDeadlineOpen(true)}
-                        >
-                            Set Programme Deadlines &rarr;
-                        </Button>
-                    </AlertDescription>
-                </Alert>
-            )}
-
             <Card className="shadow-lg">
                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
@@ -781,9 +790,6 @@ export default function RegistrationManagementPage() {
                                                                                 )
                                                                             ) : (
                                                                                 <Badge variant="secondary">No Payment Plans</Badge>
-                                                                            )}
-                                                                            {semDetails.paymentThreshold !== undefined && (
-                                                                                <Badge variant="secondary" className="text-[10px]">Threshold: {semDetails.paymentThreshold}%</Badge>
                                                                             )}
                                                                         </div>
                                                                     </div>
