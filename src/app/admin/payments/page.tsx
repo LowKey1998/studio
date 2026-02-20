@@ -524,9 +524,31 @@ export default function PaymentsManagementPage() {
         );
         return { 
             intakeName: intake.name, 
-            standing: `Year ${state.year}, Sem ${state.semester}` 
+            standing: `Year ${state.year}, Sem ${state.semester}`,
+            intakeId: student.intakeId
         };
     }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
+
+    const selectedPeriodAudit = React.useMemo(() => {
+        if (!paymentSelectedUserId || !paymentSelectedYear || !paymentSelectedSemInYear || !selectedStudentContext) return null;
+        
+        const targetSem = semesters.find(s => 
+            s.intakeId === selectedStudentContext.intakeId && 
+            s.year === Number(paymentSelectedYear) && 
+            s.semesterInYear === Number(paymentSelectedSemInYear)
+        );
+
+        if (!targetSem) return { noRecord: true };
+
+        const info = paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === targetSem.id);
+        return {
+            semesterName: targetSem.name,
+            due: info?.totalDue || 0,
+            paid: info?.totalPaid || 0,
+            balance: info?.balance || 0,
+            exists: !!info
+        };
+    }, [paymentSelectedUserId, paymentSelectedYear, paymentSelectedSemInYear, selectedStudentContext, semesters, paymentInfos]);
 
     return (
         <div className="space-y-6">
@@ -764,6 +786,38 @@ export default function PaymentsManagementPage() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Semester Audit Context */}
+                            {paymentSelectedUserId && paymentSelectedYear && paymentSelectedSemInYear && (
+                                <div className="p-4 rounded-xl border bg-muted/30 space-y-3 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest opacity-70">Semester Audit</Label>
+                                        <Badge variant="outline" className="text-[8px] h-4 uppercase">{selectedPeriodAudit?.semesterName || 'Target period'}</Badge>
+                                    </div>
+                                    
+                                    {selectedPeriodAudit?.noRecord ? (
+                                        <div className="text-xs text-muted-foreground italic py-2 flex items-center gap-2">
+                                            <Info className="h-3 w-3"/>
+                                            No existing invoice found. A new one will be created on save.
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold text-muted-foreground uppercase leading-none">Total Due</p>
+                                                <p className="text-sm font-black text-foreground">ZMW {selectedPeriodAudit?.due.toFixed(2)}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold text-green-600 uppercase leading-none">Paid To Date</p>
+                                                <p className="text-sm font-black text-green-600">ZMW {selectedPeriodAudit?.paid.toFixed(2)}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold text-destructive uppercase leading-none">Remaining</p>
+                                                <p className="text-sm font-black text-destructive">ZMW {selectedPeriodAudit?.balance.toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-4 pt-4 border-t">
                             <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">3. Payment Details</Label>
@@ -776,8 +830,8 @@ export default function PaymentsManagementPage() {
                             <Alert className="bg-muted/50 border-0">
                                 <Clock className="h-4 w-4" />
                                 <AlertTitle className="text-[10px] font-black uppercase tracking-widest opacity-70">Audit Notice</AlertTitle>
-                                <AlertDescription className="text-[10px] italic">
-                                    The system will automatically record the current time as the "Recorded At" timestamp using the institutional server clock.
+                                <AlertDescription className="text-[10px] italic leading-tight">
+                                    The "Date Recorded" timestamp is automatically set by the institutional server clock to maintain a secure and tamper-proof audit trail.
                                 </AlertDescription>
                             </Alert>
                         </div>
