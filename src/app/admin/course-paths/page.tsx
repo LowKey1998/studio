@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, set, push, remove, update, get, serverTimestamp } from 'firebase/database';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -55,6 +55,9 @@ function CoursePathBuilderComponent() {
     
     const [isSemesterDialogOpen, setIsSemesterDialogOpen] = React.useState(false);
     const [newSemesters, setNewSemesters] = React.useState<NewSemesterEntry[]>([{ year: 1, semesterInYear: 1 }]);
+
+    const [isDeleteSemesterDialogOpen, setIsDeleteSemesterDialogOpen] = React.useState(false);
+    const [semesterToDeleteId, setSemesterToDeleteId] = React.useState<string | null>(null);
 
     // Course Path State
     const [selectedIntake, setSelectedIntake] = React.useState(intakeIdFromUrl || '');
@@ -266,21 +269,23 @@ function CoursePathBuilderComponent() {
         }
     };
 
-    const handleDeleteSemester = async (semesterId: string) => {
-        if (!window.confirm("Are you sure you want to delete this semester? This will also remove it from any existing course paths and timetables.")) return;
+    const confirmDeleteSemester = async () => {
+        if (!semesterToDeleteId) return;
         
         setSavingIntake(true);
         try {
             const updates: Record<string, any> = {};
-            updates[`/semesters/${semesterId}`] = null;
+            updates[`/semesters/${semesterToDeleteId}`] = null;
             coursePaths.forEach(path => {
-                if (path.semesters && path.semesters[semesterId]) {
-                    updates[`/coursePaths/${path.id}/semesters/${semesterId}`] = null;
+                if (path.semesters && path.semesters[semesterToDeleteId!]) {
+                    updates[`/coursePaths/${path.id}/semesters/${semesterToDeleteId!}`] = null;
                 }
             });
-            updates[`/timetables/${semesterId}`] = null;
+            updates[`/timetables/${semesterToDeleteId}`] = null;
             await update(ref(db), updates);
             toast({ title: "Semester Deleted" });
+            setIsDeleteSemesterDialogOpen(false);
+            setSemesterToDeleteId(null);
         } catch (e: any) {
             toast({ variant: 'destructive', title: "Delete Failed", description: e.message });
         } finally {
@@ -477,7 +482,7 @@ function CoursePathBuilderComponent() {
                                                                 courses={semesterCourses[sem.id] || []} 
                                                                 currentPath={currentPath} 
                                                                 onHistoryClick={openHistoryDialog} 
-                                                                onDeleteSemester={() => handleDeleteSemester(sem.id)}
+                                                                onDeleteSemester={() => { setSemesterToDeleteId(sem.id); setIsDeleteSemesterDialogOpen(true); }}
                                                             />
                                                         ))}
                                                     </div>
@@ -530,6 +535,23 @@ function CoursePathBuilderComponent() {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+                <AlertDialog open={isDeleteSemesterDialogOpen} onOpenChange={setIsDeleteSemesterDialogOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will remove this semester from the current course path and delete its academic record. This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => { setSemesterToDeleteId(null); setIsDeleteSemesterDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete Semester
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </CardContent>
         </Card>
     );

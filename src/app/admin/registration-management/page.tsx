@@ -53,6 +53,7 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
     Dialog,
@@ -492,6 +493,12 @@ export default function RegistrationManagementPage() {
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
+    // Confirmation states
+    const [isDeleteSemesterDialogOpen, setIsDeleteSemesterDialogOpen] = React.useState(false);
+    const [semesterToDeleteId, setSemesterToDeleteId] = React.useState<string | null>(null);
+    const [isDeleteDeadlineDialogOpen, setIsDeleteDeadlineDialogOpen] = React.useState(false);
+    const [deadlineToDeleteTitle, setDeadlineToDeleteTitle] = React.useState<string | null>(null);
+
     const { toast } = useToast();
     
     React.useEffect(() => {
@@ -511,7 +518,7 @@ export default function RegistrationManagementPage() {
                 case 3: setAllCoursePaths(Object.values(data)); break;
                 case 4: setActivePathSemesters(data); break;
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
-                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
+                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(data); break;
                 case 9: setTimetables(data); break;
@@ -562,45 +569,6 @@ export default function RegistrationManagementPage() {
         return (d >= start && d <= end);
     };
 
-    // Preload bulk deadlines logic
-    React.useEffect(() => {
-        if (!bulkSelectedProgrammeId || !bulkSelectedPlanId || !isBulkDeadlineOpen) return;
-
-        const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
-        const targetSems = semestersByProgramme[bulkSelectedProgrammeId];
-        if (!plan || !targetSems || targetSems.length === 0) return;
-
-        let foundAny = false;
-        const newBulkDates: Record<number, Date | null | undefined> = {};
-        const eventsArray = Object.values(calendarEvents) as any[];
-
-        for (const sem of targetSems) {
-            let semMatchCount = 0;
-            const tempDates: Record<number, Date | null | undefined> = {};
-
-            for (let i = 0; i < plan.installments; i++) {
-                const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
-                const existingEvent = eventsArray.find(e => e.title?.trim() === fullTitle.trim());
-                if (existingEvent) {
-                    tempDates[i] = parseISO(existingEvent.date);
-                    semMatchCount++;
-                }
-            }
-
-            if (semMatchCount > 0) {
-                Object.assign(newBulkDates, tempDates);
-                foundAny = true;
-                break; 
-            }
-        }
-
-        if (foundAny) {
-            setBulkDeadlineDates(newBulkDates);
-        } else {
-            setBulkDeadlineDates({});
-        }
-    }, [bulkSelectedProgrammeId, bulkSelectedPlanId, isBulkDeadlineOpen, allPaymentPlans, semestersByProgramme, calendarEvents]);
-
     const handleSaveChanges = async () => {
         setSaving(true);
         try { 
@@ -620,18 +588,33 @@ export default function RegistrationManagementPage() {
       });
     };
 
-    const handleDeleteSemester = async (semesterId: string) => {
-        if (!window.confirm("Are you sure? This will remove the semester and its course mappings.")) return;
+    const confirmDeleteSemester = async () => {
+        if (!semesterToDeleteId) return;
+        setSaving(true);
         try {
             const updates: Record<string, any> = {};
-            updates[`/semesters/${semesterId}`] = null;
-            allCoursePaths.forEach(path => { if (path.semesters && path.semesters[semesterId]) updates[`/coursePaths/${path.id}/semesters/${semesterId}`] = null; });
+            updates[`/semesters/${semesterToDeleteId}`] = null;
+            allCoursePaths.forEach(path => { 
+                if (path.semesters && path.semesters[semesterToDeleteId!]) {
+                    updates[`/coursePaths/${path.id}/semesters/${semesterToDeleteId!}`] = null; 
+                }
+            });
             const nextOfferings = { ...activePathSemesters };
-            Object.keys(nextOfferings).forEach(pId => { if (nextOfferings[pId]?.[semesterId]) delete nextOfferings[pId][semesterId]; });
+            Object.keys(nextOfferings).forEach(pId => { 
+                if (nextOfferings[pId]?.[semesterToDeleteId!]) {
+                    delete nextOfferings[pId][semesterToDeleteId!]; 
+                }
+            });
             updates[`/semesterOfferings`] = nextOfferings;
             await update(ref(db), updates);
             toast({ title: "Semester Deleted" });
-        } catch (e: any) { toast({ variant: 'destructive', title: "Delete Failed" }); }
+            setIsDeleteSemesterDialogOpen(false);
+            setSemesterToDeleteId(null);
+        } catch (e: any) { 
+            toast({ variant: 'destructive', title: "Delete Failed" }); 
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleOpenDeadlineDialog = async (semester: Semester) => {
@@ -920,7 +903,7 @@ export default function RegistrationManagementPage() {
                                                                         )}
                                                                         <div className="flex gap-1">
                                                                             <Button variant="ghost" size="icon" onClick={() => { setEditingSemester(semDetails); setIsEditDialogOpen(true); }} title="Edit Semester Settings"><Pencil className="h-4 w-4"/></Button>
-                                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteSemester(semId)} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
+                                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -1048,7 +1031,7 @@ export default function RegistrationManagementPage() {
                                                                 </PopoverContent>
                                                             </Popover>
                                                             {currentVal && (
-                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => setDeadlineDates(prev => ({...prev, [fullTitle]: null}))}>
+                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => { setDeadlineToDeleteTitle(fullTitle); setIsDeleteDeadlineDialogOpen(true); }}>
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </Button>
                                                             )}
@@ -1194,7 +1177,7 @@ export default function RegistrationManagementPage() {
                                                                 </PopoverContent>
                                                             </Popover>
                                                             {currentVal && (
-                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => setBulkDeadlineDates(prev => ({...prev, [i]: null}))}>
+                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => { setDeadlineToDeleteTitle(`bulk-${i}`); setIsDeleteDeadlineDialogOpen(true); }}>
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </Button>
                                                             )}
@@ -1238,6 +1221,49 @@ export default function RegistrationManagementPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={isDeleteSemesterDialogOpen} onOpenChange={setIsDeleteSemesterDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete the semester and its associated registration offerings. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { setSemesterToDeleteId(null); setIsDeleteSemesterDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete Semester
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isDeleteDeadlineDialogOpen} onOpenChange={setIsDeleteDeadlineDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove Deadline?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to clear this installment deadline? This will be finalized when you save the form.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { setDeadlineToDeleteTitle(null); setIsDeleteDeadlineDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => {
+                            if (deadlineToDeleteTitle?.startsWith('bulk-')) {
+                                const index = parseInt(deadlineToDeleteTitle.split('-')[1]);
+                                setBulkDeadlineDates(prev => ({...prev, [index]: null}));
+                            } else if (deadlineToDeleteTitle) {
+                                setDeadlineDates(prev => ({...prev, [deadlineToDeleteTitle]: null}));
+                            }
+                            setIsDeleteDeadlineDialogOpen(false);
+                            setDeadlineToDeleteTitle(null);
+                        }} className="bg-destructive text-destructive-foreground">
+                            Remove Date
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
