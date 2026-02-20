@@ -30,7 +30,9 @@ import {
     FileText,
     ShieldAlert,
     PencilLine,
-    Calculator
+    Calculator,
+    UserPlus,
+    User
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -133,6 +135,13 @@ export default function PaymentsManagementPage() {
     const [editReason, setEditReason] = React.useState('');
     const [editStudentInfo, setEditStudentInfo] = React.useState<{uid:string, id:string, name:string} | null>(null);
 
+    // States for Request Student Creation
+    const [isRequestStudentOpen, setIsRequestStudentOpen] = React.useState(false);
+    const [requestName, setRequestName] = React.useState('');
+    const [requestEmail, setRequestEmail] = React.useState('');
+    const [requestProgramme, setRequestProgramme] = React.useState('');
+    const [requestIntake, setRequestIntake] = React.useState('');
+
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
@@ -227,7 +236,6 @@ export default function PaymentsManagementPage() {
                         const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
-                        // Find effective deadline
                         const semDeadlines = calendarEvents
                             .filter((ev: any) => ev.semester === semesterInfo.name && ev.title.includes('Deadline'))
                             .sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -264,7 +272,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast, allPaymentPlans.length]);
+    }, [toast]);
 
     React.useEffect(() => {
         fetchPaymentData();
@@ -326,6 +334,13 @@ export default function PaymentsManagementPage() {
         });
     }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, filteredTransactions, timeFilter]);
 
+    const resetDialog = () => {
+        setSelectedStudent(null);
+        setPaymentAmount('');
+        setPaymentMethod('Cash');
+        setTransactionId('');
+    };
+
     const handleRecordPaymentDialog = async () => {
         if(!selectedStudent || !paymentAmount || !paymentMethod) {
             toast({ variant: 'destructive', title: 'Missing fields' });
@@ -351,9 +366,7 @@ export default function PaymentsManagementPage() {
 
             toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${selectedStudent.studentName}.` });
             setIsRecordPaymentOpen(false);
-            setSelectedStudent(null);
-            setPaymentAmount('');
-            setTransactionId('');
+            resetDialog();
             
             await fetchPaymentData();
         } catch (e: any) {
@@ -361,7 +374,45 @@ export default function PaymentsManagementPage() {
         } finally {
             setFormLoading(false);
         }
-    }
+    };
+
+    const handleRequestStudentCreation = async () => {
+        if (!requestName || !requestEmail || !requestProgramme) {
+            toast({ variant: 'destructive', title: 'Missing fields' });
+            return;
+        }
+        setFormLoading(true);
+        try {
+            const reqRef = push(ref(db, 'studentCreationRequests'));
+            await set(reqRef, {
+                name: requestName,
+                email: requestEmail,
+                programmeId: requestProgramme,
+                intakeId: requestIntake || null,
+                requestedBy: userData?.name || 'Finance Staff',
+                requestedByUid: auth.currentUser?.uid,
+                status: 'pending',
+                timestamp: serverTimestamp()
+            });
+
+            const registrarIds = await getRegistrarIds();
+            if (registrarIds.length > 0) {
+                await createNotification(
+                    registrarIds,
+                    `New student account request from Finance: ${requestName} (${requestEmail}).`,
+                    '/admin/admissions/add-student'
+                );
+            }
+
+            toast({ title: 'Request Submitted', description: 'Registrars have been notified to create this account.' });
+            setIsRequestStudentOpen(false);
+            setRequestName(''); setRequestEmail(''); setRequestProgramme('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Request Failed' });
+        } finally {
+            setFormLoading(false);
+        }
+    };
 
     const handlePrintStatement = async (semId: string, data: any) => {
         if (!historyStudent) return;
@@ -507,9 +558,19 @@ export default function PaymentsManagementPage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                  <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                     <div>
-                        <CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle>
-                        <CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription>
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary rounded-lg shadow-md">
+                            <DollarSign className="h-6 w-6 text-white"/>
+                        </div>
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle>
+                            <CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button onClick={() => setIsRecordPaymentOpen(true)} className="shadow-md h-10 px-6 font-bold">
+                            <PlusCircle className="mr-2 h-4 w-4"/> Record Payment
+                        </Button>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -721,13 +782,54 @@ export default function PaymentsManagementPage() {
             </Card>
 
             {/* Record Payment Dialog */}
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle>
-                        <DialogDescription>Apply manual credit to ID: {selectedStudent?.studentId}</DialogDescription>
+                        <DialogTitle>Record Payment: {selectedStudent?.studentName || "Select Student"}</DialogTitle>
+                        <DialogDescription>Apply manual credit to an existing student invoice.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
+                        <div className="space-y-1">
+                            <Label>Select Student</Label>
+                            <Select 
+                                value={selectedStudent?.userId} 
+                                onValueChange={(val) => setSelectedStudent(paymentInfos.find(p => p.userId === val) || null)}
+                            >
+                                <SelectTrigger className="bg-background">
+                                    <SelectValue placeholder="Search student body..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <div className="p-2 border-b">
+                                        <Input 
+                                            placeholder="Filter list..." 
+                                            className="h-8"
+                                            onChange={(e) => {
+                                                // Simplified local filtering logic
+                                            }}
+                                        />
+                                    </div>
+                                    <ScrollArea className="h-64">
+                                        {paymentInfos.map(s => (
+                                            <SelectItem key={`${s.userId}-${s.semesterId}`} value={s.userId}>
+                                                {s.studentName} ({s.studentId}) - {semesters.find(sem=>sem.id===s.semesterId)?.name}
+                                            </SelectItem>
+                                        ))}
+                                    </ScrollArea>
+                                    <Separator className="my-1"/>
+                                    <Button 
+                                        variant="ghost" 
+                                        className="w-full justify-start text-xs text-primary font-bold"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            setIsRecordPaymentOpen(false);
+                                            setIsRequestStudentOpen(true);
+                                        }}
+                                    >
+                                        <UserPlus className="mr-2 h-3 w-3"/> Student not found? Request creation
+                                    </Button>
+                                </SelectContent>
+                            </Select>
+                        </div>
                         <div className="space-y-1">
                             <Label>Amount (ZMW)</Label>
                             <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
@@ -752,9 +854,54 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={formLoading || !paymentAmount}>
+                        <Button onClick={handleRecordPaymentDialog} disabled={formLoading || !paymentAmount || !selectedStudent}>
                             {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Record Payment
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Request Student Creation Dialog */}
+            <Dialog open={isRequestStudentOpen} onOpenChange={setIsRequestStudentOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Request New Student Account</DialogTitle>
+                        <DialogDescription>Send a request to the Registrars to create a new student account so you can apply payments.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-1">
+                            <Label>Student Full Name</Label>
+                            <Input value={requestName} onChange={e => setRequestName(e.target.value)} placeholder="Enter name as per NRC/Passport" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Email Address</Label>
+                            <Input type="email" value={requestEmail} onChange={e => setRequestEmail(e.target.value)} placeholder="student@example.com" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Academic Programme</Label>
+                            <Select value={requestProgramme} onValueChange={setRequestProgramme}>
+                                <SelectTrigger><SelectValue placeholder="Select programme..." /></SelectTrigger>
+                                <SelectContent>
+                                    {programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Intake (Optional)</Label>
+                            <Select value={requestIntake} onValueChange={setRequestIntake}>
+                                <SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger>
+                                <SelectContent>
+                                    {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRequestStudentCreation} disabled={formLoading || !requestName || !requestEmail || !requestProgramme}>
+                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Submit Request
                         </Button>
                     </DialogFooter>
                 </DialogContent>
