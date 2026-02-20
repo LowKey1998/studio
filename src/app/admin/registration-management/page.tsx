@@ -102,6 +102,7 @@ const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | nu
     const d = startOfDay(date);
     const start = startOfDay(parseISO(sem.startDate));
     const end = startOfDay(parseISO(sem.endDate));
+    // Strict range validation
     return (d >= start && d <= end);
 };
 
@@ -674,10 +675,14 @@ export default function RegistrationManagementPage() {
             for (let i = 0; i < plan.installments; i++) {
                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
                 const event = Object.values(calendarEvents).find((e: any) => e.title?.trim() === title.trim()) as any;
+                
                 if (!event) {
                     isMissing = true;
-                } else if (!isDateInSemesterRange(parseISO(event.date), semester)) {
-                    isOutOfRange = true;
+                } else {
+                    const dateObj = parseISO(event.date);
+                    if (!isDateInSemesterRange(dateObj, semester)) {
+                        isOutOfRange = true;
+                    }
                 }
                 summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
             }
@@ -1089,7 +1094,7 @@ export default function RegistrationManagementPage() {
                                                                         !currentVal && "text-muted-foreground",
                                                                         !isValid && "border-destructive text-destructive bg-destructive/5"
                                                                     )}>
-                                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                                                                         {currentVal ? format(currentVal, 'PPP') : <span>Pick a date</span>}
                                                                     </Button>
                                                                 </PopoverTrigger>
