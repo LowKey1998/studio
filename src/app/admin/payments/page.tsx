@@ -133,6 +133,7 @@ export default function PaymentsManagementPage() {
     const [transactionId, setTransactionId] = React.useState('');
     const [paymentComment, setPaymentComment] = React.useState('');
     const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
+    const [manualTotalDue, setManualTotalDue] = React.useState('');
 
     // States for Edit Request Dialog
     const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
@@ -351,6 +352,7 @@ export default function PaymentsManagementPage() {
         setTransactionId('');
         setPaymentComment('');
         setDialogSearchTerm('');
+        setManualTotalDue('');
     };
 
     const handleRecordPaymentDialog = () => {
@@ -359,6 +361,13 @@ export default function PaymentsManagementPage() {
             toast({ variant: 'destructive', title: 'Missing fields' });
             return;
         }
+
+        // Handle manual total update if set
+        if ((info.totalDue <= 0 || !info.totalDue) && manualTotalDue) {
+            const invoiceRef = ref(db, `invoices/${info.userId}/${info.invoiceId}`);
+            update(invoiceRef, { totalTuition: parseFloat(manualTotalDue) });
+        }
+
         const amount = parseFloat(paymentAmount);
         const txRef = push(ref(db, 'transactions'));
         const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
@@ -575,6 +584,9 @@ export default function PaymentsManagementPage() {
         return studentSemestersForPayment.find(p => p.semesterId === paymentSelectedSemesterId) || null;
     }, [studentSemestersForPayment, paymentSelectedSemesterId]);
 
+    const currentTotalDue = activePaymentInfo ? (manualTotalDue ? parseFloat(manualTotalDue) : activePaymentInfo.totalDue) : 0;
+    const currentBalanceCalc = activePaymentInfo ? (currentTotalDue - activePaymentInfo.totalPaid) : 0;
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -651,7 +663,7 @@ export default function PaymentsManagementPage() {
                 <CardContent className="pt-6">
                     <div className="flex flex-wrap gap-4 mb-6 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="w-48">
-                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Activity Period</Label>
+                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block opacity-70">Activity Period</Label>
                             <Select value={timeFilter} onValueChange={val => setTimeFilter(val as any)}>
                                 <SelectTrigger className="h-9 bg-background"><SelectValue /></SelectTrigger>
                                 <SelectContent>
@@ -666,7 +678,7 @@ export default function PaymentsManagementPage() {
                         </div>
                         {timeFilter === 'period' && (
                             <div className="w-64 animate-in fade-in slide-in-from-left-2">
-                                <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Date Range</Label>
+                                <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block opacity-70">Date Range</Label>
                                 <Popover>
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="w-full justify-start h-9 text-xs font-normal">
@@ -679,14 +691,14 @@ export default function PaymentsManagementPage() {
                             </div>
                         )}
                         <div className="w-48">
-                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Cohort Filter</Label>
+                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block opacity-70">Cohort Filter</Label>
                             <Select value={intakeFilter} onValueChange={setIntakeFilter}>
-                                <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
+                                <SelectTrigger className="h-9 bg-background shadow-sm h-10 border-primary/20"><SelectValue placeholder="All Intakes"/></SelectTrigger>
                                 <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="flex-1 min-w-[200px]">
-                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Search Student</Label>
+                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block opacity-70">Search Student</Label>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input className="pl-8 h-9 shadow-sm" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -891,9 +903,22 @@ export default function PaymentsManagementPage() {
                                     <Calculator className="h-3 w-3" /> Semester Financial Summary
                                 </h4>
                                 <div className="space-y-1">
-                                    <div className="flex justify-between text-xs font-medium">
+                                    <div className="flex justify-between items-center text-xs font-medium">
                                         <span>Total Due:</span>
-                                        <span className="font-mono">ZMW {activePaymentInfo.totalDue.toFixed(2)}</span>
+                                        {(activePaymentInfo.totalDue > 0) ? (
+                                            <span className="font-mono">ZMW {activePaymentInfo.totalDue.toFixed(2)}</span>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-muted-foreground italic">(Not Set)</span>
+                                                <Input 
+                                                    type="number" 
+                                                    placeholder="Set Total" 
+                                                    className="h-7 w-24 text-[10px] font-bold"
+                                                    value={manualTotalDue}
+                                                    onChange={(e) => setManualTotalDue(e.target.value)}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex justify-between text-xs text-green-600 font-medium">
                                         <span>Amount Already Paid:</span>
@@ -902,7 +927,7 @@ export default function PaymentsManagementPage() {
                                     <Separator className="my-1"/>
                                     <div className="flex justify-between text-sm font-black text-destructive">
                                         <span>Current Balance:</span>
-                                        <span className="font-mono">ZMW {activePaymentInfo.balance.toFixed(2)}</span>
+                                        <span className="font-mono">ZMW {currentBalanceCalc.toFixed(2)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -946,7 +971,7 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !activePaymentInfo}>
+                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !activePaymentInfo || (activePaymentInfo.totalDue <= 0 && !manualTotalDue)}>
                             Finalize Payment
                         </Button>
                     </DialogFooter>
