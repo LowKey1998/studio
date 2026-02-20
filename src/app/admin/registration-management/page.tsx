@@ -1,9 +1,11 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -477,13 +479,13 @@ export default function RegistrationManagementPage() {
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [eventMap, setEventMap] = React.useState<Map<string, { date: string, id: string }>>(new Map());
-    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | undefined>>({});
+    const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | null | undefined>>({});
 
     // Bulk deadline state
     const [isBulkDeadlineOpen, setIsBulkDeadlineOpen] = React.useState(false);
     const [bulkSelectedProgrammeId, setBulkSelectedProgrammeId] = React.useState('');
     const [bulkSelectedPlanId, setBulkSelectedPlanId] = React.useState('');
-    const [bulkDeadlineDates, setBulkDeadlineDates] = React.useState<Record<number, Date | undefined>>({});
+    const [bulkDeadlineDates, setBulkDeadlineDates] = React.useState<Record<number, Date | null | undefined>>({});
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -562,12 +564,12 @@ export default function RegistrationManagementPage() {
         if (!plan || !targetSems || targetSems.length === 0) return;
 
         let foundAny = false;
-        const newBulkDates: Record<number, Date | undefined> = {};
+        const newBulkDates: Record<number, Date | null | undefined> = {};
         const eventsArray = Object.values(calendarEvents) as any[];
 
         for (const sem of targetSems) {
             let semMatchCount = 0;
-            const tempDates: Record<number, Date | undefined> = {};
+            const tempDates: Record<number, Date | null | undefined> = {};
 
             for (let i = 0; i < plan.installments; i++) {
                 const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
@@ -670,6 +672,10 @@ export default function RegistrationManagementPage() {
                                     semester: semesterName
                                 };
                             }
+                        } else if (date === null || (deadlineDates.hasOwnProperty(fullTitle) && !date)) {
+                            if (existingEvent) {
+                                updates[`calendarEvents/${existingEvent.id}`] = null;
+                            }
                         }
                     }
                 } else {
@@ -711,7 +717,7 @@ export default function RegistrationManagementPage() {
         return { summary, isMissing, hasPlans: plans.length > 0 };
     };
 
-    const isDateInSemesterRange = (date: Date | undefined, sem: Semester | null) => {
+    const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
         if (!date || !sem || !sem.startDate || !sem.endDate) return true;
         const d = startOfDay(date);
         const start = startOfDay(parseISO(sem.startDate));
@@ -723,12 +729,6 @@ export default function RegistrationManagementPage() {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
         if (!bulkSelectedProgrammeId || !plan) {
             toast({ variant: 'destructive', title: 'Missing Selections', description: 'Please select a programme and a payment plan.' });
-            return;
-        }
-
-        const validDeadlinesCount = Object.keys(bulkDeadlineDates).filter(idx => bulkDeadlineDates[Number(idx)]).length;
-        if (validDeadlinesCount < plan.installments) {
-            toast({ variant: 'destructive', title: 'Incomplete Deadlines', description: 'Please set a date for all installments.' });
             return;
         }
 
@@ -752,15 +752,21 @@ export default function RegistrationManagementPage() {
                     const date = bulkDeadlineDates[i];
                     
                     const existing = existingEvents.find(e => e.title?.trim() === fullTitle.trim());
-                    if (existing) {
-                        updates[`calendarEvents/${existing.id}/date`] = format(date!, 'yyyy-MM-dd');
-                    } else {
-                        const newRef = push(ref(db, 'calendarEvents'));
-                        updates[`calendarEvents/${newRef.key}`] = {
-                            title: fullTitle,
-                            date: format(date!, 'yyyy-MM-dd'),
-                            semester: sem.name
-                        };
+                    if (date) {
+                        if (existing) {
+                            updates[`calendarEvents/${existing.id}/date`] = format(date!, 'yyyy-MM-dd');
+                        } else {
+                            const newRef = push(ref(db, 'calendarEvents'));
+                            updates[`calendarEvents/${newRef.key}`] = {
+                                title: fullTitle,
+                                date: format(date!, 'yyyy-MM-dd'),
+                                semester: sem.name
+                            };
+                        }
+                    } else if (date === null || (bulkDeadlineDates.hasOwnProperty(i) && !date)) {
+                        if (existing) {
+                            updates[`calendarEvents/${existing.id}`] = null;
+                        }
                     }
                 }
             }
@@ -1009,21 +1015,28 @@ export default function RegistrationManagementPage() {
                                                                 </Badge>
                                                             )}
                                                         </div>
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
-                                                                <Button variant="outline" className={cn(
-                                                                    "w-full justify-start text-left font-normal", 
-                                                                    !currentVal && "text-muted-foreground",
-                                                                    !isValid && "border-destructive text-destructive bg-destructive/5"
-                                                                )}>
-                                                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                                                    {currentVal ? format(currentVal, 'PPP') : <span>Pick a date</span>}
+                                                        <div className="flex items-center gap-2">
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button variant="outline" className={cn(
+                                                                        "w-full justify-start text-left font-normal", 
+                                                                        !currentVal && "text-muted-foreground",
+                                                                        !isValid && "border-destructive text-destructive bg-destructive/5"
+                                                                    )}>
+                                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                        {currentVal ? format(currentVal, 'PPP') : <span>Pick a date</span>}
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-0" align="end">
+                                                                    <Calendar mode="single" selected={currentVal || undefined} onSelect={(d) => setDeadlineDates(prev => ({...prev, [fullTitle]: d}))} initialFocus />
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                            {currentVal && (
+                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => setDeadlineDates(prev => ({...prev, [fullTitle]: null}))}>
+                                                                    <Trash2 className="h-4 w-4" />
                                                                 </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-auto p-0" align="end">
-                                                                <Calendar mode="single" selected={currentVal} onSelect={(d) => setDeadlineDates(prev => ({...prev, [fullTitle]: d}))} initialFocus />
-                                                            </PopoverContent>
-                                                        </Popover>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 )
                                             })}
@@ -1148,21 +1161,28 @@ export default function RegistrationManagementPage() {
                                                                 </Popover>
                                                             )}
                                                         </div>
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
-                                                                <Button variant="outline" className={cn(
-                                                                    "w-full justify-start text-left font-normal border-primary/20", 
-                                                                    !currentVal && "text-muted-foreground",
-                                                                    invalidSems.length > 0 && "border-destructive text-destructive"
-                                                                )}>
-                                                                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                                                                    {currentVal ? format(currentVal!, 'PPP') : <span>Pick a date</span>}
+                                                        <div className="flex items-center gap-2">
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button variant="outline" className={cn(
+                                                                        "w-full justify-start text-left font-normal border-primary/20", 
+                                                                        !currentVal && "text-muted-foreground",
+                                                                        invalidSems.length > 0 && "border-destructive text-destructive"
+                                                                    )}>
+                                                                        <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                                                                        {currentVal ? format(currentVal!, 'PPP') : <span>Pick a date</span>}
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-0" align="end">
+                                                                    <Calendar mode="single" selected={currentVal || undefined} onSelect={(d) => setBulkDeadlineDates(prev => ({...prev, [i]: d}))} initialFocus />
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                            {currentVal && (
+                                                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => setBulkDeadlineDates(prev => ({...prev, [i]: null}))}>
+                                                                    <Trash2 className="h-4 w-4" />
                                                                 </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-auto p-0" align="end">
-                                                                <Calendar mode="single" selected={currentVal} onSelect={(d) => setBulkDeadlineDates(prev => ({...prev, [i]: d}))} initialFocus />
-                                                            </PopoverContent>
-                                                        </Popover>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 )
                                             })}
@@ -1176,7 +1196,7 @@ export default function RegistrationManagementPage() {
                         <Button variant="outline" onClick={() => setIsBulkDeadlineOpen(false)}>Cancel</Button>
                         <Button 
                             onClick={handleSaveBulkDeadlines} 
-                            disabled={saving || !bulkSelectedPlanId || !bulkSelectedProgrammeId || Object.keys(bulkDeadlineDates).length < (allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0)}
+                            disabled={saving || !bulkSelectedPlanId || !bulkSelectedProgrammeId}
                         >
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                             Apply Programme Deadlines
