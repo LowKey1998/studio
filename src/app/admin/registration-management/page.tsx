@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -73,6 +74,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 // --- CONSTANTS ---
