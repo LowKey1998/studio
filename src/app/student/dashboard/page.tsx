@@ -344,7 +344,7 @@ export default function StudentDashboardPage() {
         });
 
         return () => unsub();
-    }, [user, userProfile, toast, serverTimeOffset, semesters]);
+    }, [user, userProfile, toast, serverTimeOffset]);
 
     if (authLoading || loading) return <Skeleton className="h-screen w-full" />;
 
