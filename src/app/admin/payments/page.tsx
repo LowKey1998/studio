@@ -13,7 +13,6 @@ import {
     Scale, 
     Trash2, 
     ChevronsUpDown, 
-    Link as LinkIcon, 
     Info, 
     X, 
     History, 
@@ -23,15 +22,13 @@ import {
     AlertTriangle, 
     CalendarDays, 
     TrendingUp, 
-    BookOpen, 
-    UserCheck, 
     Filter,
     Calendar as CalendarIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
+import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { ref, get, update, set, push, onValue } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -42,16 +39,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { useAuth } from '@/hooks/use-auth';
+import type { DateRange } from 'react-day-picker';
 
+// --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
     userId: string;
     studentId: string;
@@ -68,29 +63,6 @@ type StudentPaymentInfo = {
     thresholdMet: boolean;
 };
 
-type PaymentRecord = {
-    key: number;
-    isUnlinked?: boolean;
-    reference?: string;
-    userId?: string;
-    semesterId?: string;
-    invoiceId?: string;
-    totalDue?: string; 
-    totalPaid?: number;
-    amount: string;
-    comment: string;
-};
-
-type UnlinkedPayment = {
-    id: string;
-    reference: string;
-    amount: number;
-    comment: string;
-    date: string;
-    semesterId?: string;
-    totalDue?: number;
-};
-
 type Transaction = {
     key: string;
     transactionId: string;
@@ -103,16 +75,16 @@ type Transaction = {
     comment?: string;
     semesterName?: string;
     semesterId?: string;
-    academicStanding?: string;
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; paymentThreshold?: number; gracePeriodDays?: number; };
-type Fee = { id: string; name: string; amount: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentThreshold?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; };
+type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
+// --- HELPERS ---
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
     value: string | undefined;
@@ -190,15 +162,13 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 export default function PaymentsManagementPage() {
     const { userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
-    const [unlinkedPayments, setUnlinkedPayments] = React.useState<UnlinkedPayment[]>([]);
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
     const [programmes, setProgrammes] = React.useState<any[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [courses, setCourses] = React.useState<Record<string, any>>({});
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
-    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
-    const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
+    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [courses, setCourses] = React.useState<Record<string, any>>({});
     
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -215,54 +185,41 @@ export default function PaymentsManagementPage() {
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [transactionId, setTransactionId] = React.useState('');
 
-    const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
-    const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
 
     const { toast } = useToast();
-
-    React.useEffect(() => {
-        const offsetRef = ref(db, '.info/serverTimeOffset');
-        onValue(offsetRef, (snap) => {
-            setServerTimeOffset(snap.val() || 0);
-        });
-    }, []);
-
-    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, unlinkedSnap, intakesSnap, calendarSnap, invoicesSnap, coursesSnap, financialSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
-                get(ref(db, 'unlinkedPayments')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'invoices')),
                 get(ref(db, 'courses')),
-                get(ref(db, 'settings/financialSettings'))
+                get(ref(db, 'settings/financialSettings')),
+                get(ref(db, 'settings/paymentPlans'))
             ]);
             
-            if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
-            if (semestersSnap.exists()) setSemesters(Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id]})));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
-            if (calendarSnap.exists()) setCalendarSettings(calendarSnap.val());
-            if (coursesSnap.exists()) setCourses(coursesSnap.val());
-
-            if (unlinkedSnap.exists()) {
-                setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
-            } else {
-                setUnlinkedPayments([]);
-            }
-
             const users = usersSnap.val() || {};
+            const registrations = regsSnap.val() || {};
+            const transactionsData = transactionsSnap.val() || {};
+            const allSemestersData = semestersSnap.val() || {};
             const allInvoices = invoicesSnap.val() || {};
+            const fSettings = financialSnap.val() || { paymentThreshold: 75 };
+
+            if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
+            if (semestersSnap.exists()) setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
+            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
+            if (coursesSnap.exists()) setCourses(coursesSnap.val());
+            if (plansSnap.exists()) setAllPaymentPlans(Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] })));
+
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
                 if (users[uid].role?.toLowerCase() === 'student') {
@@ -271,10 +228,6 @@ export default function PaymentsManagementPage() {
             }
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
 
-            const registrations = regsSnap.val() || {};
-            const transactionsData = transactionsSnap.val() || {};
-            const allSemestersData = semestersSnap.val() || {};
-            
             const transactionsList: Transaction[] = [];
             for (const txId in transactionsData) {
                 const tx = transactionsData[txId];
@@ -290,13 +243,12 @@ export default function PaymentsManagementPage() {
                     ...tx,
                     semesterId,
                     semesterName: semesterInfo?.name,
-                    academicStanding: semesterInfo ? `Y${semesterInfo.year}S${semesterInfo.semesterInYear}` : undefined
                 });
             }
             setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
-            const globalThreshold = financialSnap.val()?.paymentThreshold || 75;
+            const globalThreshold = fSettings.paymentThreshold || 75;
 
             for (const userId in registrations) {
                  const user = users[userId];
@@ -347,30 +299,24 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast, semesters]);
+    }, [toast]); // Removed 'semesters' from dependency array to break potential loop
 
     React.useEffect(() => {
         fetchPaymentData();
     }, [fetchPaymentData]);
 
     const filteredTransactions = React.useMemo(() => {
-        const now = getCurrentServerDate();
-        const startOfW = startOfWeek(now, { weekStartsOn: 1 });
-        const endOfW = endOfWeek(now, { weekStartsOn: 1 });
-        const startOfM = startOfMonth(now);
-        const endOfM = endOfMonth(now);
-
         return rawTransactions.filter(tx => {
             const date = parseISO(tx.paymentDate);
             switch(timeFilter) {
                 case 'today': return isToday(date);
-                case 'week': return isWithinInterval(date, { start: startOfW, end: endOfW });
-                case 'month': return isWithinInterval(date, { start: startOfM, end: endOfM });
+                case 'week': return isWithinInterval(date, { start: startOfWeek(new Date(), { weekStartsOn: 1 }), end: endOfWeek(new Date(), { weekStartsOn: 1 }) });
+                case 'month': return isWithinInterval(date, { start: startOfMonth(new Date()), end: endOfMonth(new Date()) });
                 case 'period': return customRange?.from && customRange?.to ? isWithinInterval(date, { start: customRange.from, end: customRange.to }) : true;
                 default: return true;
             }
         });
-    }, [rawTransactions, timeFilter, customRange, serverTimeOffset]);
+    }, [rawTransactions, timeFilter, customRange]);
 
     const filteredData = React.useMemo(() => {
         const uidsInPeriod = new Set(filteredTransactions.map(t => t.userId));
@@ -382,8 +328,6 @@ export default function PaymentsManagementPage() {
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            
-            // If a group filter is active (searching for specific people), bypass the time filter.
             const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && timeMatch;
@@ -401,160 +345,6 @@ export default function PaymentsManagementPage() {
         const periodCollected = filteredTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         return { ...stats, periodCollected };
     }, [filteredData, filteredTransactions]);
-
-    const revenueMetrics = React.useMemo(() => {
-        const now = getCurrentServerDate();
-        const startOfW = startOfWeek(now, { weekStartsOn: 1 });
-        const endOfW = endOfWeek(now, { weekStartsOn: 1 });
-        const startOfM = startOfMonth(now);
-        const endOfM = endOfMonth(now);
-
-        const metrics = {
-            today: 0,
-            week: 0,
-            month: 0,
-            bySemester: new Map<string, { total: number, start?: string, end?: string, name: string }>()
-        };
-
-        rawTransactions.forEach(tx => {
-            const date = parseISO(tx.paymentDate);
-            const amount = tx.amount || 0;
-
-            if (isToday(date)) metrics.today += amount;
-            if (isWithinInterval(date, { start: startOfW, end: endOfW })) metrics.week += amount;
-            if (isWithinInterval(date, { start: startOfM, end: endOfM })) metrics.month += amount;
-
-            if (tx.semesterId) {
-                if (!metrics.bySemester.has(tx.semesterId)) {
-                    const semInfo = semesters.find(s => s.id === tx.semesterId);
-                    metrics.bySemester.set(tx.semesterId, { 
-                        total: 0, 
-                        name: semInfo?.name || 'Unknown',
-                        start: semInfo?.startDate,
-                        end: semInfo?.endDate
-                    });
-                }
-                const semData = metrics.bySemester.get(tx.semesterId)!;
-                semData.total += amount;
-            }
-        });
-
-        return metrics;
-    }, [rawTransactions, semesters, serverTimeOffset]);
-
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
-        setBulkPaymentRows(prev => prev.map(row => {
-            if (row.key === key) {
-                const nextRow = { ...row, [field]: value };
-                if (field === 'userId') {
-                    if (value === '__UNLINKED__') {
-                        nextRow.isUnlinked = true;
-                        nextRow.userId = undefined;
-                        nextRow.invoiceId = undefined;
-                    } else {
-                        nextRow.isUnlinked = false;
-                        const studentInfo = paymentInfos.find(p => p.userId === value);
-                        if (studentInfo) {
-                            nextRow.invoiceId = studentInfo.invoiceId;
-                            nextRow.semesterId = studentInfo.semesterId || undefined;
-                            nextRow.totalDue = String(studentInfo.totalDue);
-                            nextRow.totalPaid = studentInfo.totalPaid;
-                        }
-                    }
-                }
-                return nextRow;
-            }
-            return row;
-        }));
-    };
-
-    const handleRemovePaymentRow = (key: number) => {
-        setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
-    };
-
-    const handleSaveBulkPayments = async () => {
-        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.semesterId && ((p.isUnlinked && p.reference) || (!p.isUnlinked && p.userId)));
-        
-        if(paymentsToRecord.length === 0) {
-            toast({ variant: 'destructive', title: 'No valid payments entered.' });
-            return;
-        }
-        
-        setFormLoading(true);
-        const updates: Record<string, any> = {};
-        const now = new Date().toISOString();
-
-        try {
-            for (const paymentRecord of paymentsToRecord) {
-                const amountFloat = parseFloat(paymentRecord.amount);
-
-                if (paymentRecord.isUnlinked) {
-                    const unlinkedRef = push(ref(db, 'unlinkedPayments'));
-                    updates[`unlinkedPayments/${unlinkedRef.key}`] = {
-                        reference: paymentRecord.reference,
-                        semesterId: paymentRecord.semesterId,
-                        amount: amountFloat,
-                        comment: paymentRecord.comment || '',
-                        totalDue: parseFloat(String(paymentRecord.totalDue)) || 0,
-                        date: now
-                    };
-                } else {
-                    let { userId, invoiceId, semesterId, comment, totalDue } = paymentRecord;
-                    if (!userId || !semesterId) continue;
-
-                    const semesterInfo = semesters.find(s => s.id === semesterId);
-                    if (!semesterInfo) continue;
-
-                    if (!invoiceId) {
-                        const studentInfo = paymentInfos.find(p => p.userId === userId && p.semesterId === semesterId);
-                        invoiceId = studentInfo?.invoiceId || '';
-                    }
-
-                    if (!invoiceId) {
-                        const newInvoiceRef = push(ref(db, `invoices/${userId}`));
-                        invoiceId = newInvoiceRef.key!;
-                        updates[`invoices/${userId}/${invoiceId}`] = {
-                            invoiceId,
-                            totalTuition: parseFloat(String(totalDue)) || 0,
-                            totalMandatoryFees: 0,
-                            totalOptionalFees: 0,
-                            dateCreated: now,
-                            semester: semesterInfo.name,
-                            semesterId: semesterInfo.id,
-                            courses: [],
-                            optionalFees: [],
-                        };
-                        updates[`registrations/${userId}/${semesterId}/invoiceId`] = invoiceId;
-                    }
-
-                    const txRef = push(ref(db, 'transactions'));
-                    updates[`transactions/${txRef.key}`] = {
-                        transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
-                        userId,
-                        invoiceId,
-                        amount: amountFloat,
-                        currency: 'ZMW',
-                        status: 'successful',
-                        paymentDate: now,
-                        method: 'Manual',
-                        comment: comment || ''
-                    };
-                    
-                    createNotification(userId, `Manual payment of ZMW ${amountFloat.toFixed(2)} recorded for ${semesterInfo.name}.`, '/student/payments').catch(() => {});
-                }
-            }
-            
-            await update(ref(db), updates);
-            toast({ variant: 'success', title: "Payments Recorded", description: `Successfully processed ${paymentsToRecord.length} records.` });
-            setIsBulkRecordOpen(false);
-            setBulkPaymentRows([]);
-            await fetchPaymentData();
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
-    };
 
     const handleRecordPaymentDialog = async () => {
         if(!selectedStudent || !paymentAmount || !paymentMethod) {
@@ -603,7 +393,7 @@ export default function PaymentsManagementPage() {
         ]);
         doc.text("Student Payments & Threshold Audit", 14, 22);
         autoTable(doc, { head, body, startY: 30 });
-        doc.save(`finance_report_${format(getCurrentServerDate(), 'yyyy-MM-dd')}.pdf`);
+        doc.save(`finance_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
     };
 
     const statusBadge = (info: StudentPaymentInfo) => {
@@ -611,14 +401,6 @@ export default function PaymentsManagementPage() {
         if (!info.thresholdMet) return <Badge variant="destructive" className="uppercase text-[9px] gap-1"><AlertTriangle className="h-2 w-2"/> Below Threshold</Badge>;
         return <Badge variant="secondary" className="uppercase text-[9px]">Active Payment</Badge>;
     };
-
-    const studentOptions: OptionGroup[] = React.useMemo(() => {
-        const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
-        return [
-            { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
-            { groupName: 'Students', items }
-        ];
-    }, [allStudents]);
 
     return (
         <div className="space-y-6">
@@ -633,38 +415,38 @@ export default function PaymentsManagementPage() {
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collections</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Period Revenue</CardTitle>
                                 <TrendingUp className="h-4 w-4 text-green-600" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div>
+                                <div className="text-2xl font-black text-green-600">ZMW {summaryStats.periodCollected.toFixed(2)}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle>
-                                <Clock className="h-4 w-4 text-primary" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black">ZMW {revenueMetrics.week.toFixed(2)}</div>
-                            </CardContent>
-                        </Card>
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Paid (All Time)</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black">ZMW {revenueMetrics.month.toFixed(2)}</div>
+                                <div className="text-2xl font-black">ZMW {summaryStats.totalPaid.toFixed(2)}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Period Collected</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Receivables</CardTitle>
                                 <Scale className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div>
+                                <div className="text-2xl font-black text-destructive">ZMW {summaryStats.totalBalance.toFixed(2)}</div>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Active Profiles</CardTitle>
+                                <Users className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black text-primary">{filteredData.length}</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -675,12 +457,11 @@ export default function PaymentsManagementPage() {
                 <CardHeader className="border-b">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <CardTitle>Student Financial Status & Performance</CardTitle>
-                            <CardDescription>Filter by intake or period to audit payment reliability and threshold compliance.</CardDescription>
+                            <CardTitle>Student Financial Status</CardTitle>
+                            <CardDescription>Audit payment reliability and threshold compliance.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
-                            <Button size="sm" onClick={() => setIsBulkRecordOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> Bulk Record</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -694,9 +475,9 @@ export default function PaymentsManagementPage() {
                                     <SelectItem value="today">Paid Today</SelectItem>
                                     <SelectItem value="week">Paid This Week</SelectItem>
                                     <SelectItem value="month">Paid This Month</SelectItem>
-                                    <SelectItem value="period">Custom Date Range</SelectItem>
+                                    <SelectItem value="period">Custom Range</SelectItem>
                                     <Separator className="my-1"/>
-                                    <SelectItem value="all">Full List / Receivables</SelectItem>
+                                    <SelectItem value="all">Full List (Audit Mode)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -715,7 +496,7 @@ export default function PaymentsManagementPage() {
                             </div>
                         )}
                         <div className="w-48">
-                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Student Intake</Label>
+                            <Label className="text-[10px] font-black uppercase tracking-widest ml-1 mb-1 block">Intake</Label>
                             <Select value={intakeFilter} onValueChange={setIntakeFilter}>
                                 <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
                                 <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
@@ -733,12 +514,11 @@ export default function PaymentsManagementPage() {
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
-                                <TableHeader className="bg-muted/50">
+                                <TableHeader>
                                     <TableRow>
                                         <TableHead>System ID</TableHead>
                                         <TableHead>Student Name</TableHead>
-                                        <TableHead>Current Courses</TableHead>
-                                        <TableHead className="text-right">Invoice Balance</TableHead>
+                                        <TableHead className="text-right">Balance</TableHead>
                                         <TableHead className="text-right">Amount Paid</TableHead>
                                         <TableHead className="text-center">Threshold</TableHead>
                                         <TableHead className="w-10"></TableHead>
@@ -754,25 +534,15 @@ export default function PaymentsManagementPage() {
                                                     <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name}</span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                                    {info.enrolledCourses.map(cid => (
-                                                        <Badge key={cid} variant="secondary" className="text-[8px] h-4 bg-primary/5 text-primary border-primary/10">
-                                                            {courses[cid]?.code || '...'}
-                                                        </Badge>
-                                                    ))}
-                                                    {info.enrolledCourses.length === 0 && <span className="text-[10px] text-muted-foreground italic">No classes</span>}
-                                                </div>
-                                            </TableCell>
                                             <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">{statusBadge(info)}</TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }} title="Payment History">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }} title="History">
                                                         <History className="h-4 w-4 text-muted-foreground" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }} title="Record Payment">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }} title="Record">
                                                         <PlusCircle className="h-4 w-4" />
                                                     </Button>
                                                 </div>
@@ -781,11 +551,10 @@ export default function PaymentsManagementPage() {
                                     ))}
                                     {filteredData.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-48 text-center">
+                                            <TableCell colSpan={6} className="h-48 text-center">
                                                 <div className="flex flex-col items-center justify-center text-muted-foreground italic">
                                                     <Info className="h-8 w-8 mb-2 opacity-20" />
-                                                    <p className="text-sm font-medium">No results found for the current period.</p>
-                                                    <Button variant="link" size="sm" onClick={() => setTimeFilter('all')}>View all accounts</Button>
+                                                    <p className="text-sm font-medium">No results found.</p>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -797,17 +566,16 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            {/* Record Payment Dialog */}
             <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle>
-                        <DialogDescription>Apply a manual credit to the student's current invoice ({selectedStudent?.studentId}).</DialogDescription>
+                        <DialogDescription>Apply manual credit to ID: {selectedStudent?.studentId}</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1">
-                            <Label htmlFor="pay-amount">Amount (ZMW)</Label>
-                            <Input id="pay-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
+                            <Label>Amount (ZMW)</Label>
+                            <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
@@ -817,14 +585,13 @@ export default function PaymentsManagementPage() {
                                     <SelectContent>
                                         <SelectItem value="Cash">Cash</SelectItem>
                                         <SelectItem value="Bank Deposit">Bank Deposit</SelectItem>
-                                        <SelectItem value="Cheque">Cheque</SelectItem>
-                                        <SelectItem value="Direct Transfer">Direct Transfer</SelectItem>
+                                        <SelectItem value="Transfer">Transfer</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-1">
-                                <Label>Transaction ID</Label>
-                                <Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF #" />
+                                <Label>Ref #</Label>
+                                <Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF ID" />
                             </div>
                         </div>
                     </div>
@@ -838,100 +605,30 @@ export default function PaymentsManagementPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Bulk Record Dialog */}
-            <Dialog open={isBulkRecordOpen} onOpenChange={(o) => { if(!o) setBulkPaymentRows([]); setIsBulkRecordOpen(o); }}>
-                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Record Manual Payments</DialogTitle><DialogDescription>Directly credit student accounts with bulk transaction data. Use Invoice IDs for accurate tracking.</DialogDescription></DialogHeader>
-                    <div className="flex-1 overflow-auto border rounded-lg mt-4 bg-muted/5">
-                        <Table>
-                            <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
-                                <TableRow>
-                                    <TableHead className="w-[300px]">Student Search</TableHead>
-                                    <TableHead className="w-[200px]">Semester Context</TableHead>
-                                    <TableHead>Invoice ID</TableHead>
-                                    <TableHead className="text-right">Amount (ZMW)</TableHead>
-                                    <TableHead>Comment / Ref</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {bulkPaymentRows.map((row) => {
-                                    const semesterOptions: OptionGroup[] = [{ 
-                                        groupName: 'Available', 
-                                        items: semesters.filter(s => !row.userId || allStudents.find(st => st.uid === row.userId)?.intakeId === s.intakeId).map(s => ({ value: s.id, label: s.name })) 
-                                    }];
-                                    return (
-                                    <TableRow key={row.key} className="border-b-0">
-                                        <TableCell>
-                                            <SearchableSelect 
-                                                value={row.userId || (row.isUnlinked ? '__UNLINKED__' : undefined)} 
-                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'userId', val)} 
-                                                options={studentOptions} 
-                                                placeholder="Select student..." 
-                                            />
-                                            {row.isUnlinked && <Input placeholder="Generic Reference (Bank Slip #)" value={row.reference || ''} onChange={(e) => handleBulkPaymentRowChange(row.key, 'reference', e.target.value)} className="mt-2 text-xs h-8" />}
-                                        </TableCell>
-                                        <TableCell>
-                                            <SearchableSelect 
-                                                value={row.semesterId} 
-                                                onValueChange={(val) => handleBulkPaymentRowChange(row.key, 'semesterId', val)} 
-                                                options={semesterOptions} 
-                                                placeholder="Semester..." 
-                                                disabled={!row.userId && !row.isUnlinked} 
-                                            />
-                                        </TableCell>
-                                        <TableCell className="font-mono text-[10px]">{row.invoiceId || 'Auto-generated'}</TableCell>
-                                        <TableCell className="text-right"><Input type="number" value={row.amount} onChange={(e) => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-bold text-right" placeholder="0.00"/></TableCell>
-                                        <TableCell><Input value={row.comment} onChange={(e) => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" placeholder="Optional notes..."/></TableCell>
-                                        <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemovePaymentRow(row.key)} className="h-8 w-8 text-destructive"><X className="h-4 w-4"/></Button></TableCell>
-                                    </TableRow>
-                                )})}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <div className="py-4 border-t mt-auto flex justify-between items-center">
-                        <Button variant="outline" size="sm" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction</Button>
-                        <div className="flex gap-2">
-                            <Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Discard</Button>
-                            <Button onClick={handleSaveBulkPayments} disabled={formLoading || bulkPaymentRows.length === 0}>
-                                {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                Finalize {bulkPaymentRows.length} Payments
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* History Statement Dialog */}
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Financial Statement: {historyStudent?.studentName}</DialogTitle><DialogDescription>Audit log of all payments and enrollment history for the current phase.</DialogDescription></DialogHeader>
-                    <div className="flex-1 overflow-auto border rounded-xl my-4 bg-muted/5">
+                    <DialogHeader><DialogTitle>Statement: {historyStudent?.studentName}</DialogTitle></DialogHeader>
+                    <div className="flex-1 overflow-auto border rounded-xl my-4">
                         <Table>
                             <TableHeader className="sticky top-0 bg-background z-10 border-b">
                                 <TableRow>
-                                    <TableHead className="text-[10px] font-black uppercase">Post Date</TableHead>
-                                    <TableHead className="text-[10px] font-black uppercase">Invoice ID</TableHead>
+                                    <TableHead className="text-[10px] font-black uppercase">Date</TableHead>
                                     <TableHead className="text-[10px] font-black uppercase">Method</TableHead>
                                     <TableHead className="text-right text-[10px] font-black uppercase">Amount</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {rawTransactions.filter(t => t.userId === historyStudent?.userId).map(tx => (
-                                    <TableRow key={tx.key} className="border-b-0">
+                                    <TableRow key={tx.key}>
                                         <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy HH:mm')}</TableCell>
-                                        <TableCell className="font-mono text-[10px] text-primary">{tx.invoiceId}</TableCell>
-                                        <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method}</Badge></TableCell>
+                                        <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method || 'Online'}</Badge></TableCell>
                                         <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
-                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).length === 0 && (
-                                    <TableRow><TableCell colSpan={4} className="h-32 text-center text-xs text-muted-foreground italic">No transactions found for this account.</TableCell></TableRow>
-                                )}
                             </TableBody>
                         </Table>
                     </div>
-                    <DialogFooter className="border-t pt-4"><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close Statement</Button></DialogFooter>
+                    <DialogFooter><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
