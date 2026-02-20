@@ -299,13 +299,21 @@ export default function StudentDashboardPage() {
             const currentSemesterName = matchingSemesterId ? allSemesters[matchingSemesterId]?.name : null;
 
             Object.values(allCalendarEvents).forEach((ev: any) => {
-                const isDeadline = ev.title?.toLowerCase().includes('deadline');
                 const isFuture = new Date(ev.date) >= startOfDay(getCurrentServerDate());
+                if (!isFuture) return;
+
                 const isForThisSemester = currentSemesterName && ev.semester === currentSemesterName;
                 const isGeneral = !ev.semester || ev.semester === 'General';
+                const isDeadline = ev.title?.toLowerCase().includes('deadline');
 
-                if (isDeadline && isFuture && (isForThisSemester || isGeneral)) {
-                    deadlines.push({ title: ev.title, date: ev.date, type: 'payment' });
+                // Personalize: If it's a deadline, it MUST be for this semester. 
+                // If it's a general event (like a holiday), it can show.
+                if (isForThisSemester || (isGeneral && !isDeadline)) {
+                    deadlines.push({ 
+                        title: ev.title, 
+                        date: ev.date, 
+                        type: isDeadline ? 'payment' : 'assignment' 
+                    });
                 }
             });
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
