@@ -174,10 +174,9 @@ export default function UserManagementPage() {
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
 
-    const fetchUsers = React.useCallback(async () => {
-        setTableLoading(true);
-        const refs = {
-            users: ref(db, 'users'),
+    // Separate function to fetch static metadata only once
+    const fetchMetadata = React.useCallback(async () => {
+        const metadataRefs = {
             programmes: ref(db, 'programmes'),
             subRoles: ref(db, 'settings/subRoles'),
             semesters: ref(db, 'semesters'),
@@ -185,47 +184,63 @@ export default function UserManagementPage() {
         };
         
         try {
-            const [u, p, s, i, sem] = await Promise.all([
-                get(refs.users), get(refs.programmes), get(refs.subRoles), get(refs.intakes), get(refs.semesters)
+            const [p, s, i, sem] = await Promise.all([
+                get(metadataRefs.programmes), get(metadataRefs.subRoles), get(metadataRefs.intakes), get(metadataRefs.semesters)
             ]);
             
             const pData = p.val() || {};
             const srData = s.val() || {};
-            const subRolesMap = new Map(Object.entries(srData).map(([id, r]: [string, any]) => [id, r.name]));
             
             setAllProgrammes(Object.keys(pData).map(id => ({ id, ...pData[id] })));
             setAvailableSubRoles(Object.keys(srData).map(id => ({id, ...srData[id]})));
             setAllIntakes(i.exists() ? Object.keys(i.val()).map(id => ({ id, ...i.val()[id] })) : []);
             setAllSemesters(sem.exists() ? Object.keys(sem.val()).map(id => ({ id, ...sem.val()[id] })) : []);
-
-            if (u.exists()) {
-                const usersData = u.val();
-                const list: UserProfile[] = Object.keys(usersData).map(uid => {
-                    const user = usersData[uid];
-                    const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
-                    return {
-                        uid, 
-                        ...user, 
-                        status: user.status || 'active',
-                        programmeName: user.programmeId ? pData[user.programmeId]?.name : undefined,
-                        subRoles: uSubRoleIds,
-                        subRoleNames: uSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean)
-                    };
-                });
-                setUsers(list);
-            }
+            return { pData, srData };
         } catch (error) {
-            console.error(error);
-        } finally {
-            setTableLoading(false);
+            console.error("Metadata fetch error:", error);
+            return { pData: {}, srData: {} };
         }
     }, []);
 
     React.useEffect(() => {
-        fetchUsers();
-        const unsub = onValue(ref(db, 'users'), (snapshot) => { if(snapshot.exists()) fetchUsers(); });
-        return () => unsub();
-    }, [fetchUsers]);
+        let isFirstLoad = true;
+        setTableLoading(true);
+
+        const initialize = async () => {
+            const { pData, srData } = await fetchMetadata();
+            const subRolesMap = new Map(Object.entries(srData).map(([id, r]: [string, any]) => [id, r.name]));
+
+            const unsub = onValue(ref(db, 'users'), (snapshot) => {
+                if (snapshot.exists()) {
+                    const usersData = snapshot.val();
+                    const list: UserProfile[] = Object.keys(usersData).map(uid => {
+                        const user = usersData[uid];
+                        const uSubRoleIds = user.subRoles ? (Array.isArray(user.subRoles) ? user.subRoles : Object.keys(user.subRoles)) : [];
+                        return {
+                            uid, 
+                            ...user, 
+                            status: user.status || 'active',
+                            programmeName: user.programmeId ? pData[user.programmeId]?.name : undefined,
+                            subRoles: uSubRoleIds,
+                            subRoleNames: uSubRoleIds.map((id: string) => subRolesMap.get(id)).filter(Boolean)
+                        };
+                    });
+                    setUsers(list);
+                }
+                if (isFirstLoad) {
+                    setTableLoading(false);
+                    isFirstLoad = false;
+                }
+            });
+
+            return unsub;
+        };
+
+        const cleanupPromise = initialize();
+        return () => {
+            cleanupPromise.then(unsub => unsub && unsub());
+        };
+    }, [fetchMetadata]);
 
     const handleOpenEdit = (user: UserProfile) => {
         setEditingUser(user);
@@ -252,6 +267,32 @@ export default function UserManagementPage() {
         setGuardianContact(user.guardian?.contact || '');
         setGuardianRelationship(user.guardian?.relationship || '');
         setIsEditOpen(true);
+    };
+
+    const resetForm = () => {
+        setName('');
+        setEmail('');
+        setPhoneNumber('');
+        setRole('');
+        setSubRoleIds([]);
+        setProgrammeId('');
+        setIntakeId('');
+        setYear('');
+        setSemesterId('');
+        setDob('');
+        setGender('');
+        setNationalId('');
+        setPassport('');
+        setAddress('');
+        setBio('');
+        setSchool('');
+        setQualifications('');
+        setMedicalHistory('');
+        setGuardianName('');
+        setGuardianEmail('');
+        setGuardianContact('');
+        setGuardianRelationship('');
+        setEditingUser(null);
     };
 
     const openCredentialsPreview = async (user: UserProfile) => {
