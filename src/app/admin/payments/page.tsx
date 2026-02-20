@@ -38,13 +38,15 @@ import {
     MessageSquare,
     ArrowRight,
     Save,
-    Settings2
+    Settings2,
+    FileUp,
+    Check
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, startOfDay, addDays, isAfter } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, startOfDay, addDays, isAfter, isBefore } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -63,8 +65,8 @@ import type { DateRange } from 'react-day-picker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
-import { PaymentCountdown } from '@/components/payment-countdown';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import * as XLSX from 'xlsx';
 
 // --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
@@ -84,6 +86,7 @@ type StudentPaymentInfo = {
     paidPercentage: number;
     requiredThreshold: number;
     effectiveDeadline: Date | null;
+    planName: string;
 };
 
 type Transaction = {
@@ -105,7 +108,13 @@ type Semester = { id: string; name: string; intakeId: string; year: number; seme
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
-// --- MAIN PAGE COMPONENT ---
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+};
+
 export default function PaymentsManagementPage() {
     const { userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
@@ -141,6 +150,11 @@ export default function PaymentsManagementPage() {
     const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
     const [manualTotalDue, setManualTotalDue] = React.useState('');
     const [dateReceived, setDateReceived] = React.useState<Date | undefined>(new Date());
+
+    // States for Bulk Import
+    const [isBulkImportOpen, setIsBulkImportOpen] = React.useState(false);
+    const [bulkTransactions, setBulkTransactions] = React.useState<any[]>([]);
+    const [processingBulk, setProcessingBulk] = React.useState(false);
 
     // States for Edit Request Dialog
     const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
@@ -189,6 +203,7 @@ export default function PaymentsManagementPage() {
             const allInvoicesData = invoicesSnap.val() || {};
             const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: {} };
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
+            const plans = plansSnap.val() || {};
 
             setCalendarSettings(calendarSnap.val() || {});
             setAllInvoices(allInvoicesData);
@@ -228,7 +243,7 @@ export default function PaymentsManagementPage() {
             setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
-            const globalThreshold = fSettings.paymentThreshold || 75;
+            const now = new Date();
 
             for (const userId in registrations) {
                  const user = users[userId];
@@ -250,10 +265,36 @@ export default function PaymentsManagementPage() {
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                         const balance = Math.max(0, totalPayable - totalPaid);
-                        
-                        const threshold = semesterInfo.paymentThreshold || globalThreshold;
                         const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
-                        const thresholdMet = paidPercentage >= threshold;
+
+                        // Dynamic Threshold Logic: Sum percentages of all passed deadlines
+                        let currentRequiredThreshold = 0;
+                        const plan = Object.values(plans).find((p: any) => p.name === invoice.paymentPlan) as any;
+                        
+                        if (plan && plan.installmentPercentages) {
+                            for (let i = 0; i < plan.installments; i++) {
+                                const deadlineTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
+                                const deadlineEvent = calendarEvents.find(e => e.title?.trim() === deadlineTitle.trim());
+                                
+                                if (deadlineEvent) {
+                                    const grace = semesterInfo.gracePeriodDays || 0;
+                                    const deadlineDate = addDays(parseISO(deadlineEvent.date), grace);
+                                    if (isAfter(now, deadlineDate)) {
+                                        currentRequiredThreshold += (plan.installmentPercentages[i] || 0);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Default to full payment deadline logic if plan not found
+                            const fullDeadlineTitle = `Full Payment Deadline - ${semesterInfo.name}`;
+                            const fullEvent = calendarEvents.find(e => e.title?.trim() === fullDeadlineTitle.trim());
+                            if (fullEvent) {
+                                const deadlineDate = addDays(parseISO(fullEvent.date), semesterInfo.gracePeriodDays || 0);
+                                if (isAfter(now, deadlineDate)) currentRequiredThreshold = 100;
+                            }
+                        }
+
+                        const thresholdMet = paidPercentage >= currentRequiredThreshold;
 
                         const semDeadlines = calendarEvents
                             .filter((ev: any) => ev.semester === semesterInfo.name && ev.title.includes('Deadline'))
@@ -277,9 +318,10 @@ export default function PaymentsManagementPage() {
                             enrolledCourses: reg.courses || [],
                             thresholdMet,
                             paidPercentage,
-                            requiredThreshold: threshold,
+                            requiredThreshold: currentRequiredThreshold,
                             status: balance <= 0.01 ? 'Paid' : 'Pending',
-                            effectiveDeadline
+                            effectiveDeadline,
+                            planName: invoice.paymentPlan || 'Standard'
                         };
                     }
                  }
@@ -297,6 +339,82 @@ export default function PaymentsManagementPage() {
     React.useEffect(() => {
         fetchPaymentData();
     }, [fetchPaymentData]);
+
+    const handleBulkFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result as string;
+                const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws);
+                
+                setBulkTransactions(jsonData.map((row: any) => {
+                    const student = allStudents.find(s => s.id === (row.studentId || row.ID || row['Student ID'])?.toString().trim());
+                    return {
+                        studentId: row.studentId || row.ID || row['Student ID'],
+                        studentUid: student?.uid,
+                        studentName: student?.name || 'UNKNOWN STUDENT',
+                        amount: Number(row.amount || row.Amount || 0),
+                        method: row.method || row.Method || 'Cash',
+                        date: row.date || row.Date || new Date().toISOString(),
+                        comment: row.comment || row.Comment || '',
+                        status: student ? 'valid' : 'invalid'
+                    };
+                }));
+                toast({ title: "File Processed", description: `${jsonData.length} transactions found.` });
+            } catch (err) {
+                toast({ variant: 'destructive', title: "Processing Error" });
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    const handleConfirmBulkPayments = async () => {
+        setProcessingBulk(true);
+        const updates: Record<string, any> = {};
+        const validTransactions = bulkTransactions.filter(t => t.status === 'valid' && t.amount > 0);
+        
+        try {
+            for (const tx of validTransactions) {
+                // Find most recent active invoice for this student
+                const studentPayments = paymentInfos.filter(p => p.userId === tx.studentUid);
+                const activeInfo = studentPayments[0]; // Assuming latest
+                
+                if (!activeInfo) continue;
+
+                const txRef = push(ref(db, 'transactions'));
+                const txId = `BULK-${Date.now()}-${txRef.key?.slice(-4)}`;
+                
+                updates[`transactions/${txRef.key}`] = {
+                    transactionId: txId,
+                    userId: tx.studentUid,
+                    invoiceId: activeInfo.invoiceId,
+                    amount: tx.amount,
+                    currency: 'ZMW',
+                    status: 'successful',
+                    paymentDate: typeof tx.date === 'string' ? tx.date.split('T')[0] : format(tx.date, 'yyyy-MM-dd'),
+                    recordedAt: serverTimestamp(),
+                    method: tx.method,
+                    comment: tx.comment,
+                    recordedBy: userData?.name || 'Bulk Process',
+                };
+            }
+
+            await update(ref(db), updates);
+            toast({ title: "Bulk Import Complete", description: `Processed ${validTransactions.length} payments.` });
+            setIsBulkImportOpen(false);
+            setBulkTransactions([]);
+            fetchPaymentData();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Import Failed", description: e.message });
+        } finally {
+            setProcessingBulk(false);
+        }
+    };
 
     const globalAuditStats = React.useMemo(() => {
         const now = new Date();
@@ -430,7 +548,7 @@ export default function PaymentsManagementPage() {
             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
         });
 
-        toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${student.name}.` });
+        toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} paid by ${student.name}.` });
         setIsRecordPaymentOpen(false);
         resetDialog();
     };
@@ -535,7 +653,7 @@ export default function PaymentsManagementPage() {
 
         autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 10,
-            head: [['Date', 'Transaction ID', 'Method', 'Paid (ZMW)']],
+            head: [['Date', 'Reference', 'Method', 'Amount Paid (ZMW)']],
             body: transactionRows.length > 0 ? transactionRows : [['-', 'No payments recorded', '-', 'ZMW 0.00']],
             theme: 'striped',
             headStyles: { fillColor: [44, 62, 80] },
@@ -549,7 +667,7 @@ export default function PaymentsManagementPage() {
 
     const handleExport = () => {
         const doc = new jsPDF();
-        const head = [["ID", "Name", "Semester", "Total Expected", "Paid", "Balance", "Threshold"]];
+        const head = [["ID", "Name", "Semester", "Total Expected", "Amount Paid", "Balance", "Threshold"]];
         const body = filteredData.map(p => [
             p.studentId, p.studentName,
             semesters.find(s => s.id === p.semesterId)?.name || 'N/A',
@@ -727,7 +845,7 @@ export default function PaymentsManagementPage() {
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Paid</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Amount Paid</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
                             <CardContent><div className="text-xl font-black">ZMW {globalAuditStats.total.toFixed(2)}</div></CardContent>
@@ -736,9 +854,12 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            <div className="flex justify-start px-2">
+            <div className="flex flex-wrap justify-start gap-4 px-2">
                 <Button onClick={() => setIsRecordPaymentOpen(true)} size="lg" className="shadow-xl h-12 px-8 font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
                     <PlusCircle className="mr-2 h-5 w-5"/> Record Payment
+                </Button>
+                <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} size="lg" className="shadow-xl h-12 px-8 font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
+                    <FileUp className="mr-2 h-5 w-5"/> Bulk Import Payments
                 </Button>
             </div>
 
@@ -850,40 +971,19 @@ export default function PaymentsManagementPage() {
                                                                 </div>
                                                                 
                                                                 <div className="space-y-1 bg-muted/20 p-2 rounded-md border">
-                                                                    <div className="flex justify-between text-xs"><span>Invoice Total:</span> <span className="font-bold">ZMW {info.totalDue.toFixed(2)}</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Total Semester Invoice:</span> <span className="font-bold">ZMW {info.totalDue.toFixed(2)}</span></div>
                                                                     <div className="flex justify-between text-xs"><span>Amount Paid:</span> <span className="font-bold text-green-600">ZMW {info.totalPaid.toFixed(2)}</span></div>
                                                                     <Separator className="my-1"/>
                                                                     <div className="flex justify-between text-xs pt-1"><span>Current Paid %:</span> <span className="font-bold">{info.paidPercentage.toFixed(1)}%</span></div>
-                                                                    <div className="flex justify-between text-xs"><span>Requirement:</span> <span className="font-bold text-primary">{info.requiredThreshold}%</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Min. Required Now:</span> <span className="font-bold text-primary">{info.requiredThreshold}%</span></div>
                                                                 </div>
 
-                                                                {!info.thresholdMet && financialSettings?.defaulterRestrictions && (
-                                                                    <div className="space-y-3">
-                                                                        <div className="flex items-center gap-2 text-destructive">
-                                                                            <ShieldAlert className="h-4 w-4" />
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest">Policy Enforcement</span>
-                                                                        </div>
-                                                                        <div className="space-y-1.5">
-                                                                            {Object.entries(financialSettings.defaulterRestrictions).map(([key, enabled]) => {
-                                                                                if (!enabled) return null;
-                                                                                return (
-                                                                                    <div key={key} className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                                                        <Badge variant="outline" className="h-4 w-4 p-0 flex items-center justify-center border-destructive/30 text-destructive text-[8px] font-bold">X</Badge>
-                                                                                        <span className="capitalize">{key} Blocked</span>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                        <Alert className={cn("py-2 border-none", isBlockCurrentlyActive ? "bg-red-50" : "bg-orange-50")}>
-                                                                            <AlertDescription className="text-[10px] font-bold leading-tight">
-                                                                                {isBlockCurrentlyActive ? (
-                                                                                    <span className="text-destructive uppercase">Blocked as of {info.effectiveDeadline ? format(info.effectiveDeadline, 'dd MMM yyyy') : 'N/A'}</span>
-                                                                                ) : (
-                                                                                    <span className="text-orange-700">Restrictions apply from {info.effectiveDeadline ? format(info.effectiveDeadline, 'dd MMM yyyy') : 'N/A'}</span>
-                                                                                )}
-                                                                            </AlertDescription>
-                                                                        </Alert>
-                                                                    </div>
+                                                                {!info.thresholdMet && (
+                                                                    <Alert className={cn("py-2 border-none bg-red-50")}>
+                                                                        <AlertDescription className="text-[10px] font-bold leading-tight text-destructive">
+                                                                            <span className="uppercase">Threshold conflict detected. Installment deadlines have passed without sufficient payment.</span>
+                                                                        </AlertDescription>
+                                                                    </Alert>
                                                                 )}
                                                             </div>
                                                         </PopoverContent>
@@ -908,6 +1008,60 @@ export default function PaymentsManagementPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Bulk Import Dialog */}
+            <Dialog open={isBulkImportOpen} onOpenChange={(o) => { if(!o) setBulkTransactions([]); setIsBulkImportOpen(o); }}>
+                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Payment Import</DialogTitle>
+                        <DialogDescription>Upload an Excel file to credit multiple students at once. (Columns: Student ID, Amount, Method, Date, Comment)</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
+                        <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
+                            <Label>Upload File (.xlsx, .csv)</Label>
+                            <Input type="file" accept=".xlsx,.csv" onChange={handleBulkFileUpload} />
+                        </div>
+                        <ScrollArea className="flex-1 border rounded-md">
+                            <Table>
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10">
+                                    <TableRow>
+                                        <TableHead>Student</TableHead>
+                                        <TableHead className="text-right">Amount Paid</TableHead>
+                                        <TableHead>Method</TableHead>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Status</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {bulkTransactions.map((tx, i) => (
+                                        <TableRow key={i} className={cn(tx.status === 'invalid' && "bg-red-50")}>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-xs">{tx.studentName}</span>
+                                                    <span className="text-[10px] font-mono">{tx.studentId}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right font-bold">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-xs">{tx.method}</TableCell>
+                                            <TableCell className="text-xs">{typeof tx.date === 'string' ? tx.date : format(tx.date, 'MMM dd, yyyy')}</TableCell>
+                                            <TableCell>
+                                                {tx.status === 'valid' ? <Badge variant="secondary" className="text-[8px] bg-green-100 text-green-700 border-green-200">VALID</Badge> : <Badge variant="destructive" className="text-[8px]">NOT FOUND</Badge>}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </ScrollArea>
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <Button variant="ghost" onClick={() => setIsBulkImportOpen(false)}>Cancel</Button>
+                        <Button onClick={handleConfirmBulkPayments} disabled={processingBulk || bulkTransactions.length === 0 || bulkTransactions.every(t => t.status === 'invalid')}>
+                            {processingBulk ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4" />}
+                            Import {bulkTransactions.filter(t => t.status === 'valid').length} Payments
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Record Payment Dialog */}
             <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
@@ -1162,7 +1316,7 @@ export default function PaymentsManagementPage() {
                         </Accordion>
                     </div>
                     <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRequestStudentCreation} disabled={!requestMessage.trim()}>
                             Submit Request
                         </Button>
