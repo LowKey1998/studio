@@ -30,7 +30,8 @@ import {
     Send,
     AlertCircle,
     CalendarDays,
-    Wallet
+    Wallet,
+    Filter
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -90,6 +91,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
+type Programme = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentThreshold?: number; gracePeriodDays?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
@@ -107,6 +109,7 @@ export default function PaymentsManagementPage() {
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
+    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
@@ -114,8 +117,11 @@ export default function PaymentsManagementPage() {
     const [institutionSettings, setInstitutionSettings] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
     
+    // Filters
     const [searchTerm, setSearchTerm] = React.useState('');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
+    const [programmeFilter, setProgrammeFilter] = React.useState('all');
+    const [minAmountFilter, setMinAmountFilter] = React.useState('');
 
     // Record Payment Form State
     const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
@@ -159,12 +165,13 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap, instSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, programmesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap, instSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
+                get(ref(db, 'programmes')),
                 get(ref(db, 'invoices')),
                 get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'settings/financialSettings')),
@@ -185,6 +192,7 @@ export default function PaymentsManagementPage() {
             setInstitutionSettings(instSnap.val() || { name: 'Edutrack360' });
             setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
             setAllIntakes(Object.keys(intakesSnap.val() || {}).map(id => ({ id, ...intakesSnap.val()[id] })));
+            setAllProgrammes(Object.keys(programmesSnap.val() || {}).map(id => ({ id, ...programmesSnap.val()[id] })));
             setAllPaymentPlans(Object.keys(plansSnap.val() || {}).map(id => ({ id, ...plansSnap.val()[id] })));
 
             const studentList: StudentInfo[] = [];
@@ -352,7 +360,7 @@ export default function PaymentsManagementPage() {
 
             if (registrarIds.length > 0) {
                 await createNotification(
-                    registrarIds,
+                    registrarIds, 
                     `New student account request from ${userData?.name || 'Finance'}`,
                     '/admin/admissions/add-student'
                 );
@@ -472,9 +480,11 @@ export default function PaymentsManagementPage() {
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            return searchMatch && intakeMatch;
+            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
+            const amountMatch = !minAmountFilter || p.totalPaid >= parseFloat(minAmountFilter);
+            return searchMatch && intakeMatch && programmeMatch && amountMatch;
         });
-    }, [paymentInfos, searchTerm, intakeFilter]);
+    }, [paymentInfos, searchTerm, intakeFilter, programmeFilter, minAmountFilter]);
 
     const revenueStats = React.useMemo(() => {
         const now = new Date();
@@ -574,7 +584,7 @@ export default function PaymentsManagementPage() {
                     <CardContent><div className="text-xl font-black">ZMW {revenueStats.weekly.toFixed(2)}</div></CardContent>
                 </Card>
                 <Card className="shadow-sm border-0 bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><CalendarDays className="h-3 w-3"/> Open Semester Total</CardTitle></CardHeader>
+                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><CalendarDays className="h-3 w-3"/> Semester Total</CardTitle></CardHeader>
                     <CardContent><div className="text-xl font-black text-primary">ZMW {revenueStats.semester.toFixed(2)}</div></CardContent>
                 </Card>
                 <Card className="shadow-sm border-0 bg-card">
@@ -590,11 +600,49 @@ export default function PaymentsManagementPage() {
 
             <Card className="shadow-md">
                 <CardHeader className="border-b">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-col gap-4">
                         <div><CardTitle>Financial Audit List</CardTitle><CardDescription>Real-time threshold monitoring and payment compliance.</CardDescription></div>
-                        <div className="flex flex-wrap gap-2">
-                            <Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="w-40"><SelectValue placeholder="Cohort"/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
-                            <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-8 h-10 w-64" placeholder="Student ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Programme</Label>
+                                <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
+                                    <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="All Programmes"/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Programmes</SelectItem>
+                                        {allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Cohort (Intake)</Label>
+                                <Select value={intakeFilter} onValueChange={setIntakeFilter}>
+                                    <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Intakes</SelectItem>
+                                        {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Paid Amount &ge;</Label>
+                                <div className="relative">
+                                    <DollarSign className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground opacity-50"/>
+                                    <Input 
+                                        type="number" 
+                                        placeholder="Min ZMW Paid..." 
+                                        className="pl-8 h-10 bg-background" 
+                                        value={minAmountFilter} 
+                                        onChange={e => setMinAmountFilter(e.target.value)} 
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1 md:col-span-1 lg:col-span-2">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Search Identity</Label>
+                                <div className="relative">
+                                    <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+                                    <Input className="pl-8 h-10 bg-background" placeholder="Student ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </CardHeader>
@@ -637,6 +685,11 @@ export default function PaymentsManagementPage() {
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {filteredData.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground italic">No records match the current filter criteria.</TableCell>
+                                        </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>
