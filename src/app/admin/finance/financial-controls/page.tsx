@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, get, set } from 'firebase/database';
-import { Loader2, Percent, Save, Info, ShieldAlert } from 'lucide-react';
+import { Loader2, Percent, Save, Info, LayoutGrid, ShieldAlert, Lock, Unlock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
@@ -20,8 +20,19 @@ type FinancialSettings = {
         results: boolean;
         library: boolean;
         exams: boolean;
+        sidebar: {
+            [key: string]: boolean; // Category Label -> Restricted (True means hidden)
+        }
     }
 };
+
+const studentSidebarCategories = [
+    "Academics",
+    "eLearning",
+    "Campus Life",
+    "Innovation",
+    "Spiritual Life"
+];
 
 export default function FinancialControlsPage() {
     const [financialSettings, setFinancialSettings] = React.useState<FinancialSettings>({
@@ -30,7 +41,12 @@ export default function FinancialControlsPage() {
             registration: true,
             results: true,
             library: false,
-            exams: false
+            exams: false,
+            sidebar: {
+                "eLearning": true,
+                "Campus Life": true,
+                "Innovation": true
+            }
         }
     });
     const [loading, setLoading] = React.useState(true);
@@ -42,14 +58,21 @@ export default function FinancialControlsPage() {
             const settingsRef = ref(db, 'settings/financialSettings');
             const snapshot = await get(settingsRef);
             if (snapshot.exists()) {
-                setFinancialSettings(snapshot.val());
+                const data = snapshot.val();
+                setFinancialSettings({
+                    ...data,
+                    defaulterRestrictions: {
+                        ...data.defaulterRestrictions,
+                        sidebar: data.defaulterRestrictions?.sidebar || {}
+                    }
+                });
             }
             setLoading(false);
         };
         fetchSettings();
     }, []);
 
-    const handleRestrictionChange = (key: keyof FinancialSettings['defaulterRestrictions']) => {
+    const handleRestrictionChange = (key: keyof Omit<FinancialSettings['defaulterRestrictions'], 'sidebar'>) => {
         setFinancialSettings(prev => ({
             ...prev,
             defaulterRestrictions: {
@@ -59,12 +82,25 @@ export default function FinancialControlsPage() {
         }));
     };
 
+    const handleSidebarRestrictionToggle = (category: string) => {
+        setFinancialSettings(prev => ({
+            ...prev,
+            defaulterRestrictions: {
+                ...prev.defaulterRestrictions,
+                sidebar: {
+                    ...prev.defaulterRestrictions.sidebar,
+                    [category]: !prev.defaulterRestrictions.sidebar[category]
+                }
+            }
+        }));
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
         try {
             await set(ref(db, 'settings/financialSettings'), financialSettings);
-            toast({ title: 'Success', description: 'Financial controls have been updated.' });
+            toast({ variant: 'success', title: 'Policies Updated', description: 'Institutional financial controls are now live.' });
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Error', description: error.message });
         } finally {
@@ -72,79 +108,126 @@ export default function FinancialControlsPage() {
         }
     };
 
+    if (loading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
+
     return (
         <form onSubmit={handleSave} className="space-y-6">
-            <Card>
+            <Card className="shadow-lg">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Financial Defaulter Policies</CardTitle>
-                    <CardDescription>Configure how the system handles students with outstanding balances.</CardDescription>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                            <ShieldAlert className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Financial Defaulter Policies</CardTitle>
+                            <CardDescription>Control system access and visibility for students with outstanding balances.</CardDescription>
+                        </div>
+                    </div>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-8">
                     <Alert className="bg-primary/5 border-primary/20">
                         <Info className="h-4 w-4 text-primary" />
-                        <AlertTitle className="font-bold">How Defaulter Logic Works</AlertTitle>
-                        <AlertDescription className="text-sm space-y-2 leading-relaxed">
-                            <p>The system identifies a "Defaulter" using these criteria:</p>
+                        <AlertTitle className="font-bold uppercase text-xs tracking-widest">Compliance Engine Logic</AlertTitle>
+                        <AlertDescription className="text-sm space-y-2 mt-2 leading-relaxed">
+                            <p>A student is flagged as a <strong>Defaulter</strong> if:</p>
                             <ul className="list-disc pl-5 space-y-1 text-xs">
-                                <li><strong>Deadlines:</strong> An installment deadline has passed (+ any allowed grace period).</li>
-                                <li><strong>Threshold:</strong> The student's total paid amount is less than the required cumulative percentage (e.g. 75%) of the total due.</li>
+                                <li>The current date is past an installment deadline plus the configured <strong>Grace Period</strong>.</li>
+                                <li>The total amount paid for the current semester is below the required <strong>Threshold</strong>.</li>
                             </ul>
-                            <div className="bg-background p-3 rounded border mt-4">
-                                <p className="font-bold text-xs mb-1">PRO-TIP: CUSTOMIZE PER SEMESTER</p>
-                                <p className="text-[10px] text-muted-foreground">Deadlines, Thresholds, and Grace Periods are set per-semester in <Link href="/admin/registration-management" className="text-primary font-bold underline">Registration Management</Link> (Edit Semester &gt; Controls tab).</p>
-                            </div>
                         </AlertDescription>
                     </Alert>
 
-                    <Separator />
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-center">
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-start">
                         <div className="space-y-1">
-                            <Label htmlFor="payment-threshold" className="text-base font-bold">Default Payment Threshold (%)</Label>
-                            <p className="text-xs text-muted-foreground pr-4">The global default percentage a student must pay by a deadline to stay in good standing.</p>
+                            <Label htmlFor="payment-threshold" className="text-base font-bold">Global Threshold (%)</Label>
+                            <p className="text-xs text-muted-foreground pr-4">The default percentage of total fees a student must pay per deadline to maintain "Good Standing".</p>
                         </div>
                         <div className="sm:col-span-2">
-                            <div className="relative max-w-xs">
+                            <div className="relative max-w-[120px]">
                                 <Input id="payment-threshold" type="number" min="0" max="100" value={financialSettings.paymentThreshold} onChange={(e) => setFinancialSettings(p => ({...p, paymentThreshold: Number(e.target.value)}))}/>
-                                <Percent className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Percent className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             </div>
                         </div>
                     </div>
 
                     <Separator />
 
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-start">
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-start">
                         <div className="space-y-1">
-                            <Label className="text-base font-bold">Restrict Portal Access for Defaulters</Label>
-                            <p className="text-xs text-muted-foreground pr-4">Enable specific restrictions that automatically apply when a student is flagged as a defaulter.</p>
+                            <Label className="text-base font-bold">Functional Access Restrictions</Label>
+                            <p className="text-xs text-muted-foreground pr-4">Disable specific system actions for defaulting students.</p>
                         </div>
-                        <div className="sm:col-span-2 space-y-4">
-                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
-                                <div className="space-y-0.5"><Label htmlFor="restrict-registration">Block New Registrations</Label><p className="text-[10px] text-muted-foreground">Prevents enrolling in future semesters.</p></div>
-                                <Switch id="restrict-registration" checked={financialSettings.defaulterRestrictions.registration} onCheckedChange={() => handleRestrictionChange('registration')} />
-                            </div>
-                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
-                                <div className="space-y-0.5"><Label htmlFor="restrict-results">Block Access to Results</Label><p className="text-[10px] text-muted-foreground">Hides current and past grades.</p></div>
-                                <Switch id="restrict-results" checked={financialSettings.defaulterRestrictions.results} onCheckedChange={() => handleRestrictionChange('results')} />
-                            </div>
-                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
-                                <div className="space-y-0.5"><Label htmlFor="restrict-library">Block Library Access</Label><p className="text-[10px] text-muted-foreground">Prevents checking out new books.</p></div>
-                                <Switch id="restrict-library" checked={financialSettings.defaulterRestrictions.library} onCheckedChange={() => handleRestrictionChange('library')} />
-                            </div>
-                            <div className="flex items-center justify-between p-3 rounded-md border bg-muted/10">
-                                <div className="space-y-0.5"><Label htmlFor="restrict-exams">Block Exam Participation</Label><p className="text-[10px] text-muted-foreground">Flags student as ineligible on exam rosters.</p></div>
-                                <Switch id="restrict-exams" checked={financialSettings.defaulterRestrictions.exams} onCheckedChange={() => handleRestrictionChange('exams')} />
+                        <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+                            {[
+                                { key: 'registration', label: 'Semester Registration', desc: 'Block enrolling in future terms.' },
+                                { key: 'results', label: 'Result Visibility', desc: 'Hide grades and transcripts.' },
+                                { key: 'library', label: 'Library Loans', desc: 'Suspend book borrowing.' },
+                                { key: 'exams', label: 'Exam Participation', desc: 'Flag as ineligible on rosters.' }
+                            ].map((item) => (
+                                <div key={item.key} className="flex items-start justify-between p-4 rounded-xl border bg-muted/10">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-sm font-bold">{item.label}</Label>
+                                        <p className="text-[10px] text-muted-foreground leading-tight">{item.desc}</p>
+                                    </div>
+                                    <Switch 
+                                        checked={financialSettings.defaulterRestrictions[item.key as keyof typeof financialSettings.defaulterRestrictions] as boolean} 
+                                        onCheckedChange={() => handleRestrictionChange(item.key as any)} 
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:items-start">
+                        <div className="space-y-1">
+                            <Label className="text-base font-bold flex items-center gap-2">
+                                <LayoutGrid className="h-4 w-4 text-primary" /> Sidebar Visibility Rules
+                            </Label>
+                            <p className="text-xs text-muted-foreground pr-4">Choose which sidebar sections are <strong>hidden</strong> from students in arrears. Sections not listed (e.g., Finances) are always visible.</p>
+                        </div>
+                        <div className="sm:col-span-2 space-y-3">
+                            <div className="grid gap-3">
+                                {studentSidebarCategories.map((category) => {
+                                    const isRestricted = !!financialSettings.defaulterRestrictions.sidebar[category];
+                                    return (
+                                        <div 
+                                            key={category} 
+                                            className={cn(
+                                                "flex items-center justify-between p-4 rounded-xl border transition-all",
+                                                isRestricted ? "bg-red-50/50 border-red-200" : "bg-green-50/30 border-green-200"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn("p-2 rounded-lg", isRestricted ? "bg-red-100" : "bg-green-100")}>
+                                                    {isRestricted ? <Lock className="h-4 w-4 text-red-600"/> : <Unlock className="h-4 w-4 text-green-600"/>}
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    <span className="text-sm font-bold">{category} Section</span>
+                                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
+                                                        {isRestricted ? "Hidden from Defaulters" : "Visible to Everyone"}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Switch 
+                                                checked={isRestricted} 
+                                                onCheckedChange={() => handleSidebarRestrictionToggle(category)} 
+                                            />
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter className="justify-end border-t pt-6">
-                    <Button type="submit" disabled={saving || loading}>
+                <CardFooter className="justify-end border-t pt-6 bg-muted/5">
+                    <Button type="submit" size="lg" className="shadow-lg px-8 font-bold" disabled={saving || loading}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                        Save Defaulter Policies
+                        Save Financial Control Policies
                     </Button>
                 </CardFooter>
             </Card>
         </form>
-    )
+    );
 }
