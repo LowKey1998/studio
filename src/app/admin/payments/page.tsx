@@ -190,7 +190,6 @@ export default function PaymentsManagementPage() {
             const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: {} };
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
 
-            setFinancialSettings(fSettings);
             setCalendarSettings(calendarSnap.val() || {});
             setAllInvoices(allInvoicesData);
             if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
@@ -1079,7 +1078,7 @@ export default function PaymentsManagementPage() {
                             </div>
 
                             <div className="space-y-1">
-                                <Label>Amount to Credit (ZMW)</Label>
+                                <Label>Amount Paid (ZMW)</Label>
                                 <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
                             </div>
 
@@ -1165,7 +1164,7 @@ export default function PaymentsManagementPage() {
                     <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRequestStudentCreation} disabled={!requestMessage.trim()}>
-                            Send Request to Admissions
+                            Submit Request
                         </Button>
                     </DialogFooter>
                 </DialogContent>
