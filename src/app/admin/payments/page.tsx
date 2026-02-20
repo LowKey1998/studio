@@ -27,13 +27,14 @@ import {
     Receipt,
     Printer,
     ChevronDown,
-    FileText
+    FileText,
+    ShieldAlert
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, startOfDay } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, startOfDay, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -69,6 +70,7 @@ type StudentPaymentInfo = {
     thresholdMet: boolean;
     paidPercentage: number;
     requiredThreshold: number;
+    effectiveDeadline: Date | null;
 };
 
 type Transaction = {
@@ -102,6 +104,7 @@ export default function PaymentsManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [courses, setCourses] = React.useState<Record<string, any>>({});
     const [allInvoices, setAllInvoices] = React.useState<Record<string, any>>({});
+    const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -127,7 +130,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -137,7 +140,8 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'invoices')),
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/financialSettings')),
-                get(ref(db, 'settings/paymentPlans'))
+                get(ref(db, 'settings/paymentPlans')),
+                get(ref(db, 'calendarEvents'))
             ]);
             
             const users = usersSnap.val() || {};
@@ -145,8 +149,10 @@ export default function PaymentsManagementPage() {
             const transactionsData = transactionsSnap.val() || {};
             const allSemestersData = semestersSnap.val() || {};
             const allInvoicesData = invoicesSnap.val() || {};
-            const fSettings = financialSnap.val() || { paymentThreshold: 75 };
+            const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: {} };
+            const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
 
+            setFinancialSettings(fSettings);
             setAllInvoices(allInvoicesData);
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
@@ -209,6 +215,15 @@ export default function PaymentsManagementPage() {
                         const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
+                        // Find effective deadline
+                        const semDeadlines = calendarEvents
+                            .filter((ev: any) => ev.semester === semesterInfo.name && ev.title.includes('Deadline'))
+                            .sort((a: any, b: any) => a.date.localeCompare(b.date));
+                        
+                        const nextDeadlineDate = semDeadlines.length > 0 ? parseISO(semDeadlines[0].date) : null;
+                        const grace = semesterInfo.gracePeriodDays || 0;
+                        const effectiveDeadline = nextDeadlineDate ? addDays(nextDeadlineDate, grace) : null;
+
                         studentPaymentMap[key] = {
                             userId,
                             studentId: user.id,
@@ -224,7 +239,8 @@ export default function PaymentsManagementPage() {
                             thresholdMet,
                             paidPercentage,
                             requiredThreshold: threshold,
-                            status: balance <= 0.01 ? 'Paid' : 'Pending'
+                            status: balance <= 0.01 ? 'Paid' : 'Pending',
+                            effectiveDeadline
                         };
                     }
                  }
@@ -338,15 +354,12 @@ export default function PaymentsManagementPage() {
     const handlePrintStatement = async (semId: string, data: any) => {
         if (!historyStudent) return;
         const studentUid = historyStudent.userId;
-        
-        // Find correct invoice for this semester
         const semesterPaymentInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
         const targetInvoice = allInvoices[studentUid]?.[semesterPaymentInfo?.invoiceId || ''];
 
         const doc = new jsPDF();
         doc.setFontSize(20);
         doc.text("Statement of Account", 14, 22);
-        
         doc.setFontSize(10);
         doc.text(`Student: ${historyStudent.studentName} (${historyStudent.studentId})`, 14, 32);
         doc.text(`Semester: ${data.semesterName}`, 14, 37);
@@ -559,7 +572,12 @@ export default function PaymentsManagementPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredData.map((info) => (
+                                    {filteredData.map((info) => {
+                                        const now = new Date();
+                                        const isBlockCurrentlyActive = info.effectiveDeadline && isAfter(now, info.effectiveDeadline) && !info.thresholdMet;
+                                        const willBeBlocked = info.effectiveDeadline && !isAfter(now, info.effectiveDeadline) && !info.thresholdMet;
+
+                                        return (
                                         <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
                                             <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
                                             <TableCell>
@@ -580,19 +598,50 @@ export default function PaymentsManagementPage() {
                                                                 {info.thresholdMet ? "Met" : "Below"}
                                                             </Badge>
                                                         </PopoverTrigger>
-                                                        <PopoverContent className="w-64 p-4">
-                                                            <div className="space-y-3">
-                                                                <h4 className="font-black uppercase text-[10px] tracking-widest text-primary">Compliance Calculation</h4>
-                                                                <div className="space-y-1">
-                                                                    <div className="flex justify-between text-xs"><span>Total Due:</span> <span className="font-bold">ZMW {info.totalDue.toFixed(2)}</span></div>
-                                                                    <div className="flex justify-between text-xs"><span>Total Paid:</span> <span className="font-bold text-green-600">ZMW {info.totalPaid.toFixed(2)}</span></div>
-                                                                    <div className="flex justify-between text-xs pt-1 border-t"><span>Paid Level:</span> <span className="font-bold">{info.paidPercentage.toFixed(1)}%</span></div>
-                                                                    <div className="flex justify-between text-xs"><span>Required:</span> <span className="font-bold text-primary">{info.requiredThreshold}%</span></div>
+                                                        <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
+                                                            <div className="space-y-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="p-1.5 rounded-md bg-primary/10">
+                                                                        <Calculator className="h-4 w-4 text-primary" />
+                                                                    </div>
+                                                                    <h4 className="font-black uppercase text-[10px] tracking-widest text-primary">Threshold Audit</h4>
                                                                 </div>
-                                                                {!info.thresholdMet && (
-                                                                    <Alert className="bg-destructive/10 border-destructive/20 py-2">
-                                                                        <AlertDescription className="text-[10px] text-destructive leading-tight font-bold uppercase italic">Student is currently blocked from critical portal features.</AlertDescription>
-                                                                    </Alert>
+                                                                
+                                                                <div className="space-y-1 bg-muted/20 p-2 rounded-md border">
+                                                                    <div className="flex justify-between text-xs"><span>Invoice Total:</span> <span className="font-bold">ZMW {info.totalDue.toFixed(2)}</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Amount Paid:</span> <span className="font-bold text-green-600">ZMW {info.totalPaid.toFixed(2)}</span></div>
+                                                                    <Separator className="my-1"/>
+                                                                    <div className="flex justify-between text-xs pt-1"><span>Current Paid %:</span> <span className="font-bold">{info.paidPercentage.toFixed(1)}%</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Requirement:</span> <span className="font-bold text-primary">{info.requiredThreshold}%</span></div>
+                                                                </div>
+
+                                                                {!info.thresholdMet && financialSettings?.defaulterRestrictions && (
+                                                                    <div className="space-y-3">
+                                                                        <div className="flex items-center gap-2 text-destructive">
+                                                                            <ShieldAlert className="h-4 w-4" />
+                                                                            <span className="text-[10px] font-black uppercase tracking-widest">Policy Enforcement</span>
+                                                                        </div>
+                                                                        <div className="space-y-1.5">
+                                                                            {Object.entries(financialSettings.defaulterRestrictions).map(([key, enabled]) => {
+                                                                                if (!enabled) return null;
+                                                                                return (
+                                                                                    <div key={key} className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                                                        <Badge variant="outline" className="h-4 w-4 p-0 flex items-center justify-center border-destructive/30 text-destructive text-[8px] font-bold">X</Badge>
+                                                                                        <span className="capitalize">{key} Blocked</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                        <Alert className={cn("py-2 border-none", isBlockCurrentlyActive ? "bg-red-50" : "bg-orange-50")}>
+                                                                            <AlertDescription className="text-[10px] font-bold leading-tight">
+                                                                                {isBlockCurrentlyActive ? (
+                                                                                    <span className="text-destructive uppercase">Blocked as of {info.effectiveDeadline ? format(info.effectiveDeadline, 'dd MMM yyyy') : 'N/A'}</span>
+                                                                                ) : (
+                                                                                    <span className="text-orange-700">Restrictions apply from {info.effectiveDeadline ? format(info.effectiveDeadline, 'dd MMM yyyy') : 'N/A'}</span>
+                                                                                )}
+                                                                            </AlertDescription>
+                                                                        </Alert>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </PopoverContent>
@@ -610,7 +659,7 @@ export default function PaymentsManagementPage() {
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                    )})}
                                 </TableBody>
                             </Table>
                         </div>
@@ -691,9 +740,9 @@ export default function PaymentsManagementPage() {
                                                 <div className="flex items-center gap-4">
                                                     <div className="text-right">
                                                         <p className="text-[10px] text-muted-foreground uppercase font-bold">Balance</p>
-                                                        <p className={cn("text-xs font-black", balance > 0 ? "text-destructive" : "text-green-600")}>ZMW {balance.toFixed(2)}</p>
+                                                        <p className={cn("text-xs font-black", balance > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {balance.toFixed(2)}</p>
                                                     </div>
-                                                    <Badge variant={balance <= 0 ? "default" : "outline"} className="h-5 text-[8px] uppercase">{balance <= 0 ? "Settled" : "Outstanding"}</Badge>
+                                                    <Badge variant={balance <= 0.01 ? "default" : "outline"} className="h-5 text-[8px] uppercase">{balance <= 0.01 ? "Settled" : "Outstanding"}</Badge>
                                                 </div>
                                             </div>
                                         </AccordionTrigger>
@@ -803,3 +852,7 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
+
+const Calculator = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+);
