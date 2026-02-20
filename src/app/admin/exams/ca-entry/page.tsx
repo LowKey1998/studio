@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { sendEmail } from '@/ai/flows/send-email-flow';
+import { format, parseISO } from 'date-fns';
 
 type Student = {
     uid: string;
@@ -277,8 +278,8 @@ export default function CAEntryPage() {
 
             // Handle Email Notifications
             if (sendEmails) {
-                const emailPromises = studentsInRoster.map(async (student) => {
-                    if (!student.email) return;
+                for (const student of studentsInRoster) {
+                    if (!student.email) continue;
 
                     let studentCoursesHtml = "";
                     let hasNewData = false;
@@ -317,8 +318,7 @@ export default function CAEntryPage() {
 
                         await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
                     }
-                });
-                await Promise.all(emailPromises);
+                }
             }
 
             toast({ title: "Results Recorded", description: `${selectedCourseIds.length} course(s) updated and notifications triggered.` });

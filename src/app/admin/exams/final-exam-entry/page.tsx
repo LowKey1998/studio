@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { sendEmail } from '@/ai/flows/send-email-flow';
+import { format, parseISO } from 'date-fns';
 
 type Student = {
     uid: string;
@@ -279,8 +280,8 @@ export default function FinalExamEntryPage() {
 
             // Handle Notifications
             if (sendEmails) {
-                const emailPromises = studentsInRoster.map(async (student) => {
-                    if (!student.email) return;
+                for (const student of studentsInRoster) {
+                    if (!student.email) continue;
 
                     let hasNewData = false;
                     let studentExamListHtml = "<ul style='margin: 10px 0; padding-left: 20px;'>";
@@ -311,8 +312,7 @@ export default function FinalExamEntryPage() {
 
                         await sendEmail({ to: [student.email], subject: finalSubject, body: finalBody }).catch(e => console.error("Email fail:", e));
                     }
-                });
-                await Promise.all(emailPromises);
+                }
             }
 
             toast({ title: "Exam Scores Saved", description: `${selectedCourseIds.length} course(s) updated and notifications sent.` });
