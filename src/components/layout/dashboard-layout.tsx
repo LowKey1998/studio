@@ -124,7 +124,6 @@ export default function DashboardLayout({
     return () => unsub();
   }, [user]);
 
-  // Combined listener for sidebar alerts & financial check
   React.useEffect(() => {
     if (!user || !userProfile) return;
 
@@ -205,7 +204,6 @@ export default function DashboardLayout({
         setFinancialSettings(snapshot.val());
     });
 
-    // --- Defaulter Logic for Students ---
     if (userProfile.role === 'Student') {
         const checkFinancialStanding = async () => {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, plansSnap, intakeSnap] = await Promise.all([
@@ -253,7 +251,6 @@ export default function DashboardLayout({
 
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
             const semDeadlines = calendarEvents.filter(ev => ev.semester === semData.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
-            
             const passedDeadlines = semDeadlines.filter(ev => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
             
             if (passedDeadlines.length > 0 && paidPercentage < threshold) {
@@ -283,9 +280,7 @@ export default function DashboardLayout({
         if (isDefaulter && financialSettings?.defaulterRestrictions?.sidebar) {
             const restrictedCategories = financialSettings.defaulterRestrictions.sidebar;
             return studentMenuItems.filter(category => {
-                // Never restrict Finances or Communications sections for students
                 if (category.label === 'Finances' || category.label === 'Communications') return true;
-                // Otherwise, check if this specific category is restricted in settings
                 return !restrictedCategories[category.label];
             });
         }

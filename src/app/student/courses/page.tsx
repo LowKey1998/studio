@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -102,7 +101,6 @@ export default function StudentCoursesPage() {
                 const semesterInfo = allSemesters[semesterId];
                 if (!semesterInfo) continue;
 
-                // STRICT FILTER: Only show classes for the student's current intake AND current standing (Year/Sem)
                 const isMatchingIntake = semesterInfo.intakeId === studentIntakeId;
                 const isCurrentStanding = calculatedState?.year === semesterInfo.year && calculatedState?.semester === semesterInfo.semesterInYear;
 

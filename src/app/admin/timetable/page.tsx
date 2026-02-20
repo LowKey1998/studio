@@ -146,7 +146,7 @@ function TimetableManagementComponent() {
                 case 0: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 3: setAllIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name))); break;
+                case 3: setAllIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
                 case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
@@ -351,11 +351,8 @@ function TimetableManagementComponent() {
         setSaving(true);
         try {
             const updates: Record<string, any> = {};
-            
-            // 1. Core action: Remove from timetable
             updates[`timetables/${entryToDelete.semesterId}/${entryToDelete.courseId}/${entryToDelete.id}`] = null;
 
-            // 2. Conditional: Bulk Unenrollment
             if (unenrollStudentsOnDelete) {
                 const regsSnap = await get(ref(db, 'registrations'));
                 if (regsSnap.exists()) {
@@ -364,8 +361,6 @@ function TimetableManagementComponent() {
                     
                     for (const userId in allRegs) {
                         const userRegs = allRegs[userId];
-                        // If it's a semester-specific entry, we check that semester
-                        // If it's a master entry, we find the active semester for this student's intake
                         const semIdToCheck = entryToDelete.semesterId === 'master' 
                             ? Object.keys(userRegs).find(sid => {
                                 const sInfo = semesters.find(s => s.id === sid);
@@ -467,7 +462,7 @@ function TimetableManagementComponent() {
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div>
                             <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
-                            <CardDescription>Select an intake cohort to view and manage their current academic schedule.</CardDescription>
+                            <CardDescription>Manage academic schedules and cohort instances.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
@@ -518,7 +513,7 @@ function TimetableManagementComponent() {
                                                 <Label htmlFor="is-live" className="text-sm font-bold flex items-center gap-2">
                                                     <Video className="h-4 w-4 text-primary"/> Online Video Session
                                                 </Label>
-                                                <p className="text-[10px] text-muted-foreground leading-tight italic">Flags this session as an online class. Students can join via video call.</p>
+                                                <p className="text-[10px] text-muted-foreground leading-tight italic">Flags this session as an online class.</p>
                                             </div>
                                         </div>
 
@@ -549,7 +544,7 @@ function TimetableManagementComponent() {
                 <CardContent className="space-y-4">
                     <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-lg border">
                         <div className="w-72">
-                            <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Step 1: Select Intake or Master</Label>
+                            <Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Scope Selection</Label>
                             <Select value={viewTarget} onValueChange={setViewTarget}>
                                 <SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue /></SelectTrigger>
                                 <SelectContent>
@@ -560,12 +555,7 @@ function TimetableManagementComponent() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        {academicStanding && (
-                            <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-primary/5 text-primary shadow-sm">
-                                <GraduationCap className="h-4 w-4" />
-                                Standing: {academicStanding}
-                            </Badge>
-                        )}
+                        {academicStanding && <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-primary/5 text-primary shadow-sm"><GraduationCap className="h-4 w-4" />Standing: {academicStanding}</Badge>}
                         <div className="flex-1 min-w-[200px]"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Search Course</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter code or name..." className="pl-8 bg-background shadow-sm h-10 border-primary/20" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
                         <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
@@ -574,10 +564,7 @@ function TimetableManagementComponent() {
                         <Alert variant="destructive" className="bg-orange-50 border-orange-200">
                             <AlertCircle className="h-4 w-4 text-orange-600" />
                             <AlertTitle className="font-bold text-orange-800 uppercase text-[10px] tracking-widest">Semester Missing</AlertTitle>
-                            <AlertDescription className="text-orange-700 text-sm">
-                                No active semester record found for the <strong>{allIntakes.find(i=>i.id===viewTarget)?.name}</strong> cohort at <strong>{academicStanding}</strong>. 
-                                Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
-                            </AlertDescription>
+                            <AlertDescription className="text-orange-700 text-sm">No active semester record found for this cohort standing. Please create one in Registration Management.</AlertDescription>
                         </Alert>
                     )}
 
@@ -593,9 +580,7 @@ function TimetableManagementComponent() {
                                 <TableBody>
                                     {calendarDays.slice(1, 6).map(dayName => {
                                         const isDayToday = format(new Date(), 'EEEE') === dayName;
-                                        const isEnabledDay = displayDays.includes(dayName);
-
-                                        if (!isEnabledDay) return null;
+                                        if (!displayDays.includes(dayName)) return null;
 
                                         return (
                                             <TableRow key={dayName} className={cn(isDayToday && "bg-primary/5")}>
@@ -605,32 +590,17 @@ function TimetableManagementComponent() {
                                                 {teachingTimes.slots.map((slot, sIdx) => {
                                                     const slotStart = timeToMinutes(slot.startTime);
                                                     const slotEnd = timeToMinutes(slot.endTime);
-                                                    const sessionsInSlot = mergedSessions.filter(s => 
-                                                        s.entry.day === dayName && 
-                                                        timeToMinutes(s.entry.startTime) >= slotStart && 
-                                                        timeToMinutes(s.entry.startTime) < slotEnd
-                                                    );
+                                                    const sessionsInSlot = mergedSessions.filter(s => s.entry.day === dayName && timeToMinutes(s.entry.startTime) >= slotStart && timeToMinutes(s.entry.startTime) < slotEnd);
 
                                                     return (
-                                                        <TableCell 
-                                                            key={sIdx} 
-                                                            className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative cursor-pointer"
-                                                            onClick={() => handleCellClick(dayName, slot)}
-                                                        >
+                                                        <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px] hover:bg-primary/5 transition-colors group relative cursor-pointer" onClick={() => handleCellClick(dayName, slot)}>
                                                             <div className="space-y-2">
                                                                 {sessionsInSlot.map((s, eIdx) => (
-                                                                    <div 
-                                                                        key={eIdx} 
-                                                                        className={cn(
-                                                                            "p-2 rounded-md border bg-background shadow-sm relative transition-all",
-                                                                            s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20",
-                                                                        )}
-                                                                        onClick={(e) => e.stopPropagation()} 
-                                                                    >
+                                                                    <div key={eIdx} className={cn("p-2 rounded-md border bg-background shadow-sm relative transition-all", s.entry.isLiveSession ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20")} onClick={(e) => e.stopPropagation()}>
                                                                         <div className="flex justify-between items-start gap-1">
                                                                             <div className="flex-1">
                                                                                 <div className="flex items-center gap-1">
-                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={s.entry.courseName}>{s.entry.courseCode}: {s.entry.courseName}</p>
+                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{s.entry.courseCode}: {s.entry.courseName}</p>
                                                                                     {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
                                                                                 </div>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL" : s.entry.venue}</div>
@@ -647,11 +617,6 @@ function TimetableManagementComponent() {
                                                                         </div>
                                                                     </div>
                                                                 ))}
-                                                                {sessionsInSlot.length === 0 && (
-                                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <PlusCircle className="h-6 w-6 text-primary/40" />
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         </TableCell>
                                                     );
@@ -663,7 +628,7 @@ function TimetableManagementComponent() {
                             </Table>
                         </div>
                     ) : (
-                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Define **Time Slots** in Teaching Times Setup to enable the grid view.</AlertDescription></Alert>
+                        <Alert variant="secondary"><Info className="h-4 w-4" /><AlertTitle>Matrix View Unavailable</AlertTitle><AlertDescription>Define time slots in settings.</AlertDescription></Alert>
                     )}
                 </CardContent>
             </Card>
@@ -671,45 +636,23 @@ function TimetableManagementComponent() {
             <AlertDialog open={!!entryToDelete} onOpenChange={(o) => { if(!o) { setEntryToDelete(null); setUnenrollStudentsOnDelete(false); setConfirmUnenrollCheckbox(false); } }}>
                 <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm Session Removal</AlertDialogTitle>
+                        <AlertDialogTitle>Confirm Removal</AlertDialogTitle>
                         <AlertDialogDescription className="space-y-4">
-                            <p>
-                                Remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong> for the <strong>{entryToDelete?.intakeName}</strong> cohort?
-                            </p>
-                            
+                            <p>Remove <strong>{entryToDelete?.courseName}</strong> for the <strong>{entryToDelete?.intakeName}</strong> cohort?</p>
                             <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
                                 <div className="flex items-center space-x-2">
-                                    <Switch 
-                                        id="unenroll-students" 
-                                        checked={unenrollStudentsOnDelete} 
-                                        onCheckedChange={setUnenrollStudentsOnDelete} 
-                                    />
+                                    <Switch id="unenroll-students" checked={unenrollStudentsOnDelete} onCheckedChange={setUnenrollStudentsOnDelete} />
                                     <div className="space-y-0.5">
-                                        <Label htmlFor="unenroll-students" className="font-bold flex items-center gap-2">
-                                            <UserMinus className="h-4 w-4 text-destructive"/> Unenroll Students
-                                        </Label>
-                                        <p className="text-[10px] text-muted-foreground italic leading-tight">Remove this course from the registration lists of all students in this cohort.</p>
+                                        <Label htmlFor="unenroll-students" className="font-bold flex items-center gap-2"><UserMinus className="h-4 w-4 text-destructive"/> Bulk Unenroll Students</Label>
+                                        <p className="text-[10px] text-muted-foreground italic leading-tight">Remove this course from all student registrations in this cohort.</p>
                                     </div>
                                 </div>
-
-                                {unenrollOnDelete && (
+                                {unenrollStudentsOnDelete && (
                                     <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
-                                        <Alert variant="destructive" className="bg-red-50 py-2 border-red-200">
-                                            <AlertCircle className="h-4 w-4" />
-                                            <AlertTitle className="text-[10px] font-black uppercase tracking-widest">Impact Analysis</AlertTitle>
-                                            <AlertDescription className="text-xs font-bold">
-                                                This action will affect {deletionImpactCount} students. They will no longer see this course in their portal or timetable.
-                                            </AlertDescription>
-                                        </Alert>
+                                        <Alert variant="destructive" className="bg-red-50 py-2 border-red-200"><AlertCircle className="h-4 w-4" /><AlertDescription className="text-xs font-bold">This will affect {deletionImpactCount} students. They will no longer see this course.</AlertDescription></Alert>
                                         <div className="flex items-center space-x-2">
-                                            <Checkbox 
-                                                id="confirm-unenroll" 
-                                                checked={confirmUnenrollCheckbox} 
-                                                onCheckedChange={(c) => setConfirmUnenrollCheckbox(!!c)} 
-                                            />
-                                            <Label htmlFor="confirm-unenroll" className="text-[10px] font-bold text-destructive uppercase tracking-tighter cursor-pointer">
-                                                I confirm I want to bulk unenroll {deletionImpactCount} students
-                                            </Label>
+                                            <Checkbox id="confirm-unenroll" checked={confirmUnenrollCheckbox} onCheckedChange={(c) => setConfirmUnenrollCheckbox(!!c)} />
+                                            <Label htmlFor="confirm-unenroll" className="text-[10px] font-bold text-destructive uppercase tracking-tighter">Confirm bulk unenrollment</Label>
                                         </div>
                                     </div>
                                 )}
@@ -718,11 +661,7 @@ function TimetableManagementComponent() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={confirmDeleteEntry} 
-                            className="bg-destructive hover:bg-destructive/90 text-white font-bold"
-                            disabled={unenrollStudentsOnDelete && !confirmUnenrollCheckbox}
-                        >
+                        <AlertDialogAction onClick={confirmDeleteEntry} className="bg-destructive hover:bg-destructive/90 font-bold" disabled={unenrollStudentsOnDelete && !confirmUnenrollCheckbox}>
                             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                             {unenrollStudentsOnDelete ? "Unenroll & Remove" : "Remove Session"}
                         </AlertDialogAction>

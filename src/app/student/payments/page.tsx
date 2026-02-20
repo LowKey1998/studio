@@ -12,7 +12,6 @@ import {
     GraduationCap, 
     Loader2, 
     Download, 
-    Mail, 
     Calculator, 
     AlertTriangle, 
     CheckCircle, 
@@ -32,7 +31,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { logError } from '@/lib/error-logger';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
@@ -150,10 +148,7 @@ export default function StudentPaymentsPage() {
                 .map(invoice => {
                     const semesterId = invoice.semesterId;
                     const semesterInfo = semestersData[semesterId];
-                    
-                    if (semesterInfo && semesterInfo.intakeId !== userProfile.intakeId) {
-                        return null;
-                    }
+                    if (semesterInfo && semesterInfo.intakeId !== userProfile.intakeId) return null;
 
                     const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
                     const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
@@ -172,7 +167,7 @@ export default function StudentPaymentsPage() {
                         totalPaid,
                         balance,
                         status: balance <= 0.01 ? 'Paid' : 'Pending',
-                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.date).getTime()),
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()),
                         threshold,
                         paidPercentage,
                         thresholdMet
@@ -182,7 +177,6 @@ export default function StudentPaymentsPage() {
 
             setPayments(summaries.sort((a, b) => b.invoice.dateCreated.localeCompare(a.invoice.dateCreated)));
         } catch (error: any) {
-            logError(error.message, 'Payments Fetch', error);
             toast({ variant: 'destructive', title: 'Failed to load payments' });
         } finally {
             setLoading(false);
@@ -193,90 +187,40 @@ export default function StudentPaymentsPage() {
         if (currentUser) fetchData();
     }, [currentUser, fetchData]);
 
-    const generateInvoicePDF = async (p: PaymentSummary): Promise<jsPDF | null> => {
-        const semester = allSemesters[p.semesterId];
-        if (!semester) return null;
-
-        const doc = new jsPDF();
-        if (institutionSettings.logoUrl) {
-            try {
-                doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
-            } catch (e) {}
-        }
-        doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
-        doc.setFontSize(12); doc.text('Combined Invoice & Statement', 190, 25, { align: 'right' });
-        doc.setFontSize(10);
-        doc.text(`Student: ${currentUser?.displayName || 'Student'}`, 14, 40);
-        doc.text(`Invoice ID: ${p.invoice.invoiceId}`, 190, 40, { align: 'right' });
-        doc.text(`Date Issued: ${format(new Date(p.invoice.dateCreated), 'PPP')}`, 190, 45, { align: 'right' });
-        doc.text(`Semester: ${semester.name}`, 14, 45);
-
-        const courseItems = (p.invoice.courses || []).map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown Course'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
-        const mandatoryFeeItems = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(fee => ['', `Mandatory Fee: ${fee.name}`, `ZMW ${(fee.amount || 0).toFixed(2)}`]) : [];
-        const optionalFeeItems = semester?.optionalFees && p.invoice.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name || 'Unknown Fee'}`, `ZMW ${(semester.optionalFees![id]?.amount || 0).toFixed(2)}`]) : [];
-        const lateFeeItem = p.invoice.lateFee && p.invoice.lateFee > 0 ? [['', 'Late Registration Fee', `ZMW ${p.invoice.lateFee.toFixed(2)}`]] : [];
-
-        const body = [...courseItems, ...mandatoryFeeItems, ...optionalFeeItems, ...lateFeeItem];
-        const subtotal = (p.invoice.totalTuition || 0) + (p.invoice.totalMandatoryFees || 0) + (p.invoice.totalOptionalFees || 0) + (p.invoice.lateFee || 0);
-        
-        const foot: (string | number)[][] = [['', 'Subtotal', `ZMW ${subtotal.toFixed(2)}`]];
-        if(p.invoice.applyScholarship) {
-            foot.push(['', 'Scholarship Waived', `(ZMW ${(p.invoice.totalTuition || 0).toFixed(2)})`]);
-        }
-        foot.push(['', 'TOTAL SEMESTER PAYABLE', `ZMW ${p.totalDue.toFixed(2)}`]);
-        
-        autoTable(doc, { 
-            startY: 55, 
-            head: [['Code', 'Description', 'Amount']], 
-            body, 
-            foot, 
-            theme: 'striped', 
-            headStyles: { fillColor: [34, 34, 34] },
-            footStyles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] }
-        });
-
-        const finalY = (doc as any).lastAutoTable.finalY + 15;
-        doc.setFontSize(14);
-        doc.text("Payments Received", 14, finalY);
-        
-        const transactionRows = p.transactions.map((t) => [
-            format(parseISO(t.paymentDate), 'dd MMM yyyy'),
-            t.transactionId,
-            t.method || 'Online',
-            `ZMW ${t.amount.toFixed(2)}`
-        ]);
-
-        autoTable(doc, {
-            startY: finalY + 5,
-            head: [['Date', 'Reference', 'Method', 'Amount']],
-            body: transactionRows.length > 0 ? transactionRows : [['-', 'No payments recorded', '-', 'ZMW 0.00']],
-            theme: 'grid',
-            headStyles: { fillColor: [44, 62, 80] },
-            styles: { fontSize: 9 }
-        });
-
-        const summaryY = (doc as any).lastAutoTable.finalY + 10;
-        doc.setFontSize(12);
-        doc.text(`Total Amount Paid: ZMW ${p.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });
-        doc.setFontSize(14);
-        doc.setTextColor(p.balance > 0.01 ? 200 : 0, 0, 0);
-        doc.text(`OUTSTANDING BALANCE: ZMW ${p.balance.toFixed(2)}`, 190, summaryY + 8, { align: 'right' });
-
-        return doc;
-    };
-
     const handleDownloadInvoice = async (p: PaymentSummary) => {
         setActionLoading(`dl-${p.invoice.invoiceId}`);
         try {
-            const doc = await generateInvoicePDF(p);
-            if (doc) {
-                doc.save(`invoice-${p.invoice.invoiceId}.pdf`);
-                toast({ title: 'Invoice Downloaded' });
-            } else {
-                toast({ variant: 'destructive', title: 'Invoice Not Found' });
+            const semester = allSemesters[p.semesterId];
+            const doc = new jsPDF();
+            if (institutionSettings.logoUrl) {
+                try { doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20); } catch (e) {}
             }
+            doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
+            doc.setFontSize(12); doc.text('Combined Invoice & Statement', 190, 25, { align: 'right' });
+            doc.setFontSize(10);
+            doc.text(`Student: ${currentUser?.displayName || 'Student'}`, 14, 40);
+            doc.text(`Invoice ID: ${p.invoice.invoiceId}`, 190, 40, { align: 'right' });
+            doc.text(`Semester: ${semester?.name || p.semesterName}`, 14, 45);
+
+            const body = (p.invoice.courses || []).map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+            const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(f => ['', `Mandatory Fee: ${f.name}`, `ZMW ${f.amount.toFixed(2)}`]) : [];
+            const optional = semester?.optionalFees && p.invoice.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
+            const finalBody = [...body, ...fees, ...optional];
+            
+            autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body: finalBody, theme: 'striped', headStyles: { fillColor: [34, 34, 34] }});
+
+            const finalY = (doc as any).lastAutoTable.finalY + 15;
+            doc.setFontSize(14); doc.text("Payments Received", 14, finalY);
+            const txRows = p.transactions.map(t => [format(parseISO(t.paymentDate), 'dd MMM yyyy'), t.transactionId, t.method || 'Online', `ZMW ${t.amount.toFixed(2)}`]);
+            autoTable(doc, { startY: finalY + 5, head: [['Date', 'Ref', 'Method', 'Amount']], body: txRows.length > 0 ? txRows : [['-', 'No payments', '-', 'ZMW 0.00']], theme: 'grid' });
+
+            const summaryY = (doc as any).lastAutoTable.finalY + 10;
+            doc.setFontSize(12); doc.text(`Total Paid: ZMW ${p.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });
+            doc.text(`BALANCE: ZMW ${p.balance.toFixed(2)}`, 190, summaryY + 8, { align: 'right' });
+
+            doc.save(`invoice-${p.invoice.invoiceId}.pdf`);
+            toast({ title: 'Invoice Downloaded' });
         } catch (e: any) {
-            logError(e.message, 'Invoice PDF Generation', e);
             toast({ variant: 'destructive', title: 'Download Failed' });
         } finally {
             setActionLoading(null);
@@ -292,262 +236,73 @@ export default function StudentPaymentsPage() {
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
-                    <CardDescription>View your billing history and payment records for your academic cycle.</CardDescription>
+                    <CardDescription>View your billing history and payment records.</CardDescription>
                 </CardHeader>
             </Card>
 
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-4">
-                    {payments.length > 0 ? payments.map((payment) => (
+                    {payments.map((payment) => (
                         <Card key={payment.invoice.invoiceId} className="overflow-hidden border-0 shadow-lg">
-                            <CardHeader className="bg-muted/30 pb-4">
-                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <CardHeader className="bg-muted/30">
+                                <div className="flex justify-between items-center">
                                     <div>
-                                        <CardTitle className="text-xl">{payment.semesterName}</CardTitle>
-                                        <CardDescription>Invoice ID: {payment.invoice.invoiceId} &middot; Issued: {format(parseISO(payment.invoice.dateCreated), 'PPP')}</CardDescription>
+                                        <CardTitle>{payment.semesterName}</CardTitle>
+                                        <CardDescription>Plan: {payment.invoice.paymentPlan}</CardDescription>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <Badge variant={payment.status === 'Paid' ? 'default' : 'secondary'}>
-                                            {payment.status === 'Paid' ? <CheckCircle2 className="mr-1 h-3 w-3"/> : null}
-                                            {payment.status}
-                                        </Badge>
-                                        {payment.balance > 0 && <span className="text-xs font-bold text-destructive uppercase tracking-widest">Balance: ZMW {payment.balance.toFixed(2)}</span>}
-                                    </div>
+                                    <Badge variant={payment.status === 'Paid' ? 'default' : 'secondary'}>{payment.status}</Badge>
                                 </div>
                             </CardHeader>
                             <CardContent className="pt-6 space-y-6">
                                 <div className="grid md:grid-cols-2 gap-8">
-                                    <div className="space-y-6">
-                                        <div className="space-y-4">
-                                            <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                <Receipt className="h-3 w-3" /> Billing Breakdown
-                                            </h4>
-                                            <div className="rounded-xl border p-4 bg-card shadow-sm space-y-3">
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Academic Fees</p>
-                                                    {(payment.invoice.courses || []).map(id => {
-                                                        const course = allCourses[id];
-                                                        return course ? (
-                                                            <div key={id} className="flex justify-between text-xs">
-                                                                <span>Tuition: {course.name}</span>
-                                                                <span className="font-mono">ZMW {course.cost.toFixed(2)}</span>
-                                                            </div>
-                                                        ) : null;
-                                                    })}
-                                                    {payment.invoice.applyScholarship && (
-                                                        <div className="flex justify-between text-xs text-green-600 font-medium italic">
-                                                            <span className="flex items-center gap-1"><GraduationCap className="h-3 w-3"/> Scholarship Applied</span>
-                                                            <span className="font-mono">-(ZMW {payment.invoice.totalTuition?.toFixed(2)})</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <Separator />
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Institutional Fees</p>
-                                                    {Object.values(allSemesters[payment.semesterId]?.mandatoryFees || {}).map((fee, i) => (
-                                                        <div key={i} className="flex justify-between text-xs">
-                                                            <span>{fee.name} (Mandatory)</span>
-                                                            <span className="font-mono">ZMW {fee.amount.toFixed(2)}</span>
-                                                        </div>
-                                                    ))}
-                                                    {(payment.invoice.optionalFees || []).map(id => {
-                                                        const fee = allSemesters[payment.semesterId]?.optionalFees?.[id];
-                                                        return fee ? (
-                                                            <div key={id} className="flex justify-between text-xs">
-                                                                <span>{fee.name} (Optional)</span>
-                                                                <span className="font-mono">ZMW {fee.amount.toFixed(2)}</span>
-                                                            </div>
-                                                        ) : null;
-                                                    })}
-                                                </div>
-                                                <Separator />
-                                                <div className="flex justify-between font-black pt-1">
-                                                    <span>Total Payable</span>
-                                                    <span className="text-lg">ZMW {payment.totalDue.toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                <Calculator className="h-3 w-3" /> Financial Standing Audit
-                                            </h4>
-                                            <div className="p-4 rounded-xl border bg-primary/5 space-y-3">
-                                                <div className="flex justify-between items-end">
-                                                    <div className="space-y-0.5">
-                                                        <p className="text-xs font-bold">Progress to Standing</p>
-                                                        <p className="text-[10px] text-muted-foreground">Paid ZMW {payment.totalPaid.toFixed(2)} of ZMW {payment.totalDue.toFixed(2)}</p>
-                                                    </div>
-                                                    <span className="text-lg font-black">{payment.paidPercentage.toFixed(0)}%</span>
-                                                </div>
-                                                <Progress value={payment.paidPercentage} className="h-2" />
-                                                
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <Button variant="ghost" className="w-full h-auto p-2 justify-between group hover:bg-white/50 border border-transparent hover:border-primary/20">
-                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
-                                                                {payment.thresholdMet ? (
-                                                                    <CheckCircle className="h-3 w-3 text-green-600" />
-                                                                ) : (
-                                                                    <AlertTriangle className="h-3 w-3 text-orange-500" />
-                                                                )}
-                                                                <span className={cn(payment.thresholdMet ? "text-green-600" : "text-orange-600")}>
-                                                                    {payment.thresholdMet ? "Good Standing" : "Threshold Pending"}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1 text-[10px] opacity-60">
-                                                                <span>Req: {payment.threshold}%</span>
-                                                                <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
-                                                            </div>
-                                                        </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
-                                                        <div className="space-y-4">
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Defaulter Status Audit</h4>
-                                                            <div className="space-y-2">
-                                                                <p className="text-xs leading-relaxed">Based on institutional policy, the following restrictions apply if your threshold is not met after the grace period:</p>
-                                                                <div className="grid gap-2 pt-2">
-                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
-                                                                        <span>New Semester Registration</span>
-                                                                        {restrictions.registration ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
-                                                                    </div>
-                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
-                                                                        <span>Exam Result Visibility</span>
-                                                                        {restrictions.results ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
-                                                                    </div>
-                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
-                                                                        <span>Library Book Loans</span>
-                                                                        {restrictions.library ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
-                                                                    </div>
-                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
-                                                                        <span>Final Exam Eligibility</span>
-                                                                        {restrictions.exams ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
-                                            </div>
+                                    <div className="space-y-4">
+                                        <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Receipt className="h-3 w-3" /> Billing Breakdown</h4>
+                                        <div className="rounded-xl border p-4 bg-card space-y-3">
+                                            <div className="flex justify-between text-sm"><span>Total Due</span><span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span></div>
+                                            <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
+                                            <Separator />
+                                            <div className="flex justify-between font-black text-destructive"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>
                                         </div>
                                     </div>
-
                                     <div className="space-y-4">
-                                        <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                            <History className="h-3 w-3" /> Transaction Ledger
-                                        </h4>
-                                        <div className="rounded-xl border bg-muted/20 min-h-[100px] overflow-hidden">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="hover:bg-transparent">
-                                                        <TableHead className="h-10 text-[10px] uppercase">Date</TableHead>
-                                                        <TableHead className="h-10 text-[10px] uppercase">Method</TableHead>
-                                                        <TableHead className="h-10 text-right text-[10px] uppercase">Amount</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {payment.transactions.length > 0 ? payment.transactions.map((tx) => (
-                                                        <TableRow key={tx.key} className="hover:bg-transparent border-none">
-                                                            <TableCell className="py-2 text-xs text-muted-foreground">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                            <TableCell className="py-2 text-xs font-medium">{tx.method || 'Online'}</TableCell>
-                                                            <TableCell className="py-2 text-right font-mono font-bold text-xs">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                                        </TableRow>
-                                                    )) : (
-                                                        <TableRow>
-                                                            <TableCell colSpan={3} className="h-32 text-center text-xs text-muted-foreground italic">No payments recorded for this invoice.</TableCell>
-                                                        </TableRow>
-                                                    )}
-                                                </TableBody>
-                                            </Table>
+                                        <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Calculator className="h-3 w-3" /> Financial Standing</h4>
+                                        <div className="p-4 rounded-xl border bg-primary/5 space-y-3">
+                                            <div className="flex justify-between items-end">
+                                                <span className="text-xs font-bold">Progress to Standing</span>
+                                                <span className="text-lg font-black">{payment.paidPercentage.toFixed(0)}%</span>
+                                            </div>
+                                            <Progress value={payment.paidPercentage} className="h-2" />
+                                            <Popover>
+                                                <PopoverTrigger asChild><Button variant="ghost" className="w-full h-auto p-2 justify-between group"><span className="text-[10px] font-bold uppercase tracking-wider">{payment.thresholdMet ? "Good Standing" : "Below Threshold"}</span><ChevronDown className="h-3 w-3"/></Button></PopoverTrigger>
+                                                <PopoverContent className="w-80 p-4 shadow-2xl">
+                                                    <div className="space-y-4">
+                                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Active Restrictions</h4>
+                                                        <div className="grid gap-2 text-[10px] font-bold uppercase">
+                                                            <div className="flex justify-between"><span>Reg. Block</span> {restrictions.registration && !payment.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                            <div className="flex justify-between"><span>Grade Block</span> {restrictions.results && !payment.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                        </div>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
                                         </div>
                                     </div>
                                 </div>
                             </CardContent>
-                            <CardFooter className="bg-muted/10 border-t justify-between p-4">
-                                <div className="text-xs">
-                                    <span className="text-[10px] uppercase font-bold text-muted-foreground mr-2">Payment Plan:</span> 
-                                    <Badge variant="outline" className="h-5 text-[10px] font-bold bg-background">{payment.invoice.paymentPlan}</Badge>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        className="h-9"
-                                        onClick={() => handleDownloadInvoice(payment)}
-                                        disabled={actionLoading === `dl-${payment.invoice.invoiceId}`}
-                                    >
-                                        {actionLoading === `dl-${payment.invoice.invoiceId}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}
-                                        Statement of Account
-                                    </Button>
-                                    <Button size="sm" asChild className="h-9 shadow-md font-bold">
-                                        <Link href="/student/dashboard"><DollarSign className="mr-2 h-4 w-4"/>Make a Payment</Link>
-                                    </Button>
-                                </div>
+                            <CardFooter className="bg-muted/10 border-t justify-end p-4 gap-2">
+                                <Button variant="outline" size="sm" onClick={() => handleDownloadInvoice(payment)} disabled={actionLoading === `dl-${payment.invoice.invoiceId}`}>
+                                    {actionLoading === `dl-${payment.invoice.invoiceId}` ? <Loader2 className="animate-spin h-4 w-4"/> : <Download className="mr-2 h-4 w-4"/>}Statement
+                                </Button>
+                                <Button size="sm" asChild><Link href="/student/dashboard">Pay Fees</Link></Button>
                             </CardFooter>
                         </Card>
-                    )) : (
-                        <Card className="border-dashed border-2 bg-muted/10">
-                            <CardContent className="py-24 text-center text-muted-foreground">
-                                <DollarSign className="mx-auto h-16 w-16 opacity-10 mb-4" />
-                                <h3 className="text-xl font-bold text-foreground">No Billing History</h3>
-                                <p className="text-sm max-w-xs mx-auto mt-2">
-                                    Your account currently has no active invoices. Please ensure you have completed your semester registration.
-                                </p>
-                                <Button className="mt-8 shadow-lg font-bold" asChild>
-                                    <Link href="/student/registration">Register for Semester</Link>
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    )}
+                    ))}
                 </div>
-
                 <div className="space-y-6">
                     <Card className="border-2 border-primary/10 shadow-md">
-                        <CardHeader className="bg-primary/5 border-b">
-                            <div className="flex items-center gap-2">
-                                <ShieldAlert className="h-5 w-5 text-primary" />
-                                <CardTitle className="text-lg">Policies & Standing</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="pt-6 space-y-6">
-                            <div className="space-y-4">
-                                <h4 className="text-sm font-bold">Defaulter Restrictions</h4>
-                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                    To ensure academic continuity, students must maintain a minimum payment threshold. Failure to do so by installment deadlines may trigger the following restrictions:
-                                </p>
-                                <ul className="space-y-2">
-                                    <li className="flex items-start gap-2 text-xs">
-                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.registration ? "bg-red-100" : "bg-muted")}>
-                                            {restrictions.registration ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
-                                        </div>
-                                        <span className={cn(restrictions.registration && "font-bold")}>Semester Registration Block</span>
-                                    </li>
-                                    <li className="flex items-start gap-2 text-xs">
-                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.results ? "bg-red-100" : "bg-muted")}>
-                                            {restrictions.results ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
-                                        </div>
-                                        <span className={cn(restrictions.results && "font-bold")}>Exam Results Visibility Block</span>
-                                    </li>
-                                    <li className="flex items-start gap-2 text-xs">
-                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.library ? "bg-red-100" : "bg-muted")}>
-                                            {restrictions.library ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
-                                        </div>
-                                        <span className={cn(restrictions.library && "font-bold")}>Library Borrowing Suspension</span>
-                                    </li>
-                                </ul>
-                            </div>
-                            <Separator />
-                            <div className="bg-muted/30 p-4 rounded-lg space-y-2 border border-dashed">
-                                <h4 className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-                                    <Info className="h-3 w-3" /> Need Assistance?
-                                </h4>
-                                <p className="text-[10px] text-muted-foreground leading-relaxed italic">
-                                    If you have entered into a special arrangement with the finance office that is not reflected here, please contact the accounts department with your supporting documents.
-                                </p>
-                                <Button variant="link" size="sm" asChild className="h-auto p-0 text-[10px] font-bold">
-                                    <Link href="/contact">Message Finance Team <ArrowRight className="ml-1 h-2 w-2"/></Link>
-                                </Button>
-                            </div>
+                        <CardHeader className="bg-primary/5 border-b"><CardTitle className="text-lg">Policy Notice</CardTitle></CardHeader>
+                        <CardContent className="pt-6 space-y-4">
+                            <p className="text-xs text-muted-foreground leading-relaxed">Ensure you meet the minimum payment threshold ({financialSettings?.paymentThreshold || 75}%) by installment deadlines to avoid account restrictions.</p>
+                            <Button variant="link" size="sm" asChild className="p-0 text-xs font-bold"><Link href="/contact">Contact Finance Team <ArrowRight className="ml-1 h-3 w-3"/></Link></Button>
                         </CardContent>
                     </Card>
                 </div>

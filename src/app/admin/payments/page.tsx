@@ -1,63 +1,45 @@
 'use client';
 import * as React from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
     Loader2, 
     Search, 
-    Download, 
     DollarSign, 
     PlusCircle, 
     History, 
     X, 
     ChevronDown, 
     Calendar as CalendarIcon, 
-    Printer, 
-    PencilLine, 
-    Calculator, 
-    UserPlus, 
-    Percent, 
     Save, 
-    Trash2, 
-    Check, 
-    Plus,
-    FileText,
-    ArrowRight,
-    TrendingUp,
-    Receipt,
-    CalendarDays,
+    Info, 
     AlertTriangle,
     CheckCircle2,
-    Settings2,
-    ShieldAlert
+    ShieldAlert,
+    User,
+    ArrowRight,
+    TrendingUp,
+    Clock,
+    ChevronsUpDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, createNotification } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { Calendar } from '@/components/ui/calendar';
 import { useAuth } from '@/hooks/use-auth';
-import type { DateRange } from 'react-day-picker';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
-// --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
     userId: string;
     studentId: string;
@@ -104,12 +86,6 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
-const timeToMinutes = (time: string) => {
-    if (!time) return 0;
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-};
-
 export default function PaymentsManagementPage() {
     const { userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
@@ -119,32 +95,24 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [courses, setCourses] = React.useState<Record<string, any>>({});
-    const [allInvoices, setAllInvoices] = React.useState<Record<string, any>>({});
-    const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
-    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
-    
+    const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
+    
     const [searchTerm, setSearchTerm] = React.useState('');
-    const [programmeFilter, setProgrammeFilter] = React.useState('all');
-    const [semesterFilter, setSemesterFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
-    const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('today');
-    const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
 
-    // Single Record Form
+    // Record Payment Form State
     const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
     const [paymentSelectedUserId, setPaymentSelectedUserId] = React.useState('');
     const [paymentSelectedYear, setPaymentSelectedYear] = React.useState('');
     const [paymentSelectedSemInYear, setPaymentSelectedSemInYear] = React.useState('');
-    const [paymentSelectedSemesterId, setPaymentSelectedSemesterId] = React.useState('');
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [paymentComment, setPaymentComment] = React.useState('');
-    const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
-    const [manualTotalDue, setManualTotalDue] = React.useState('');
     const [dateReceived, setDateReceived] = React.useState<Date | undefined>(new Date());
+    const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
+    const [formLoading, setFormLoading] = React.useState(false);
 
     // Bulk Manual State
     const [isBulkManualOpen, setIsBulkManualOpen] = React.useState(false);
@@ -152,43 +120,22 @@ export default function PaymentsManagementPage() {
     const [bulkGlobalMethod, setBulkGlobalMethod] = React.useState('Cash');
     const [bulkGlobalDate, setBulkGlobalDate] = React.useState<Date | undefined>(new Date());
 
-    // Request Student
-    const [isRequestStudentOpen, setIsRequestStudentOpen] = React.useState(false);
-    const [requestMessage, setRequestMessage] = React.useState('');
-    const [requestTemplate, setRequestTemplate] = React.useState({ subject: 'New Student Account Request', body: 'Please create a new student account for:\n\nName: \nProgramme: \nIntake: \n\nReason: Recording initial fees.' });
-
-    // History & Edit
-    const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
-    const [editRequestType, setEditRequestType] = React.useState<'transaction' | 'invoice'>('transaction');
-    const [editTargetId, setEditTargetId] = React.useState('');
-    const [oldValue, setOldValue] = React.useState(0);
-    const [newValue, setNewValue] = React.useState('');
-    const [editReason, setEditReason] = React.useState('');
-    const [editStudentInfo, setEditStudentInfo] = React.useState<{uid:string, id:string, name:string} | null>(null);
-    const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
-    const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
-    
-    const [formLoading, setFormLoading] = React.useState(false);
     const { toast } = useToast();
 
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap, templateSnap, calendarSnap, institutionSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
-                get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'invoices')),
-                get(ref(db, 'courses')),
+                get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'calendarEvents')),
-                get(ref(db, 'settings/requestStudentTemplate')),
-                get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/institution')),
+                get(ref(db, 'calendarEvents'))
             ]);
             
             const users = usersSnap.val() || {};
@@ -196,20 +143,13 @@ export default function PaymentsManagementPage() {
             const transactionsData = transactionsSnap.val() || {};
             const allSemestersData = semestersSnap.val() || {};
             const allInvoicesData = invoicesSnap.val() || {};
-            const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: {} };
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
-            const plans = plansSnap.val() || {};
-
-            setCalendarSettings(calendarSnap.val() || {});
-            setAllInvoices(allInvoicesData);
-            setFinancialSettings(fSettings);
-            if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
-            if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
-            if (semestersSnap.exists()) setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
-            if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
-            if (coursesSnap.exists()) setCourses(coursesSnap.val());
-            if (plansSnap.exists()) setAllPaymentPlans(Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] })));
-            if (templateSnap.exists()) setRequestTemplate(templateSnap.val());
+            
+            setCalendarSettings(calSnap.val() || {});
+            setFinancialSettings(finSnap.val() || { paymentThreshold: 75 });
+            setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
+            setAllIntakes(Object.keys(intakesSnap.val() || {}).map(id => ({ id, ...intakesSnap.val()[id] })));
+            setAllPaymentPlans(Object.keys(plansSnap.val() || {}).map(id => ({ id, ...plansSnap.val()[id] })));
 
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
@@ -223,13 +163,9 @@ export default function PaymentsManagementPage() {
             for (const txId in transactionsData) {
                 const tx = transactionsData[txId];
                 if(tx.status !== 'successful') continue;
-                const userId = tx.userId;
-                const userRegs = registrations[userId] || {};
-                const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
-                const semesterInfo = semesterId ? allSemestersData[semesterId] : null;
-                transactionsList.push({ key: txId, ...tx, semesterId, semesterName: semesterInfo?.name });
+                transactionsList.push({ key: txId, ...tx });
             }
-            setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
+            setRawTransactions(transactionsList);
 
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
             const now = new Date();
@@ -257,7 +193,7 @@ export default function PaymentsManagementPage() {
                         const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
 
                         let currentRequiredThreshold = 0;
-                        const plan = Object.values(plans).find((p: any) => p.name === invoice.paymentPlan) as any;
+                        const plan = Object.values(plansSnap.val() || {}).find((p: any) => p.name === invoice.paymentPlan) as any;
                         if (plan && plan.installmentPercentages) {
                             for (let i = 0; i < plan.installments; i++) {
                                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
@@ -273,8 +209,7 @@ export default function PaymentsManagementPage() {
                         const thresholdMet = paidPercentage >= currentRequiredThreshold;
                         const semDeadlines = calendarEvents.filter((ev: any) => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a: any, b: any) => a.date.localeCompare(b.date));
                         const nextDeadlineDate = semDeadlines.length > 0 ? parseISO(semDeadlines[0].date) : null;
-                        const grace = semesterInfo.gracePeriodDays || 0;
-                        const effectiveDeadline = nextDeadlineDate ? addDays(nextDeadlineDate, grace) : null;
+                        const effectiveDeadline = nextDeadlineDate ? addDays(nextDeadlineDate, semesterInfo.gracePeriodDays || 0) : null;
 
                         studentPaymentMap[key] = {
                             userId, studentId: user.id, studentName: user.name, totalDue: totalPayable, totalPaid, balance,
@@ -292,8 +227,108 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => { fetchPaymentData(); }, [fetchPaymentData]);
 
+    const selectedStudentContext = React.useMemo(() => {
+        if (!paymentSelectedUserId || !calendarSettings) return null;
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        const intake = allIntakes.find(i => i.id === student?.intakeId);
+        if (!intake) return null;
+        const intakeDateStr = parseIntakeDate(intake.name);
+        if (!intakeDateStr) return { intakeName: intake.name, standing: 'Invalid Intake Date' };
+        const state = calculateAcademicState(
+            intakeDateStr, 
+            new Date(), 
+            calendarSettings.standardCycles, 
+            Object.values(calendarSettings.anomalies || {})
+        );
+        return { intakeName: intake.name, standing: `Year ${state.year}, Sem ${state.semester}` };
+    }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
+
+    const handleRecordPaymentDialog = async () => {
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        if(!student || !paymentSelectedYear || !paymentSelectedSemInYear || !paymentAmount || !dateReceived) { 
+            toast({ variant: 'destructive', title: 'Missing required fields' }); 
+            return; 
+        }
+
+        const targetSemester = semesters.find(s => 
+            s.intakeId === student.intakeId && 
+            s.year === Number(paymentSelectedYear) && 
+            s.semesterInYear === Number(paymentSelectedSemInYear)
+        );
+
+        if (!targetSemester) {
+            toast({ variant: 'destructive', title: 'No Semester Record', description: 'The selected Year/Semester does not have an active record for this intake.' });
+            return;
+        }
+
+        setFormLoading(true);
+        try {
+            const info = paymentInfos.find(p => p.userId === student.uid && p.semesterId === targetSemester.id);
+            const updates: Record<string, any> = {};
+            let targetInvoiceId = info?.invoiceId;
+
+            if (!info) {
+                // If student isn't registered but paying, create an empty invoice shell
+                const invRef = push(ref(db, `invoices/${student.uid}`));
+                targetInvoiceId = invRef.key!;
+                updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
+                    invoiceId: targetInvoiceId,
+                    semester: targetSemester.name,
+                    semesterId: targetSemester.id,
+                    dateCreated: new Date().toISOString(),
+                    totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                };
+                updates[`registrations/${student.uid}/${targetSemester.id}`] = {
+                    status: 'Completed',
+                    semesterName: targetSemester.name,
+                    registrationDate: new Date().toISOString(),
+                    programmeId: student.programmeId || '',
+                    intakeId: student.intakeId,
+                    invoiceId: targetInvoiceId,
+                    courses: []
+                };
+            }
+
+            const txRef = push(ref(db, 'transactions'));
+            const txId = `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
+            updates[`transactions/${txRef.key}`] = {
+                transactionId: txId,
+                userId: student.uid,
+                invoiceId: targetInvoiceId,
+                amount: parseFloat(paymentAmount),
+                currency: 'ZMW',
+                status: 'successful',
+                paymentDate: format(dateReceived, 'yyyy-MM-dd'),
+                recordedAt: serverTimestamp(),
+                method: paymentMethod,
+                comment: paymentComment,
+                recordedBy: userData?.name || 'Accountant',
+            };
+
+            await update(ref(db), updates);
+            toast({ variant: 'success', title: "Payment Recorded" });
+            setIsRecordPaymentOpen(false);
+            resetDialog();
+            fetchPaymentData();
+        } catch(e: any) { 
+            toast({ variant:'destructive', title:'Error', description: e.message }); 
+        } finally { 
+            setFormLoading(false); 
+        }
+    };
+
+    const resetDialog = () => {
+        setPaymentSelectedUserId(''); setPaymentSelectedYear(''); setPaymentSelectedSemInYear('');
+        setPaymentAmount(''); setPaymentMethod('Cash'); setPaymentComment(''); setDialogSearchTerm(''); setDateReceived(new Date());
+    };
+
     const handleAddBulkRow = () => {
         setBulkEntries(prev => [...prev, { id: `row-${Date.now()}`, studentId: '', amount: '', method: bulkGlobalMethod, date: bulkGlobalDate, studentUid: null, studentName: '' }]);
+    };
+
+    const handleRemoveBulkRow = (index: number) => {
+        if (bulkEntries.length <= 1) return;
+        setBulkEntries(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleBulkRowUpdate = (rowId: string, field: string, value: any) => {
@@ -331,9 +366,8 @@ export default function PaymentsManagementPage() {
                 if (!info) continue;
 
                 const txRef = push(ref(db, 'transactions'));
-                const txId = `BULK-${Date.now()}-${txRef.key?.slice(-4)}`;
                 updates[`transactions/${txRef.key}`] = {
-                    transactionId: txId,
+                    transactionId: `BULK-${Date.now()}-${txRef.key?.slice(-4)}`,
                     userId: row.studentUid,
                     invoiceId: info.invoiceId,
                     amount: parseFloat(row.amount),
@@ -356,80 +390,13 @@ export default function PaymentsManagementPage() {
         }
     };
 
-    const globalAuditStats = React.useMemo(() => {
-        const now = new Date();
-        const startWeek = startOfWeek(now, { weekStartsOn: 1 });
-        const endWeek = endOfWeek(now, { weekStartsOn: 1 });
-        const startMonth = startOfMonth(now);
-        const endMonth = endOfMonth(now);
-        const currentSemesterIds = new Set(semesters.filter(s => s.startDate && s.endDate && isWithinInterval(now, { start: parseISO(s.startDate), end: parseISO(s.endDate) })).map(s => s.id));
-
-        return rawTransactions.reduce((acc, tx) => {
-            const date = parseISO(tx.paymentDate);
-            const amount = Number(tx.amount) || 0;
-            if (isToday(date)) acc.today += amount;
-            if (isWithinInterval(date, { start: startWeek, end: endWeek })) acc.week += amount;
-            if (isWithinInterval(date, { start: startMonth, end: endMonth })) acc.month += amount;
-            if (tx.semesterId && currentSemesterIds.has(tx.semesterId)) acc.currentSemester += amount;
-            acc.total += amount;
-            return acc;
-        }, { today: 0, week: 0, month: 0, currentSemester: 0, total: 0 });
-    }, [rawTransactions, semesters]);
-
     const filteredData = React.useMemo(() => {
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
-            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
-            const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch;
+            return searchMatch && intakeMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter]);
-
-    const handleRecordPaymentDialog = async () => {
-        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
-        const semester = semesters.find(s => s.id === paymentSelectedSemesterId);
-        if(!student || !semester || !paymentAmount || !dateReceived) { toast({ variant: 'destructive', title: 'Missing fields' }); return; }
-
-        setFormLoading(true);
-        const amount = parseFloat(paymentAmount);
-        const info = paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === paymentSelectedSemesterId);
-        const updates: Record<string, any> = {};
-        let targetInvoiceId = info?.invoiceId;
-
-        if (!info) {
-            const invRef = push(ref(db, `invoices/${student.uid}`));
-            targetInvoiceId = invRef.key!;
-            updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
-                invoiceId: targetInvoiceId, semester: semester.name, semesterId: semester.id, dateCreated: new Date().toISOString(),
-                totalTuition: manualTotalDue ? parseFloat(manualTotalDue) : 0, totalMandatoryFees: 0, totalOptionalFees: 0
-            };
-            updates[`registrations/${student.uid}/${semester.id}`] = { status: 'Completed', semesterName: semester.name, registrationDate: new Date().toISOString(), programmeId: student.programmeId || '', intakeId: student.intakeId, invoiceId: targetInvoiceId, courses: [] };
-        } else if (info.totalDue <= 0 && manualTotalDue) {
-            updates[`invoices/${info.userId}/${info.invoiceId}/totalTuition`] = parseFloat(manualTotalDue);
-        }
-
-        const txRef = push(ref(db, 'transactions'));
-        updates[`transactions/${txRef.key}`] = {
-            transactionId: `CASH-${Date.now()}-${txRef.key?.slice(-4)}`, userId: student.uid, invoiceId: targetInvoiceId,
-            amount, currency: 'ZMW', status: 'successful', paymentDate: format(dateReceived, 'yyyy-MM-dd'),
-            recordedAt: serverTimestamp(), method: paymentMethod, comment: paymentComment, recordedBy: userData?.name || 'Accountant',
-        };
-
-        try {
-            await update(ref(db), updates);
-            toast({ variant: 'success', title: "Payment Recorded" });
-            setIsRecordPaymentOpen(false);
-            resetDialog();
-            fetchPaymentData();
-        } catch(e: any) { toast({ variant:'destructive', title:'Error', description: e.message }); }
-        finally { setFormLoading(false); }
-    };
-
-    const resetDialog = () => {
-        setPaymentSelectedUserId(''); setPaymentSelectedYear(''); setPaymentSelectedSemInYear(''); setPaymentSelectedSemesterId('');
-        setPaymentAmount(''); setPaymentMethod('Cash'); setPaymentComment(''); setDialogSearchTerm(''); setManualTotalDue(''); setDateReceived(new Date());
-    };
+    }, [paymentInfos, searchTerm, intakeFilter]);
 
     const uniqueStudentsForDialog = React.useMemo(() => {
         const lower = dialogSearchTerm.toLowerCase();
@@ -445,15 +412,6 @@ export default function PaymentsManagementPage() {
                         <div><CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle><CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription></div>
                     </div>
                 </CardHeader>
-                <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Today</CardTitle></CardHeader><CardContent><div className="text-xl font-black text-green-600">ZMW {globalAuditStats.today.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Week</CardTitle></CardHeader><CardContent><div className="text-xl font-black text-primary">ZMW {globalAuditStats.week.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Month</CardTitle></CardHeader><CardContent><div className="text-xl font-black">ZMW {globalAuditStats.month.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Active Term</CardTitle></CardHeader><CardContent><div className="text-xl font-black text-primary">ZMW {globalAuditStats.currentSemester.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Total Revenue</CardTitle></CardHeader><CardContent><div className="text-xl font-black">ZMW {globalAuditStats.total.toFixed(2)}</div></CardContent></Card>
-                    </div>
-                </CardContent>
             </Card>
 
             <div className="flex flex-wrap gap-4">
@@ -475,7 +433,7 @@ export default function PaymentsManagementPage() {
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border overflow-hidden">
                             <Table>
-                                <TableHeader className="bg-muted/50">
+                                <TableHeader>
                                     <TableRow>
                                         <TableHead>System ID</TableHead>
                                         <TableHead>Student Name</TableHead>
@@ -500,30 +458,13 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <Badge variant={info.thresholdMet ? "secondary" : "destructive"} className="uppercase text-[9px] gap-1 cursor-pointer">
-                                                            {info.thresholdMet ? <CheckCircle2 className="h-2 w-2"/> : <AlertTriangle className="h-2 w-2"/>}
-                                                            {info.thresholdMet ? "Met" : "Below"}
-                                                        </Badge>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-80 p-4">
-                                                        <h4 className="text-xs font-bold uppercase mb-2">Compliance Audit</h4>
-                                                        <div className="space-y-1 text-xs">
-                                                            <div className="flex justify-between"><span>Required:</span> <span className="font-bold">{info.requiredThreshold}%</span></div>
-                                                            <div className="flex justify-between"><span>Actual Paid:</span> <span className="font-bold">{info.paidPercentage.toFixed(1)}%</span></div>
-                                                            <Separator className="my-2"/>
-                                                            <p className="font-bold uppercase text-[10px] text-primary">Active Restrictions</p>
-                                                            <div className="space-y-1 pt-1">
-                                                                <div className="flex justify-between opacity-70"><span>Reg. Block</span> {financialSettings?.defaulterRestrictions?.registration && !info.thresholdMet ? <AlertTriangle className="h-3 w-3 text-red-500"/> : <Check className="h-3 w-3 text-green-500"/>}</div>
-                                                                <div className="flex justify-between opacity-70"><span>Grade Block</span> {financialSettings?.defaulterRestrictions?.results && !info.thresholdMet ? <AlertTriangle className="h-3 w-3 text-red-500"/> : <Check className="h-3 w-3 text-green-500"/>}</div>
-                                                            </div>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
+                                                <Badge variant={info.thresholdMet ? "secondary" : "destructive"} className="uppercase text-[9px] gap-1">
+                                                    {info.thresholdMet ? <CheckCircle2 className="h-2 w-2"/> : <AlertTriangle className="h-2 w-2"/>}
+                                                    {info.thresholdMet ? "Met" : "Below"}
+                                                </Badge>
                                             </TableCell>
                                             <TableCell>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><History className="h-4 w-4"/></Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100" onClick={() => { setEditStudentInfo(info); setEditTargetId(info.invoiceId); setOldValue(info.totalDue); setEditRequestType('invoice'); setIsEditOpen(true); }}><PencilLine className="h-4 w-4"/></Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -555,7 +496,7 @@ export default function PaymentsManagementPage() {
                         </div>
                         <ScrollArea className="flex-1 border rounded-lg">
                             <Table>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead>Student ID</TableHead><TableHead>Verified Student</TableHead><TableHead className="w-32">Amount (ZMW)</TableHead><TableHead className="w-40">Method</TableHead><TableHead className="w-40">Date</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead>Student ID</TableHead><TableHead>Verified Student</TableHead><TableHead className="w-32">Amount Paid (ZMW)</TableHead><TableHead className="w-40">Method</TableHead><TableHead className="w-40">Date</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
                                 <TableBody>
                                     {bulkEntries.map((row, index) => (
                                         <TableRow key={row.id} className={cn(!row.studentUid && row.studentId && "bg-red-50")}>
@@ -588,7 +529,7 @@ export default function PaymentsManagementPage() {
             {/* Single Record Dialog */}
             <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Manual Credit Entry</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Record Single Payment</DialogTitle></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-2 py-4 space-y-6">
                         <div className="space-y-4">
                             <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">1. Select Student</Label>
@@ -599,6 +540,18 @@ export default function PaymentsManagementPage() {
                                     <ScrollArea className="h-64">{uniqueStudentsForDialog.map(s => <SelectItem key={s.uid} value={s.uid}>{s.name} ({s.id})</SelectItem>)}</ScrollArea>
                                 </SelectContent>
                             </Select>
+                            
+                            {paymentSelectedUserId && selectedStudentContext && (
+                                <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-primary opacity-70">
+                                        <span>Student Standing</span>
+                                        <User className="h-3 w-3" />
+                                    </div>
+                                    <p className="text-sm font-black pt-1">{selectedStudentContext.intakeName}</p>
+                                    <p className="text-xs font-medium text-muted-foreground">{selectedStudentContext.standing}</p>
+                                </div>
+                            )}
+
                             {paymentSelectedUserId && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
                                     <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">2. Target Period</Label>
@@ -616,12 +569,20 @@ export default function PaymentsManagementPage() {
                                 <Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
                             </div>
                             <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
+                            
+                            <Alert className="bg-muted/50 border-0">
+                                <Clock className="h-4 w-4" />
+                                <AlertTitle className="text-[10px] font-black uppercase tracking-widest opacity-70">Audit Notice</AlertTitle>
+                                <AlertDescription className="text-[10px] italic">
+                                    The system will automatically record the current time as the "Recorded At" timestamp using the institutional server clock.
+                                </AlertDescription>
+                            </Alert>
                         </div>
                     </div>
                     <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedSemesterId || formLoading}>
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Save className="h-4 w-4 mr-2"/>} Record
+                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedYear || !paymentSelectedSemInYear || formLoading}>
+                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Save className="h-4 w-4 mr-2"/>} Record Payment
                         </Button>
                     </DialogFooter>
                 </DialogContent>
