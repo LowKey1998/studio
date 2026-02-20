@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -37,7 +36,8 @@ import {
     CheckCircle2,
     History,
     Trash2,
-    BookCopy
+    BookCopy,
+    Save
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -688,6 +688,51 @@ export default function RegistrationManagementPage() {
         return { summary, isMissing: shouldWarnMissing, hasPlans: plans.length > 0, isOutOfRange };
     }, [allPaymentPlans, calendarEvents, semesters]);
 
+    React.useEffect(() => {
+        if (!bulkSelectedProgrammeId || !bulkSelectedPlanId || !allPaymentPlans.length || !calendarSettings) return;
+        
+        const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
+        if (!plan) return;
+
+        let foundExisting = false;
+        for (const intake of allIntakes) {
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (!intakeStartStr) continue;
+
+            const state = calculateAcademicState(
+                intakeStartStr,
+                new Date(),
+                calendarSettings.standardCycles,
+                Object.values(calendarSettings.anomalies || {})
+            );
+
+            const sem = semesters.find(s => 
+                s.intakeId === intake.id && 
+                s.year === state.year && 
+                s.semesterInYear === state.semester
+            );
+
+            if (sem) {
+                const dates: Record<number, Date | null> = {};
+                let hasAnyDate = false;
+                for (let i = 0; i < plan.installments; i++) {
+                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
+                    const event = Object.values(calendarEvents).find((e: any) => e.title?.trim() === fullTitle.trim()) as any;
+                    if (event) {
+                        dates[i] = parseISO(event.date);
+                        hasAnyDate = true;
+                    }
+                }
+                if (hasAnyDate) {
+                    setBulkDeadlineDates(dates);
+                    foundExisting = true;
+                    break;
+                }
+            }
+        }
+        if (!foundExisting) setBulkDeadlineDates({});
+    }, [bulkSelectedProgrammeId, bulkSelectedPlanId, allIntakes, semesters, allPaymentPlans, calendarEvents, calendarSettings]);
+
     const handleSaveBulkDeadlines = async () => {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
         if (!bulkSelectedProgrammeId || !plan) {
@@ -837,7 +882,6 @@ export default function RegistrationManagementPage() {
                                                 const semesterDetails = semesters.find(s => s.id === semId);
                                                 if (!semesterDetails) return null;
 
-                                                // 1. Map Course Objects for the card list
                                                 const courses = (semData.courses || []).map(cid => {
                                                     const c = allCourses[cid];
                                                     const lNames = (c?.lecturerIds || [])
@@ -856,7 +900,6 @@ export default function RegistrationManagementPage() {
                                                     return { id: cid, ...c, lecturerNames: lNames, timetable: tEntries };
                                                 });
 
-                                                // 2. Fetch Deadlines
                                                 const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(semesterDetails);
 
                                                 return { semId, semData, semesterDetails, courses, deadlines, isMissing, isOutOfRange, hasPlans };
@@ -938,7 +981,6 @@ export default function RegistrationManagementPage() {
                                                                     </div>
                                                                 </div>
 
-                                                                {/* COURSES & DEADLINES IN CARD */}
                                                                 <div className="grid md:grid-cols-2 gap-6 pt-4 border-t">
                                                                     <div className="space-y-3">
                                                                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
@@ -1010,13 +1052,13 @@ export default function RegistrationManagementPage() {
             </Card>
 
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogContent className="sm:max-w-xl">
+                <DialogContent className="sm:max-xl">
                     <CreateOrEditDialogContent editingSemester={null} onClose={() => setIsCreateDialogOpen(false)} onSaveSuccess={() => setIsCreateDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-xl">
+                <DialogContent className="sm:max-xl">
                     <CreateOrEditDialogContent editingSemester={editingSemester} onClose={() => setIsEditDialogOpen(false)} onSaveSuccess={() => setIsEditDialogOpen(false)} allPaymentPlans={allPaymentPlans} feeTemplates={feeTemplates} allIntakes={allIntakes} />
                 </DialogContent>
             </Dialog>
