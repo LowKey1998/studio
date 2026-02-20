@@ -1,11 +1,10 @@
-
 'use client';
 import * as React from 'react';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
-import { Download, Info, Search } from 'lucide-react';
+import { Download, Info, Search, CalendarDays, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db, auth } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
@@ -19,7 +18,8 @@ import { getZambianPublicHolidays } from '@/lib/holidays';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Badge } from '@/components/ui/badge';
 
 type CalendarEvent = {
   id: string;
@@ -34,13 +34,14 @@ type CalendarEvent = {
 export default function StudentCalendarPage() {
   const [allUserEvents, setAllUserEvents] = React.useState<CalendarEvent[]>([]);
   const [enrolledSemesters, setEnrolledSemesters] = React.useState<string[]>([]);
+  const [currentSemesterName, setCurrentSemesterName] = React.useState<string | null>(null);
+  const [academicStanding, setAcademicStanding] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
   const [selectedDay, setSelectedDay] = React.useState<Date | undefined>();
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-  const [semesterFilter, setSemesterFilter] = React.useState('all');
-
+  const [semesterFilter, setSemesterFilter] = React.useState('current');
 
   const { toast } = useToast();
   
@@ -57,29 +58,69 @@ export default function StudentCalendarPage() {
     const fetchEventsAndRegistrations = async () => {
       setLoading(true);
       try {
-        const registrationsRef = ref(db, `registrations/${currentUser.uid}`);
-        const eventsRef = ref(db, 'calendarEvents');
-        const holidaysPromise = getZambianPublicHolidays(new Date().getFullYear());
-        
-        const [registrationsSnapshot, eventsSnapshot, holidays] = await Promise.all([
-            get(registrationsRef), 
-            get(eventsRef), 
-            holidaysPromise
+        const [
+            userSnap,
+            registrationsSnapshot, 
+            eventsSnapshot, 
+            holidays,
+            semestersSnap,
+            intakesSnap,
+            calendarSnap
+        ] = await Promise.all([
+            get(ref(db, `users/${currentUser.uid}`)),
+            get(ref(db, `registrations/${currentUser.uid}`)), 
+            get(ref(db, 'calendarEvents')), 
+            getZambianPublicHolidays(new Date().getFullYear()),
+            get(ref(db, 'semesters')),
+            get(ref(db, 'intakes')),
+            get(ref(db, 'settings/academicCalendar'))
         ]);
         
-        // Get student's enrolled semesters
-        const semesters: string[] = [];
-        if(registrationsSnapshot.exists()) {
-            const regs = registrationsSnapshot.val();
-            for(const semesterName in regs) {
-                if(regs[semesterName].status === 'Completed' || regs[semesterName].status === 'Pending Payment') {
-                    semesters.push(semesterName);
+        if (!userSnap.exists()) throw new Error("Profile not found");
+        const profile = userSnap.val();
+        const allIntakes = intakesSnap.val() || {};
+        const intakeName = profile.intakeId ? allIntakes[profile.intakeId]?.name : null;
+
+        // 1. Calculate Standing & Current Semester
+        let currentSemName: string | null = null;
+        if (intakeName && calendarSnap.exists()) {
+            const intakeStartStr = parseIntakeDate(intakeName);
+            if (intakeStartStr) {
+                const state = calculateAcademicState(
+                    intakeStartStr,
+                    new Date(),
+                    calendarSnap.val().standardCycles,
+                    Object.values(calendarSnap.val().anomalies || {})
+                );
+                setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+
+                const matched = Object.values(semestersSnap.val() || {}).find((s: any) => 
+                    s.intakeId === profile.intakeId && 
+                    s.year === state.year && 
+                    s.semesterInYear === state.semester
+                ) as any;
+                
+                if (matched) {
+                    currentSemName = matched.name;
+                    setCurrentSemesterName(matched.name);
                 }
             }
         }
-        setEnrolledSemesters(semesters);
 
-        // Get all calendar events
+        // 2. Get student's historical enrolled semesters
+        const semesters: string[] = [];
+        if(registrationsSnapshot.exists()) {
+            const regs = registrationsSnapshot.val();
+            for(const semesterId in regs) {
+                if(regs[semesterId].status === 'Completed' || regs[semesterId].status === 'Pending Payment') {
+                    const semInfo = semestersSnap.val()?.[semesterId];
+                    if (semInfo) semesters.push(semInfo.name);
+                }
+            }
+        }
+        setEnrolledSemesters([...new Set(semesters)]);
+
+        // 3. Process all calendar events
         const eventsList: CalendarEvent[] = [];
         if (eventsSnapshot.exists()) {
             Object.entries(eventsSnapshot.val()).forEach(([id, event]) => {
@@ -90,14 +131,7 @@ export default function StudentCalendarPage() {
             eventsList.push({ id: holiday.name, title: holiday.name, date: holiday.date, isPublicHoliday: true });
         });
         
-        const filteredForUser = eventsList.filter(event => {
-            if (event.isPublicHoliday) return true;
-            if (event.semester && semesters.includes(event.semester)) return true;
-            if (!event.semester || event.semester === 'General') return true;
-            return false;
-        });
-        
-        setAllUserEvents(filteredForUser);
+        setAllUserEvents(eventsList);
 
       } catch (error) {
         console.error('Error fetching calendar data:', error);
@@ -136,9 +170,7 @@ export default function StudentCalendarPage() {
   
   const handleDateSelect = (day: Date | undefined) => {
     if (!day) return;
-    
     const eventsOnDay = allUserEvents.filter(event => isSameDay(parseISO(event.date), day));
-    
     if (eventsOnDay.length > 0) {
       setSelectedDay(day);
       setPopoverOpen(true);
@@ -151,12 +183,25 @@ export default function StudentCalendarPage() {
   const filteredEvents = React.useMemo(() => {
     return allUserEvents
         .filter(event => {
-            if (semesterFilter === 'all') return true;
-            if (semesterFilter === 'general' && (!event.semester || event.semester === 'General')) return true;
+            // Priority 1: Public Holidays
+            if (event.isPublicHoliday) return true;
+            
+            // Priority 2: General events
+            const isGeneral = !event.semester || event.semester === 'General';
+            
+            if (semesterFilter === 'current') {
+                return isGeneral || (currentSemesterName && event.semester === currentSemesterName);
+            }
+            if (semesterFilter === 'all') {
+                return isGeneral || (event.semester && enrolledSemesters.includes(event.semester));
+            }
+            if (semesterFilter === 'general') {
+                return isGeneral;
+            }
             return event.semester === semesterFilter;
         })
         .filter(event => event.title.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [allUserEvents, searchTerm, semesterFilter]);
+  }, [allUserEvents, searchTerm, semesterFilter, currentSemesterName, enrolledSemesters]);
   
   const eventDates = React.useMemo(() => {
     return allUserEvents
@@ -170,39 +215,45 @@ export default function StudentCalendarPage() {
         .map(event => parseISO(event.date));
   }, [allUserEvents]);
 
-  const eventsOnSelectedDay = selectedDay ? allUserEvents.filter(event => isSameDay(parseISO(event.date), selectedDay)) : [];
+  const eventsOnSelectedDay = selectedDay ? filteredEvents.filter(event => isSameDay(parseISO(event.date), selectedDay)) : [];
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-lg">
+      <Card className="shadow-lg border-0 bg-primary/5">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="font-headline text-2xl">Academic Calendar</CardTitle>
-              <CardDescription>View important school dates and deadlines for your enrolled semesters.</CardDescription>
+              <CardDescription>View important school dates and deadlines relevant to your standing.</CardDescription>
             </div>
-            <Button variant="outline" onClick={handleDownloadPdf} disabled={loading || allUserEvents.length === 0}>
-                <Download className="mr-2 h-4 w-4" />
-                Download PDF
-            </Button>
+            <div className="flex items-center gap-2">
+                {academicStanding && (
+                    <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-background shadow-sm">
+                        <CalendarDays className="h-4 w-4 text-primary" />
+                        Standing: {academicStanding}
+                    </Badge>
+                )}
+                <Button variant="outline" onClick={handleDownloadPdf} disabled={loading || allUserEvents.length === 0} className="h-10">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
+                </Button>
+            </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6 md:flex-row">
-          <div className="flex justify-center rounded-md border p-4">
+        <CardContent className="flex flex-col gap-6 md:flex-row pt-6">
+          <div className="flex justify-center rounded-xl border bg-background p-4 shadow-sm h-fit">
              {loading ? (
-                <div className="flex items-center justify-center p-10">
-                    <Skeleton className="h-[250px] w-[280px]" />
-                </div>
+                <Skeleton className="h-[250px] w-[280px]" />
             ) : (
               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                   <PopoverTrigger asChild>
-                    <div>
+                    <div className="cursor-pointer">
                       <Calendar
                         mode="single"
                         selected={selectedDay}
                         onSelect={handleDateSelect}
                         modifiers={{ highlighted: eventDates, holiday: holidayDates }}
                         modifiersClassNames={{
-                          highlighted: 'bg-primary/20 text-primary rounded-full',
-                          holiday: 'bg-destructive/20 text-destructive rounded-full',
+                          highlighted: 'bg-primary/20 text-primary rounded-full font-bold',
+                          holiday: 'bg-destructive/20 text-destructive rounded-full font-bold',
                         }}
                         className="p-0"
                       />
@@ -212,12 +263,15 @@ export default function StudentCalendarPage() {
                     <PopoverContent className="w-80">
                       <div className="grid gap-4">
                         <div className="space-y-2">
-                          <h4 className="font-medium leading-none">Events on {format(selectedDay, 'PPP')}</h4>
-                          <div className="space-y-1">
+                          <h4 className="font-bold leading-none text-primary border-b pb-2">{format(selectedDay, 'PPP')}</h4>
+                          <div className="space-y-2 pt-1">
                             {eventsOnSelectedDay.length > 0 ? eventsOnSelectedDay.map(event => (
-                              <p key={event.id} className={cn("text-sm", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</p>
+                              <div key={event.id} className="text-sm">
+                                  <p className={cn("font-semibold", event.isPublicHoliday ? "text-destructive" : "text-foreground")}>{event.title}</p>
+                                  {event.semester && <p className="text-[10px] text-muted-foreground uppercase">{event.semester}</p>}
+                              </div>
                             )) : (
-                                <p className="text-sm text-muted-foreground">No events for this day.</p>
+                                <p className="text-sm text-muted-foreground italic">No events scheduled for this day.</p>
                             )}
                           </div>
                         </div>
@@ -228,27 +282,32 @@ export default function StudentCalendarPage() {
             )}
           </div>
           <div className="flex-1 space-y-4">
-            <h3 className="font-headline text-lg font-semibold">Events for Your Semesters</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-                <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search events..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                </div>
-                 <div>
+            <div className="flex items-center justify-between">
+                <h3 className="font-headline text-lg font-bold">Upcoming Dates</h3>
+                <div className="flex items-center gap-2">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Scope:</Label>
                     <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                            <SelectItem value="current" className="font-bold">Current Standing</SelectItem>
                             <SelectItem value="all">All My Semesters</SelectItem>
-                            <SelectItem value="general">General</SelectItem>
+                            <SelectItem value="general">Institutional Only</SelectItem>
+                            <Separator className="my-1"/>
                             {enrolledSemesters.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                         </SelectContent>
                     </Select>
                 </div>
             </div>
-            <div className="max-h-[200px] space-y-3 overflow-y-auto pr-2">
+            
+            <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Filter list by title..." className="pl-8 h-9 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            </div>
+
+            <ScrollArea className="h-[400px] rounded-md border bg-muted/5 p-4">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 rounded-md border p-3">
+                    <div key={i} className="flex items-center gap-4 rounded-md border p-3 mb-3 bg-background">
                         <Skeleton className="h-5 w-24" /><Skeleton className="h-4 w-full" />
                     </div>
                 ))
@@ -256,19 +315,34 @@ export default function StudentCalendarPage() {
                 [...filteredEvents]
                   .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                   .map(event => (
-                    <div key={event.id} className="flex items-center gap-4 rounded-md border p-3">
-                      <div className={cn("w-24 font-medium", event.isPublicHoliday && "text-destructive")}>{format(parseISO(event.date), 'MMM dd, yyyy')}</div>
-                      <div className={cn("flex-1", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</div>
-                      {event.attachmentUrl && (<Button asChild size="sm" variant="outline"><a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4"/></a></Button>)}
+                    <div key={event.id} className={cn(
+                        "flex items-center gap-4 rounded-md border p-3 mb-3 transition-colors hover:bg-muted/50",
+                        event.isPublicHoliday ? "bg-red-50/30 border-red-100" : "bg-background"
+                    )}>
+                      <div className={cn("w-24 shrink-0 font-bold text-xs flex flex-col", event.isPublicHoliday && "text-destructive")}>
+                          <span>{format(parseISO(event.date), 'MMM dd')}</span>
+                          <span className="text-[10px] opacity-60 font-normal">{format(parseISO(event.date), 'yyyy')}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                          <p className={cn("text-sm font-semibold truncate", event.isPublicHoliday ? "text-destructive" : "text-foreground")}>{event.title}</p>
+                          {event.semester && <p className="text-[10px] text-muted-foreground uppercase font-medium">{event.semester}</p>}
+                      </div>
+                      {event.attachmentUrl && (
+                        <Button asChild size="icon" variant="ghost" className="h-8 w-8 text-primary">
+                            <a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer" title={`Download ${event.attachmentName}`}>
+                                <Download className="h-4 w-4"/>
+                            </a>
+                        </Button>
+                      )}
                     </div>
                   ))
               ) : (
-                <div className="text-center text-sm text-muted-foreground py-10">
-                    <Info className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                    <p className="mt-2">No events found for the selected filters.</p>
+                <div className="text-center py-20 text-muted-foreground">
+                    <Info className="mx-auto h-12 w-12 opacity-10 mb-4" />
+                    <p className="text-sm">No events match your current standing or filters.</p>
                 </div>
               )}
-            </div>
+            </ScrollArea>
           </div>
         </CardContent>
       </Card>
