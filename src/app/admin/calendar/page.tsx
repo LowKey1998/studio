@@ -29,6 +29,7 @@ import { getZambianPublicHolidays } from '@/lib/holidays';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 
 type CalendarEvent = {
@@ -449,7 +450,7 @@ export default function AdminCalendarPage() {
                   <div className={cn("w-24 font-medium", event.isPublicHoliday && "text-destructive")}>{format(parseISO(event.date), 'MMM dd, yyyy')}</div>
                   <div className={cn("flex-1", event.isPublicHoliday ? "text-destructive font-semibold" : "text-muted-foreground")}>{event.title}</div>
                   <div className="flex gap-1">
-                    {event.attachmentUrl && (<Button asChild size="sm" variant="outline" className="h-8 w-8 p-0"><a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer"><Download className="h-4 w-4"/></a></Button>)}
+                    {event.attachmentUrl && (<Button asChild size="sm" variant="outline" className="h-8 w-8 p-0"><a href={event.attachmentUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4"/></a></Button>)}
                     {!event.isPublicHoliday && (
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteEvent(event.id)}>
                         <Trash2 className="h-4 w-4" />
