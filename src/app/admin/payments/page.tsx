@@ -36,7 +36,9 @@ import {
     User,
     Percent,
     MessageSquare,
-    ArrowRight
+    ArrowRight,
+    Save,
+    Settings2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -146,10 +148,8 @@ export default function PaymentsManagementPage() {
 
     // States for Request Student Creation
     const [isRequestStudentOpen, setIsRequestStudentOpen] = React.useState(false);
-    const [requestName, setRequestName] = React.useState('');
-    const [requestEmail, setRequestEmail] = React.useState('');
-    const [requestProgramme, setRequestProgramme] = React.useState('');
-    const [requestIntake, setRequestIntake] = React.useState('');
+    const [requestMessage, setRequestMessage] = React.useState('');
+    const [requestTemplate, setRequestTemplate] = React.useState({ subject: 'New Student Creation Request', body: 'Please create a new student account for:\n\nName: \nEmail: \nProgramme: \nIntake: \n\nRequested for payment recording.' });
 
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
@@ -160,7 +160,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap, templateSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -171,7 +171,8 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'calendarEvents'))
+                get(ref(db, 'calendarEvents')),
+                get(ref(db, 'settings/requestStudentTemplate'))
             ]);
             
             const users = usersSnap.val() || {};
@@ -189,6 +190,7 @@ export default function PaymentsManagementPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (coursesSnap.exists()) setCourses(coursesSnap.val());
             if (plansSnap.exists()) setAllPaymentPlans(Object.keys(plansSnap.val()).map(id => ({ id, ...plansSnap.val()[id] })));
+            if (templateSnap.exists()) setRequestTemplate(templateSnap.val());
 
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
@@ -424,16 +426,13 @@ export default function PaymentsManagementPage() {
     };
 
     const handleRequestStudentCreation = () => {
-        if (!requestName || !requestEmail || !requestProgramme) {
-            toast({ variant: 'destructive', title: 'Missing fields' });
+        if (!requestMessage.trim()) {
+            toast({ variant: 'destructive', title: 'Message is empty' });
             return;
         }
         const reqRef = push(ref(db, 'studentCreationRequests'));
         set(reqRef, {
-            name: requestName,
-            email: requestEmail,
-            programmeId: requestProgramme,
-            intakeId: requestIntake || null,
+            message: requestMessage,
             requestedBy: userData?.name || 'Finance Staff',
             requestedByUid: auth.currentUser?.uid,
             status: 'pending',
@@ -446,7 +445,7 @@ export default function PaymentsManagementPage() {
             if (registrarIds.length > 0) {
                 createNotification(
                     registrarIds, 
-                    `New student account request from Finance: ${requestName} (${requestEmail}).`,
+                    `New student account request from Finance.`,
                     '/admin/admissions/add-student'
                 ).catch(err => console.warn("Background notification failed:", err));
             }
@@ -454,7 +453,19 @@ export default function PaymentsManagementPage() {
 
         toast({ title: 'Request Submitted', description: 'Registrars have been notified to create this account.' });
         setIsRequestStudentOpen(false);
-        setRequestName(''); setRequestEmail(''); setRequestProgramme('');
+        setRequestMessage('');
+    };
+
+    const handleSaveTemplate = async () => {
+        setFormLoading(true);
+        try {
+            await set(ref(db, 'settings/requestStudentTemplate'), requestTemplate);
+            toast({ title: 'Template Saved' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to save template' });
+        } finally {
+            setFormLoading(false);
+        }
     };
 
     const handlePrintStatement = async (semId: string, data: any) => {
@@ -464,12 +475,17 @@ export default function PaymentsManagementPage() {
         const targetInvoice = allInvoices[studentUid]?.[semesterPaymentInfo?.invoiceId || ''];
 
         const doc = new jsPDF();
+        if (institutionSettings.logoUrl) {
+            try {
+                doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 10, 20, 20);
+            } catch (e) {}
+        }
         doc.setFontSize(20);
-        doc.text("Statement of Account", 14, 22);
+        doc.text("Statement of Account", 40, 22);
         doc.setFontSize(10);
-        doc.text(`Student: ${historyStudent.studentName} (${historyStudent.studentId})`, 14, 32);
-        doc.text(`Semester: ${data.semesterName}`, 14, 37);
-        doc.text(`Date Generated: ${format(new Date(), 'PPP p')}`, 14, 42);
+        doc.text(`Student: ${historyStudent.studentName} (${historyStudent.studentId})`, 14, 35);
+        doc.text(`Semester: ${data.semesterName}`, 14, 40);
+        doc.text(`Date Generated: ${format(new Date(), 'PPP p')}`, 14, 45);
 
         if (targetInvoice) {
             const tuition = Number(targetInvoice.totalTuition || 0);
@@ -510,10 +526,10 @@ export default function PaymentsManagementPage() {
         autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 10,
             head: [['Date', 'Transaction ID', 'Method', 'Paid (ZMW)']],
-            body: transactionRows,
-            foot: [['', '', 'TOTAL PAID', `ZMW ${paid.toFixed(2)}`], ['', '', 'OUTSTANDING BALANCE', `ZMW ${balance.toFixed(2)}`]],
+            body: transactionRows.length > 0 ? transactionRows : [['-', 'No payments recorded', '-', 'ZMW 0.00']],
             theme: 'striped',
             headStyles: { fillColor: [44, 62, 80] },
+            foot: [['', '', 'TOTAL PAID', `ZMW ${paid.toFixed(2)}`], ['', '', 'OUTSTANDING BALANCE', `ZMW ${balance.toFixed(2)}`]],
             footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
             styles: { fontSize: 9 }
         });
@@ -588,11 +604,10 @@ export default function PaymentsManagementPage() {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
         });
 
-        toast({ title: 'Request Submitted', description: 'Your edit request is now awaiting approval in the Finance module.' });
+        toast({ title: 'Request Submitted', description: 'Your edit request is now awaiting approval.' });
         setIsEditRequestOpen(false);
     };
 
-    // Dialog Data Derivations
     const uniqueStudentsForDialog = React.useMemo(() => {
         const seen = new Set();
         const list: StudentInfo[] = [];
@@ -901,6 +916,7 @@ export default function PaymentsManagementPage() {
                                             onClick={(e) => {
                                                 e.preventDefault();
                                                 setIsRecordPaymentOpen(false);
+                                                setRequestMessage(requestTemplate.body);
                                                 setIsRequestStudentOpen(true);
                                             }}
                                         >
@@ -1034,43 +1050,60 @@ export default function PaymentsManagementPage() {
 
             {/* Request Student Creation Dialog */}
             <Dialog open={isRequestStudentOpen} onOpenChange={setIsRequestStudentOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Request New Student Account</DialogTitle>
-                        <DialogDescription>Send a request to the Registrars to create a new student account so you can apply payments.</DialogDescription>
+                        <DialogTitle>Account Creation Request</DialogTitle>
+                        <DialogDescription>Draft a message to the Admissions team to request a new student account.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="space-y-1">
-                            <Label>Student Full Name</Label>
-                            <Input value={requestName} onChange={e => setRequestName(e.target.value)} placeholder="Enter name as per NRC/Passport" />
+                    <div className="flex-1 overflow-auto py-4 space-y-6">
+                        <div className="space-y-2">
+                            <Label>Request Message</Label>
+                            <Textarea 
+                                value={requestMessage} 
+                                onChange={e => setRequestMessage(e.target.value)} 
+                                rows={10} 
+                                className="font-sans text-sm leading-relaxed"
+                            />
                         </div>
-                        <div className="space-y-1">
-                            <Label>Email Address</Label>
-                            <Input type="email" value={requestEmail} onChange={e => setRequestEmail(e.target.value)} placeholder="student@example.com" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Academic Programme</Label>
-                            <Select value={requestProgramme} onValueChange={setRequestProgramme}>
-                                <SelectTrigger><SelectValue placeholder="Select programme..." /></SelectTrigger>
-                                <SelectContent>
-                                    {programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1">
-                            <Label>Intake (Optional)</Label>
-                            <Select value={requestIntake} onValueChange={setRequestIntake}>
-                                <SelectTrigger><SelectValue placeholder="Select intake..." /></SelectTrigger>
-                                <SelectContent>
-                                    {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
+
+                        <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="template-settings" className="border rounded-lg bg-muted/20 px-4">
+                                <AccordionTrigger className="hover:no-underline py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                    <div className="flex items-center gap-2">
+                                        <Settings2 className="h-3 w-3" />
+                                        Default Template Settings
+                                    </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="space-y-4 pt-2 pb-4">
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-black uppercase opacity-60">Template Subject</Label>
+                                        <Input 
+                                            value={requestTemplate.subject} 
+                                            onChange={e => setRequestTemplate(p => ({...p, subject: e.target.value}))} 
+                                            className="h-8 text-xs bg-background"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-black uppercase opacity-60">Template Body</Label>
+                                        <Textarea 
+                                            value={requestTemplate.body} 
+                                            onChange={e => setRequestTemplate(p => ({...p, body: e.target.value}))} 
+                                            rows={6} 
+                                            className="text-xs bg-background"
+                                        />
+                                    </div>
+                                    <Button size="sm" variant="secondary" className="w-full h-8 text-[10px] font-black uppercase" onClick={handleSaveTemplate} disabled={formLoading}>
+                                        {formLoading ? <Loader2 className="h-3 w-3 animate-spin"/> : <Save className="h-3 w-3 mr-1"/>}
+                                        Save as Default Template
+                                    </Button>
+                                </AccordionContent>
+                            </AccordionItem>
+                        </Accordion>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRequestStudentCreation} disabled={!requestName || !requestEmail || !requestProgramme}>
-                            Submit Request
+                        <Button onClick={handleRequestStudentCreation} disabled={!requestMessage.trim()}>
+                            Send Request to Admissions
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1100,7 +1133,7 @@ export default function PaymentsManagementPage() {
                                 
                                 return (
                                     <AccordionItem key={semId} value={semId} className="border rounded-xl overflow-hidden bg-card shadow-sm">
-                                        <AccordionTrigger className="px-4 py-3 hover:no-underline bg-muted/20">
+                                        <AccordionTrigger className="p-4 px-6 hover:no-underline bg-muted/20">
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full pr-4 gap-2">
                                                 <div className="text-left">
                                                     <span className="font-bold text-sm">{data.semesterName}</span>
