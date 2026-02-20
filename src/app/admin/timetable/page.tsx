@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -505,9 +504,6 @@ function TimetableManagementComponent() {
                                     {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                     <Separator className="my-1"/>
                                     <SelectItem value="master" className="font-bold text-primary">MASTER TEMPLATE (Baseline)</SelectItem>
-                                    <Separator className="my-1"/>
-                                    <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Specific Semester Instances</div>
-                                    {semesters.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
