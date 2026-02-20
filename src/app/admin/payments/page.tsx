@@ -20,11 +20,15 @@ import {
     ArrowRight,
     TrendingUp,
     Clock,
-    ChevronsUpDown
+    ChevronsUpDown,
+    PencilLine,
+    Check,
+    RotateCcw,
+    Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification } from '@/lib/firebase';
+import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -34,11 +38,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Textarea } from '@/components/ui/textarea';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -87,10 +93,9 @@ const getOrdinalSuffix = (i: number) => {
 };
 
 export default function PaymentsManagementPage() {
-    const { userProfile: userData } = useAuth();
+    const { user, userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
-    const [programmes, setProgrammes] = React.useState<any[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
@@ -119,6 +124,25 @@ export default function PaymentsManagementPage() {
     const [bulkEntries, setBulkEntries] = React.useState<any[]>([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '' }]);
     const [bulkGlobalMethod, setBulkGlobalMethod] = React.useState('Cash');
     const [bulkGlobalDate, setBulkGlobalDate] = React.useState<Date | undefined>(new Date());
+
+    // Request Account State
+    const [isRequestAccountOpen, setIsRequestAccountOpen] = React.useState(false);
+    const [requestMessage, setRequestMessage] = React.useState('');
+    const [requestSubject, setRequestSubject] = React.useState('New Student Account Request');
+    const [isTemplateSettingsOpen, setIsTemplateSettingsOpen] = React.useState(false);
+    const [accountRequestTemplate, setAccountRequestTemplate] = React.useState({
+        subject: 'New Student Account Request',
+        body: 'Please create a new student account for the following individual who has made a manual payment:\n\nName: \nIntake: \nProgramme: \nAmount Paid: '
+    });
+
+    // Edit Request State
+    const [isEditOpen, setIsEditOpen] = React.useState(false);
+    const [editRequestType, setEditRequestType] = React.useState<'transaction' | 'invoice'>('invoice');
+    const [editTargetId, setEditTargetId] = React.useState('');
+    const [oldValue, setOldValue] = React.useState(0);
+    const [newValue, setNewValue] = React.useState('');
+    const [editReason, setEditReason] = React.useState('');
+    const [editStudentInfo, setEditStudentInfo] = React.useState<StudentPaymentInfo | null>(null);
 
     const { toast } = useToast();
 
@@ -268,7 +292,6 @@ export default function PaymentsManagementPage() {
             let targetInvoiceId = info?.invoiceId;
 
             if (!info) {
-                // If student isn't registered but paying, create an empty invoice shell
                 const invRef = push(ref(db, `invoices/${student.uid}`));
                 targetInvoiceId = invRef.key!;
                 updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
@@ -314,6 +337,65 @@ export default function PaymentsManagementPage() {
             toast({ variant:'destructive', title:'Error', description: e.message }); 
         } finally { 
             setFormLoading(false); 
+        }
+    };
+
+    const handleRequestAccount = async () => {
+        setFormLoading(true);
+        try {
+            const registrarIds = await getRegistrarIds();
+            const newRequestRef = push(ref(db, 'studentCreationRequests'));
+            await set(newRequestRef, {
+                message: requestMessage,
+                subject: requestSubject,
+                requestedBy: userData?.name || 'Accountant',
+                requestedByUid: user?.uid,
+                timestamp: serverTimestamp(),
+                status: 'pending'
+            });
+
+            if (registrarIds.length > 0) {
+                await createNotification(
+                    registrarIds,
+                    `New student account request from ${userData?.name || 'Finance'}`,
+                    '/admin/admissions/add-student'
+                );
+            }
+            toast({ title: "Request Sent", description: "Admissions has been notified." });
+            setIsRequestAccountOpen(false);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Error', description: e.message });
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    const handleSendEditRequest = async () => {
+        if (!editReason || !newValue || !editStudentInfo) return;
+        setFormLoading(true);
+        try {
+            const newReqRef = push(ref(db, 'paymentEditRequests'));
+            await set(newReqRef, {
+                type: editRequestType,
+                targetId: editTargetId,
+                userId: editStudentInfo.userId,
+                studentName: editStudentInfo.studentName,
+                studentId: editStudentInfo.studentId,
+                oldValue,
+                newValue: parseFloat(newValue),
+                reason: editReason,
+                requestedBy: userData?.name || 'Accountant',
+                requestedByUid: user?.uid,
+                timestamp: serverTimestamp(),
+                status: 'pending'
+            });
+            toast({ title: 'Edit Request Sent', description: 'Administrator has been notified.' });
+            setIsEditOpen(false);
+            setEditReason(''); setNewValue('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Error', description: e.message });
+        } finally {
+            setFormLoading(false);
         }
     };
 
@@ -411,6 +493,9 @@ export default function PaymentsManagementPage() {
                         <div className="p-2 bg-primary rounded-lg shadow-md"><DollarSign className="h-6 w-6 text-white"/></div>
                         <div><CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle><CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription></div>
                     </div>
+                    <Button variant="outline" onClick={() => { setRequestMessage(accountRequestTemplate.body); setRequestSubject(accountRequestTemplate.subject); setIsRequestAccountOpen(true); }} className="h-10 border-primary/20 text-primary hover:bg-primary/10">
+                        <UserPlus className="mr-2 h-4 w-4"/> Request New Student Account
+                    </Button>
                 </CardHeader>
             </Card>
 
@@ -475,7 +560,7 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            {/* Bulk Manual Dialog */}
+            {/* Batch Manual Dialog */}
             <Dialog open={isBulkManualOpen} onOpenChange={setIsBulkManualOpen}>
                 <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
@@ -492,7 +577,7 @@ export default function PaymentsManagementPage() {
                             </div>
                             <Button variant="secondary" size="sm" className="h-9 font-bold" onClick={handleApplyGlobalToBulk}><Save className="mr-2 h-4 w-4"/> Apply Globals</Button>
                             <Separator orientation="vertical" className="h-9" />
-                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><Plus className="mr-2 h-4 w-4"/> Add Another Entry</Button>
+                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Another Entry</Button>
                         </div>
                         <ScrollArea className="flex-1 border rounded-lg">
                             <Table>
@@ -523,6 +608,62 @@ export default function PaymentsManagementPage() {
                             Record {bulkEntries.filter(r => r.studentUid && r.amount > 0).length} Payments
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Request New Account Dialog */}
+            <Dialog open={isRequestAccountOpen} onOpenChange={setIsRequestAccountOpen}>
+                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <DialogTitle>Request Student Account</DialogTitle>
+                                <DialogDescription>Draft a message to Admissions to request a new student account.</DialogDescription>
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={() => setIsTemplateSettingsOpen(!isTemplateSettingsOpen)}><Settings2 className="h-4 w-4"/></Button>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4 space-y-4">
+                        {isTemplateSettingsOpen ? (
+                            <div className="p-4 border rounded-lg bg-primary/5 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                <div className="flex items-center gap-2 text-primary"><Settings2 className="h-4 w-4"/><span className="text-xs font-bold uppercase">Template Configuration</span></div>
+                                <div className="space-y-1"><Label className="text-xs">Default Subject</Label><Input value={accountRequestTemplate.subject} onChange={e => setAccountRequestTemplate(p=>({...p, subject: e.target.value}))}/></div>
+                                <div className="space-y-1"><Label className="text-xs">Default Body</Label><Textarea rows={6} value={accountRequestTemplate.body} onChange={e => setAccountRequestTemplate(p=>({...p, body: e.target.value}))}/></div>
+                                <Button size="sm" onClick={() => {
+                                    set(ref(db, 'settings/templates/studentAccountRequest'), accountRequestTemplate);
+                                    toast({ title: 'Template Saved' });
+                                    setIsTemplateSettingsOpen(false);
+                                }}>Save System Template</Button>
+                            </div>
+                        ) : null}
+                        <div className="space-y-4">
+                            <div className="space-y-1"><Label>Subject</Label><Input value={requestSubject} onChange={e => setRequestSubject(e.target.value)} /></div>
+                            <div className="space-y-1"><Label>Message Body</Label><Textarea value={requestMessage} onChange={e => setRequestMessage(e.target.value)} rows={12} className="font-mono text-sm" /></div>
+                        </div>
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <Button variant="ghost" onClick={() => setIsRequestAccountOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRequestAccount} disabled={formLoading}><Send className="mr-2 h-4 w-4"/>Send to Admissions</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Request Dialog */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Request Financial Adjustment</DialogTitle><DialogDescription>Propose a change to this record. All edits require administrator approval.</DialogDescription></DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
+                            <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Adjusting {editRequestType}</p>
+                            <p className="font-bold text-sm">{editStudentInfo?.studentName} ({editStudentInfo?.studentId})</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label className="text-xs">Original Value</Label><div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm font-bold opacity-60">ZMW {oldValue.toFixed(2)}</div></div>
+                            <div className="space-y-1"><Label className="text-xs">Proposed Value</Label><Input type="number" value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="0.00" /></div>
+                        </div>
+                        <div className="space-y-1"><Label className="text-xs">Reason for Adjustment</Label><Textarea value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="e.g., Incorrect discount applied, manual error..." /></div>
+                    </div>
+                    <DialogFooter><Button variant="ghost" onClick={() => setIsEditOpen(false)}>Cancel</Button><Button onClick={handleSendEditRequest} disabled={formLoading || !editReason || !newValue}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : "Submit for Approval"}</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
