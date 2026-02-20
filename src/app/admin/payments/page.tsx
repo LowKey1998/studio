@@ -1,6 +1,6 @@
-
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
@@ -283,7 +283,6 @@ export default function PaymentsManagementPage() {
 
     const globalAuditStats = React.useMemo(() => {
         const now = new Date();
-        const startDay = startOfDay(now);
         const startWeek = startOfWeek(now, { weekStartsOn: 1 });
         const endWeek = endOfWeek(now, { weekStartsOn: 1 });
         const startMonth = startOfMonth(now);
@@ -344,77 +343,66 @@ export default function PaymentsManagementPage() {
         setTransactionId('');
     };
 
-    const handleRecordPaymentDialog = async () => {
+    const handleRecordPaymentDialog = () => {
         if(!selectedStudent || !paymentAmount || !paymentMethod) {
             toast({ variant: 'destructive', title: 'Missing fields' });
             return;
         }
-        setFormLoading(true);
-        try {
-            const amount = parseFloat(paymentAmount);
-            const txRef = push(ref(db, 'transactions'));
-            const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
-            
-            await set(txRef, {
-                transactionId: txId,
-                userId: selectedStudent.userId,
-                invoiceId: selectedStudent.invoiceId,
-                amount: amount,
-                currency: 'ZMW',
-                status: 'successful',
-                paymentDate: new Date().toISOString(),
-                method: paymentMethod,
-                recordedBy: userData?.name || 'Accountant',
-            });
+        const amount = parseFloat(paymentAmount);
+        const txRef = push(ref(db, 'transactions'));
+        const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
+        
+        set(txRef, {
+            transactionId: txId,
+            userId: selectedStudent.userId,
+            invoiceId: selectedStudent.invoiceId,
+            amount: amount,
+            currency: 'ZMW',
+            status: 'successful',
+            paymentDate: new Date().toISOString(),
+            method: paymentMethod,
+            recordedBy: userData?.name || 'Accountant',
+        }).catch((e) => {
+            toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
+        });
 
-            toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${selectedStudent.studentName}.` });
-            setIsRecordPaymentOpen(false);
-            resetDialog();
-            
-            await fetchPaymentData();
-        } catch (e: any) {
-             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
+        toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${selectedStudent.studentName}.` });
+        setIsRecordPaymentOpen(false);
+        resetDialog();
     };
 
-    const handleRequestStudentCreation = async () => {
+    const handleRequestStudentCreation = () => {
         if (!requestName || !requestEmail || !requestProgramme) {
             toast({ variant: 'destructive', title: 'Missing fields' });
             return;
         }
-        setFormLoading(true);
-        try {
-            const reqRef = push(ref(db, 'studentCreationRequests'));
-            await set(reqRef, {
-                name: requestName,
-                email: requestEmail,
-                programmeId: requestProgramme,
-                intakeId: requestIntake || null,
-                requestedBy: userData?.name || 'Finance Staff',
-                requestedByUid: auth.currentUser?.uid,
-                status: 'pending',
-                timestamp: serverTimestamp()
-            });
+        const reqRef = push(ref(db, 'studentCreationRequests'));
+        set(reqRef, {
+            name: requestName,
+            email: requestEmail,
+            programmeId: requestProgramme,
+            intakeId: requestIntake || null,
+            requestedBy: userData?.name || 'Finance Staff',
+            requestedByUid: auth.currentUser?.uid,
+            status: 'pending',
+            timestamp: serverTimestamp()
+        }).catch((e) => {
+            toast({ variant: 'destructive', title: 'Request Failed' });
+        });
 
-            const registrarIds = await getRegistrarIds();
+        getRegistrarIds().then(registrarIds => {
             if (registrarIds.length > 0) {
-                await createNotification(
+                createNotification(
                     registrarIds,
                     `New student account request from Finance: ${requestName} (${requestEmail}).`,
                     '/admin/admissions/add-student'
-                );
+                ).catch(err => console.warn("Notification failed:", err));
             }
+        });
 
-            toast({ title: 'Request Submitted', description: 'Registrars have been notified to create this account.' });
-            setIsRequestStudentOpen(false);
-            setRequestName(''); setRequestEmail(''); setRequestProgramme('');
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Request Failed' });
-        } finally {
-            setFormLoading(false);
-        }
+        toast({ title: 'Request Submitted', description: 'Registrars have been notified to create this account.' });
+        setIsRequestStudentOpen(false);
+        setRequestName(''); setRequestEmail(''); setRequestProgramme('');
     };
 
     const handlePrintStatement = async (semId: string, data: any) => {
@@ -525,36 +513,31 @@ export default function PaymentsManagementPage() {
         setIsEditRequestOpen(true);
     };
 
-    const handleSubmitEditRequest = async () => {
+    const handleSubmitEditRequest = () => {
         if (!newValue || !editReason.trim() || !editStudentInfo || !userData) {
             toast({ variant: 'destructive', title: 'Please fill in all fields.' });
             return;
         }
-        setFormLoading(true);
-        try {
-            const requestRef = push(ref(db, 'paymentEditRequests'));
-            await set(requestRef, {
-                type: editRequestType,
-                targetId: editTargetId,
-                userId: editStudentInfo.uid,
-                studentName: editStudentInfo.name,
-                studentId: editStudentInfo.id,
-                oldValue: oldValue,
-                newValue: parseFloat(newValue),
-                reason: editReason,
-                status: 'pending',
-                requestedBy: userData.name,
-                requestedByUid: auth.currentUser?.uid,
-                timestamp: serverTimestamp()
-            });
-
-            toast({ title: 'Request Submitted', description: 'Your edit request is now awaiting approval in the Finance module.' });
-            setIsEditRequestOpen(false);
-        } catch (e: any) {
+        const requestRef = push(ref(db, 'paymentEditRequests'));
+        set(requestRef, {
+            type: editRequestType,
+            targetId: editTargetId,
+            userId: editStudentInfo.uid,
+            studentName: editStudentInfo.name,
+            studentId: editStudentInfo.id,
+            oldValue: oldValue,
+            newValue: parseFloat(newValue),
+            reason: editReason,
+            status: 'pending',
+            requestedBy: userData.name,
+            requestedByUid: auth.currentUser?.uid,
+            timestamp: serverTimestamp()
+        }).catch((e) => {
             toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
+        });
+
+        toast({ title: 'Request Submitted', description: 'Your edit request is now awaiting approval in the Finance module.' });
+        setIsEditRequestOpen(false);
     };
 
     return (
@@ -807,9 +790,6 @@ export default function PaymentsManagementPage() {
                                         <Input 
                                             placeholder="Filter list..." 
                                             className="h-8"
-                                            onChange={(e) => {
-                                                // Simplified local filtering logic
-                                            }}
                                         />
                                     </div>
                                     <ScrollArea className="h-64">
@@ -858,8 +838,7 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={formLoading || !paymentAmount || !selectedStudent}>
-                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !selectedStudent}>
                             Record Payment
                         </Button>
                     </DialogFooter>
@@ -903,8 +882,7 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRequestStudentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRequestStudentCreation} disabled={formLoading || !requestName || !requestEmail || !requestProgramme}>
-                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        <Button onClick={handleRequestStudentCreation} disabled={!requestName || !requestEmail || !requestProgramme}>
                             Submit Request
                         </Button>
                     </DialogFooter>
@@ -1076,8 +1054,7 @@ export default function PaymentsManagementPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsEditRequestOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSubmitEditRequest} disabled={formLoading || !newValue || !editReason.trim()}>
-                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        <Button onClick={handleSubmitEditRequest} disabled={!newValue || !editReason.trim()}>
                             Submit Request
                         </Button>
                     </DialogFooter>
