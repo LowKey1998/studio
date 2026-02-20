@@ -49,7 +49,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import type { DateRange } from 'react-day-picker';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
+// --- CONSTANTS ---
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 // --- TYPE DEFINITIONS ---
+type TimeSlot = {
+    id: string;
+    startTime: string;
+    endTime: string;
+};
+
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
 type Intake = { id: string; name: string; };
 type Programme = { id: string; name: string; };
@@ -66,6 +75,12 @@ const getOrdinalSuffix = (i: number) => {
     if (i === 2) return '2nd';
     if (i === 3) return '3rd';
     return `${i}th`;
+};
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
 };
 
 // --- DIALOG CONTENT COMPONENT ---
@@ -420,8 +435,6 @@ export default function RegistrationManagementPage() {
     const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
     const [timetables, setTimetables] = React.useState<Record<string, any>>({});
     const [users, setUsers] = React.useState<Record<string, any>>({});
-    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
-    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     // Per-semester deadline state
@@ -710,6 +723,11 @@ export default function RegistrationManagementPage() {
         } finally {
             setSaving(false);
         }
+    };
+
+    const openHistoryDialog = (historyItems: CoursePathHistoryItem[]) => {
+        setViewingHistory(historyItems.sort((a, b) => b.timestamp - a.timestamp));
+        setIsHistoryDialogOpen(true);
     };
 
     return (
