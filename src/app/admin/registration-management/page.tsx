@@ -735,16 +735,31 @@ export default function RegistrationManagementPage() {
             return;
         }
 
-        const now = startOfDay(new Date());
-        const targetSems = (semestersByProgramme[bulkSelectedProgrammeId] || []).filter(sem => {
-            if (!sem.startDate || !sem.endDate) return false;
-            const start = startOfDay(parseISO(sem.startDate));
-            const end = startOfDay(parseISO(sem.endDate));
-            return now >= start && now <= end;
+        const targetSems: Semester[] = [];
+        allIntakes.forEach(intake => {
+            const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === bulkSelectedProgrammeId);
+            if (!path || !calendarSettings) return;
+
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (!intakeStartStr) return;
+
+            const state = calculateAcademicState(
+                intakeStartStr,
+                new Date(),
+                calendarSettings.standardCycles,
+                Object.values(calendarSettings.anomalies || {})
+            );
+
+            const matched = semesters.find(s => 
+                s.intakeId === intake.id && 
+                s.year === state.year && 
+                s.semesterInYear === state.semester
+            );
+            if (matched) targetSems.push(matched);
         });
 
         if (targetSems.length === 0) {
-            toast({ variant: 'destructive', title: 'No Current Semesters', description: 'No active/current semesters found for the selected programme to update.' });
+            toast({ variant: 'destructive', title: 'No Semesters Found', description: 'No semesters matching current standing for any intake found.' });
             return;
         }
 
@@ -1084,7 +1099,7 @@ export default function RegistrationManagementPage() {
                 <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Bulk Update Current Deadlines by Programme</DialogTitle>
-                        <DialogDescription>Select a programme to apply common payment deadlines to its currently active semesters.</DialogDescription>
+                        <DialogDescription>Select a programme to apply common payment deadlines to semesters matching the current standing of each cohort.</DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 py-4 space-y-6">
                         <div className="grid md:grid-cols-2 gap-6">
@@ -1105,18 +1120,35 @@ export default function RegistrationManagementPage() {
                                     <div className="space-y-3 animate-in fade-in slide-in-from-left-2">
                                         <div className="flex items-center gap-2 text-primary">
                                             <GraduationCap className="h-4 w-4" />
-                                            <Label className="text-xs font-black uppercase tracking-wider">Target Current Semesters</Label>
+                                            <Label className="text-xs font-black uppercase tracking-wider">Target Cohorts (Current Standing)</Label>
                                         </div>
                                         <ScrollArea className="h-64 border rounded-xl p-2 bg-muted/10">
                                             <div className="space-y-2">
                                                 {(() => {
-                                                    const now = startOfDay(new Date());
-                                                    const currentSems = (semestersByProgramme[bulkSelectedProgrammeId] || []).filter(sem => {
-                                                        if (!sem.startDate || !sem.endDate) return false;
-                                                        return now >= startOfDay(parseISO(sem.startDate)) && now <= startOfDay(parseISO(sem.endDate));
+                                                    const targets: Semester[] = [];
+                                                    allIntakes.forEach(intake => {
+                                                        const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === bulkSelectedProgrammeId);
+                                                        if (!path || !calendarSettings) return;
+
+                                                        const intakeStartStr = parseIntakeDate(intake.name);
+                                                        if (!intakeStartStr) return;
+
+                                                        const state = calculateAcademicState(
+                                                            intakeStartStr,
+                                                            new Date(),
+                                                            calendarSettings.standardCycles,
+                                                            Object.values(calendarSettings.anomalies || {})
+                                                        );
+
+                                                        const matched = semesters.find(s => 
+                                                            s.intakeId === intake.id && 
+                                                            s.year === state.year && 
+                                                            s.semesterInYear === state.semester
+                                                        );
+                                                        if (matched) targets.push(matched);
                                                     });
 
-                                                    return currentSems.length > 0 ? currentSems.map(sem => {
+                                                    return targets.length > 0 ? targets.map(sem => {
                                                         const { isMissing, hasPlans } = getDeadlineSummary(sem);
                                                         return (
                                                             <div key={sem.id} className="flex items-center justify-between p-3 rounded-lg border bg-background shadow-sm">
@@ -1138,7 +1170,7 @@ export default function RegistrationManagementPage() {
                                                     }) : (
                                                         <div className="p-10 text-center">
                                                             <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground opacity-20 mb-2" />
-                                                            <p className="text-xs text-muted-foreground">No semesters are currently active for this programme.</p>
+                                                            <p className="text-xs text-muted-foreground">No matching semesters found for current standings.</p>
                                                         </div>
                                                     );
                                                 })()}
@@ -1170,40 +1202,15 @@ export default function RegistrationManagementPage() {
                                         <div className="grid gap-4 border-2 border-primary/10 rounded-xl p-4 bg-background shadow-inner">
                                             {Array.from({ length: allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0 }).map((_, i) => {
                                                 const currentVal = bulkDeadlineDates[i];
-                                                const now = startOfDay(new Date());
-                                                const currentSems = (semestersByProgramme[bulkSelectedProgrammeId] || []).filter(sem => {
-                                                    if (!sem.startDate || !sem.endDate) return false;
-                                                    return now >= startOfDay(parseISO(sem.startDate)) && now <= startOfDay(parseISO(sem.endDate));
-                                                });
-                                                const invalidSems = currentVal ? currentSems.filter(s => !isDateInSemesterRange(currentVal, s)) : [];
-
                                                 return (
                                                     <div key={i} className="flex flex-col gap-2">
-                                                        <div className="flex justify-between items-center">
-                                                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{getOrdinalSuffix(i + 1)} Installment Due Date</span>
-                                                            {invalidSems.length > 0 && (
-                                                                <Popover>
-                                                                    <PopoverTrigger asChild>
-                                                                        <Badge variant="destructive" className="h-4 cursor-pointer px-1 animate-pulse">
-                                                                            <AlertTriangle className="h-2.5 w-2.5 mr-1"/> {invalidSems.length} Conflict(s)
-                                                                        </Badge>
-                                                                    </PopoverTrigger>
-                                                                    <PopoverContent className="w-64 p-2 text-xs">
-                                                                        <p className="font-bold text-destructive mb-1">Date Out of Range for:</p>
-                                                                        <ul className="list-disc pl-4">
-                                                                            {invalidSems.map(s => <li key={s.id}>{s.name}</li>)}
-                                                                        </ul>
-                                                                    </PopoverContent>
-                                                                </Popover>
-                                                            )}
-                                                        </div>
+                                                        <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{getOrdinalSuffix(i + 1)} Installment Due Date</span>
                                                         <div className="flex items-center gap-2">
                                                             <Popover>
                                                                 <PopoverTrigger asChild>
                                                                     <Button variant="outline" className={cn(
                                                                         "w-full justify-start text-left font-normal border-primary/20", 
-                                                                        !currentVal && "text-muted-foreground",
-                                                                        invalidSems.length > 0 && "border-destructive text-destructive"
+                                                                        !currentVal && "text-muted-foreground"
                                                                     )}>
                                                                         <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                                                                         {currentVal ? format(currentVal!, 'PPP') : <span>Pick a date</span>}
@@ -1234,7 +1241,7 @@ export default function RegistrationManagementPage() {
                             onClick={handleSaveBulkDeadlines} 
                             disabled={saving || !bulkSelectedPlanId || !bulkSelectedProgrammeId}
                         >
-                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserCheck className="mr-2 h-4 w-4" />}
                             Apply Programme Deadlines
                         </Button>
                     </DialogFooter>
