@@ -52,8 +52,6 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Textarea } from '@/components/ui/textarea';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Switch } from '@/components/ui/switch';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -235,7 +233,7 @@ export default function PaymentsManagementPage() {
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                         const balance = Math.max(0, totalPayable - totalPaid);
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
 
                         let currentRequiredThreshold = 0;
                         const plan = Object.values(plansSnap.val() || {}).find((p: any) => p.name === invoice.paymentPlan) as any;
@@ -544,7 +542,6 @@ export default function PaymentsManagementPage() {
             if (paymentInfo) {
                 const semesterData = semesters.find(s => s.id === paymentInfo.semesterId);
                 if (semesterData && semesterData.status !== 'Archived') {
-                    // Check if the semester's start date is in the current calendar year
                     const semStartDate = semesterData.startDate ? parseISO(semesterData.startDate) : null;
                     if (semStartDate && semStartDate.getFullYear() === currentYear) {
                         semester += amt;
@@ -605,6 +602,24 @@ export default function PaymentsManagementPage() {
             exists: !!info
         };
     }, [paymentSelectedUserId, paymentSelectedYear, paymentSelectedSemInYear, selectedStudentContext, semesters, paymentInfos]);
+
+    const getRowStanding = (intakeId: string | null) => {
+        if (!intakeId || !calendarSettings) return 'N/A';
+        const intake = allIntakes.find(i => i.id === intakeId);
+        if (!intake) return 'N/A';
+        const startStr = parseIntakeDate(intake.name);
+        if (!startStr) return 'N/A';
+        const state = calculateAcademicState(startStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+        return `Y${state.year}S${state.semester}`;
+    };
+
+    const getRowAudit = (studentUid: string | null, year: string, semInYear: string, intakeId: string | null) => {
+        if (!studentUid || !year || !semInYear || !intakeId) return null;
+        const targetSem = semesters.find(s => s.intakeId === intakeId && s.year === Number(year) && s.semesterInYear === Number(semInYear));
+        if (!targetSem) return { noRecord: true };
+        const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === targetSem.id);
+        return { due: info?.totalDue || 0, paid: info?.totalPaid || 0, balance: info?.balance || 0, exists: !!info };
+    };
 
     return (
         <div className="space-y-6">
@@ -746,69 +761,137 @@ export default function PaymentsManagementPage() {
 
             {/* Batch Manual Dialog */}
             <Dialog open={isBulkManualOpen} onOpenChange={setIsBulkManualOpen}>
-                <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col">
+                <DialogContent className="max-w-5xl h-[90vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Batch Manual Payment Recording</DialogTitle>
-                        <DialogDescription>Record multiple payments against specific year/semester sessions.</DialogDescription>
+                        <DialogTitle>Batch Manual Payment Entry</DialogTitle>
+                        <DialogDescription>Each entry follows the same structured auditing logic as a single record.</DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-4 py-4 flex-1 overflow-hidden">
                         <div className="flex flex-wrap items-end gap-4 p-4 border rounded-xl bg-muted/20">
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Year</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Year</Label>
                                 <Select value={bulkGlobalYear} onValueChange={setBulkGlobalYear}><SelectTrigger className="h-9"><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select>
                             </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Semester</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Sem</Label>
                                 <Select value={bulkGlobalSem} onValueChange={setBulkGlobalSem}><SelectTrigger className="h-9"><SelectValue placeholder="Sem"/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent></Select>
                             </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Method</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Method</Label>
                                 <Select value={bulkGlobalMethod} onValueChange={setBulkGlobalMethod}><SelectTrigger className="h-9"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
                             </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Date</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Date</Label>
                                 <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-start h-9 text-xs"><CalendarIcon className="mr-2 h-4 w-4"/>{bulkGlobalDate ? format(bulkGlobalDate, 'dd MMM') : 'Pick Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={bulkGlobalDate} onSelect={setBulkGlobalDate} initialFocus/></PopoverContent></Popover>
                             </div>
                             <Button variant="secondary" size="sm" className="h-9 font-bold" onClick={handleApplyGlobalToBulk}><Save className="mr-2 h-4 w-4"/> Apply Globals</Button>
                             <Separator orientation="vertical" className="h-9" />
-                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Entry</Button>
+                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Another Card</Button>
                         </div>
-                        <ScrollArea className="flex-1 border rounded-lg shadow-inner bg-card">
-                            <Table>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead className="w-32">Student ID</TableHead><TableHead className="w-48">Student</TableHead><TableHead className="w-24">Year</TableHead><TableHead className="w-24">Sem</TableHead><TableHead className="w-32">Amount</TableHead><TableHead className="w-32">Method</TableHead><TableHead className="w-32">Date</TableHead><TableHead>Comment</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {bulkEntries.map((row, index) => (
-                                        <TableRow key={row.id} className={cn(!row.studentUid && row.studentId && "bg-red-50")}>
-                                            <TableCell><Input value={row.studentId} onChange={e => handleBulkRowUpdate(row.id, 'studentId', e.target.value.toUpperCase())} placeholder="STU-XXX" className="h-8 font-mono text-[10px] uppercase"/></TableCell>
-                                            <TableCell>{row.studentUid ? <span className="text-[10px] font-bold truncate block max-w-[150px]">{row.studentName}</span> : <span className="text-[10px] text-muted-foreground italic">Required</span>}</TableCell>
-                                            <TableCell>
-                                                <Select value={row.year} onValueChange={v => handleBulkRowUpdate(row.id, 'year', v)} disabled={!row.studentUid}>
-                                                    <SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger>
-                                                    <SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
-                                                </Select>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Select value={row.semesterInYear} onValueChange={v => handleBulkRowUpdate(row.id, 'semesterInYear', v)} disabled={!row.year}>
-                                                    <SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger>
-                                                    <SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
-                                                </Select>
-                                            </TableCell>
-                                            <TableCell><Input type="number" value={row.amount} onChange={e => handleBulkRowUpdate(row.id, 'amount', e.target.value)} className="h-8 text-[10px]"/></TableCell>
-                                            <TableCell>
-                                                <Select value={row.method} onValueChange={v => handleBulkRowUpdate(row.id, 'method', v)}><SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full h-8 text-[9px] px-2 justify-start font-normal"><CalendarIcon className="mr-1 h-3 w-3"/>{row.date ? format(row.date, 'dd MMM') : 'Set'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={row.date} onSelect={d => handleBulkRowUpdate(row.id, 'date', d)} initialFocus/></PopoverContent></Popover>
-                                            </TableCell>
-                                            <TableCell><Input value={row.comment} onChange={e => handleBulkRowUpdate(row.id, 'comment', e.target.value)} placeholder="..." className="h-8 text-[10px]"/></TableCell>
-                                            <TableCell><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveBulkRow(index)}><Trash2 className="h-4 w-4"/></Button></TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                        
+                        <ScrollArea className="flex-1 pr-4">
+                            <div className="space-y-6">
+                                {bulkEntries.map((row, index) => {
+                                    const audit = getRowAudit(row.studentUid, row.year, row.semesterInYear, row.intakeId);
+                                    const standing = getRowStanding(row.intakeId);
+
+                                    return (
+                                        <Card key={row.id} className="relative border-2 border-primary/10 overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-2">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveBulkRow(index)} disabled={bulkEntries.length === 1}><X className="h-4 w-4"/></Button>
+                                            </div>
+                                            <CardHeader className="bg-muted/30 pb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge className="bg-primary text-primary-foreground font-black">ENTRY #{index + 1}</Badge>
+                                                    <Badge variant="outline" className="bg-background">ID: {row.studentId || '...'}</Badge>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="pt-6 space-y-6">
+                                                <div className="grid md:grid-cols-2 gap-8">
+                                                    {/* Card Left: Identity & standing */}
+                                                    <div className="space-y-4">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">1. Student Selection</Label>
+                                                            <Input 
+                                                                value={row.studentId} 
+                                                                onChange={e => handleBulkRowUpdate(row.id, 'studentId', e.target.value.toUpperCase())} 
+                                                                placeholder="TYPE STUDENT ID (STU-XXX)" 
+                                                                className="uppercase font-mono font-bold"
+                                                            />
+                                                        </div>
+                                                        {row.studentUid ? (
+                                                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in slide-in-from-top-2">
+                                                                <p className="text-sm font-black">{row.studentName}</p>
+                                                                <p className="text-[10px] font-medium text-muted-foreground">Standing: {standing}</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-3 rounded-lg border border-dashed text-[10px] text-muted-foreground italic">
+                                                                Enter a valid ID to load student Standing.
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Card Right: Period & Audit */}
+                                                    <div className="space-y-4">
+                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">2. Target Period</Label>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <Select value={row.year} onValueChange={v => handleBulkRowUpdate(row.id, 'year', v)} disabled={!row.studentUid}>
+                                                                <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Year"/></SelectTrigger>
+                                                                <SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                            <Select value={row.semesterInYear} onValueChange={v => handleBulkRowUpdate(row.id, 'semesterInYear', v)} disabled={!row.year}>
+                                                                <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Sem"/></SelectTrigger>
+                                                                <SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        
+                                                        {audit && (
+                                                            <div className="p-3 rounded-lg border bg-muted/20 animate-in fade-in slide-in-from-top-2">
+                                                                {audit.noRecord ? (
+                                                                    <p className="text-[10px] italic text-muted-foreground">No record found. New invoice will be initialized.</p>
+                                                                ) : (
+                                                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                                                        <div><p className="text-[8px] font-bold uppercase opacity-60">Due</p><p className="text-xs font-black">K{audit.due.toFixed(0)}</p></div>
+                                                                        <div><p className="text-[8px] font-bold uppercase text-green-600">Paid</p><p className="text-xs font-black text-green-600">K{audit.paid.toFixed(0)}</p></div>
+                                                                        <div><p className="text-[8px] font-bold uppercase text-destructive">Bal</p><p className="text-xs font-black text-destructive">K{audit.balance.toFixed(0)}</p></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <Separator />
+
+                                                <div className="grid md:grid-cols-4 gap-4">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Amount (ZMW)</Label>
+                                                        <Input type="number" value={row.amount} onChange={e => handleBulkRowUpdate(row.id, 'amount', e.target.value)} placeholder="0.00" className="font-bold"/>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Method</Label>
+                                                        <Select value={row.method} onValueChange={v => handleBulkRowUpdate(row.id, 'method', v)}>
+                                                            <SelectTrigger className="h-10 bg-background"><SelectValue/></SelectTrigger>
+                                                            <SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Payment Date</Label>
+                                                        <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full h-10 text-xs justify-start"><CalendarIcon className="mr-2 h-4 w-4"/>{row.date ? format(row.date, 'dd MMM yyyy') : 'Pick Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={row.date} onSelect={d => handleBulkRowUpdate(row.id, 'date', d)} initialFocus/></PopoverContent></Popover>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Comment</Label>
+                                                        <Input value={row.comment} onChange={e => handleBulkRowUpdate(row.id, 'comment', e.target.value)} placeholder="Optional note..." />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
                         </ScrollArea>
                     </div>
                     <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsBulkManualOpen(false)}>Discard</Button>
+                        <Button variant="ghost" onClick={() => setIsBulkManualOpen(false)}>Discard Batch</Button>
                         <Button onClick={handleConfirmBulkManual} disabled={formLoading || bulkEntries.length === 0}>
                             {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4" />}
-                            Post Batch ({bulkEntries.filter(r => r.studentUid && r.amount > 0).length})
+                            Post Entire Batch ({bulkEntries.filter(r => r.studentUid && r.amount > 0).length})
                         </Button>
                     </DialogFooter>
                 </DialogContent>
