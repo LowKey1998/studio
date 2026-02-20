@@ -24,7 +24,10 @@ import {
     TrendingUp, 
     Filter,
     Calendar as CalendarIcon,
-    Receipt
+    Receipt,
+    Printer,
+    ChevronDown,
+    FileText
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -63,6 +66,8 @@ type StudentPaymentInfo = {
     invoiceId: string;
     enrolledCourses: string[];
     thresholdMet: boolean;
+    paidPercentage: number;
+    requiredThreshold: number;
 };
 
 type Transaction = {
@@ -95,6 +100,7 @@ export default function PaymentsManagementPage() {
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [courses, setCourses] = React.useState<Record<string, any>>({});
+    const [allInvoices, setAllInvoices] = React.useState<Record<string, any>>({});
     
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -137,9 +143,10 @@ export default function PaymentsManagementPage() {
             const registrations = regsSnap.val() || {};
             const transactionsData = transactionsSnap.val() || {};
             const allSemestersData = semestersSnap.val() || {};
-            const allInvoices = invoicesSnap.val() || {};
+            const allInvoicesData = invoicesSnap.val() || {};
             const fSettings = financialSnap.val() || { paymentThreshold: 75 };
 
+            setAllInvoices(allInvoicesData);
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
@@ -186,7 +193,7 @@ export default function PaymentsManagementPage() {
                     if (!semesterInfo) continue;
 
                     const key = `${userId}-${semesterId}`;
-                    const invoice = allInvoices[userId]?.[reg.invoiceId];
+                    const invoice = allInvoicesData[userId]?.[reg.invoiceId];
 
                     if (invoice) {
                         const totalPayable = invoice.applyScholarship 
@@ -198,7 +205,8 @@ export default function PaymentsManagementPage() {
                         const balance = Math.max(0, totalPayable - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const thresholdMet = totalPayable > 0 ? (totalPaid / totalPayable) * 100 >= threshold : true;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const thresholdMet = paidPercentage >= threshold;
 
                         studentPaymentMap[key] = {
                             userId,
@@ -213,6 +221,8 @@ export default function PaymentsManagementPage() {
                             invoiceId: reg.invoiceId,
                             enrolledCourses: reg.courses || [],
                             thresholdMet,
+                            paidPercentage,
+                            requiredThreshold: threshold,
                             status: balance <= 0.01 ? 'Paid' : 'Pending'
                         };
                     }
@@ -234,6 +244,8 @@ export default function PaymentsManagementPage() {
     const globalAuditStats = React.useMemo(() => {
         const now = new Date();
         const startDay = startOfDay(now);
+        const startWeek = startOfWeek(now, { weekStartsOn: 1 });
+        const endWeek = endOfWeek(now, { weekStartsOn: 1 });
         const startMonth = startOfMonth(now);
         const endMonth = endOfMonth(now);
 
@@ -247,12 +259,13 @@ export default function PaymentsManagementPage() {
             const amount = Number(tx.amount) || 0;
 
             if (isToday(date)) acc.today += amount;
+            if (isWithinInterval(date, { start: startWeek, end: endWeek })) acc.week += amount;
             if (isWithinInterval(date, { start: startMonth, end: endMonth })) acc.month += amount;
             if (tx.semesterId && currentSemesterIds.has(tx.semesterId)) acc.currentSemester += amount;
             
             acc.total += amount;
             return acc;
-        }, { today: 0, month: 0, currentSemester: 0, total: 0 });
+        }, { today: 0, week: 0, month: 0, currentSemester: 0, total: 0 });
     }, [rawTransactions, semesters]);
 
     const filteredTransactions = React.useMemo(() => {
@@ -321,6 +334,74 @@ export default function PaymentsManagementPage() {
         }
     }
 
+    const handlePrintStatement = async (semId: string, data: any) => {
+        if (!historyStudent) return;
+        const studentUid = historyStudent.userId;
+        const invoice = allInvoices[studentUid]?.[historyStudent.invoiceId]; // This might be wrong, need to find the correct invoice for the specific sem
+        
+        // Find correct invoice for this semester
+        const semesterPaymentInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
+        const targetInvoice = allInvoices[studentUid]?.[semesterPaymentInfo?.invoiceId || ''];
+
+        const doc = new jsPDF();
+        doc.setFontSize(20);
+        doc.text("Statement of Account", 14, 22);
+        
+        doc.setFontSize(10);
+        doc.text(`Student: ${historyStudent.studentName} (${historyStudent.studentId})`, 14, 32);
+        doc.text(`Semester: ${data.semesterName}`, 14, 37);
+        doc.text(`Date Generated: ${format(new Date(), 'PPP p')}`, 14, 42);
+
+        if (targetInvoice) {
+            const tuition = Number(targetInvoice.totalTuition || 0);
+            const mandatory = Number(targetInvoice.totalMandatoryFees || 0);
+            const optional = Number(targetInvoice.totalOptionalFees || 0);
+            const late = Number(targetInvoice.lateFee || 0);
+            const scholarships = targetInvoice.applyScholarship ? tuition : 0;
+
+            const invoiceItems = [
+                ['Tuition Fees', tuition.toFixed(2)],
+                ['Mandatory Fees', mandatory.toFixed(2)],
+                ['Optional Fees', optional.toFixed(2)],
+                ['Late Registration Fee', late.toFixed(2)],
+                ['Scholarship Waiver', `(${scholarships.toFixed(2)})`],
+                ['TOTAL PAYABLE', data.totalDue.toFixed(2)]
+            ];
+
+            autoTable(doc, {
+                startY: 50,
+                head: [['Fee Description', 'Amount (ZMW)']],
+                body: invoiceItems,
+                theme: 'grid',
+                headStyles: { fillColor: [44, 62, 80] },
+                styles: { fontSize: 9 }
+            });
+        }
+
+        const transactionRows = data.transactions.map((t: any) => [
+            format(parseISO(t.paymentDate), 'dd MMM yyyy'),
+            t.transactionId,
+            t.method || 'Online',
+            t.amount.toFixed(2)
+        ]);
+
+        const paid = data.transactions.reduce((s: number, t: any) => s + t.amount, 0);
+        const balance = data.totalDue - paid;
+
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 10,
+            head: [['Date', 'Transaction ID', 'Method', 'Paid (ZMW)']],
+            body: transactionRows,
+            foot: [['', '', 'TOTAL PAID', `ZMW ${paid.toFixed(2)}`], ['', '', 'OUTSTANDING BALANCE', `ZMW ${balance.toFixed(2)}`]],
+            theme: 'striped',
+            headStyles: { fillColor: [44, 62, 80] },
+            footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            styles: { fontSize: 9 }
+        });
+
+        doc.save(`Statement_${historyStudent.studentId}_${data.semesterName.replace(/\s+/g, '_')}.pdf`);
+    };
+
     const handleExport = () => {
         const doc = new jsPDF();
         const head = [["ID", "Name", "Semester", "Total Expected", "Paid", "Balance", "Threshold"]];
@@ -340,7 +421,6 @@ export default function PaymentsManagementPage() {
         const studentTransactions = rawTransactions.filter(t => t.userId === historyStudent.userId);
         const grouped: Record<string, { semesterName: string; year: number; totalDue: number; transactions: Transaction[] }> = {};
 
-        // Find all student registration instances to get "Total Due" per period
         paymentInfos.filter(p => p.userId === historyStudent.userId).forEach(info => {
             const sem = semesters.find(s => s.id === info.semesterId);
             if (sem) {
@@ -366,42 +446,41 @@ export default function PaymentsManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Revenue</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today</CardTitle>
                                 <TrendingUp className="h-4 w-4 text-green-600" />
                             </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black text-green-600">ZMW {globalAuditStats.today.toFixed(2)}</div>
-                            </CardContent>
+                            <CardContent><div className="text-xl font-black text-green-600">ZMW {globalAuditStats.today.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Current Month</CardTitle>
-                                <CalendarIcon className="h-4 w-4 text-primary" />
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle>
+                                <TrendingUp className="h-4 w-4 text-primary" />
                             </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black">ZMW {globalAuditStats.month.toFixed(2)}</div>
-                            </CardContent>
+                            <CardContent><div className="text-xl font-black text-primary">ZMW {globalAuditStats.week.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Active Semester Revenue</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
+                                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent><div className="text-xl font-black">ZMW {globalAuditStats.month.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Active Semesters</CardTitle>
                                 <Receipt className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black text-primary">ZMW {globalAuditStats.currentSemester.toFixed(2)}</div>
-                            </CardContent>
+                            <CardContent><div className="text-xl font-black text-primary">ZMW {globalAuditStats.currentSemester.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Paid (All Time)</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Paid</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black">ZMW {globalAuditStats.total.toFixed(2)}</div>
-                            </CardContent>
+                            <CardContent><div className="text-xl font-black">ZMW {globalAuditStats.total.toFixed(2)}</div></CardContent>
                         </Card>
                     </div>
                 </CardContent>
@@ -494,10 +573,30 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
                                                 {info.balance <= 0.01 ? <Badge variant="default" className="bg-green-600 uppercase text-[9px]">Settled</Badge> : (
-                                                    <Badge variant={info.thresholdMet ? "secondary" : "destructive"} className="uppercase text-[9px] gap-1">
-                                                        {info.thresholdMet ? <CheckCircle2 className="h-2 w-2"/> : <AlertTriangle className="h-2 w-2"/>}
-                                                        {info.thresholdMet ? "Met" : "Below"}
-                                                    </Badge>
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <Badge variant={info.thresholdMet ? "secondary" : "destructive"} className="uppercase text-[9px] gap-1 cursor-pointer hover:scale-105 transition-transform">
+                                                                {info.thresholdMet ? <CheckCircle2 className="h-2 w-2"/> : <AlertTriangle className="h-2 w-2"/>}
+                                                                {info.thresholdMet ? "Met" : "Below"}
+                                                            </Badge>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-64 p-4">
+                                                            <div className="space-y-3">
+                                                                <h4 className="font-black uppercase text-[10px] tracking-widest text-primary">Compliance Calculation</h4>
+                                                                <div className="space-y-1">
+                                                                    <div className="flex justify-between text-xs"><span>Total Due:</span> <span className="font-bold">ZMW {info.totalDue.toFixed(2)}</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Total Paid:</span> <span className="font-bold text-green-600">ZMW {info.totalPaid.toFixed(2)}</span></div>
+                                                                    <div className="flex justify-between text-xs pt-1 border-t"><span>Paid Level:</span> <span className="font-bold">{info.paidPercentage.toFixed(1)}%</span></div>
+                                                                    <div className="flex justify-between text-xs"><span>Required:</span> <span className="font-bold text-primary">{info.requiredThreshold}%</span></div>
+                                                                </div>
+                                                                {!info.thresholdMet && (
+                                                                    <Alert className="bg-destructive/10 border-destructive/20 py-2">
+                                                                        <AlertDescription className="text-[10px] text-destructive leading-tight font-bold uppercase italic">Student is currently blocked from critical portal features.</AlertDescription>
+                                                                    </Alert>
+                                                                )}
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
                                                 )}
                                             </TableCell>
                                             <TableCell>
@@ -512,16 +611,6 @@ export default function PaymentsManagementPage() {
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {filteredData.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="h-48 text-center">
-                                                <div className="flex flex-col items-center justify-center text-muted-foreground italic">
-                                                    <Info className="h-8 w-8 mb-2 opacity-20" />
-                                                    <p className="text-sm font-medium">No results found for the selected filter.</p>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -587,6 +676,9 @@ export default function PaymentsManagementPage() {
                             {Object.entries(historyByAcademicPeriod).map(([semId, data]) => {
                                 const totalPaid = data.transactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
                                 const balance = Math.max(0, data.totalDue - totalPaid);
+                                const studentUid = historyStudent?.userId || '';
+                                const invoiceId = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId)?.invoiceId;
+                                const invoice = allInvoices[studentUid]?.[invoiceId || ''];
                                 
                                 return (
                                     <AccordionItem key={semId} value={semId} className="border rounded-xl overflow-hidden bg-card shadow-sm">
@@ -605,40 +697,91 @@ export default function PaymentsManagementPage() {
                                                 </div>
                                             </div>
                                         </AccordionTrigger>
-                                        <AccordionContent className="p-4 pt-0">
-                                            <div className="bg-primary/5 p-3 rounded-lg mb-4 flex justify-between items-center border border-primary/10">
-                                                <div className="space-y-0.5">
-                                                    <p className="text-[10px] font-black uppercase text-muted-foreground">Semester Billing Total</p>
-                                                    <p className="text-sm font-bold">ZMW {data.totalDue.toFixed(2)}</p>
+                                        <AccordionContent className="p-4 pt-4 space-y-6">
+                                            <div className="grid md:grid-cols-2 gap-6">
+                                                <div className="space-y-3">
+                                                    <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                                        <FileText className="h-3 w-3" /> Invoiced Fees & Tuition
+                                                    </h4>
+                                                    <div className="rounded-lg border bg-muted/10 p-3 space-y-2">
+                                                        {invoice ? (
+                                                            <>
+                                                                {(invoice.courses || []).map((cid: string) => (
+                                                                    <div key={cid} className="flex justify-between text-xs">
+                                                                        <span className="text-muted-foreground truncate mr-2">Tuition: {courses[cid]?.name}</span>
+                                                                        <span className="font-mono">ZMW {courses[cid]?.cost?.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                                <Separator className="opacity-50" />
+                                                                <div className="flex justify-between text-xs">
+                                                                    <span className="text-muted-foreground">Mandatory Fees:</span>
+                                                                    <span className="font-mono text-xs font-bold">ZMW {Number(invoice.totalMandatoryFees || 0).toFixed(2)}</span>
+                                                                </div>
+                                                                {Number(invoice.totalOptionalFees || 0) > 0 && (
+                                                                    <div className="flex justify-between text-xs">
+                                                                        <span className="text-muted-foreground">Optional Fees:</span>
+                                                                        <span className="font-mono text-xs font-bold">ZMW {Number(invoice.totalOptionalFees || 0).toFixed(2)}</span>
+                                                                    </div>
+                                                                )}
+                                                                {Number(invoice.lateFee || 0) > 0 && (
+                                                                    <div className="flex justify-between text-xs text-destructive">
+                                                                        <span>Late Registration:</span>
+                                                                        <span className="font-mono text-xs font-bold">ZMW {Number(invoice.lateFee || 0).toFixed(2)}</span>
+                                                                    </div>
+                                                                )}
+                                                                {invoice.applyScholarship && (
+                                                                    <div className="flex justify-between text-xs text-green-600 italic">
+                                                                        <span>Scholarship Waiver:</span>
+                                                                        <span className="font-mono text-xs font-bold">-(ZMW {Number(invoice.totalTuition || 0).toFixed(2)})</span>
+                                                                    </div>
+                                                                )}
+                                                                <Separator />
+                                                                <div className="flex justify-between text-sm font-black pt-1">
+                                                                    <span>Semester Total:</span>
+                                                                    <span>ZMW {data.totalDue.toFixed(2)}</span>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <p className="text-xs text-muted-foreground italic py-2">Invoice details not found for this period.</p>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="text-right space-y-0.5">
-                                                    <p className="text-[10px] font-black uppercase text-muted-foreground">Total Paid</p>
-                                                    <p className="text-sm font-bold text-green-600">ZMW {totalPaid.toFixed(2)}</p>
+
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                                            <History className="h-3 w-3" /> Payment Ledger
+                                                        </h4>
+                                                        <Button variant="ghost" size="sm" className="h-6 text-[10px] font-black uppercase text-primary" onClick={() => handlePrintStatement(semId, data)}>
+                                                            <Printer className="h-3 w-3 mr-1"/> Download Statement
+                                                        </Button>
+                                                    </div>
+                                                    <div className="rounded-lg border bg-background shadow-inner">
+                                                        <Table>
+                                                            <TableHeader>
+                                                                <TableRow className="hover:bg-transparent">
+                                                                    <TableHead className="text-[10px] font-black uppercase h-8">Date</TableHead>
+                                                                    <TableHead className="text-[10px] font-black uppercase h-8">Method</TableHead>
+                                                                    <TableHead className="text-right text-[10px] font-black uppercase h-8">Amount</TableHead>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {data.transactions.length > 0 ? data.transactions.map(tx => (
+                                                                    <TableRow key={tx.key} className="hover:bg-transparent border-none">
+                                                                        <TableCell className="py-1.5 text-[10px] text-muted-foreground">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                                        <TableCell className="py-1.5"><Badge variant="outline" className="text-[8px] uppercase h-4 px-1">{tx.method || 'Online'}</Badge></TableCell>
+                                                                        <TableCell className="py-1.5 text-right font-black text-[10px]">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                                    </TableRow>
+                                                                )) : (
+                                                                    <TableRow>
+                                                                        <TableCell colSpan={3} className="text-center py-6 text-xs text-muted-foreground italic">No payments recorded.</TableCell>
+                                                                    </TableRow>
+                                                                )}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="hover:bg-transparent">
-                                                        <TableHead className="text-[10px] font-black uppercase h-8">Date</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase h-8">Method</TableHead>
-                                                        <TableHead className="text-right text-[10px] font-black uppercase h-8">Amount</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {data.transactions.length > 0 ? data.transactions.map(tx => (
-                                                        <TableRow key={tx.key} className="hover:bg-transparent border-none">
-                                                            <TableCell className="py-1.5 text-xs text-muted-foreground">{format(parseISO(tx.paymentDate), 'dd MMM yyyy HH:mm')}</TableCell>
-                                                            <TableCell className="py-1.5"><Badge variant="outline" className="text-[8px] uppercase h-4">{tx.method || 'Online'}</Badge></TableCell>
-                                                            <TableCell className="py-1.5 text-right font-bold text-xs">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                                        </TableRow>
-                                                    )) : (
-                                                        <TableRow>
-                                                            <TableCell colSpan={3} className="text-center py-6 text-xs text-muted-foreground italic">No payments found for this period.</TableCell>
-                                                        </TableRow>
-                                                    )}
-                                                </TableBody>
-                                            </Table>
                                         </AccordionContent>
                                     </AccordionItem>
                                 )
