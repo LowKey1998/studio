@@ -76,7 +76,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 const getOrdinalSuffix = (i: number) => {
@@ -94,7 +94,7 @@ const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | nu
     return (d >= start && d <= end);
 };
 
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
 type Intake = { id: string; name: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
@@ -126,6 +126,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [gracePeriodDays, setGracePeriodDays] = React.useState(7);
     const [lateRegistrationActive, setLateRegistrationActive] = React.useState(false);
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState(0);
+    const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester'>('course');
+    const [tuitionFee, setTuitionFee] = React.useState('');
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
     const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
@@ -154,6 +156,8 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setGracePeriodDays(editingSemester.gracePeriodDays ?? 7);
             setLateRegistrationActive(editingSemester.lateRegistrationActive ?? false);
             setLateRegistrationFee(editingSemester.lateRegistrationFee ?? 0);
+            setBillingPolicy(editingSemester.billingPolicy || 'course');
+            setTuitionFee(String(editingSemester.tuitionFee || ''));
         }
     }, [editingSemester]);
 
@@ -195,7 +199,9 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 gracePeriodDays,
                 intakeId,
                 year: Number(year),
-                semesterInYear: Number(semesterInYear)
+                semesterInYear: Number(semesterInYear),
+                billingPolicy,
+                tuitionFee: Number(tuitionFee) || 0
             };
 
             if (editingSemester) {
@@ -229,6 +235,18 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setIsOptionalFeeDialogOpen(false);
         }
         setSelectedFeeTemplate(''); setFeeAmount('');
+    };
+
+    const handleRemoveFee = (feeId: string, isMandatory: boolean) => {
+        if (isMandatory) {
+            const next = { ...mandatoryFees };
+            delete next[feeId];
+            setMandatoryFees(next);
+        } else {
+            const next = { ...optionalFees };
+            delete next[feeId];
+            setOptionalFees(next);
+        }
     };
 
     return (
@@ -299,45 +317,83 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 </TabsContent>
                 <TabsContent value="fees" className="space-y-4 pt-4">
                     <Label className="font-bold">Mandatory Fees</Label>
-                    <div className="border rounded p-2 min-h-[100px] bg-muted/10">
-                        {Object.entries(mandatoryFees).map(([id, fee]) => <div key={id} className="flex justify-between items-center text-xs p-1"><span>{fee.name}</span><span className="font-bold">ZMW {fee.amount}</span></div>)}
-                        <Button variant="outline" size="sm" onClick={() => setIsMandatoryFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><Plus className="h-3 w-3 mr-1"/>Add from Template</Button>
+                    <div className="border rounded p-2 min-h-[100px] bg-muted/10 space-y-1">
+                        {Object.entries(mandatoryFees).map(([id, fee]) => (
+                            <div key={id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border group">
+                                <span>{fee.name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">ZMW {fee.amount}</span>
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100" onClick={() => handleRemoveFee(id, true)}><Trash2 className="h-3 w-3"/></Button>
+                                </div>
+                            </div>
+                        ))}
+                        <Button variant="outline" size="sm" onClick={() => setIsMandatoryFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Mandatory Fee</Button>
                     </div>
                     <Separator />
                     <Label className="font-bold">Optional Fees</Label>
-                    <div className="border rounded p-2 min-h-[100px] bg-muted/10">
-                        {Object.entries(optionalFees).map(([id, fee]) => <div key={id} className="flex justify-between items-center text-xs p-1"><span>{fee.name}</span><span className="font-bold">ZMW {fee.amount}</span></div>)}
-                        <Button variant="outline" size="sm" onClick={() => setIsOptionalFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><Plus className="h-3 w-3 mr-1"/>Add from Template</Button>
+                    <div className="border rounded p-2 min-h-[100px] bg-muted/10 space-y-1">
+                        {Object.entries(optionalFees).map(([id, fee]) => (
+                            <div key={id} className="flex justify-between items-center text-xs p-1.5 bg-background rounded border group">
+                                <span>{fee.name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">ZMW {fee.amount}</span>
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100" onClick={() => handleRemoveFee(id, false)}><Trash2 className="h-3 w-3"/></Button>
+                                </div>
+                            </div>
+                        ))}
+                        <Button variant="outline" size="sm" onClick={() => setIsOptionalFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Optional Fee</Button>
                     </div>
                 </TabsContent>
-                <TabsContent value="controls" className="space-y-4 pt-4">
+                <TabsContent value="controls" className="space-y-6 pt-4">
+                    <div className="space-y-4 p-4 border rounded-xl bg-primary/5">
+                        <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
+                        <RadioGroup value={billingPolicy} onValueChange={(val) => setBillingPolicy(val as any)} className="grid grid-cols-2 gap-4">
+                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'course' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
+                                <RadioGroupItem value="course" id="bp-course" className="sr-only" />
+                                <Label htmlFor="bp-course" className="cursor-pointer text-center font-bold">Pay Per Course</Label>
+                            </div>
+                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'semester' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
+                                <RadioGroupItem value="semester" id="bp-semester" className="sr-only" />
+                                <Label htmlFor="bp-semester" className="cursor-pointer text-center font-bold">Flat Semester Fee</Label>
+                            </div>
+                        </RadioGroup>
+                        {billingPolicy === 'semester' && (
+                            <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                                <Label className="text-xs">Flat Tuition Amount (ZMW)</Label>
+                                <Input type="number" value={tuitionFee} onChange={e => setTuitionFee(e.target.value)} placeholder="5000.00" />
+                            </div>
+                        )}
+                    </div>
+
+                    <Separator />
+
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1"><Label>Threshold (%)</Label><Input type="number" value={paymentThreshold} onChange={e => setPaymentThreshold(Number(e.target.value))}/></div>
+                        <div className="space-y-1"><Label>Payment Threshold (%)</Label><Input type="number" value={paymentThreshold} onChange={e => setPaymentThreshold(Number(e.target.value))}/></div>
                         <div className="space-y-1"><Label>Grace Period (Days)</Label><Input type="number" value={gracePeriodDays} onChange={e => setGracePeriodDays(Number(e.target.value))}/></div>
                     </div>
                     <div className="flex items-center justify-between p-4 border rounded bg-muted/10">
-                        <Label>Late Registration Window</Label>
+                        <Label>Activate Late Registration Fee</Label>
                         <Switch checked={lateRegistrationActive} onCheckedChange={setLateRegistrationActive} />
                     </div>
-                    {lateRegistrationActive && <Input type="number" value={lateRegistrationFee} onChange={e => setLateRegistrationFee(Number(e.target.value))} placeholder="Late Fee Amount" />}
+                    {lateRegistrationActive && <Input type="number" value={lateRegistrationFee} onChange={e => setLateRegistrationFee(Number(e.target.value))} placeholder="ZMW Amount" />}
                 </TabsContent>
             </Tabs>
             <DialogFooter className="border-t pt-4">
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="h-4 w-4 mr-2"/>Save</Button>
+                <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="h-4 w-4 mr-2"/>Save Configuration</Button>
             </DialogFooter>
 
             <Dialog open={isMandatoryFeeDialogOpen || isOptionalFeeDialogOpen} onOpenChange={(o) => { if(!o) { setIsMandatoryFeeDialogOpen(false); setIsOptionalFeeDialogOpen(false); } }}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Import Fee Template</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Select Fee Template</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                         <Select value={selectedFeeTemplate} onValueChange={v => { setSelectedFeeTemplate(v); setFeeAmount(String(feeTemplates.find(t=>t.id===v)?.amount || '')); }}>
                             <SelectTrigger><SelectValue placeholder="Select template..."/></SelectTrigger>
                             <SelectContent>{feeTemplates.filter(t => t.type.toLowerCase() === (isMandatoryFeeDialogOpen ? 'mandatory' : 'optional')).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                         </Select>
-                        <Input type="number" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} />
+                        <div className="space-y-1"><Label>Amount (Override)</Label><Input type="number" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} /></div>
                     </div>
-                    <DialogFooter><Button onClick={() => handleImportFee(isMandatoryFeeDialogOpen)}>Add Fee</Button></DialogFooter>
+                    <DialogFooter><Button onClick={() => handleImportFee(isMandatoryFeeDialogOpen)}>Import Fee</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
@@ -392,7 +448,7 @@ export default function RegistrationManagementPage() {
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
-                case 8: setCalendarEvents(Object.values(data)); break;
+                case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
                 case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
                 case 11: setAllTimetables(data); break;
@@ -425,6 +481,21 @@ export default function RegistrationManagementPage() {
         return { summary, isMissing, hasPlans: plans.length > 0, isOutOfRange };
     }, [allPaymentPlans, calendarEvents]);
 
+    const handleOpenDeadlineDialog = (semester: Semester) => {
+        setEditingDeadlinesFor(semester);
+        setSelectedPlansInDialog(semester.paymentPlanIds || {});
+        const dates: Record<string, Date | null> = {};
+        allPaymentPlans.forEach(plan => {
+            for (let i = 0; i < plan.installments; i++) {
+                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline`;
+                const fullTitle = `${title} - ${semester.name}`;
+                const ev = calendarEvents.find(e => e.title?.trim() === fullTitle.trim());
+                if(ev) dates[title] = parseISO(ev.date);
+            }
+        });
+        setDeadlineDates(dates);
+    };
+
     const handleSaveAllDeadlines = async () => {
         if (!editingDeadlinesFor) return;
         setSaving(true);
@@ -446,6 +517,35 @@ export default function RegistrationManagementPage() {
             toast({ title: 'Deadlines Saved' });
             setEditingDeadlinesFor(null);
         } catch (e: any) { toast({ variant: 'destructive', title: 'Update Failed' }); }
+        finally { setSaving(false); }
+    };
+
+    const handleSaveChanges = async () => {
+        setSaving(true);
+        try { 
+            await set(ref(db, `semesterOfferings`), activePathSemesters);
+            toast({ variant: 'success', title: 'Global Sync Complete' });
+        } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed' }); }
+        finally { setSaving(false); }
+    };
+
+    const confirmDeleteSemester = async () => {
+        if (!semesterToDeleteId) return;
+        setSaving(true);
+        try {
+            const updates: Record<string, any> = {};
+            updates[`/semesters/${semesterToDeleteId}`] = null;
+            allCoursePaths.forEach(path => {
+                if (path.semesters && path.semesters[semesterToDeleteId!]) {
+                    updates[`/coursePaths/${path.id}/semesters/${semesterToDeleteId!}`] = null;
+                }
+            });
+            updates[`/timetables/${semesterToDeleteId}`] = null;
+            await update(ref(db), updates);
+            toast({ title: "Semester Deleted" });
+            setIsDeleteSemesterDialogOpen(false);
+            setSemesterToDeleteId(null);
+        } catch (e: any) { toast({ variant: 'destructive', title: "Delete Failed" }); }
         finally { setSaving(false); }
     };
 
@@ -502,6 +602,9 @@ export default function RegistrationManagementPage() {
                                                 });
 
                                                 const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem);
+                                                
+                                                const hasNoManualDates = !sem.startDate || !sem.endDate;
+                                                const autoDates = hasNoManualDates && standing ? calculateAcademicState(intakeStartStr!, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {})) : null;
 
                                                 return (
                                                     <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80")}>
@@ -510,9 +613,9 @@ export default function RegistrationManagementPage() {
                                                                 <div className="space-y-1">
                                                                     <CardTitle className="text-base">{sem.name}</CardTitle>
                                                                     <div className="flex flex-wrap gap-1.5 pt-1">
-                                                                        {hasPlans && isMissing && <Badge variant="destructive" className="h-4 text-[8px] uppercase">Deadlines Missing</Badge>}
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
                                                                         {isActive ? <Badge className="h-4 text-[8px] bg-green-100 text-green-700 border-green-200">Registration Open</Badge> : <Badge variant="secondary" className="h-4 text-[8px]">Closed</Badge>}
+                                                                        <Badge variant="outline" className="h-4 text-[8px] uppercase">{sem.billingPolicy === 'semester' ? 'Flat Fee' : 'Course Fee'}</Badge>
                                                                     </div>
                                                                 </div>
                                                                 <Switch checked={isActive} onCheckedChange={() => {
@@ -524,6 +627,14 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="space-y-4">
+                                                            {hasNoManualDates && (
+                                                                <Alert variant="default" className="bg-yellow-50 border-yellow-200 py-2">
+                                                                    <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
+                                                                        Active dates generated automatically. Review required.
+                                                                    </AlertDescription>
+                                                                </Alert>
+                                                            )}
                                                             <div className="space-y-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Curriculum</Label>
                                                                 <div className="grid gap-1">
@@ -545,7 +656,7 @@ export default function RegistrationManagementPage() {
                                                         </CardContent>
                                                         <CardFooter className="bg-muted/10 border-t flex justify-end gap-2 p-3">
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDeadlineDialog(sem.name)}><CalendarIcon className="h-4 w-4"/></Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDeadlineDialog(sem)}><CalendarIcon className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }}><Trash2 className="h-4 w-4"/></Button>
                                                         </CardFooter>
                                                     </Card>
@@ -562,7 +673,7 @@ export default function RegistrationManagementPage() {
             </Accordion>}
 
             <div className="flex justify-end p-6 bg-muted/20 border-t rounded-xl shadow-inner">
-                <Button size="lg" className="shadow-xl px-12 font-bold" onClick={handleSaveChanges} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin"/>}<Save className="mr-2 h-4 w-4"/>Save Master Configuration</Button>
+                <Button size="lg" className="shadow-xl px-12 font-bold" onClick={handleSaveChanges} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="mr-2 h-4 w-4"/>Save Master Configuration</Button>
             </div>
 
             <Dialog open={isCreateDialogOpen || isEditDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>
@@ -609,7 +720,7 @@ export default function RegistrationManagementPage() {
                             </div>
                         ))}
                     </div>
-                    <DialogFooter><Button variant="ghost" onClick={() => setEditingDeadlinesFor(null)}>Cancel</Button><Button onClick={handleSaveAllDeadlines} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin"/>}<Save className="h-4 w-4 mr-2"/>Apply Dates</Button></DialogFooter>
+                    <DialogFooter><Button variant="ghost" onClick={() => setEditingDeadlinesFor(null)}>Cancel</Button><Button onClick={handleSaveAllDeadlines} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="mr-2 h-4 w-4 mr-2"/>Apply Dates</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 

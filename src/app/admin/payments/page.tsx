@@ -27,7 +27,10 @@ import {
     Trash2,
     UserPlus,
     Settings2,
-    Send
+    Send,
+    AlertCircle,
+    CalendarDays,
+    Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -260,23 +263,6 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => { fetchPaymentData(); }, [fetchPaymentData]);
 
-    const selectedStudentContext = React.useMemo(() => {
-        if (!paymentSelectedUserId || !calendarSettings) return null;
-        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
-        if (!student) return null;
-        const intake = allIntakes.find(i => i.id === student.intakeId);
-        if (!intake) return null;
-        const intakeDateStr = parseIntakeDate(intake.name);
-        if (!intakeDateStr) return { intakeName: intake.name, standing: 'Invalid Intake Date' };
-        const state = calculateAcademicState(
-            intakeDateStr, 
-            new Date(), 
-            calendarSettings.standardCycles, 
-            Object.values(calendarSettings.anomalies || {})
-        );
-        return { intakeName: intake.name, standing: `Year ${state.year}, Sem ${state.semester}` };
-    }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
-
     const handleRecordPaymentDialog = async () => {
         const student = allStudents.find(s => s.uid === paymentSelectedUserId);
         if(!student || !paymentSelectedYear || !paymentSelectedSemInYear || !paymentAmount || !dateReceived) { 
@@ -490,6 +476,31 @@ export default function PaymentsManagementPage() {
         });
     }, [paymentInfos, searchTerm, intakeFilter]);
 
+    const revenueStats = React.useMemo(() => {
+        const now = new Date();
+        const startOfW = startOfWeek(now);
+        const endOfW = endOfWeek(now);
+        
+        let daily = 0, weekly = 0, semester = 0, allTime = 0;
+        
+        rawTransactions.forEach(tx => {
+            const amt = Number(tx.amount) || 0;
+            const pDate = parseISO(tx.paymentDate);
+            
+            allTime += amt;
+            if(isToday(pDate)) daily += amt;
+            if(isWithinInterval(pDate, { start: startOfW, end: endOfW })) weekly += amt;
+            
+            // Check if tx is for an active semester
+            const invoice = paymentInfos.find(p => p.invoiceId === tx.invoiceId);
+            if(invoice && semesters.find(s => s.id === invoice.semesterId)?.status === 'Open') {
+                semester += amt;
+            }
+        });
+        
+        return { daily, weekly, semester, allTime };
+    }, [rawTransactions, paymentInfos, semesters]);
+
     const uniqueStudentsForDialog = React.useMemo(() => {
         const lower = dialogSearchTerm.toLowerCase();
         return allStudents.filter(s => s.name.toLowerCase().includes(lower) || s.id.toLowerCase().includes(lower));
@@ -508,6 +519,25 @@ export default function PaymentsManagementPage() {
                     </Button>
                 </CardHeader>
             </Card>
+
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+                <Card className="shadow-sm border-0 bg-card">
+                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><TrendingUp className="h-3 w-3"/> Daily Collection</CardTitle></CardHeader>
+                    <CardContent><div className="text-xl font-black text-green-600">ZMW {revenueStats.daily.toFixed(2)}</div></CardContent>
+                </Card>
+                <Card className="shadow-sm border-0 bg-card">
+                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><Clock className="h-3 w-3"/> Weekly Collection</CardTitle></CardHeader>
+                    <CardContent><div className="text-xl font-black">ZMW {revenueStats.weekly.toFixed(2)}</div></CardContent>
+                </Card>
+                <Card className="shadow-sm border-0 bg-card">
+                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><CalendarDays className="h-3 w-3"/> Open Semester Total</CardTitle></CardHeader>
+                    <CardContent><div className="text-xl font-black text-primary">ZMW {revenueStats.semester.toFixed(2)}</div></CardContent>
+                </Card>
+                <Card className="shadow-sm border-0 bg-card">
+                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><Wallet className="h-3 w-3"/> All-Time Received</CardTitle></CardHeader>
+                    <CardContent><div className="text-xl font-black">ZMW {revenueStats.allTime.toFixed(2)}</div></CardContent>
+                </Card>
+            </div>
 
             <div className="flex flex-wrap gap-4">
                 <Button onClick={() => setIsRecordPaymentOpen(true)} size="lg" className="shadow-lg h-12 font-bold"><PlusCircle className="mr-2 h-5 w-5"/> Record Single Payment</Button>
@@ -678,7 +708,7 @@ export default function PaymentsManagementPage() {
             </Dialog>
 
             {/* Single Record Dialog */}
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) { resetDialog(); setIsRecordPaymentOpen(o); } }}>
                 <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
                     <DialogHeader><DialogTitle>Record Single Payment</DialogTitle></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-2 py-4 space-y-6">
