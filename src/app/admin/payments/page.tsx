@@ -118,6 +118,8 @@ export default function PaymentsManagementPage() {
     const [courses, setCourses] = React.useState<Record<string, any>>({});
     const [allInvoices, setAllInvoices] = React.useState<Record<string, any>>({});
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
     
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
@@ -163,7 +165,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap, templateSnap] = await Promise.all([
+            const [usersSnap, regsSnap, transactionsSnap, programmesSnap, semestersSnap, intakesSnap, invoicesSnap, coursesSnap, financialSnap, plansSnap, eventsSnap, templateSnap, calendarSnap, institutionSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -175,7 +177,9 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'settings/paymentPlans')),
                 get(ref(db, 'calendarEvents')),
-                get(ref(db, 'settings/requestStudentTemplate'))
+                get(ref(db, 'settings/requestStudentTemplate')),
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'settings/institution')),
             ]);
             
             const users = usersSnap.val() || {};
@@ -187,7 +191,9 @@ export default function PaymentsManagementPage() {
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
 
             setFinancialSettings(fSettings);
+            setCalendarSettings(calendarSnap.val() || {});
             setAllInvoices(allInvoicesData);
+            if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
             if (programmesSnap.exists()) setProgrammes(Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id]})));
             if (semestersSnap.exists()) setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
@@ -295,7 +301,6 @@ export default function PaymentsManagementPage() {
 
     const globalAuditStats = React.useMemo(() => {
         const now = new Date();
-        const startDay = startOfDay(now);
         const startWeek = startOfWeek(now, { weekStartsOn: 1 });
         const endWeek = endOfWeek(now, { weekStartsOn: 1 });
         const startMonth = startOfMonth(now);
@@ -930,7 +935,7 @@ export default function PaymentsManagementPage() {
                                     <SelectContent>
                                         <div className="p-2 border-b">
                                             <div className="relative">
-                                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                                 <Input 
                                                     placeholder="Filter list..." 
                                                     className="h-8 pl-8"
