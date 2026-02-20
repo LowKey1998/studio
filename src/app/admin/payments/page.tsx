@@ -34,7 +34,8 @@ import {
     Calculator,
     UserPlus,
     User,
-    Percent
+    Percent,
+    MessageSquare
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -128,6 +129,8 @@ export default function PaymentsManagementPage() {
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [transactionId, setTransactionId] = React.useState('');
+    const [paymentComment, setPaymentComment] = React.useState('');
+    const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
 
     // States for Edit Request Dialog
     const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
@@ -271,6 +274,7 @@ export default function PaymentsManagementPage() {
             setPaymentInfos(Object.values(studentPaymentMap));
 
         } catch (error: any) {
+            console.error(error);
             toast({ variant: 'destructive', title: 'Failed to load data' });
         } finally {
             setLoading(false);
@@ -341,6 +345,8 @@ export default function PaymentsManagementPage() {
         setPaymentAmount('');
         setPaymentMethod('Cash');
         setTransactionId('');
+        setPaymentComment('');
+        setDialogSearchTerm('');
     };
 
     const handleRecordPaymentDialog = () => {
@@ -361,6 +367,7 @@ export default function PaymentsManagementPage() {
             status: 'successful',
             paymentDate: new Date().toISOString(),
             method: paymentMethod,
+            comment: paymentComment,
             recordedBy: userData?.name || 'Accountant',
         }).catch((e) => {
             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
@@ -393,7 +400,7 @@ export default function PaymentsManagementPage() {
         getRegistrarIds().then(registrarIds => {
             if (registrarIds.length > 0) {
                 createNotification(
-                    registrarIds,
+                    registrarIds, 
                     `New student account request from Finance: ${requestName} (${requestEmail}).`,
                     '/admin/admissions/add-student'
                 ).catch(err => console.warn("Notification failed:", err));
@@ -540,6 +547,15 @@ export default function PaymentsManagementPage() {
         setIsEditRequestOpen(false);
     };
 
+    const filteredDialogStudents = React.useMemo(() => {
+        if (!dialogSearchTerm) return paymentInfos;
+        const lower = dialogSearchTerm.toLowerCase();
+        return paymentInfos.filter(s => 
+            s.studentName.toLowerCase().includes(lower) || 
+            s.studentId.toLowerCase().includes(lower)
+        );
+    }, [paymentInfos, dialogSearchTerm]);
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -585,7 +601,7 @@ export default function PaymentsManagementPage() {
                             <CardContent><div className="text-xl font-black text-primary">ZMW {globalAuditStats.currentSemester.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Paid</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
@@ -780,24 +796,36 @@ export default function PaymentsManagementPage() {
                             <Label>Select Student</Label>
                             <Select 
                                 value={selectedStudent?.userId} 
-                                onValueChange={(val) => setSelectedStudent(paymentInfos.find(p => p.userId === val) || null)}
+                                onValueChange={(val) => {
+                                    const match = paymentInfos.find(p => p.userId === val);
+                                    setSelectedStudent(match || null);
+                                }}
                             >
                                 <SelectTrigger className="bg-background">
                                     <SelectValue placeholder="Search student body..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <div className="p-2 border-b">
-                                        <Input 
-                                            placeholder="Filter list..." 
-                                            className="h-8"
-                                        />
+                                        <div className="relative">
+                                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input 
+                                                placeholder="Filter list..." 
+                                                className="h-8 pl-8"
+                                                value={dialogSearchTerm}
+                                                onChange={(e) => setDialogSearchTerm(e.target.value)}
+                                                onKeyDown={(e) => e.stopPropagation()} // Prevent select from closing
+                                            />
+                                        </div>
                                     </div>
                                     <ScrollArea className="h-64">
-                                        {paymentInfos.map(s => (
+                                        {filteredDialogStudents.map(s => (
                                             <SelectItem key={`${s.userId}-${s.semesterId}`} value={s.userId}>
                                                 {s.studentName} ({s.studentId}) - {semesters.find(sem=>sem.id===s.semesterId)?.name}
                                             </SelectItem>
                                         ))}
+                                        {filteredDialogStudents.length === 0 && (
+                                            <div className="p-4 text-center text-xs text-muted-foreground italic">No results found.</div>
+                                        )}
                                     </ScrollArea>
                                     <Separator className="my-1"/>
                                     <Button 
@@ -814,8 +842,32 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {selectedStudent && (
+                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2 animate-in fade-in slide-in-from-top-2">
+                                <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                    <Calculator className="h-3 w-3" /> Semester Financial Summary
+                                </h4>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-xs font-medium">
+                                        <span>Total Due:</span>
+                                        <span className="font-mono">ZMW {selectedStudent.totalDue.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-green-600 font-medium">
+                                        <span>Amount Already Paid:</span>
+                                        <span className="font-mono">ZMW {selectedStudent.totalPaid.toFixed(2)}</span>
+                                    </div>
+                                    <Separator className="my-1"/>
+                                    <div className="flex justify-between text-sm font-black text-destructive">
+                                        <span>Current Balance:</span>
+                                        <span className="font-mono">ZMW {selectedStudent.balance.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-1">
-                            <Label>Amount (ZMW)</Label>
+                            <Label>Amount to Pay (ZMW)</Label>
                             <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -835,11 +887,20 @@ export default function PaymentsManagementPage() {
                                 <Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF ID" />
                             </div>
                         </div>
+                        <div className="space-y-1">
+                            <Label>Comment / Internal Note</Label>
+                            <Textarea 
+                                value={paymentComment} 
+                                onChange={e => setPaymentComment(e.target.value)} 
+                                placeholder="Add payment context or details..." 
+                                rows={3}
+                            />
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !selectedStudent}>
-                            Record Payment
+                            Finalize Payment
                         </Button>
                     </DialogFooter>
                 </DialogContent>
