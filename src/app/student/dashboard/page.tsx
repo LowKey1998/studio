@@ -269,18 +269,14 @@ export default function StudentDashboardPage() {
                                 const studentIntake = currentIntakeNameVal?.trim().toUpperCase();
 
                                 if (nodeId === 'master') {
-                                    // Rule: For Master node, include if it specifically matches student's intake OR is marked as global 'MASTER'
                                     shouldInclude = (studentIntake && entryIntake === studentIntake) || (entryIntake === 'MASTER');
                                 } else {
-                                    // Instance specific entry always matches if student is enrolled in that specific sem
                                     shouldInclude = true;
                                 }
 
                                 if (shouldInclude) {
                                     const sessionKey = `${cid}-${entry.startTime}-${entry.venue}`;
                                     const existing = scheduleMap.get(sessionKey);
-                                    
-                                    // Instance specific entries override baseline master entries
                                     if (!existing || (nodeId !== 'master' && existing.semesterId === 'master')) {
                                         scheduleMap.set(sessionKey, { 
                                             ...entry, 
@@ -298,10 +294,17 @@ export default function StudentDashboardPage() {
             }
             setTodaySchedule(Array.from(scheduleMap.values()).sort((a,b) => a.startTime.localeCompare(b.startTime)));
 
-            // General Calendar Deadlines
+            // Filtered Deadlines strictly for current semester
             const deadlines: DeadlineEvent[] = [];
+            const currentSemesterName = matchingSemesterId ? allSemesters[matchingSemesterId]?.name : null;
+
             Object.values(allCalendarEvents).forEach((ev: any) => {
-                if (ev.title?.toLowerCase().includes('deadline') && new Date(ev.date) >= startOfDay(getCurrentServerDate())) {
+                const isDeadline = ev.title?.toLowerCase().includes('deadline');
+                const isFuture = new Date(ev.date) >= startOfDay(getCurrentServerDate());
+                const isForThisSemester = currentSemesterName && ev.semester === currentSemesterName;
+                const isGeneral = !ev.semester || ev.semester === 'General';
+
+                if (isDeadline && isFuture && (isForThisSemester || isGeneral)) {
                     deadlines.push({ title: ev.title, date: ev.date, type: 'payment' });
                 }
             });
@@ -333,7 +336,7 @@ export default function StudentDashboardPage() {
         });
 
         return () => unsub();
-    }, [user, userProfile, toast, serverTimeOffset]);
+    }, [user, userProfile, toast, serverTimeOffset, semesters]);
 
     if (authLoading || loading) return <Skeleton className="h-screen w-full" />;
 
