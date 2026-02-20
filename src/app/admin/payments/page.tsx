@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -32,7 +33,8 @@ import {
     PencilLine,
     Calculator,
     UserPlus,
-    User
+    User,
+    Percent
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -57,6 +59,7 @@ import type { DateRange } from 'react-day-picker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
+import { PaymentCountdown } from '@/components/payment-countdown';
 
 // --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
@@ -567,11 +570,6 @@ export default function PaymentsManagementPage() {
                             <CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button onClick={() => setIsRecordPaymentOpen(true)} className="shadow-md h-10 px-6 font-bold">
-                            <PlusCircle className="mr-2 h-4 w-4"/> Record Payment
-                        </Button>
-                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -613,6 +611,12 @@ export default function PaymentsManagementPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            <div className="flex justify-start px-2">
+                <Button onClick={() => setIsRecordPaymentOpen(true)} size="lg" className="shadow-xl h-12 px-8 font-black uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
+                    <PlusCircle className="mr-2 h-5 w-5"/> Record Payment
+                </Button>
+            </div>
 
             <Card className="shadow-md">
                 <CardHeader className="border-b">
