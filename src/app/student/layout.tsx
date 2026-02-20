@@ -1,9 +1,10 @@
+
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Loader2, ShieldAlert, ArrowRight, Wallet } from "lucide-react";
+import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { ref, get } from "firebase/database";
 import { calculateAcademicState, parseIntakeDate } from "@/lib/semester-utils";
@@ -23,131 +24,142 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [checkingStanding, setCheckingStanding] = useState(true);
 
   useEffect(() => {
-    if (!loading && userProfile?.role?.toLowerCase() !== 'student') {
-      router.replace('/dashboard');
+    // 1. Wait for Auth to finish loading
+    if (loading) return;
+
+    // 2. Redirect if not a student
+    if (!userProfile || userProfile.role?.toLowerCase() !== 'student') {
+      setCheckingStanding(false);
+      if (userProfile) router.replace('/dashboard');
       return;
     }
 
-    if (!loading && user && userProfile) {
-        const checkStanding = async () => {
-            setCheckingStanding(true);
-            try {
-                const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
-                    get(ref(db, `registrations/${user.uid}`)),
-                    get(ref(db, 'transactions')),
-                    get(ref(db, `invoices/${user.uid}`)),
-                    get(ref(db, 'semesters')),
-                    get(ref(db, 'settings/academicCalendar')),
-                    get(ref(db, 'calendarEvents')),
-                    get(ref(db, 'intakes')),
-                    get(ref(db, 'settings/financialSettings'))
-                ]);
+    // 3. Perform Standing Check
+    const checkStanding = async () => {
+        setCheckingStanding(true);
+        try {
+            // Check for missing intake assignment
+            if (!userProfile.intakeId) {
+                console.warn("[GUARD] No intake assigned to student profile.");
+                setIsDefaulter(false);
+                setIsRestrictedRoute(false);
+                setCheckingStanding(false);
+                return;
+            }
 
-                if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
-                    setCheckingStanding(false);
-                    return;
-                }
+            const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
+                get(ref(db, `registrations/${user.uid}`)),
+                get(ref(db, 'transactions')),
+                get(ref(db, `invoices/${user.uid}`)),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'calendarEvents')),
+                get(ref(db, 'intakes')),
+                get(ref(db, 'settings/financialSettings'))
+            ]);
 
-                const intake = intakeSnap.val()[userProfile.intakeId];
-                const intakeStart = parseIntakeDate(intake?.name);
-                if (!intakeStart) {
-                    setCheckingStanding(false);
-                    return;
-                }
+            // If critical data is missing, we can't accurately flag a defaulter, so we allow access
+            if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
+                setCheckingStanding(false);
+                return;
+            }
 
-                const standing = calculateAcademicState(
-                    intakeStart,
-                    new Date(),
-                    calSnap.val().standardCycles,
-                    Object.values(calSnap.val().anomalies || {})
-                );
+            const intake = intakeSnap.val()[userProfile.intakeId];
+            const intakeStart = parseIntakeDate(intake?.name);
+            if (!intakeStart) {
+                setCheckingStanding(false);
+                return;
+            }
 
-                const activeSemesterEntry = Object.entries(semSnap.val() || {}).find(([_, s]: [string, any]) => 
-                    s.intakeId === userProfile.intakeId && s.year === standing.year && s.semesterInYear === standing.semester
-                );
+            const standing = calculateAcademicState(
+                intakeStart,
+                new Date(),
+                calSnap.val().standardCycles,
+                Object.values(calSnap.val().anomalies || {})
+            );
 
-                if (!activeSemesterEntry) {
-                    setCheckingStanding(false);
-                    return;
-                }
+            const activeSemesterEntry = Object.entries(semSnap.val() || {}).find(([_, s]: [string, any]) => 
+                s.intakeId === userProfile.intakeId && s.year === standing.year && s.semesterInYear === standing.semester
+            );
 
-                const [semId, semData] = activeSemesterEntry as [string, any];
-                const reg = regSnap.val()[semId];
-                const invoice = invSnap.val()?.[reg?.invoiceId];
+            if (!activeSemesterEntry) {
+                setCheckingStanding(false);
+                return;
+            }
 
-                if (!reg || !invoice) {
-                    setCheckingStanding(false);
-                    return;
-                }
+            const [semId, semData] = activeSemesterEntry as [string, any];
+            const reg = regSnap.val()[semId];
+            const invoice = invSnap.val()?.[reg?.invoiceId];
 
-                const totalDue = (Number(invoice.totalTuition) || 0) + (Number(invoice.totalMandatoryFees) || 0) + (Number(invoice.totalOptionalFees) || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (Number(invoice.totalTuition) || 0) : 0);
-                const totalPaid = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.invoiceId === reg.invoiceId && t.status === 'successful').reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+            if (!reg || !invoice) {
+                setCheckingStanding(false);
+                return;
+            }
+
+            const totalDue = (Number(invoice.totalTuition) || 0) + (Number(invoice.totalMandatoryFees) || 0) + (Number(invoice.totalOptionalFees) || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (Number(invoice.totalTuition) || 0) : 0);
+            const totalPaid = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.invoiceId === reg.invoiceId && t.status === 'successful').reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+            
+            const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
+            const fSettings = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
+            const threshold = semData.paymentThreshold || fSettings.paymentThreshold;
+            const grace = semData.gracePeriodDays || 0;
+
+            const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
+            const semDeadlines = calendarEvents.filter(ev => ev.semester === semData.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
+            const passedDeadlines = semDeadlines.filter(ev => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
+            
+            const defaulterStatus = passedDeadlines.length > 0 && paidPercentage < threshold;
+            setIsDefaulter(defaulterStatus);
+
+            if (defaulterStatus) {
+                const restrictedFuncs = fSettings.defaulterRestrictions || {};
+                const restrictedCategories = restrictedFuncs.sidebar || {};
                 
-                const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-                const fSettings = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
-                const threshold = semData.paymentThreshold || fSettings.paymentThreshold;
-                const grace = semData.gracePeriodDays || 0;
+                let isPathBlocked = false;
 
-                const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
-                const semDeadlines = calendarEvents.filter(ev => ev.semester === semData.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
-                const passedDeadlines = semDeadlines.filter(ev => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
-                
-                const defaulterStatus = passedDeadlines.length > 0 && paidPercentage < threshold;
-                setIsDefaulter(defaulterStatus);
+                // Functional block checks
+                if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
+                    isPathBlocked = true;
+                }
+                if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
+                    isPathBlocked = true;
+                }
+                if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
+                    isPathBlocked = true;
+                }
 
-                if (defaulterStatus) {
-                    const restrictedFuncs = fSettings.defaulterRestrictions || {};
-                    const restrictedCategories = restrictedFuncs.sidebar || {};
-                    
-                    let isPathBlocked = false;
+                // Sidebar category checks
+                const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
+                if (currentCategory && restrictedCategories[currentCategory.label]) {
+                    isPathBlocked = true;
+                }
 
-                    // 1. Check functional block restrictions
-                    if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
-                        isPathBlocked = true;
-                    }
-                    if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
-                        isPathBlocked = true;
-                    }
-                    if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
-                        isPathBlocked = true;
-                    }
-
-                    // 2. Check sidebar category restrictions
-                    const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
-                    if (currentCategory && restrictedCategories[currentCategory.label]) {
-                        isPathBlocked = true;
-                    }
-
-                    // 3. Final decision
-                    if (isPathBlocked) {
-                        const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
-                        if (!isEssential) {
-                            setIsRestrictedRoute(true);
-                        } else {
-                            setIsRestrictedRoute(false);
-                        }
-                    } else {
-                        setIsRestrictedRoute(false);
-                    }
+                // Essential pages whitelist
+                const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
+                if (isPathBlocked && !isEssential) {
+                    setIsRestrictedRoute(true);
                 } else {
                     setIsRestrictedRoute(false);
                 }
-
-            } catch (error) {
-                console.error("Standing guard error:", error);
-            } finally {
-                setCheckingStanding(false);
+            } else {
+                setIsRestrictedRoute(false);
             }
-        };
-        checkStanding();
-    }
+
+        } catch (error) {
+            console.error("Standing guard error:", error);
+        } finally {
+            setCheckingStanding(false);
+        }
+    };
+
+    checkStanding();
   }, [user, userProfile, loading, router, pathname]);
 
   if (loading || checkingStanding) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground animate-pulse">Syncing Portal standing...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">Syncing Portal standing...</p>
       </div>
     );
   }
@@ -182,8 +194,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                   <Wallet className="mr-2 h-4 w-4"/> Make Payment <ArrowRight className="ml-2 h-4 w-4"/>
                               </Link>
                           </Button>
-                          <Button variant="ghost" className="w-full text-xs font-bold" onClick={() => router.back()}>
-                              Return to Dashboard
+                          <Button variant="ghost" className="w-full text-xs font-bold" asChild>
+                              <Link href="/student/dashboard">Return to Dashboard</Link>
                           </Button>
                       </CardFooter>
                   </Card>
