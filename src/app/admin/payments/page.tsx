@@ -53,7 +53,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 
 type StudentPaymentInfo = {
@@ -137,9 +136,11 @@ export default function PaymentsManagementPage() {
 
     // Bulk Manual State
     const [isBulkManualOpen, setIsBulkManualOpen] = React.useState(false);
-    const [bulkEntries, setBulkEntries] = React.useState<any[]>([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '' }]);
+    const [bulkEntries, setBulkEntries] = React.useState<any[]>([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '', year: '', semesterInYear: '', comment: '', intakeId: null }]);
     const [bulkGlobalMethod, setBulkGlobalMethod] = React.useState('Cash');
     const [bulkGlobalDate, setBulkGlobalDate] = React.useState<Date | undefined>(new Date());
+    const [bulkGlobalYear, setBulkGlobalYear] = React.useState('');
+    const [bulkGlobalSem, setBulkGlobalSem] = React.useState('');
 
     // Request Account State
     const [isRequestAccountOpen, setIsRequestAccountOpen] = React.useState(false);
@@ -409,7 +410,7 @@ export default function PaymentsManagementPage() {
     };
 
     const handleAddBulkRow = () => {
-        setBulkEntries(prev => [...prev, { id: `row-${Date.now()}`, studentId: '', amount: '', method: bulkGlobalMethod, date: bulkGlobalDate, studentUid: null, studentName: '' }]);
+        setBulkEntries(prev => [...prev, { id: `row-${Date.now()}`, studentId: '', amount: '', method: bulkGlobalMethod, date: bulkGlobalDate, studentUid: null, studentName: '', year: bulkGlobalYear, semesterInYear: bulkGlobalSem, comment: '', intakeId: null }]);
     };
 
     const handleRemoveBulkRow = (index: number) => {
@@ -425,6 +426,7 @@ export default function PaymentsManagementPage() {
                     const student = allStudents.find(s => s.id === value.trim().toUpperCase());
                     updated.studentUid = student?.uid || null;
                     updated.studentName = student?.name || '';
+                    updated.intakeId = student?.intakeId || null;
                 }
                 return updated;
             }
@@ -433,41 +435,77 @@ export default function PaymentsManagementPage() {
     };
 
     const handleApplyGlobalToBulk = () => {
-        setBulkEntries(prev => prev.map(row => ({ ...row, method: bulkGlobalMethod, date: bulkGlobalDate })));
+        setBulkEntries(prev => prev.map(row => ({ 
+            ...row, 
+            method: bulkGlobalMethod, 
+            date: bulkGlobalDate,
+            year: bulkGlobalYear,
+            semesterInYear: bulkGlobalSem
+        })));
         toast({ title: "Globals Applied" });
     };
 
     const handleConfirmBulkManual = async () => {
-        const validRows = bulkEntries.filter(row => row.studentUid && row.amount > 0 && row.date);
+        const validRows = bulkEntries.filter(row => row.studentUid && row.amount > 0 && row.date && row.year && row.semesterInYear);
         if (validRows.length === 0) {
-            toast({ variant: 'destructive', title: 'No valid rows to save.' });
+            toast({ variant: 'destructive', title: 'Missing required fields', description: 'Ensure Student ID (verified), Amount, Date, Year and Sem are set for at least one row.' });
             return;
         }
         setFormLoading(true);
         try {
             const updates: Record<string, any> = {};
             for (const row of validRows) {
-                const studentPayments = paymentInfos.filter(p => p.userId === row.studentUid);
-                const info = studentPayments[0]; 
-                if (!info) continue;
+                const student = allStudents.find(s => s.uid === row.studentUid)!;
+                const targetSemester = semesters.find(s => 
+                    s.intakeId === student.intakeId && 
+                    s.year === Number(row.year) && 
+                    s.semesterInYear === Number(row.semesterInYear)
+                );
+
+                if (!targetSemester) continue;
+
+                const info = paymentInfos.find(p => p.userId === student.uid && p.semesterId === targetSemester.id);
+                let targetInvoiceId = info?.invoiceId;
+
+                if (!info) {
+                    const invRef = push(ref(db, `invoices/${student.uid}`));
+                    targetInvoiceId = invRef.key!;
+                    updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
+                        invoiceId: targetInvoiceId,
+                        semester: targetSemester.name,
+                        semesterId: targetSemester.id,
+                        dateCreated: new Date().toISOString(),
+                        totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                    };
+                    updates[`registrations/${student.uid}/${targetSemester.id}`] = {
+                        status: 'Completed',
+                        semesterName: targetSemester.name,
+                        registrationDate: new Date().toISOString(),
+                        programmeId: student.programmeId || '',
+                        intakeId: student.intakeId,
+                        invoiceId: targetInvoiceId,
+                        courses: []
+                    };
+                }
 
                 const txRef = push(ref(db, 'transactions'));
                 updates[`transactions/${txRef.key}`] = {
                     transactionId: `BULK-${Date.now()}-${txRef.key?.slice(-4)}`,
                     userId: row.studentUid,
-                    invoiceId: info.invoiceId,
+                    invoiceId: targetInvoiceId,
                     amount: parseFloat(row.amount),
                     status: 'successful',
                     paymentDate: format(row.date, 'yyyy-MM-dd'),
                     recordedAt: serverTimestamp(),
                     method: row.method,
+                    comment: row.comment,
                     recordedBy: userData?.name || 'Accountant',
                 };
             }
             await update(ref(db), updates);
-            toast({ variant: 'success', title: 'Bulk Payments Saved', description: `Successfully recorded ${validRows.length} payments.` });
+            toast({ variant: 'success', title: 'Batch Saved', description: `Recorded ${validRows.length} payments.` });
             setIsBulkManualOpen(false);
-            setBulkEntries([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '' }]);
+            setBulkEntries([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '', year: '', semesterInYear: '', comment: '', intakeId: null }]);
             fetchPaymentData();
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Batch failed', description: e.message });
@@ -487,7 +525,7 @@ export default function PaymentsManagementPage() {
     }, [paymentInfos, searchTerm, intakeFilter, programmeFilter, minAmountFilter]);
 
     const revenueStats = React.useMemo(() => {
-        const now = new Date();
+        const now = getCurrentServerDate();
         const startOfW = startOfWeek(now);
         const endOfW = endOfWeek(now);
         
@@ -559,6 +597,10 @@ export default function PaymentsManagementPage() {
             exists: !!info
         };
     }, [paymentSelectedUserId, paymentSelectedYear, paymentSelectedSemInYear, selectedStudentContext, semesters, paymentInfos]);
+
+    function getCurrentServerDate() {
+        return new Date(); // Simplified for frontend logic
+    }
 
     return (
         <div className="space-y-6">
@@ -699,39 +741,58 @@ export default function PaymentsManagementPage() {
 
             {/* Batch Manual Dialog */}
             <Dialog open={isBulkManualOpen} onOpenChange={setIsBulkManualOpen}>
-                <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+                <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Batch Manual Payment Recording</DialogTitle>
-                        <DialogDescription>Record multiple physical payments or bank entries in one session.</DialogDescription>
+                        <DialogDescription>Record multiple payments against specific year/semester sessions.</DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-4 py-4 flex-1 overflow-hidden">
                         <div className="flex flex-wrap items-end gap-4 p-4 border rounded-xl bg-muted/20">
-                            <div className="w-48 space-y-1"><Label className="text-xs">Batch Method</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Year</Label>
+                                <Select value={bulkGlobalYear} onValueChange={setBulkGlobalYear}><SelectTrigger className="h-9"><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select>
+                            </div>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Semester</Label>
+                                <Select value={bulkGlobalSem} onValueChange={setBulkGlobalSem}><SelectTrigger className="h-9"><SelectValue placeholder="Sem"/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent></Select>
+                            </div>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Method</Label>
                                 <Select value={bulkGlobalMethod} onValueChange={setBulkGlobalMethod}><SelectTrigger className="h-9"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
                             </div>
-                            <div className="w-48 space-y-1"><Label className="text-xs">Batch Date</Label>
+                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Batch Date</Label>
                                 <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-start h-9 text-xs"><CalendarIcon className="mr-2 h-4 w-4"/>{bulkGlobalDate ? format(bulkGlobalDate, 'dd MMM') : 'Pick Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={bulkGlobalDate} onSelect={setBulkGlobalDate} initialFocus/></PopoverContent></Popover>
                             </div>
                             <Button variant="secondary" size="sm" className="h-9 font-bold" onClick={handleApplyGlobalToBulk}><Save className="mr-2 h-4 w-4"/> Apply Globals</Button>
                             <Separator orientation="vertical" className="h-9" />
-                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Another Entry</Button>
+                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Entry</Button>
                         </div>
-                        <ScrollArea className="flex-1 border rounded-lg">
+                        <ScrollArea className="flex-1 border rounded-lg shadow-inner bg-card">
                             <Table>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead>Student ID</TableHead><TableHead>Verified Student</TableHead><TableHead className="w-32">Amount Paid (ZMW)</TableHead><TableHead className="w-40">Method</TableHead><TableHead className="w-40">Date</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
+                                <TableHeader className="bg-muted/50 sticky top-0 z-10"><TableRow><TableHead className="w-32">Student ID</TableHead><TableHead className="w-48">Student</TableHead><TableHead className="w-24">Year</TableHead><TableHead className="w-24">Sem</TableHead><TableHead className="w-32">Amount</TableHead><TableHead className="w-32">Method</TableHead><TableHead className="w-32">Date</TableHead><TableHead>Comment</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
                                 <TableBody>
                                     {bulkEntries.map((row, index) => (
                                         <TableRow key={row.id} className={cn(!row.studentUid && row.studentId && "bg-red-50")}>
-                                            <TableCell><Input value={row.studentId} onChange={e => handleBulkRowUpdate(row.id, 'studentId', e.target.value.toUpperCase())} placeholder="STU-XXX" className="h-8 font-mono text-xs uppercase"/></TableCell>
-                                            <TableCell>{row.studentUid ? <div className="flex flex-col"><span className="text-xs font-bold">{row.studentName}</span><span className="text-[9px] text-green-600 font-black uppercase">Verified</span></div> : <span className="text-xs text-muted-foreground italic">Pending ID...</span>}</TableCell>
-                                            <TableCell><Input type="number" value={row.amount} onChange={e => handleBulkRowUpdate(row.id, 'amount', e.target.value)} className="h-8 text-xs"/></TableCell>
+                                            <TableCell><Input value={row.studentId} onChange={e => handleBulkRowUpdate(row.id, 'studentId', e.target.value.toUpperCase())} placeholder="STU-XXX" className="h-8 font-mono text-[10px] uppercase"/></TableCell>
+                                            <TableCell>{row.studentUid ? <span className="text-[10px] font-bold truncate block max-w-[150px]">{row.studentName}</span> : <span className="text-[10px] text-muted-foreground italic">Required</span>}</TableCell>
                                             <TableCell>
-                                                <Select value={row.method} onValueChange={v => handleBulkRowUpdate(row.id, 'method', v)}><SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
+                                                <Select value={row.year} onValueChange={v => handleBulkRowUpdate(row.id, 'year', v)} disabled={!row.studentUid}>
+                                                    <SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger>
+                                                    <SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+                                                </Select>
                                             </TableCell>
                                             <TableCell>
-                                                <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full h-8 text-[10px] px-2 justify-start"><CalendarIcon className="mr-1 h-3 w-3"/>{row.date ? format(row.date, 'dd MMM') : 'Set Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={row.date} onSelect={d => handleBulkRowUpdate(row.id, 'date', d)} initialFocus/></PopoverContent></Popover>
+                                                <Select value={row.semesterInYear} onValueChange={v => handleBulkRowUpdate(row.id, 'semesterInYear', v)} disabled={!row.year}>
+                                                    <SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger>
+                                                    <SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}</SelectContent>
+                                                </Select>
                                             </TableCell>
-                                            <TableCell><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveBulkRow(index)}><Trash2 className="h-4 w-4"/></Button></TableCell>
+                                            <TableCell><Input type="number" value={row.amount} onChange={e => handleBulkRowUpdate(row.id, 'amount', e.target.value)} className="h-8 text-[10px]"/></TableCell>
+                                            <TableCell>
+                                                <Select value={row.method} onValueChange={v => handleBulkRowUpdate(row.id, 'method', v)}><SelectTrigger className="h-8 text-[10px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full h-8 text-[9px] px-2 justify-start font-normal"><CalendarIcon className="mr-1 h-3 w-3"/>{row.date ? format(row.date, 'dd MMM') : 'Set'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={row.date} onSelect={d => handleBulkRowUpdate(row.id, 'date', d)} initialFocus/></PopoverContent></Popover>
+                                            </TableCell>
+                                            <TableCell><Input value={row.comment} onChange={e => handleBulkRowUpdate(row.id, 'comment', e.target.value)} placeholder="..." className="h-8 text-[10px]"/></TableCell>
+                                            <TableCell><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveBulkRow(index)}><Trash2 className="h-4 w-4"/></Button></TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -739,10 +800,10 @@ export default function PaymentsManagementPage() {
                         </ScrollArea>
                     </div>
                     <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsBulkManualOpen(false)}>Discard Session</Button>
-                        <Button onClick={handleConfirmBulkManual} disabled={formLoading}>
+                        <Button variant="ghost" onClick={() => setIsBulkManualOpen(false)}>Discard</Button>
+                        <Button onClick={handleConfirmBulkManual} disabled={formLoading || bulkEntries.length === 0}>
                             {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4" />}
-                            Record {bulkEntries.filter(r => r.studentUid && r.amount > 0).length} Payments
+                            Post Batch ({bulkEntries.filter(r => r.studentUid && r.amount > 0).length})
                         </Button>
                     </DialogFooter>
                 </DialogContent>
