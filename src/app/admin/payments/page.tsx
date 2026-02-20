@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, set, push, onValue, serverTimestamp, remove } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -525,7 +525,8 @@ export default function PaymentsManagementPage() {
     }, [paymentInfos, searchTerm, intakeFilter, programmeFilter, minAmountFilter]);
 
     const revenueStats = React.useMemo(() => {
-        const now = getCurrentServerDate();
+        const now = new Date();
+        const currentYear = now.getFullYear();
         const startOfW = startOfWeek(now);
         const endOfW = endOfWeek(now);
         
@@ -539,9 +540,16 @@ export default function PaymentsManagementPage() {
             if(isToday(pDate)) daily += amt;
             if(isWithinInterval(pDate, { start: startOfW, end: endOfW })) weekly += amt;
             
-            const invoice = paymentInfos.find(p => p.invoiceId === tx.invoiceId);
-            if(invoice && semesters.find(s => s.id === invoice.semesterId)?.status === 'Open') {
-                semester += amt;
+            const paymentInfo = paymentInfos.find(p => p.invoiceId === tx.invoiceId);
+            if (paymentInfo) {
+                const semesterData = semesters.find(s => s.id === paymentInfo.semesterId);
+                if (semesterData && semesterData.status !== 'Archived') {
+                    // Check if the semester's start date is in the current calendar year
+                    const semStartDate = semesterData.startDate ? parseISO(semesterData.startDate) : null;
+                    if (semStartDate && semStartDate.getFullYear() === currentYear) {
+                        semester += amt;
+                    }
+                }
             }
         });
         
@@ -598,10 +606,6 @@ export default function PaymentsManagementPage() {
         };
     }, [paymentSelectedUserId, paymentSelectedYear, paymentSelectedSemInYear, selectedStudentContext, semesters, paymentInfos]);
 
-    function getCurrentServerDate() {
-        return new Date(); // Simplified for frontend logic
-    }
-
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -628,6 +632,7 @@ export default function PaymentsManagementPage() {
                 <Card className="shadow-sm border-0 bg-card">
                     <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><CalendarDays className="h-3 w-3"/> Semester Total</CardTitle></CardHeader>
                     <CardContent><div className="text-xl font-black text-primary">ZMW {revenueStats.semester.toFixed(2)}</div></CardContent>
+                    <CardFooter className="pt-0"><p className="text-[8px] text-muted-foreground uppercase font-bold">Sum of all {new Date().getFullYear()} sessions</p></CardFooter>
                 </Card>
                 <Card className="shadow-sm border-0 bg-card">
                     <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><Wallet className="h-3 w-3"/> All-Time Received</CardTitle></CardHeader>
