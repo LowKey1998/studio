@@ -1,14 +1,38 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Download, DollarSign, PlusCircle, Users, PiggyBank, Scale, Trash2, ChevronsUpDown, Link as LinkIcon, Info, X, History, Mail, CheckCircle2, Clock, AlertTriangle, CalendarDays, TrendingUp, BookOpen, UserCheck, Filter } from 'lucide-react';
+import { 
+    Loader2, 
+    Search, 
+    Download, 
+    DollarSign, 
+    PlusCircle, 
+    Users, 
+    PiggyBank, 
+    Scale, 
+    Trash2, 
+    ChevronsUpDown, 
+    Link as LinkIcon, 
+    Info, 
+    X, 
+    History, 
+    Mail, 
+    CheckCircle2, 
+    Clock, 
+    AlertTriangle, 
+    CalendarDays, 
+    TrendingUp, 
+    BookOpen, 
+    UserCheck, 
+    Filter,
+    Calendar as CalendarIcon
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, remove, onValue } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isSameDay } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -26,6 +50,7 @@ import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
+import { useAuth } from '@/hooks/use-auth';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -163,6 +188,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 }
 
 export default function PaymentsManagementPage() {
+    const { userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
     const [unlinkedPayments, setUnlinkedPayments] = React.useState<UnlinkedPayment[]>([]);
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
@@ -172,7 +198,6 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
-    const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
     const [loading, setLoading] = React.useState(true);
@@ -183,16 +208,18 @@ export default function PaymentsManagementPage() {
     const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('today');
     const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
 
+    // States for Record Payment Dialog
+    const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
+    const [selectedStudent, setSelectedStudent] = React.useState<StudentPaymentInfo | null>(null);
+    const [paymentAmount, setPaymentAmount] = React.useState('');
+    const [paymentMethod, setPaymentMethod] = React.useState('Cash');
+    const [transactionId, setTransactionId] = React.useState('');
+
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
-
-    const [isLinkingOpen, setIsLinkingOpen] = React.useState(false);
-    const [linkingPayment, setLinkingPayment] = React.useState<UnlinkedPayment | null>(null);
-    const [selectedLinkStudent, setSelectedLinkStudent] = React.useState('');
-    const [linkResolution, setLinkResolution] = React.useState<'partial' | 'overwrite'>('partial');
 
     const { toast } = useToast();
 
@@ -227,7 +254,6 @@ export default function PaymentsManagementPage() {
             if (intakesSnap.exists()) setAllIntakes(Object.keys(intakesSnap.val()).map(id => ({ id, ...intakesSnap.val()[id] })));
             if (calendarSnap.exists()) setCalendarSettings(calendarSnap.val());
             if (coursesSnap.exists()) setCourses(coursesSnap.val());
-            if (financialSnap.exists()) setFinancialSettings(financialSnap.val());
 
             if (unlinkedSnap.exists()) {
                 setUnlinkedPayments(Object.entries(unlinkedSnap.val()).map(([id, data]) => ({ id, ...(data as any) })));
@@ -358,7 +384,6 @@ export default function PaymentsManagementPage() {
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
             
             // If a group filter is active (searching for specific people), bypass the time filter.
-            // Otherwise, respect the time filter (default: today's payers).
             const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && timeMatch;
@@ -480,7 +505,6 @@ export default function PaymentsManagementPage() {
                     const semesterInfo = semesters.find(s => s.id === semesterId);
                     if (!semesterInfo) continue;
 
-                    // Ensure invoiceId exists if recording against a student
                     if (!invoiceId) {
                         const studentInfo = paymentInfos.find(p => p.userId === userId && p.semesterId === semesterId);
                         invoiceId = studentInfo?.invoiceId || '';
@@ -546,7 +570,7 @@ export default function PaymentsManagementPage() {
             await set(txRef, {
                 transactionId: txId,
                 userId: selectedStudent.userId,
-                invoiceId: selectedStudent.invoiceId, // Link to correct invoice
+                invoiceId: selectedStudent.invoiceId,
                 amount: amount,
                 currency: 'ZMW',
                 status: 'successful',
