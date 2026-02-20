@@ -2,7 +2,7 @@
  * @fileOverview Utilities for calculating academic year and semester based on intake date and current date.
  */
 
-import { parseISO, format, startOfMonth, addMonths, isSameMonth } from 'date-fns';
+import { parseISO, format, startOfMonth, addMonths, isSameMonth, endOfMonth } from 'date-fns';
 
 export type AcademicCycle = {
     semester: number;
@@ -112,4 +112,52 @@ export function calculateAcademicState(
         identifiedMonth: format(intakeDate, 'MMMM'),
         isAnomaly: false
     };
+}
+
+/**
+ * Predicts the start and end dates for a specific Year and Semester relative to an intake date.
+ */
+export function calculateSemesterDateRange(
+    intakeDateStr: string,
+    targetYear: number,
+    targetSemesterInYear: number,
+    cycles: AcademicCycle[] = [
+        { semester: 1, startMonth: 0, endMonth: 5 },
+        { semester: 2, startMonth: 6, endMonth: 11 }
+    ]
+) {
+    if (!intakeDateStr) return null;
+
+    const intakeDate = startOfMonth(parseISO(intakeDateStr));
+    const sortedCycles = [...cycles].sort((a, b) => a.startMonth - b.startMonth);
+    const cycleStartMonths = sortedCycles.map(c => c.startMonth);
+    const cyclesPerYear = sortedCycles.length || 1;
+
+    // Determine total cycle index we need to find (e.g., Year 2, Sem 1 = 3rd cycle encounter)
+    const targetCycleCount = (targetYear - 1) * cyclesPerYear + targetSemesterInYear;
+
+    let cyclesFound = 0;
+    let checkDate = new Date(intakeDate);
+    let startDate: Date | null = null;
+    
+    let iterations = 0;
+    while (cyclesFound < targetCycleCount && iterations < 1200) {
+        if (cycleStartMonths.includes(checkDate.getMonth())) {
+            cyclesFound++;
+            if (cyclesFound === targetCycleCount) {
+                startDate = new Date(checkDate);
+                break;
+            }
+        }
+        checkDate = addMonths(checkDate, 1);
+        iterations++;
+    }
+
+    if (!startDate) return null;
+
+    // Find the end date (last day of the 6th month if 2 cycles per year)
+    const monthsPerSemester = Math.floor(12 / cyclesPerYear);
+    const endDate = endOfMonth(addMonths(startDate, monthsPerSemester - 1));
+
+    return { from: startDate, to: endDate };
 }

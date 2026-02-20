@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -49,7 +50,7 @@ import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore, addMonths } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { calculateAcademicState, parseIntakeDate, calculateSemesterDateRange } from '@/lib/semester-utils';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -92,12 +93,25 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
-const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
-    if (!date || !sem || !sem.startDate || !sem.endDate) return true;
+const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null, autoDates?: { from: Date; to: Date } | null) => {
+    if (!date) return true;
     const d = startOfDay(date);
-    const start = startOfDay(parseISO(sem.startDate));
-    const end = startOfDay(parseISO(sem.endDate));
-    return (d >= start && d <= end);
+    
+    // Check manual dates first
+    if (sem?.startDate && sem?.endDate) {
+        const start = startOfDay(parseISO(sem.startDate));
+        const end = startOfDay(parseISO(sem.endDate));
+        return (d >= start && d <= end);
+    }
+
+    // Fallback to auto dates if available
+    if (autoDates) {
+        const start = startOfDay(autoDates.from);
+        const end = startOfDay(autoDates.to);
+        return (d >= start && d <= end);
+    }
+
+    return true;
 };
 
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
@@ -167,19 +181,27 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         }
     }, [editingSemester]);
 
+    // AUTO-CALCULATION LOGIC: Runs when required identifiers are available
     React.useEffect(() => {
-        if (!editingSemester && intakeId && year && semesterInYear && calendarSettings) {
+        if (intakeId && year && semesterInYear && calendarSettings) {
             const intake = allIntakes.find(i => i.id === intakeId);
             if (!intake) return;
             const intakeDateStr = parseIntakeDate(intake.name);
             if (!intakeDateStr) return;
 
-            const baseDate = parseISO(intakeDateStr);
-            const totalMonthsOffset = (Number(year) - 1) * 12 + (Number(semesterInYear) - 1) * 6;
-            const start = addMonths(baseDate, totalMonthsOffset);
-            const end = addMonths(start, 5); 
-            
-            setSemesterDates({ from: start, to: end });
+            // Only auto-update if we are CREATING or if the existing record is MISSING dates
+            if (!editingSemester || (!editingSemester.startDate && !editingSemester.endDate)) {
+                const predictedRange = calculateSemesterDateRange(
+                    intakeDateStr,
+                    Number(year),
+                    Number(semesterInYear),
+                    calendarSettings.standardCycles
+                );
+                
+                if (predictedRange) {
+                    setSemesterDates(predictedRange);
+                }
+            }
         }
     }, [intakeId, year, semesterInYear, editingSemester, allIntakes, calendarSettings]);
 
@@ -300,13 +322,16 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                         <Label>Teaching window</Label>
                         <Popover>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground")}>
+                                <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !semesterDates?.from && "text-muted-foreground border-dashed")}>
                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                     {semesterDates?.from ? (semesterDates.to ? `${format(semesterDates.from, "PPP")} - ${format(semesterDates.to, "PPP")}` : format(semesterDates.from, "PPP")) : <span>Pick dates</span>}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={semesterDates} onSelect={(range: any) => setSemesterDates(range)} numberOfMonths={2} /></PopoverContent>
                         </Popover>
+                        {!editingSemester && semesterDates?.from && (
+                            <p className="text-[10px] text-primary font-bold uppercase pt-1">Provisional dates calculated based on intake cycle.</p>
+                        )}
                     </div>
 
                     <div className="space-y-2">
@@ -464,7 +489,7 @@ export default function RegistrationManagementPage() {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
-    const getDeadlineSummary = React.useCallback((semester: Semester) => {
+    const getDeadlineSummary = React.useCallback((semester: Semester, autoDates?: { from: Date; to: Date } | null) => {
         const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
         const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
         const summary: { title: string; date: string | null }[] = [];
@@ -478,7 +503,7 @@ export default function RegistrationManagementPage() {
                 if (!event) isMissing = true;
                 else {
                     const d = parseISO(event.date);
-                    if (!isDateInSemesterRange(d, semester)) isOutOfRange = true;
+                    if (!isDateInSemesterRange(d, semester, autoDates)) isOutOfRange = true;
                 }
                 summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
             }
@@ -607,11 +632,11 @@ export default function RegistrationManagementPage() {
                                                     return { code: c?.code, name: c?.name, lecturer: lNames };
                                                 });
 
-                                                const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem);
-                                                
                                                 const hasNoManualDates = !sem.startDate || !sem.endDate;
-                                                const autoDates = hasNoManualDates && standing ? calculateAcademicState(intakeStartStr!, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {})) : null;
+                                                const predictedDates = intakeStartStr && calendarSettings ? calculateSemesterDateRange(intakeStartStr, sem.year, sem.semesterInYear, calendarSettings.standardCycles) : null;
 
+                                                const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem, predictedDates);
+                                                
                                                 return (
                                                     <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80")}>
                                                         <CardHeader className="pb-3">
@@ -633,14 +658,26 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="space-y-4">
-                                                            {hasNoManualDates && (
-                                                                <Alert variant="default" className="bg-yellow-50 border-yellow-200 py-2">
-                                                                    <AlertTriangle className="h-3 w-3 text-yellow-600" />
-                                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
-                                                                        Active dates were generated automatically and may need reviewing. To set, click the edit button.
-                                                                    </AlertDescription>
-                                                                </Alert>
-                                                            )}
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active window</Label>
+                                                                {hasNoManualDates ? (
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <Alert variant="default" className="bg-yellow-50 border-yellow-200 py-2">
+                                                                            <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                                                                            <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
+                                                                                Dates missing. Use calculated window?
+                                                                            </AlertDescription>
+                                                                        </Alert>
+                                                                        <div className="text-[10px] font-bold border rounded-md p-2 bg-primary/5 text-primary">
+                                                                            {predictedDates ? `${format(predictedDates.from, 'PPP')} - ${format(predictedDates.to, 'PPP')}` : "Unavailable"}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-[10px] font-bold">
+                                                                        {format(parseISO(sem.startDate!), 'PPP')} - {format(parseISO(sem.endDate!), 'PPP')}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                             <div className="space-y-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Curriculum</Label>
                                                                 <div className="grid gap-1">
