@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -92,7 +91,7 @@ type TimeSlot = {
 
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
 type Intake = { id: string; name: string; };
-type Programme = { id: string; name: string; };
+type Programme = { id: string; name: string; tuitionFee?: number; };
 type CoursePathHistoryItem = { reason: string; oldCourses: string[]; newCourses: string[]; timestamp: any; };
 type CoursePathSemester = { courses: string[]; history?: Record<string, CoursePathHistoryItem>; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, CoursePathSemester> }; 
@@ -555,6 +554,14 @@ export default function RegistrationManagementPage() {
         return result;
     }, [allProgrammes, semesters, allCoursePaths]);
 
+    const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
+        if (!date || !sem || !sem.startDate || !sem.endDate) return true;
+        const d = startOfDay(date);
+        const start = startOfDay(parseISO(sem.startDate));
+        const end = startOfDay(parseISO(sem.endDate));
+        return (d >= start && d <= end);
+    };
+
     // Preload bulk deadlines logic
     React.useEffect(() => {
         if (!bulkSelectedProgrammeId || !bulkSelectedPlanId || !isBulkDeadlineOpen) return;
@@ -704,25 +711,22 @@ export default function RegistrationManagementPage() {
         const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
         const summary: { title: string; date: string | null }[] = [];
         let isMissing = false;
+        let isOutOfRange = false;
 
         plans.forEach(plan => {
             for (let i = 0; i < plan.installments; i++) {
                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
-                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim());
-                if (!event) isMissing = true;
+                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim()) as any;
+                if (!event) {
+                    isMissing = true;
+                } else if (!isDateInSemesterRange(parseISO(event.date), semester)) {
+                    isOutOfRange = true;
+                }
                 summary.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
             }
         });
 
-        return { summary, isMissing, hasPlans: plans.length > 0 };
-    };
-
-    const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
-        if (!date || !sem || !sem.startDate || !sem.endDate) return true;
-        const d = startOfDay(date);
-        const start = startOfDay(parseISO(sem.startDate));
-        const end = startOfDay(parseISO(sem.endDate));
-        return (d >= start && d <= end);
+        return { summary, isMissing, hasPlans: plans.length > 0, isOutOfRange };
     };
 
     const handleSaveBulkDeadlines = async () => {
@@ -863,7 +867,7 @@ export default function RegistrationManagementPage() {
                                                         const semDetails = semesterDetails!;
                                                         const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                         const historyItems = semData.history ? Object.values(semData.history) : [];
-                                                        const { summary, isMissing, hasPlans } = getDeadlineSummary(semDetails);
+                                                        const { summary, isMissing, hasPlans, isOutOfRange } = getDeadlineSummary(semDetails);
                                                         
                                                         const isCurrentStanding = currentState && 
                                                             semDetails.year === currentState.year && 
@@ -884,11 +888,23 @@ export default function RegistrationManagementPage() {
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2 pt-1">
                                                                             {hasPlans ? (
-                                                                                isMissing ? (
-                                                                                    <Badge variant="destructive" className="flex items-center gap-1 bg-orange-100 text-orange-700 border-orange-200"><AlertCircle className="h-3 w-3"/>Deadlines Missing</Badge>
-                                                                                ) : (
-                                                                                    <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-600"><CheckCircle2 className="h-3 w-3"/>Deadlines Set</Badge>
-                                                                                )
+                                                                                <>
+                                                                                    {isMissing && (
+                                                                                        <Badge variant="destructive" className="flex items-center gap-1 bg-orange-100 text-orange-700 border-orange-200">
+                                                                                            <AlertCircle className="h-3 w-3"/>Deadlines Missing
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                    {isOutOfRange && (
+                                                                                        <Badge variant="destructive" className="flex items-center gap-1 animate-pulse">
+                                                                                            <AlertTriangle className="h-3 w-3"/>Date Conflict
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                    {!isMissing && !isOutOfRange && (
+                                                                                        <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-600">
+                                                                                            <CheckCircle2 className="h-3 w-3"/>Deadlines Set
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </>
                                                                             ) : (
                                                                                 <Badge variant="secondary">No Payment Plans</Badge>
                                                                             )}
