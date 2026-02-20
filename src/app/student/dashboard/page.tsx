@@ -451,7 +451,7 @@ export default function StudentDashboardPage() {
                         {todaySchedule.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySchedule.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm group hover:border-primary/30 transition-all">
+                                    <div key={entry.id} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm group hover:border-primary/30 transition-all">
                                         <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r border-primary/10 pr-4">
                                             <span className="text-sm font-black text-primary">{entry.startTime}</span>
                                             <span className="text-[9px] text-muted-foreground font-bold uppercase">{entry.endTime}</span>

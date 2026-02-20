@@ -93,7 +93,7 @@ function TimetableManagementComponent() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [rooms, setRooms] = React.useState<Room[]>([]);
-    const [intakes, setIntakes] = React.useState<Intake[]>([]);
+    const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [users, setUsers] = React.useState<Record<string, any>>({});
     const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });

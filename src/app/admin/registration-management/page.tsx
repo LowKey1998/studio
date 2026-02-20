@@ -411,7 +411,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             </Tabs>
             <DialogFooter className="border-t pt-4">
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="h-4 w-4 mr-2"/>Save Configuration</Button>
+                <Button onClick={handleSaveSemester} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="mr-2 h-4 w-4 mr-2"/>Save Configuration</Button>
             </DialogFooter>
 
             <Dialog open={isMandatoryFeeDialogOpen || isOptionalFeeDialogOpen} onOpenChange={(o) => { if(!o) { setIsMandatoryFeeDialogOpen(false); setIsOptionalFeeDialogOpen(false); } }}>
@@ -583,14 +583,16 @@ export default function RegistrationManagementPage() {
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
-                <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div>
-                        <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
-                        <CardDescription>Activate semesters and manage curriculum-aware enrollment paths.</CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" asChild><Link href="/admin/calendar">Global Calendar</Link></Button>
-                        <Button onClick={() => setIsCreateDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button>
+                <CardHeader>
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
+                            <CardDescription>Activate semesters and manage curriculum-aware enrollment paths.</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" asChild><Link href="/admin/calendar">Global Calendar</Link></Button>
+                            <Button onClick={() => setIsCreateDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
@@ -629,7 +631,7 @@ export default function RegistrationManagementPage() {
                                                 const courses = (path.semesters[semId].courses || []).map(cid => {
                                                     const c = allCourses[cid];
                                                     const lNames = (c?.lecturerIds || []).map(uid => allUsers[uid]?.name).filter(Boolean).join(', ') || allUsers[c?.lecturerId || '']?.name || 'Unassigned';
-                                                    return { code: c?.code, name: c?.name, lecturer: lNames };
+                                                    return { id: cid, code: c?.code, name: c?.name, lecturer: lNames };
                                                 });
 
                                                 const hasNoManualDates = !sem.startDate || !sem.endDate;
@@ -681,7 +683,7 @@ export default function RegistrationManagementPage() {
                                                             <div className="space-y-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Curriculum</Label>
                                                                 <div className="grid gap-1">
-                                                                    {courses.map(c => <div key={c.code} className="text-xs p-1.5 bg-muted/30 rounded border border-dashed"><span className="font-bold">{c.code}</span>: {c.name} <p className="text-[10px] opacity-60">{c.lecturer}</p></div>)}
+                                                                    {courses.map(c => <div key={c.id} className="text-xs p-1.5 bg-muted/30 rounded border border-dashed"><span className="font-bold">{c.code}</span>: {c.name} <p className="text-[10px] opacity-60">{c.lecturer}</p></div>)}
                                                                 </div>
                                                             </div>
                                                             <Separator />
