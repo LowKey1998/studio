@@ -1,33 +1,51 @@
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Clock, Calendar as CalendarIcon, Pencil, History, Route, CheckCircle2, AlertCircle, CalendarDays, GraduationCap, DollarSign, ChevronRight, Percent, UserCheck, BookCopy, Search } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getAllStudentAndStaffIds, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format, parseISO } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, DollarSign, Percent, CheckCircle2, History, Calendar as CalendarIcon } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday, startOfDay, isWithinInterval } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter,
+    DialogClose,
+} from '@/components/ui/dialog';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import type { DateRange } from 'react-day-picker';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
-import { generateFullTimetable } from '@/ai/flows/generate-timetable';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { DateRange } from 'react-day-picker';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
@@ -475,7 +493,6 @@ export default function RegistrationManagementPage() {
         const targetSems = semestersByProgramme[bulkSelectedProgrammeId];
         if (!plan || !targetSems || targetSems.length === 0) return;
 
-        // Attempt to preload from the first semester that has these deadlines set
         let foundAny = false;
         const newBulkDates: Record<number, Date | undefined> = {};
         const eventsArray = Object.values(calendarEvents) as any[];
@@ -493,7 +510,6 @@ export default function RegistrationManagementPage() {
                 }
             }
 
-            // If we found at least one date for this plan in this semester, preload the whole set from here
             if (semMatchCount > 0) {
                 Object.assign(newBulkDates, tempDates);
                 foundAny = true;
@@ -627,6 +643,14 @@ export default function RegistrationManagementPage() {
         return { summary, isMissing, hasPlans: plans.length > 0 };
     };
 
+    const isDateInSemesterRange = (date: Date | undefined, sem: Semester | null) => {
+        if (!date || !sem || !sem.startDate || !sem.endDate) return true;
+        const d = startOfDay(date);
+        const start = startOfDay(parseISO(sem.startDate));
+        const end = startOfDay(parseISO(sem.endDate));
+        return (d >= start && d <= end);
+    };
+
     const handleSaveBulkDeadlines = async () => {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
         if (!bulkSelectedProgrammeId || !plan) {
@@ -634,14 +658,14 @@ export default function RegistrationManagementPage() {
             return;
         }
 
-        const validDeadlines = Object.keys(bulkDeadlineDates).filter(idx => bulkDeadlineDates[Number(idx)]);
-        if (validDeadlines.length < plan.installments) {
+        const validDeadlinesCount = Object.keys(bulkDeadlineDates).filter(idx => bulkDeadlineDates[Number(idx)]).length;
+        if (validDeadlinesCount < plan.installments) {
             toast({ variant: 'destructive', title: 'Incomplete Deadlines', description: 'Please set a date for all installments.' });
             return;
         }
 
-        const targetSemIds = semestersByProgramme[bulkSelectedProgrammeId]?.map(s => s.id) || [];
-        if (targetSemIds.length === 0) {
+        const targetSems = semestersByProgramme[bulkSelectedProgrammeId] || [];
+        if (targetSems.length === 0) {
             toast({ variant: 'destructive', title: 'No Semesters Found', description: 'No active semesters found for the selected programme.' });
             return;
         }
@@ -651,14 +675,12 @@ export default function RegistrationManagementPage() {
             const updates: Record<string, any> = {};
             const existingEvents = Object.entries(calendarEvents).map(([id, data]) => ({ id, ...(data as any) }));
 
-            for (const semId of targetSemIds) {
-                const semester = semesters.find(s => s.id === semId);
-                if (!semester) continue;
-
+            for (const sem of targetSems) {
+                const semId = sem.id;
                 updates[`semesters/${semId}/paymentPlanIds/${plan.id}`] = true;
 
                 for (let i = 0; i < plan.installments; i++) {
-                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
+                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${sem.name}`;
                     const date = bulkDeadlineDates[i];
                     
                     const existing = existingEvents.find(e => e.title?.trim() === fullTitle.trim());
@@ -669,14 +691,14 @@ export default function RegistrationManagementPage() {
                         updates[`calendarEvents/${newRef.key}`] = {
                             title: fullTitle,
                             date: format(date!, 'yyyy-MM-dd'),
-                            semester: semester.name
+                            semester: sem.name
                         };
                     }
                 }
             }
 
             await update(ref(db), updates);
-            toast({ title: 'Bulk Deadlines Applied', description: `Updated ${targetSemIds.length} semester(s) for the selected programme.` });
+            toast({ title: 'Bulk Deadlines Applied', description: `Updated ${targetSems.length} semester(s) for the selected programme.` });
             setIsBulkDeadlineOpen(false);
             setBulkSelectedProgrammeId('');
             setBulkSelectedPlanId('');
@@ -902,13 +924,25 @@ export default function RegistrationManagementPage() {
                                             {Array.from({ length: plan.installments }).map((_, i) => {
                                                 const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${editingDeadlinesFor?.name}`;
                                                 const currentVal = deadlineDates[fullTitle] || (eventMap.get(fullTitle)?.date ? parseISO(eventMap.get(fullTitle)!.date) : undefined);
-                                                
+                                                const isValid = isDateInSemesterRange(currentVal, editingDeadlinesFor);
+
                                                 return (
-                                                    <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                                        <span className="text-sm font-medium">{getOrdinalSuffix(i+1)} Installment</span>
+                                                    <div key={i} className="flex flex-col gap-2">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm font-medium">{getOrdinalSuffix(i+1)} Installment</span>
+                                                            {!isValid && currentVal && (
+                                                                <Badge variant="destructive" className="h-5 gap-1 text-[10px] uppercase font-black animate-pulse">
+                                                                    <AlertTriangle className="h-3 w-3" /> Out of Semester Range
+                                                                </Badge>
+                                                            )}
+                                                        </div>
                                                         <Popover>
                                                             <PopoverTrigger asChild>
-                                                                <Button variant="outline" className={cn("w-full sm:w-[240px] justify-start text-left font-normal", !currentVal && "text-muted-foreground")}>
+                                                                <Button variant="outline" className={cn(
+                                                                    "w-full justify-start text-left font-normal", 
+                                                                    !currentVal && "text-muted-foreground",
+                                                                    !isValid && "border-destructive text-destructive bg-destructive/5"
+                                                                )}>
                                                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                                                     {currentVal ? format(currentVal, 'PPP') : <span>Pick a date</span>}
                                                                 </Button>
@@ -1016,22 +1050,49 @@ export default function RegistrationManagementPage() {
                                             <Label className="text-xs font-black uppercase tracking-wider">3. Define Installment Dates</Label>
                                         </div>
                                         <div className="grid gap-4 border-2 border-primary/10 rounded-xl p-4 bg-background shadow-inner">
-                                            {Array.from({ length: allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0 }).map((_, i) => (
-                                                <div key={i} className="flex flex-col gap-2">
-                                                    <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{getOrdinalSuffix(i + 1)} Installment Due Date</span>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal border-primary/20", !bulkDeadlineDates[i] && "text-muted-foreground")}>
-                                                                <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                                                                {bulkDeadlineDates[i] ? format(bulkDeadlineDates[i]!, 'PPP') : <span>Pick a date</span>}
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-auto p-0" align="end">
-                                                            <Calendar mode="single" selected={bulkDeadlineDates[i]} onSelect={(d) => setBulkDeadlineDates(prev => ({...prev, [i]: d}))} initialFocus />
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                </div>
-                                            ))}
+                                            {Array.from({ length: allPaymentPlans.find(p => p.id === bulkSelectedPlanId)?.installments || 0 }).map((_, i) => {
+                                                const currentVal = bulkDeadlineDates[i];
+                                                const affectedSems = semestersByProgramme[bulkSelectedProgrammeId] || [];
+                                                const invalidSems = currentVal ? affectedSems.filter(s => !isDateInSemesterRange(currentVal, s)) : [];
+
+                                                return (
+                                                    <div key={i} className="flex flex-col gap-2">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{getOrdinalSuffix(i + 1)} Installment Due Date</span>
+                                                            {invalidSems.length > 0 && (
+                                                                <Popover>
+                                                                    <PopoverTrigger asChild>
+                                                                        <Badge variant="destructive" className="h-4 cursor-pointer px-1 animate-pulse">
+                                                                            <AlertTriangle className="h-2.5 w-2.5 mr-1"/> {invalidSems.length} Conflict(s)
+                                                                        </Badge>
+                                                                    </PopoverTrigger>
+                                                                    <PopoverContent className="w-64 p-2 text-xs">
+                                                                        <p className="font-bold text-destructive mb-1">Date Out of Range for:</p>
+                                                                        <ul className="list-disc pl-4">
+                                                                            {invalidSems.map(s => <li key={s.id}>{s.name}</li>)}
+                                                                        </ul>
+                                                                    </PopoverContent>
+                                                                </Popover>
+                                                            )}
+                                                        </div>
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Button variant="outline" className={cn(
+                                                                    "w-full justify-start text-left font-normal border-primary/20", 
+                                                                    !currentVal && "text-muted-foreground",
+                                                                    invalidSems.length > 0 && "border-destructive text-destructive"
+                                                                )}>
+                                                                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                                                                    {currentVal ? format(currentVal!, 'PPP') : <span>Pick a date</span>}
+                                                                </Button>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-auto p-0" align="end">
+                                                                <Calendar mode="single" selected={currentVal} onSelect={(d) => setBulkDeadlineDates(prev => ({...prev, [i]: d}))} initialFocus />
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    </div>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}
