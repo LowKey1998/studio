@@ -21,6 +21,7 @@ import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { logError } from "@/lib/error-logger";
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -99,6 +100,17 @@ export default function LoginPage() {
 
     } catch (error: any) {
       console.error("Login failed:", error);
+      
+      // Log the failed attempt for institutional audit
+      logError(
+        error.message || "Login failed", 
+        "Authentication", 
+        { 
+            attemptedIdentifier: identifier,
+            errorCode: error.code || 'unknown'
+        }
+      );
+
       toast({
         variant: "destructive",
         title: "Login Failed",
