@@ -50,6 +50,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { useAuth } from '@/hooks/use-auth';
 import type { DateRange } from 'react-day-picker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
@@ -337,7 +338,6 @@ export default function PaymentsManagementPage() {
     const handlePrintStatement = async (semId: string, data: any) => {
         if (!historyStudent) return;
         const studentUid = historyStudent.userId;
-        const invoice = allInvoices[studentUid]?.[historyStudent.invoiceId]; // This might be wrong, need to find the correct invoice for the specific sem
         
         // Find correct invoice for this semester
         const semesterPaymentInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
