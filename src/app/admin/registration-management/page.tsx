@@ -2,12 +2,12 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getAllStudentAndStaffIds, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, DollarSign, Percent, CheckCircle2, History, Calendar as CalendarIcon } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, DollarSign, Percent, CheckCircle2, History, Calendar as CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday, startOfDay, isWithinInterval } from 'date-fns';
@@ -45,7 +45,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { DateRange } from 'react-day-picker';
+import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 // --- TYPE DEFINITIONS ---
 type Course = { id: string; name: string; code: string; lecturerIds?: string[]; lecturerId?: string; };
@@ -418,8 +420,8 @@ export default function RegistrationManagementPage() {
     const [calendarEvents, setCalendarEvents] = React.useState<Record<string, any>>({});
     const [timetables, setTimetables] = React.useState<Record<string, any>>({});
     const [users, setUsers] = React.useState<Record<string, any>>({});
-    const [loading, setLoading] = React.useState(true);
-    const [saving, setSaving] = React.useState(false);
+    const [studentCounts, setStudentCounts] = React.useState<Record<string, Record<string, number>>>({}); 
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
     // Per-semester deadline state
