@@ -24,6 +24,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import type { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -237,7 +239,7 @@ export default function PaymentsManagementPage() {
             const allInvoices = invoicesSnap.val() || {};
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
-                if (users[uid].role === 'Student') {
+                if (users[uid].role?.toLowerCase() === 'student') {
                     studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId });
                 }
             }
@@ -271,7 +273,8 @@ export default function PaymentsManagementPage() {
             const globalThreshold = financialSnap.val()?.paymentThreshold || 75;
 
             for (const userId in registrations) {
-                 if (!users[userId] || users[userId].role !== 'Student') continue;
+                 const user = users[userId];
+                 if (!user || user.role?.toLowerCase() !== 'student') continue;
 
                  for (const semesterId in registrations[userId]) {
                     const reg = registrations[userId][semesterId];
@@ -295,8 +298,8 @@ export default function PaymentsManagementPage() {
 
                         studentPaymentMap[key] = {
                             userId,
-                            studentId: users[userId].id,
-                            studentName: users[userId].name,
+                            studentId: user.id,
+                            studentName: user.name,
                             totalDue: totalPayable,
                             totalPaid,
                             balance,
@@ -344,8 +347,8 @@ export default function PaymentsManagementPage() {
     }, [rawTransactions, timeFilter, customRange, serverTimeOffset]);
 
     const filteredData = React.useMemo(() => {
-        // If we are looking for payments in a specific period, we only show students from filteredTransactions
         const uidsInPeriod = new Set(filteredTransactions.map(t => t.userId));
+        const isGroupingFilterActive = programmeFilter !== 'all' || semesterFilter !== 'all' || intakeFilter !== 'all';
         
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -354,8 +357,9 @@ export default function PaymentsManagementPage() {
             const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
             
-            // If time filter isn't 'all', restrict list to those who paid in that time
-            const timeMatch = timeFilter === 'all' || uidsInPeriod.has(p.userId);
+            // If a group filter is active (searching for specific people), bypass the time filter.
+            // Otherwise, respect the time filter (default: today's payers).
+            const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
 
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && timeMatch;
         });
@@ -369,7 +373,6 @@ export default function PaymentsManagementPage() {
             return acc;
         }, { totalDue: 0, totalPaid: 0, totalBalance: 0 });
         
-        // Also calculate exact revenue collected in filtered period from transactions
         const periodCollected = filteredTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         return { ...stats, periodCollected };
     }, [filteredData, filteredTransactions]);
@@ -414,6 +417,36 @@ export default function PaymentsManagementPage() {
         return metrics;
     }, [rawTransactions, semesters, serverTimeOffset]);
 
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
+        setBulkPaymentRows(prev => prev.map(row => {
+            if (row.key === key) {
+                const nextRow = { ...row, [field]: value };
+                if (field === 'userId') {
+                    if (value === '__UNLINKED__') {
+                        nextRow.isUnlinked = true;
+                        nextRow.userId = undefined;
+                        nextRow.invoiceId = undefined;
+                    } else {
+                        nextRow.isUnlinked = false;
+                        const studentInfo = paymentInfos.find(p => p.userId === value);
+                        if (studentInfo) {
+                            nextRow.invoiceId = studentInfo.invoiceId;
+                            nextRow.semesterId = studentInfo.semesterId || undefined;
+                            nextRow.totalDue = String(studentInfo.totalDue);
+                            nextRow.totalPaid = studentInfo.totalPaid;
+                        }
+                    }
+                }
+                return nextRow;
+            }
+            return row;
+        }));
+    };
+
+    const handleRemovePaymentRow = (key: number) => {
+        setBulkPaymentRows(prev => prev.filter(row => row.key !== key));
+    };
+
     const handleSaveBulkPayments = async () => {
         const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.semesterId && ((p.isUnlinked && p.reference) || (!p.isUnlinked && p.userId)));
         
@@ -446,6 +479,12 @@ export default function PaymentsManagementPage() {
 
                     const semesterInfo = semesters.find(s => s.id === semesterId);
                     if (!semesterInfo) continue;
+
+                    // Ensure invoiceId exists if recording against a student
+                    if (!invoiceId) {
+                        const studentInfo = paymentInfos.find(p => p.userId === userId && p.semesterId === semesterId);
+                        invoiceId = studentInfo?.invoiceId || '';
+                    }
 
                     if (!invoiceId) {
                         const newInvoiceRef = push(ref(db, `invoices/${userId}`));
@@ -493,56 +532,41 @@ export default function PaymentsManagementPage() {
         }
     };
 
-    const handleLinkPayment = async () => {
-        if (!linkingPayment || !selectedLinkStudent || !linkingPayment.semesterId) return;
+    const handleRecordPaymentDialog = async () => {
+        if(!selectedStudent || !paymentAmount || !paymentMethod) {
+            toast({ variant: 'destructive', title: 'Missing fields' });
+            return;
+        }
         setFormLoading(true);
         try {
-            const info = paymentInfos.find(p => p.userId === selectedLinkStudent && p.semesterId === linkingPayment.semesterId);
-            let invoiceId = info?.invoiceId;
-            const updates: Record<string, any> = {};
-
-            if (!invoiceId) {
-                const newInvoiceRef = push(ref(db, `invoices/${selectedLinkStudent}`));
-                invoiceId = newInvoiceRef.key!;
-                updates[`invoices/${selectedLinkStudent}/${invoiceId}`] = {
-                    invoiceId,
-                    totalTuition: linkingPayment.totalDue || 0,
-                    totalMandatoryFees: 0,
-                    totalOptionalFees: 0,
-                    dateCreated: new Date().toISOString(),
-                    semesterId: linkingPayment.semesterId,
-                    semester: semesters.find(s => s.id === linkingPayment.semesterId)?.name || 'Manual Link'
-                };
-                updates[`registrations/${selectedLinkStudent}/${linkingPayment.semesterId}/invoiceId`] = invoiceId;
-            } else if (linkResolution === 'overwrite' && linkingPayment.totalDue !== undefined) {
-                updates[`invoices/${selectedLinkStudent}/${invoiceId}/totalTuition`] = linkingPayment.totalDue;
-            }
-
+            const amount = parseFloat(paymentAmount);
             const txRef = push(ref(db, 'transactions'));
-            updates[`transactions/${txRef.key}`] = {
-                transactionId: `LINKED-${linkingPayment.id}`,
-                userId: selectedLinkStudent,
-                invoiceId,
-                amount: linkingPayment.amount,
+            const txId = transactionId.trim() || `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
+            
+            await set(txRef, {
+                transactionId: txId,
+                userId: selectedStudent.userId,
+                invoiceId: selectedStudent.invoiceId, // Link to correct invoice
+                amount: amount,
                 currency: 'ZMW',
                 status: 'successful',
-                paymentDate: linkingPayment.date,
-                method: 'Manual (Linked)',
-                comment: `Linked Original Ref: ${linkingPayment.reference}.`
-            };
+                paymentDate: new Date().toISOString(),
+                method: paymentMethod,
+                recordedBy: userData?.name || 'Accountant',
+            });
 
-            updates[`unlinkedPayments/${linkingPayment.id}`] = null;
-            await update(ref(db), updates);
-            toast({ variant: 'success', title: 'Payment Linked' });
-            createNotification(selectedLinkStudent, `Deposit of ZMW ${linkingPayment.amount.toFixed(2)} linked to your account.`, '/student/payments').catch(() => {});
+            toast({ variant: 'success', title: "Payment Recorded", description: `ZMW ${amount.toFixed(2)} credited to ${selectedStudent.studentName}.` });
+            setIsRecordPaymentOpen(false);
+            setSelectedStudent(null);
+            setPaymentAmount('');
+            
             await fetchPaymentData();
-            setIsLinkingOpen(false);
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Linking Failed' });
+             toast({ variant: 'destructive', title: 'Recording Failed', description: e.message });
         } finally {
             setFormLoading(false);
         }
-    };
+    }
 
     const handleExport = () => {
         const doc = new jsPDF();
@@ -563,6 +587,14 @@ export default function PaymentsManagementPage() {
         if (!info.thresholdMet) return <Badge variant="destructive" className="uppercase text-[9px] gap-1"><AlertTriangle className="h-2 w-2"/> Below Threshold</Badge>;
         return <Badge variant="secondary" className="uppercase text-[9px]">Active Payment</Badge>;
     };
+
+    const studentOptions: OptionGroup[] = React.useMemo(() => {
+        const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
+        return [
+            { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
+            { groupName: 'Students', items }
+        ];
+    }, [allStudents]);
 
     return (
         <div className="space-y-6">
@@ -604,11 +636,11 @@ export default function PaymentsManagementPage() {
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Outstanding Balance</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Period Collected</CardTitle>
                                 <Scale className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black text-destructive">ZMW {summaryStats.totalBalance.toFixed(2)}</div>
+                                <div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -623,8 +655,8 @@ export default function PaymentsManagementPage() {
                             <CardDescription>Filter by intake or period to audit payment reliability and threshold compliance.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export Report</Button>
-                            <Button size="sm" onClick={() => setIsBulkRecordOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> Record Payments</Button>
+                            <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
+                            <Button size="sm" onClick={() => setIsBulkRecordOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> Bulk Record</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -640,7 +672,7 @@ export default function PaymentsManagementPage() {
                                     <SelectItem value="month">Paid This Month</SelectItem>
                                     <SelectItem value="period">Custom Date Range</SelectItem>
                                     <Separator className="my-1"/>
-                                    <SelectItem value="all">All Receivables (Owed)</SelectItem>
+                                    <SelectItem value="all">Full List / Receivables</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -675,7 +707,7 @@ export default function PaymentsManagementPage() {
                     </div>
 
                     {loading ? <Skeleton className="h-64 w-full" /> : (
-                        <div className="rounded-md border shadow-sm">
+                        <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
@@ -712,14 +744,27 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">{statusBadge(info)}</TableCell>
                                             <TableCell>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}>
-                                                    <History className="h-4 w-4 text-muted-foreground" />
-                                                </Button>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }} title="Payment History">
+                                                        <History className="h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }} title="Record Payment">
+                                                        <PlusCircle className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
                                     {filteredData.length === 0 && (
-                                        <TableRow><TableCell colSpan={7} className="h-48 text-center text-muted-foreground italic">No financial records match the current filters.</TableCell></TableRow>
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="h-48 text-center">
+                                                <div className="flex flex-col items-center justify-center text-muted-foreground italic">
+                                                    <Info className="h-8 w-8 mb-2 opacity-20" />
+                                                    <p className="text-sm font-medium">No results found for the current period.</p>
+                                                    <Button variant="link" size="sm" onClick={() => setTimeFilter('all')}>View all accounts</Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
                                 </TableBody>
                             </Table>
@@ -728,6 +773,48 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
+            {/* Record Payment Dialog */}
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle>
+                        <DialogDescription>Apply a manual credit to the student's current invoice ({selectedStudent?.studentId}).</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-1">
+                            <Label htmlFor="pay-amount">Amount (ZMW)</Label>
+                            <Input id="pay-amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="font-bold text-lg h-12" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label>Method</Label>
+                                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Cash">Cash</SelectItem>
+                                        <SelectItem value="Bank Deposit">Bank Deposit</SelectItem>
+                                        <SelectItem value="Cheque">Cheque</SelectItem>
+                                        <SelectItem value="Direct Transfer">Direct Transfer</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Transaction ID</Label>
+                                <Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF #" />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRecordPaymentDialog} disabled={formLoading || !paymentAmount}>
+                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Record Payment
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Record Dialog */}
             <Dialog open={isBulkRecordOpen} onOpenChange={(o) => { if(!o) setBulkPaymentRows([]); setIsBulkRecordOpen(o); }}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
                     <DialogHeader><DialogTitle>Record Manual Payments</DialogTitle><DialogDescription>Directly credit student accounts with bulk transaction data. Use Invoice IDs for accurate tracking.</DialogDescription></DialogHeader>
@@ -791,6 +878,7 @@ export default function PaymentsManagementPage() {
                 </DialogContent>
             </Dialog>
 
+            {/* History Statement Dialog */}
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
                     <DialogHeader><DialogTitle>Financial Statement: {historyStudent?.studentName}</DialogTitle><DialogDescription>Audit log of all payments and enrollment history for the current phase.</DialogDescription></DialogHeader>
@@ -825,10 +913,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
-const studentOptions = [
-    { groupName: 'System Actions', items: [{ value: '__UNLINKED__', label: 'Student Not Found / Unlinked Payment' }] },
-    { groupName: 'Students', items: [] } // Populated dynamically in component
-];
-
-    
