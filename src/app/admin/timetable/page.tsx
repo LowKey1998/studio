@@ -7,7 +7,7 @@ import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, UserMinus } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
@@ -44,6 +44,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 type TimeSlot = {
@@ -118,7 +119,10 @@ function TimetableManagementComponent() {
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
 
+    // Deletion states
     const [entryToDelete, setEntryToDelete] = React.useState<TimetableEntry | null>(null);
+    const [unenrollStudentsOnDelete, setUnenrollStudentsOnDelete] = React.useState(false);
+    const [confirmUnenrollCheckbox, setConfirmUnenrollCheckbox] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -142,7 +146,7 @@ function TimetableManagementComponent() {
                 case 0: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 1: setAllCourses(Object.keys(data).map(id => ({ id, ...data[id] })).filter(c => c.status === 'active')); break;
                 case 2: setRooms(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
-                case 3: setIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d }))); break;
+                case 3: setAllIntakes(Object.entries(data).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 4: break; 
                 case 5: setUsers(data); break;
                 case 6: setTeachingTimes({
@@ -221,7 +225,7 @@ function TimetableManagementComponent() {
             return;
         }
 
-        const intake = intakes.find(i => i.id === viewTarget);
+        const intake = allIntakes.find(i => i.id === viewTarget);
         if (intake) {
             const startStr = parseIntakeDate(intake.name);
             if (startStr) {
@@ -248,7 +252,7 @@ function TimetableManagementComponent() {
             setResolvedSemester(directSemester);
             setAcademicStanding(`Year ${directSemester.year}, Sem ${directSemester.semesterInYear}`);
         }
-    }, [viewTarget, intakes, semesters, calendarSettings]);
+    }, [viewTarget, allIntakes, semesters, calendarSettings]);
 
     const effectiveSemesterId = React.useMemo(() => {
         if (viewTarget === 'master') return 'master';
@@ -283,7 +287,7 @@ function TimetableManagementComponent() {
         }
 
         if (course.separateInstance) {
-            const matchingIntakeId = intakes.find(i => i.name === intakeName)?.id;
+            const matchingIntakeId = allIntakes.find(i => i.name === intakeName)?.id;
             if (!matchingIntakeId) return 0;
             
             let total = 0;
@@ -302,7 +306,7 @@ function TimetableManagementComponent() {
             }
         });
         return total;
-    }, [allCourses, studentCounts, semesters, intakes]);
+    }, [allCourses, studentCounts, semesters, allIntakes]);
 
     const handleSaveEntry = async () => {
         if (!selectedCourseId || !day || !startTime || !endTime) {
@@ -311,7 +315,7 @@ function TimetableManagementComponent() {
         }
         setSaving(true);
         try {
-            const intake = intakes.find(i => i.id === selectedIntakeId) || (resolvedSemester ? intakes.find(i => i.id === resolvedSemester.intakeId) : null);
+            const intake = allIntakes.find(i => i.id === selectedIntakeId) || (resolvedSemester ? allIntakes.find(i => i.id === resolvedSemester.intakeId) : null);
             const intakeName = intake?.name || 'Master';
 
             const data = { 
@@ -344,13 +348,60 @@ function TimetableManagementComponent() {
 
     const confirmDeleteEntry = async () => {
         if (!entryToDelete) return;
+        setSaving(true);
         try {
-            await remove(ref(db, `timetables/${entryToDelete.semesterId}/${entryToDelete.courseId}/${entryToDelete.id}`));
-            toast({ title: "Session Removed" });
-        } catch (e) {
-            toast({ variant: 'destructive', title: "Removal failed" });
+            const updates: Record<string, any> = {};
+            
+            // 1. Core action: Remove from timetable
+            updates[`timetables/${entryToDelete.semesterId}/${entryToDelete.courseId}/${entryToDelete.id}`] = null;
+
+            // 2. Conditional: Bulk Unenrollment
+            if (unenrollStudentsOnDelete) {
+                const regsSnap = await get(ref(db, 'registrations'));
+                if (regsSnap.exists()) {
+                    const allRegs = regsSnap.val();
+                    const intakeId = allIntakes.find(i => i.name === entryToDelete.intakeName)?.id;
+                    
+                    for (const userId in allRegs) {
+                        const userRegs = allRegs[userId];
+                        // If it's a semester-specific entry, we check that semester
+                        // If it's a master entry, we find the active semester for this student's intake
+                        const semIdToCheck = entryToDelete.semesterId === 'master' 
+                            ? Object.keys(userRegs).find(sid => {
+                                const sInfo = semesters.find(s => s.id === sid);
+                                return sInfo?.intakeId === intakeId && sInfo.status !== 'Archived';
+                            })
+                            : entryToDelete.semesterId;
+
+                        if (semIdToCheck && userRegs[semIdToCheck]) {
+                            const currentCourses = Array.isArray(userRegs[semIdToCheck].courses) 
+                                ? userRegs[semIdToCheck].courses 
+                                : Object.keys(userRegs[semIdToCheck].courses || {});
+                            
+                            if (currentCourses.includes(entryToDelete.courseId)) {
+                                const updatedCourses = currentCourses.filter((id: string) => id !== entryToDelete.courseId);
+                                updates[`registrations/${userId}/${semIdToCheck}/courses`] = updatedCourses;
+                                
+                                await createNotification(
+                                    userId,
+                                    `Notice: You have been unenrolled from ${entryToDelete.courseCode} due to a curriculum adjustment for your cohort.`,
+                                    '/student/registration'
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            await update(ref(db), updates);
+            toast({ title: "Operation Complete", description: unenrollStudentsOnDelete ? "Session removed and cohort unenrolled." : "Session removed from timetable." });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Removal failed", description: e.message });
         } finally {
+            setSaving(false);
             setEntryToDelete(null);
+            setUnenrollStudentsOnDelete(false);
+            setConfirmUnenrollCheckbox(false);
         }
     };
 
@@ -386,7 +437,7 @@ function TimetableManagementComponent() {
             }
             
             const sem = semesters.find(s => s.id === entry.semesterId);
-            const intake = intakes.find(i => i.id === sem?.intakeId);
+            const intake = allIntakes.find(i => i.id === sem?.intakeId);
             const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
             const count = getActualCount(entry.courseId, entry.semesterId, entry.intakeName);
             
@@ -402,10 +453,12 @@ function TimetableManagementComponent() {
         });
         
         return Object.values(sessions);
-    }, [filteredTimetable, allCourses, semesters, intakes, users, getActualCount]);
+    }, [filteredTimetable, allCourses, semesters, allIntakes, users, getActualCount]);
 
     const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
     const hasSlots = teachingTimes.slots.length > 0;
+
+    const deletionImpactCount = entryToDelete ? getActualCount(entryToDelete.courseId, entryToDelete.semesterId, entryToDelete.intakeName) : 0;
 
     return (
         <div className="space-y-6">
@@ -426,7 +479,7 @@ function TimetableManagementComponent() {
                                     <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : `Add Entry to ${viewTarget === 'master' ? 'Master' : resolvedSemester?.name}`}</DialogTitle></DialogHeader>
                                     <div className="grid gap-4 py-4">
                                         {viewTarget === 'master' && (
-                                            <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{intakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label>Target Intake</Label><Select value={selectedIntakeId} onValueChange={setSelectedIntakeId}><SelectTrigger><SelectValue placeholder="Select intake..."/></SelectTrigger><SelectContent>{allIntakes.map((i) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                                         )}
                                         <div className="space-y-1">
                                             <Label>Select Course</Label>
@@ -501,7 +554,7 @@ function TimetableManagementComponent() {
                                 <SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Student Intake Groups</div>
-                                    {intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                                    {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                                     <Separator className="my-1"/>
                                     <SelectItem value="master" className="font-bold text-primary">MASTER TEMPLATE (Baseline)</SelectItem>
                                 </SelectContent>
@@ -522,7 +575,7 @@ function TimetableManagementComponent() {
                             <AlertCircle className="h-4 w-4 text-orange-600" />
                             <AlertTitle className="font-bold text-orange-800 uppercase text-[10px] tracking-widest">Semester Missing</AlertTitle>
                             <AlertDescription className="text-orange-700 text-sm">
-                                No active semester record found for the <strong>{intakes.find(i=>i.id===viewTarget)?.name}</strong> cohort at <strong>{academicStanding}</strong>. 
+                                No active semester record found for the <strong>{allIntakes.find(i=>i.id===viewTarget)?.name}</strong> cohort at <strong>{academicStanding}</strong>. 
                                 Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
                             </AlertDescription>
                         </Alert>
@@ -615,17 +668,64 @@ function TimetableManagementComponent() {
                 </CardContent>
             </Card>
 
-            <AlertDialog open={!!entryToDelete} onOpenChange={(o) => !o && setEntryToDelete(null)}>
-                <AlertDialogContent>
+            <AlertDialog open={!!entryToDelete} onOpenChange={(o) => { if(!o) { setEntryToDelete(null); setUnenrollStudentsOnDelete(false); setConfirmUnenrollCheckbox(false); } }}>
+                <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove Session from Timetable?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This will remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong>.
+                        <AlertDialogTitle>Confirm Session Removal</AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-4">
+                            <p>
+                                Remove <strong>{entryToDelete?.courseName} ({entryToDelete?.courseCode})</strong> scheduled for <strong>{entryToDelete?.day} at {entryToDelete?.startTime}</strong> for the <strong>{entryToDelete?.intakeName}</strong> cohort?
+                            </p>
+                            
+                            <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
+                                <div className="flex items-center space-x-2">
+                                    <Switch 
+                                        id="unenroll-students" 
+                                        checked={unenrollStudentsOnDelete} 
+                                        onCheckedChange={setUnenrollStudentsOnDelete} 
+                                    />
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="unenroll-students" className="font-bold flex items-center gap-2">
+                                            <UserMinus className="h-4 w-4 text-destructive"/> Unenroll Students
+                                        </Label>
+                                        <p className="text-[10px] text-muted-foreground italic leading-tight">Remove this course from the registration lists of all students in this cohort.</p>
+                                    </div>
+                                </div>
+
+                                {unenrollOnDelete && (
+                                    <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
+                                        <Alert variant="destructive" className="bg-red-50 py-2 border-red-200">
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertTitle className="text-[10px] font-black uppercase tracking-widest">Impact Analysis</AlertTitle>
+                                            <AlertDescription className="text-xs font-bold">
+                                                This action will affect {deletionImpactCount} students. They will no longer see this course in their portal or timetable.
+                                            </AlertDescription>
+                                        </Alert>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id="confirm-unenroll" 
+                                                checked={confirmUnenrollCheckbox} 
+                                                onCheckedChange={(c) => setConfirmUnenrollCheckbox(!!c)} 
+                                            />
+                                            <Label htmlFor="confirm-unenroll" className="text-[10px] font-bold text-destructive uppercase tracking-tighter cursor-pointer">
+                                                I confirm I want to bulk unenroll {deletionImpactCount} students
+                                            </Label>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDeleteEntry} className="bg-destructive">Remove Session</AlertDialogAction>
+                        <AlertDialogAction 
+                            onClick={confirmDeleteEntry} 
+                            className="bg-destructive hover:bg-destructive/90 text-white font-bold"
+                            disabled={unenrollStudentsOnDelete && !confirmUnenrollCheckbox}
+                        >
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                            {unenrollStudentsOnDelete ? "Unenroll & Remove" : "Remove Session"}
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
