@@ -491,7 +491,6 @@ export default function PaymentsManagementPage() {
             if(isToday(pDate)) daily += amt;
             if(isWithinInterval(pDate, { start: startOfW, end: endOfW })) weekly += amt;
             
-            // Check if tx is for an active semester
             const invoice = paymentInfos.find(p => p.invoiceId === tx.invoiceId);
             if(invoice && semesters.find(s => s.id === invoice.semesterId)?.status === 'Open') {
                 semester += amt;
@@ -505,6 +504,29 @@ export default function PaymentsManagementPage() {
         const lower = dialogSearchTerm.toLowerCase();
         return allStudents.filter(s => s.name.toLowerCase().includes(lower) || s.id.toLowerCase().includes(lower));
     }, [allStudents, dialogSearchTerm]);
+
+    const selectedStudentContext = React.useMemo(() => {
+        if (!paymentSelectedUserId || !calendarSettings || !allIntakes.length) return null;
+        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
+        if (!student || !student.intakeId) return null;
+
+        const intake = allIntakes.find(i => i.id === student.intakeId);
+        if (!intake) return null;
+
+        const intakeStartStr = parseIntakeDate(intake.name);
+        if (!intakeStartStr) return { intakeName: intake.name, standing: 'Invalid Date' };
+
+        const state = calculateAcademicState(
+            intakeStartStr,
+            new Date(),
+            calendarSettings.standardCycles,
+            Object.values(calendarSettings.anomalies || {})
+        );
+        return { 
+            intakeName: intake.name, 
+            standing: `Year ${state.year}, Sem ${state.semester}` 
+        };
+    }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
 
     return (
         <div className="space-y-6">

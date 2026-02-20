@@ -631,7 +631,7 @@ export default function RegistrationManagementPage() {
                                                                 <Alert variant="default" className="bg-yellow-50 border-yellow-200 py-2">
                                                                     <AlertTriangle className="h-3 w-3 text-yellow-600" />
                                                                     <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
-                                                                        Active dates generated automatically. Review required.
+                                                                        Active dates were generated automatically and may need reviewing. To set, click the edit button.
                                                                     </AlertDescription>
                                                                 </Alert>
                                                             )}
