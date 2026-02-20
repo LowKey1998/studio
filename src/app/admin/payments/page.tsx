@@ -28,12 +28,14 @@ import {
     Printer,
     ChevronDown,
     FileText,
-    ShieldAlert
+    ShieldAlert,
+    PencilLine,
+    Calculator
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, set, push, onValue } from 'firebase/database';
+import { ref, get, update, set, push, onValue, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, startOfDay, addDays, isAfter } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +54,7 @@ import { useAuth } from '@/hooks/use-auth';
 import type { DateRange } from 'react-day-picker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 
 // --- TYPE DEFINITIONS ---
 type StudentPaymentInfo = {
@@ -120,6 +123,15 @@ export default function PaymentsManagementPage() {
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [transactionId, setTransactionId] = React.useState('');
+
+    // States for Edit Request Dialog
+    const [isEditRequestOpen, setIsEditRequestOpen] = React.useState(false);
+    const [editRequestType, setEditRequestType] = React.useState<'transaction' | 'invoice'>('transaction');
+    const [editTargetId, setEditTargetId] = React.useState('');
+    const [oldValue, setOldValue] = React.useState(0);
+    const [newValue, setNewValue] = React.useState('');
+    const [editReason, setEditReason] = React.useState('');
+    const [editStudentInfo, setEditStudentInfo] = React.useState<{uid:string, id:string, name:string} | null>(null);
 
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
@@ -449,6 +461,48 @@ export default function PaymentsManagementPage() {
         return grouped;
     }, [historyStudent, rawTransactions, paymentInfos, semesters]);
 
+    const handleOpenEditRequest = (type: 'transaction' | 'invoice', targetId: string, currentVal: number, student: {uid:string, id:string, name:string}) => {
+        setEditRequestType(type);
+        setEditTargetId(targetId);
+        setOldValue(currentVal);
+        setNewValue('');
+        setEditReason('');
+        setEditStudentInfo(student);
+        setIsEditRequestOpen(true);
+    };
+
+    const handleSubmitEditRequest = async () => {
+        if (!newValue || !editReason.trim() || !editStudentInfo || !userData) {
+            toast({ variant: 'destructive', title: 'Please fill in all fields.' });
+            return;
+        }
+        setFormLoading(true);
+        try {
+            const requestRef = push(ref(db, 'paymentEditRequests'));
+            await set(requestRef, {
+                type: editRequestType,
+                targetId: editTargetId,
+                userId: editStudentInfo.uid,
+                studentName: editStudentInfo.name,
+                studentId: editStudentInfo.id,
+                oldValue: oldValue,
+                newValue: parseFloat(newValue),
+                reason: editReason,
+                status: 'pending',
+                requestedBy: userData.name,
+                requestedByUid: auth.currentUser?.uid,
+                timestamp: serverTimestamp()
+            });
+
+            toast({ title: 'Request Submitted', description: 'Your edit request is now awaiting approval in the Finance module.' });
+            setIsEditRequestOpen(false);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Request Failed', description: e.message });
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -575,7 +629,6 @@ export default function PaymentsManagementPage() {
                                     {filteredData.map((info) => {
                                         const now = new Date();
                                         const isBlockCurrentlyActive = info.effectiveDeadline && isAfter(now, info.effectiveDeadline) && !info.thresholdMet;
-                                        const willBeBlocked = info.effectiveDeadline && !isAfter(now, info.effectiveDeadline) && !info.thresholdMet;
 
                                         return (
                                         <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
@@ -726,8 +779,8 @@ export default function PaymentsManagementPage() {
                                 const totalPaid = data.transactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
                                 const balance = Math.max(0, data.totalDue - totalPaid);
                                 const studentUid = historyStudent?.userId || '';
-                                const invoiceId = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId)?.invoiceId;
-                                const invoice = allInvoices[studentUid]?.[invoiceId || ''];
+                                const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
+                                const invoice = allInvoices[studentUid]?.[info?.invoiceId || ''];
                                 
                                 return (
                                     <AccordionItem key={semId} value={semId} className="border rounded-xl overflow-hidden bg-card shadow-sm">
@@ -749,9 +802,16 @@ export default function PaymentsManagementPage() {
                                         <AccordionContent className="p-4 pt-4 space-y-6">
                                             <div className="grid md:grid-cols-2 gap-6">
                                                 <div className="space-y-3">
-                                                    <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                        <FileText className="h-3 w-3" /> Invoiced Fees & Tuition
-                                                    </h4>
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                                            <FileText className="h-3 w-3" /> Invoiced Fees & Tuition
+                                                        </h4>
+                                                        {invoice && (
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => handleOpenEditRequest('invoice', info!.invoiceId, data.totalDue, {uid: studentUid, id: historyStudent!.studentId, name: historyStudent!.studentName})} title="Request Adjustment">
+                                                                <PencilLine className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                     <div className="rounded-lg border bg-muted/10 p-3 space-y-2">
                                                         {invoice ? (
                                                             <>
@@ -770,18 +830,6 @@ export default function PaymentsManagementPage() {
                                                                     <div className="flex justify-between text-xs">
                                                                         <span className="text-muted-foreground">Optional Fees:</span>
                                                                         <span className="font-mono text-xs font-bold">ZMW {Number(invoice.totalOptionalFees || 0).toFixed(2)}</span>
-                                                                    </div>
-                                                                )}
-                                                                {Number(invoice.lateFee || 0) > 0 && (
-                                                                    <div className="flex justify-between text-xs text-destructive">
-                                                                        <span>Late Registration:</span>
-                                                                        <span className="font-mono text-xs font-bold">ZMW {Number(invoice.lateFee || 0).toFixed(2)}</span>
-                                                                    </div>
-                                                                )}
-                                                                {invoice.applyScholarship && (
-                                                                    <div className="flex justify-between text-xs text-green-600 italic">
-                                                                        <span>Scholarship Waiver:</span>
-                                                                        <span className="font-mono text-xs font-bold">-(ZMW {Number(invoice.totalTuition || 0).toFixed(2)})</span>
                                                                     </div>
                                                                 )}
                                                                 <Separator />
@@ -810,16 +858,20 @@ export default function PaymentsManagementPage() {
                                                             <TableHeader>
                                                                 <TableRow className="hover:bg-transparent">
                                                                     <TableHead className="text-[10px] font-black uppercase h-8">Date</TableHead>
-                                                                    <TableHead className="text-[10px] font-black uppercase h-8">Method</TableHead>
                                                                     <TableHead className="text-right text-[10px] font-black uppercase h-8">Amount</TableHead>
+                                                                    <TableHead className="w-8"></TableHead>
                                                                 </TableRow>
                                                             </TableHeader>
                                                             <TableBody>
                                                                 {data.transactions.length > 0 ? data.transactions.map(tx => (
-                                                                    <TableRow key={tx.key} className="hover:bg-transparent border-none">
+                                                                    <TableRow key={tx.key} className="hover:bg-transparent border-none group/tx">
                                                                         <TableCell className="py-1.5 text-[10px] text-muted-foreground">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                                        <TableCell className="py-1.5"><Badge variant="outline" className="text-[8px] uppercase h-4 px-1">{tx.method || 'Online'}</Badge></TableCell>
                                                                         <TableCell className="py-1.5 text-right font-black text-[10px]">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                                        <TableCell className="py-1.5 p-0">
+                                                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover/tx:opacity-100" onClick={() => handleOpenEditRequest('transaction', tx.key, tx.amount, {uid: studentUid, id: historyStudent!.studentId, name: historyStudent!.studentName})} title="Request Correction">
+                                                                                <PencilLine className="h-3 w-3 text-primary" />
+                                                                            </Button>
+                                                                        </TableCell>
                                                                     </TableRow>
                                                                 )) : (
                                                                     <TableRow>
@@ -835,12 +887,6 @@ export default function PaymentsManagementPage() {
                                     </AccordionItem>
                                 )
                             })}
-                            {Object.keys(historyByAcademicPeriod).length === 0 && (
-                                <div className="p-12 text-center text-muted-foreground border-2 border-dashed rounded-xl">
-                                    <History className="h-10 w-10 mx-auto opacity-10 mb-2"/>
-                                    <p className="text-sm">No historical financial records available.</p>
-                                </div>
-                            )}
                         </Accordion>
                     </ScrollArea>
                     
@@ -849,10 +895,43 @@ export default function PaymentsManagementPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Edit Request Dialog */}
+            <Dialog open={isEditRequestOpen} onOpenChange={setIsEditRequestOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Request Financial Correction</DialogTitle>
+                        <DialogDescription>Propose a change to a {editRequestType} for {editStudentInfo?.name}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-muted/20 border">
+                            <div>
+                                <Label className="text-[10px] font-black uppercase opacity-60">Current Value</Label>
+                                <p className="text-lg font-bold">ZMW {oldValue.toFixed(2)}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-black uppercase text-primary">New Proposed Value</Label>
+                                <Input type="number" value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="0.00" className="h-9 font-bold" />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Justification / Reason</Label>
+                            <Textarea value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="Why is this change necessary? (e.g., Data entry error, scholarship adjust...)" rows={4} />
+                        </div>
+                        <Alert className="bg-primary/5 border-primary/20">
+                            <Info className="h-4 w-4 text-primary" />
+                            <AlertDescription className="text-xs italic leading-snug">Note: This change will NOT be applied immediately. It must be approved by a senior administrator in the "Edit Approvals" module.</AlertDescription>
+                        </Alert>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsEditRequestOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSubmitEditRequest} disabled={formLoading || !newValue || !editReason.trim()}>
+                            {formLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Submit Request
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
-
-const Calculator = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
-);

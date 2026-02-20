@@ -130,6 +130,7 @@ export const allMenuItems = [
       roles: ['Admin', 'Accountant'],
       items: [
         { href: '/admin/payments', label: 'Student Invoicing', icon: FileText },
+        { href: '/admin/finance/edit-approvals', label: 'Edit Approvals', icon: ClipboardCheck },
         { href: '/admin/payment-plans', label: 'Installment Plans', icon: Wallet },
         { href: '/admin/finance/defaulters', label: 'Defaulter Management', icon: UserX },
         { href: '/admin/finance/income-statement', label: 'Income Statement', icon: ReceiptText },
