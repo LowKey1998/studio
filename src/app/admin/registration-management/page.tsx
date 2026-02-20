@@ -83,6 +83,28 @@ import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 // --- CONSTANTS ---
 const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+// --- HELPER FUNCTIONS ---
+const getOrdinalSuffix = (i: number) => {
+    if (i === 1) return '1st';
+    if (i === 2) return '2nd';
+    if (i === 3) return '3rd';
+    return `${i}th`;
+};
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
+const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
+    if (!date || !sem || !sem.startDate || !sem.endDate) return true;
+    const d = startOfDay(date);
+    const start = startOfDay(parseISO(sem.startDate));
+    const end = startOfDay(parseISO(sem.endDate));
+    return (d >= start && d <= end);
+};
+
 // --- TYPE DEFINITIONS ---
 type TimeSlot = {
     id: string;
@@ -100,19 +122,6 @@ type Fee = { id: string; name: string; amount: number; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, Fee>; optionalFees?: Record<string, Fee>; paymentThreshold?: number; gracePeriodDays?: number; };
-
-const getOrdinalSuffix = (i: number) => {
-    if (i === 1) return '1st';
-    if (i === 2) return '2nd';
-    if (i === 3) return '3rd';
-    return `${i}th`;
-};
-
-const timeToMinutes = (time: string) => {
-    if (!time) return 0;
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-};
 
 // --- DIALOG CONTENT COMPONENT ---
 type CreateOrEditDialogContentProps = {
@@ -560,14 +569,6 @@ export default function RegistrationManagementPage() {
         });
         return result;
     }, [allProgrammes, semesters, allCoursePaths]);
-
-    const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null) => {
-        if (!date || !sem || !sem.startDate || !sem.endDate) return true;
-        const d = startOfDay(date);
-        const start = startOfDay(parseISO(sem.startDate));
-        const end = startOfDay(parseISO(sem.endDate));
-        return (d >= start && d <= end);
-    };
 
     const handleSaveChanges = async () => {
         setSaving(true);

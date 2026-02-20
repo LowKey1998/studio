@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { userProfile, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -24,5 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     );
   }
   
-  return <DashboardLayout>{children}</DashboardLayout>;
+  // Using user.uid as a key ensures the entire layout and sub-tree 
+  // is destroyed and recreated when switching accounts, clearing any stale cache.
+  return <DashboardLayout key={user?.uid}>{children}</DashboardLayout>;
 }
