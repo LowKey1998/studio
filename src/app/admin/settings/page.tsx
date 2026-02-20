@@ -1,10 +1,11 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, BellRing } from 'lucide-react';
+import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, BellRing, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -45,7 +46,7 @@ type Integrations = {
     twilio?: { accountSid?: string; authToken?: string; fromNumber?: string; };
     smtp?: { service?: string; host?: string; port?: number; secure?: boolean; user?: string; pass?: string; fromName?: string; fromEmail?: string; };
 };
-type RegistrationPolicy = { lateRegistrationFee: number; };
+type RegistrationPolicy = { lateRegistrationFee: number; gracePeriodDays: number; };
 type Department = { id: string; name: string; };
 
 type EmailTemplate = {
@@ -65,7 +66,7 @@ export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
     const [leavePolicy, setLeavePolicy] = React.useState<LeavePolicy>({ maxDays: 14 });
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
-    const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0 });
+    const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0, gracePeriodDays: 7 });
     const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
     const [notificationRules, setNotificationRules] = React.useState<NotificationRules>({
         registration: true,
@@ -108,7 +109,7 @@ export default function SettingsPage() {
                 if (data.leavePolicy) setLeavePolicy(data.leavePolicy);
                 if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
                 if (data.overduePolicy) setOverduePolicy(data.overduePolicy);
-                if (data.registrationPolicy) setRegistrationPolicy(data.registrationPolicy);
+                if (data.registrationPolicy) setRegistrationPolicy(prev => ({ ...prev, ...data.registrationPolicy }));
                 if (data.notificationRules) setNotificationRules(prev => ({ ...prev, ...data.notificationRules }));
                 if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
                 if (data.departments) setDepartments(Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })));
@@ -335,18 +336,25 @@ export default function SettingsPage() {
             </Card>
 
             <Card className="shadow-lg">
-                <CardHeader><CardTitle className="font-headline text-2xl">Policies & Logic</CardTitle><CardDescription>Set the rules for system automation.</CardDescription></CardHeader>
+                <CardHeader><CardTitle className="font-headline text-2xl">Policies & Logic</CardTitle><CardDescription>Set the global rules for system automation.</CardDescription></CardHeader>
                 <CardContent>
                     <Accordion type="multiple" defaultValue={['reg-policy']} className="w-full">
                         <AccordionItem value="reg-policy">
-                            <AccordionTrigger className="font-bold flex gap-2"><Settings2 className="h-4 w-4"/>Registration & Fees</AccordionTrigger>
-                            <AccordionContent className="space-y-4 pt-4">
-                                <div className="grid md:grid-cols-2 gap-4">
+                            <AccordionTrigger className="font-bold flex gap-2"><Settings2 className="h-4 w-4"/>Registration & Finance</AccordionTrigger>
+                            <AccordionContent className="space-y-6 pt-4">
+                                <div className="grid md:grid-cols-2 gap-6">
                                     <div className="space-y-1">
                                         <Label>Late Registration Fee (ZMW)</Label>
-                                        <Input type="number" value={registrationPolicy.lateRegistrationFee} onChange={e => setRegistrationPolicy({ lateRegistrationFee: Number(e.target.value) })}/>
+                                        <Input type="number" value={registrationPolicy.lateRegistrationFee} onChange={e => setRegistrationPolicy(p => ({ ...p, lateRegistrationFee: Number(e.target.value) }))}/>
                                     </div>
                                     <div className="space-y-1">
+                                        <Label>Global Grace Period (Days)</Label>
+                                        <div className="relative">
+                                            <Input type="number" min="0" value={registrationPolicy.gracePeriodDays} onChange={e => setRegistrationPolicy(p => ({ ...p, gracePeriodDays: Number(e.target.value) }))} className="pr-10"/>
+                                            <Clock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 md:col-span-2">
                                         <Label>Overdue Balance Action</Label>
                                         <Select value={overduePolicy} onValueChange={val => setOverduePolicy(val as any)}>
                                             <SelectTrigger><SelectValue/></SelectTrigger>
@@ -357,6 +365,15 @@ export default function SettingsPage() {
                                         </Select>
                                     </div>
                                 </div>
+                                <Alert className="bg-primary/5 border-primary/20">
+                                    <Info className="h-4 w-4 text-primary" />
+                                    <AlertTitle className="font-bold">Understanding the Grace Period</AlertTitle>
+                                    <AlertDescription className="text-xs leading-relaxed italic space-y-2">
+                                        <p>The **Grace Period** defines how many days a student is allowed to remain in "Good Standing" after an installment deadline has passed.</p>
+                                        <p>1. **Late Fees**: If enabled, the late fee is applied immediately once the standard deadline is missed.</p>
+                                        <p>2. **Portal Restrictions**: If "Suspend Portal Access" is active, students will lose access to academic materials and results only AFTER the deadline PLUS the grace period has elapsed, provided they haven't met the payment threshold.</p>
+                                    </AlertDescription>
+                                </Alert>
                             </AccordionContent>
                         </AccordionItem>
                         <AccordionItem value="hr-policy">
@@ -435,3 +452,5 @@ export default function SettingsPage() {
         </form>
     );
 }
+
+    
