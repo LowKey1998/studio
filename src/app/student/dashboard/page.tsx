@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -21,7 +20,8 @@ import {
     AlertCircle,
     ClipboardCheck,
     Layers,
-    Video
+    Video,
+    ShieldX
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -79,6 +79,7 @@ export default function StudentDashboardPage() {
     const [intakeName, setIntakeName] = React.useState('');
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
     const [financialWarning, setFinancialWarning] = React.useState<{ message: string; restriction: boolean } | null>(null);
+    const [missingPlanPrompt, setMissingPlanPrompt] = React.useState<{ semesterName: string; pathId: string; year: number; sem: number } | null>(null);
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     const { toast } = useToast();
 
@@ -97,12 +98,12 @@ export default function StudentDashboardPage() {
         const unsub = onValue(registrationsRef, async (regSnap) => {
             const allRegistrations = regSnap.val() || {};
             
-            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap] = await Promise.all([
+            const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap] = await Promise.all([
                 get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
                 get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
                 get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments')),
-                get(ref(db, 'settings/assessmentTemplates'))
+                get(ref(db, 'settings/assessmentTemplates')), get(ref(db, 'coursePaths'))
             ]);
 
             const allCourses = cSnap.val() || {};
@@ -113,15 +114,16 @@ export default function StudentDashboardPage() {
             const allCalendarEvents = calSnap.val() || {};
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
-            const allAssessments = assSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
             const allSemesters = semSnap.val() || {};
             const allAssignments = studentAssSnap.val() || {};
             const allTemplates = templatesSnap.val() || {};
+            const allPaths = pathsSnap.val() || {};
 
             let currentIntakeNameVal = '';
             let matchingSemesterId: string | null = null;
+            let currentPhase = { year: 1, semester: 1 };
 
             if (userProfile?.intakeId) {
                 currentIntakeNameVal = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
@@ -135,9 +137,9 @@ export default function StudentDashboardPage() {
                         calSettings.standardCycles, 
                         Object.values(calSettings.anomalies || {})
                     );
+                    currentPhase = { year: state.year, semester: state.semester };
                     setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
 
-                    // Find the semester record matching this standing
                     const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {
                         return s.intakeId === userProfile.intakeId && 
                                s.year === state.year && 
@@ -147,12 +149,27 @@ export default function StudentDashboardPage() {
                 }
             }
 
+            // --- Check for Missing Payment Plan Prompt ---
+            if (matchingSemesterId) {
+                const reg = allRegistrations[matchingSemesterId];
+                if (reg && !reg.paymentPlan) {
+                    const path = Object.values(allPaths).find((p: any) => p.intakeId === userProfile.intakeId && p.programmeId === userProfile.programmeId) as any;
+                    setMissingPlanPrompt({
+                        semesterName: allSemesters[matchingSemesterId].name,
+                        pathId: path?.id,
+                        year: currentPhase.year,
+                        sem: currentPhase.semester
+                    });
+                } else {
+                    setMissingPlanPrompt(null);
+                }
+            }
+
             const coursesMap = new Map<string, Course>();
             let totalPresent = 0;
             let totalMarked = 0;
             const enrolledIds = new Set<string>();
 
-            // Only process courses for the CURRENT calculated semester
             if (matchingSemesterId && allRegistrations[matchingSemesterId]) {
                 const reg = allRegistrations[matchingSemesterId];
                 if (reg.status === 'Completed' || reg.status === 'Pending Payment') {
@@ -191,7 +208,6 @@ export default function StudentDashboardPage() {
             }
             setEnrolledCourses(Array.from(coursesMap.values()));
 
-            // Overall attendance across all historical enrollments
             for (const semId in allRegistrations) {
                 const reg = allRegistrations[semId];
                 if (reg.courses && (reg.status === 'Completed' || reg.status === 'Pending Payment')) {
@@ -211,7 +227,6 @@ export default function StudentDashboardPage() {
             }
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
-            // Financial Calculations
             let totalDue = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) + (inv.lateFee || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
@@ -221,7 +236,6 @@ export default function StudentDashboardPage() {
             const currentBalance = Math.max(0, totalDue - totalPaid);
             setFeeBalance(currentBalance);
 
-            // Financial Threshold & Deadlines
             if (matchingSemesterId && currentBalance > 0) {
                 const semester = allSemesters[matchingSemesterId];
                 const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
@@ -248,7 +262,6 @@ export default function StudentDashboardPage() {
                 }
             }
 
-            // Daily Schedule strictly filtered by CURRENT Intake and Enrollment
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const scheduleMap = new Map<string, TimetableEntry>();
 
@@ -264,7 +277,6 @@ export default function StudentDashboardPage() {
                         Object.entries(semesterSessions[cid]).forEach(([entryId, entry]: [string, any]) => {
                             if (entry.day === todayName) {
                                 let shouldInclude = false;
-                                
                                 const entryIntake = entry.intakeName?.trim().toUpperCase();
                                 const studentIntake = currentIntakeNameVal?.trim().toUpperCase();
 
@@ -294,31 +306,21 @@ export default function StudentDashboardPage() {
             }
             setTodaySchedule(Array.from(scheduleMap.values()).sort((a,b) => a.startTime.localeCompare(b.startTime)));
 
-            // Filtered Deadlines strictly for current semester
             const deadlines: DeadlineEvent[] = [];
             const currentSemesterName = matchingSemesterId ? allSemesters[matchingSemesterId]?.name : null;
 
             Object.values(allCalendarEvents).forEach((ev: any) => {
                 const isFuture = new Date(ev.date) >= startOfDay(getCurrentServerDate());
                 if (!isFuture) return;
-
                 const isForThisSemester = currentSemesterName && ev.semester === currentSemesterName;
                 const isGeneral = !ev.semester || ev.semester === 'General';
                 const isDeadline = ev.title?.toLowerCase().includes('deadline');
-
-                // Personalize: If it's a deadline, it MUST be for this semester. 
-                // If it's a general event (like a holiday), it can show.
                 if (isForThisSemester || (isGeneral && !isDeadline)) {
-                    deadlines.push({ 
-                        title: ev.title, 
-                        date: ev.date, 
-                        type: isDeadline ? 'payment' : 'assignment' 
-                    });
+                    deadlines.push({ title: ev.title, date: ev.date, type: isDeadline ? 'payment' : 'assignment' });
                 }
             });
             setUpcomingDeadlines(deadlines.sort((a,b) => a.date.localeCompare(b.date)).slice(0, 4));
 
-            // Recent Grades across all time
             const grades: any[] = [];
             Object.keys(allAssessments).forEach(nodeId => {
                 const results = allAssessments[nodeId];
@@ -365,6 +367,35 @@ export default function StudentDashboardPage() {
                 </div>
             </div>
 
+            {missingPlanPrompt && (
+                <Card className="border-2 border-orange-200 bg-orange-50/20 shadow-lg animate-in fade-in zoom-in-95 duration-500">
+                    <CardHeader className="pb-3 border-b border-orange-100">
+                        <div className="flex items-center gap-2 text-orange-800">
+                            <ShieldAlert className="h-5 w-5" />
+                            <CardTitle className="text-lg font-bold">Action Required: Finalize Registration</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="pt-4 space-y-3">
+                        <p className="text-sm text-orange-700 leading-relaxed">
+                            You are currently attending classes for <strong>{missingPlanPrompt.semesterName}</strong>, but your registration is incomplete because you haven't selected a <strong>Payment Plan</strong>.
+                        </p>
+                        <Alert variant="default" className="bg-white border-orange-200 py-2">
+                            <Info className="h-4 w-4 text-orange-600" />
+                            <AlertDescription className="text-xs font-medium text-orange-800">
+                                Unfinished registrations may lead to portal restrictions and could prevent you from viewing your results or taking exams.
+                            </AlertDescription>
+                        </Alert>
+                    </CardContent>
+                    <CardFooter>
+                        <Button className="w-full bg-orange-600 hover:bg-orange-700 shadow-md" asChild>
+                            <Link href={`/student/registration/${userProfile?.intakeId}/${missingPlanPrompt.year}/${missingPlanPrompt.sem}`}>
+                                Select Payment Plan Now <ChevronRight className="ml-2 h-4 w-4"/>
+                            </Link>
+                        </Button>
+                    </CardFooter>
+                </Card>
+            )}
+
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                 {paymentDeadline && feeBalance > 0 && (
                     <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
@@ -390,11 +421,19 @@ export default function StudentDashboardPage() {
 
             {financialWarning && (
                 <Alert variant="destructive" className="border-2 shadow-md">
-                    <ShieldAlert className="h-5 w-5" />
+                    <ShieldX className="h-5 w-5" />
                     <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
                     <AlertDescription className="flex flex-col gap-3">
                         <p>{financialWarning.message}</p>
-                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive" asChild><Link href="/student/payments">Resolve Now</Link></Button>
+                        <div className="text-xs space-y-1">
+                            <p className="font-bold uppercase opacity-70">Active Restrictions:</p>
+                            <ul className="list-disc pl-5 opacity-90">
+                                <li>Semester results are hidden</li>
+                                <li>New registrations are blocked</li>
+                                <li>Library borrowing suspended</li>
+                            </ul>
+                        </div>
+                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive font-bold" asChild><Link href="/student/payments">Pay to Restore Access</Link></Button>
                     </AlertDescription>
                 </Alert>
             )}
@@ -412,14 +451,14 @@ export default function StudentDashboardPage() {
                         {todaySchedule.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySchedule.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm">
+                                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border bg-card shadow-sm group hover:border-primary/30 transition-all">
                                         <div className="flex flex-col items-center justify-center min-w-[80px] py-1 border-r border-primary/10 pr-4">
                                             <span className="text-sm font-black text-primary">{entry.startTime}</span>
                                             <span className="text-[9px] text-muted-foreground font-bold uppercase">{entry.endTime}</span>
                                         </div>
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-bold text-sm">{entry.courseCode}: {entry.courseName}</p>
+                                                <p className="font-bold text-sm group-hover:text-primary transition-colors">{entry.courseCode}: {entry.courseName}</p>
                                                 {entry.isLiveSession && <Video className="h-3 w-3 text-blue-600" />}
                                             </div>
                                             <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
@@ -441,12 +480,12 @@ export default function StudentDashboardPage() {
 
                 <div className="space-y-6">
                     <Card className="shadow-lg border-l-4 border-l-primary">
-                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Deadlines</CardTitle></CardHeader>
+                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Upcoming Deadlines</CardTitle></CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((deadline, i) => (
-                                <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm">
+                                <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card shadow-sm hover:scale-[1.02] transition-transform">
                                     <div className="flex justify-between items-start">
-                                        <Badge variant="outline" className="text-[8px] font-black uppercase">{deadline.type}</Badge>
+                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest">{deadline.type}</Badge>
                                         <span className="text-[10px] font-bold text-muted-foreground">{format(parseISO(deadline.date), 'MMM dd')}</span>
                                     </div>
                                     <p className="text-xs font-bold mt-1 line-clamp-1">{deadline.title}</p>
@@ -456,12 +495,12 @@ export default function StudentDashboardPage() {
                     </Card>
 
                     <Card className="shadow-lg border-l-4 border-l-green-500">
-                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Recent Results</CardTitle></CardHeader>
+                        <CardHeader className="pb-3 border-b"><CardTitle className="text-base font-bold">Recent Academic Activity</CardTitle></CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {recentGrades.length > 0 ? recentGrades.map((grade, i) => (
                                 <div key={i} className="flex justify-between items-center p-3 rounded-lg border bg-green-50/20">
-                                    <div><p className="text-[10px] font-black text-green-700 uppercase">{grade.courseCode}</p><p className="text-xs font-medium text-muted-foreground">{grade.label}</p></div>
-                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'}>{grade.score}%</Badge>
+                                    <div><p className="text-[10px] font-black text-green-700 uppercase tracking-tighter">{grade.courseCode}</p><p className="text-xs font-medium text-muted-foreground line-clamp-1">{grade.label}</p></div>
+                                    <Badge variant={grade.score >= 50 ? 'default' : 'destructive'} className="font-mono">{grade.score}%</Badge>
                                 </div>
                             )) : <p className="text-xs text-muted-foreground text-center py-8 italic">No recent results posted.</p>}
                         </CardContent>

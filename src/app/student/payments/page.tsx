@@ -3,7 +3,24 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Receipt, History, DollarSign, ChevronDown, CheckCircle2, GraduationCap, Loader2, Download, Mail, Calculator, AlertTriangle, CheckCircle } from 'lucide-react';
+import { 
+    Receipt, 
+    History, 
+    DollarSign, 
+    ChevronDown, 
+    CheckCircle2, 
+    GraduationCap, 
+    Loader2, 
+    Download, 
+    Mail, 
+    Calculator, 
+    AlertTriangle, 
+    CheckCircle, 
+    ShieldAlert, 
+    Info, 
+    XCircle,
+    ArrowRight
+} from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -15,7 +32,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { sendEmail } from '@/ai/flows/send-email-flow';
 import { logError } from '@/lib/error-logger';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -112,7 +128,7 @@ export default function StudentPaymentsPage() {
             const userProfile = userSnap.val() || {};
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
-            const fSettings = financialSnap.val() || { paymentThreshold: 75 };
+            const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { registration: true, results: true, library: false, exams: false } };
             
             setAllCourses(coursesData);
             setAllSemesters(semestersData);
@@ -156,7 +172,7 @@ export default function StudentPaymentsPage() {
                         totalPaid,
                         balance,
                         status: balance <= 0.01 ? 'Paid' : 'Pending',
-                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()),
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.date).getTime()),
                         threshold,
                         paidPercentage,
                         thresholdMet
@@ -185,9 +201,7 @@ export default function StudentPaymentsPage() {
         if (institutionSettings.logoUrl) {
             try {
                 doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20);
-            } catch (e) {
-                console.warn("Logo failed to load for PDF:", e);
-            }
+            } catch (e) {}
         }
         doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
         doc.setFontSize(12); doc.text('Combined Invoice & Statement', 190, 25, { align: 'right' });
@@ -221,7 +235,6 @@ export default function StudentPaymentsPage() {
             footStyles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] }
         });
 
-        // Add Payments Section
         const finalY = (doc as any).lastAutoTable.finalY + 15;
         doc.setFontSize(14);
         doc.text("Payments Received", 14, finalY);
@@ -272,6 +285,8 @@ export default function StudentPaymentsPage() {
 
     if (loading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
 
+    const restrictions = financialSettings?.defaulterRestrictions || {};
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -281,9 +296,9 @@ export default function StudentPaymentsPage() {
                 </CardHeader>
             </Card>
 
-            {payments.length > 0 ? (
-                <div className="space-y-4">
-                    {payments.map((payment) => (
+            <div className="grid gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2 space-y-4">
+                    {payments.length > 0 ? payments.map((payment) => (
                         <Card key={payment.invoice.invoiceId} className="overflow-hidden border-0 shadow-lg">
                             <CardHeader className="bg-muted/30 pb-4">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -344,12 +359,6 @@ export default function StudentPaymentsPage() {
                                                             </div>
                                                         ) : null;
                                                     })}
-                                                    {(payment.invoice.lateFee || 0) > 0 && (
-                                                        <div className="flex justify-between text-xs text-destructive">
-                                                            <span>Late Registration Fee</span>
-                                                            <span className="font-mono">ZMW {payment.invoice.lateFee?.toFixed(2)}</span>
-                                                        </div>
-                                                    )}
                                                 </div>
                                                 <Separator />
                                                 <div className="flex justify-between font-black pt-1">
@@ -361,30 +370,64 @@ export default function StudentPaymentsPage() {
 
                                         <div className="space-y-4">
                                             <h4 className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                <Calculator className="h-3 w-3" /> Financial Standing
+                                                <Calculator className="h-3 w-3" /> Financial Standing Audit
                                             </h4>
                                             <div className="p-4 rounded-xl border bg-primary/5 space-y-3">
                                                 <div className="flex justify-between items-end">
                                                     <div className="space-y-0.5">
-                                                        <p className="text-xs font-bold">Registration Standing</p>
+                                                        <p className="text-xs font-bold">Progress to Standing</p>
                                                         <p className="text-[10px] text-muted-foreground">Paid ZMW {payment.totalPaid.toFixed(2)} of ZMW {payment.totalDue.toFixed(2)}</p>
                                                     </div>
                                                     <span className="text-lg font-black">{payment.paidPercentage.toFixed(0)}%</span>
                                                 </div>
                                                 <Progress value={payment.paidPercentage} className="h-2" />
-                                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
-                                                    <div className="flex items-center gap-1.5">
-                                                        {payment.thresholdMet ? (
-                                                            <CheckCircle className="h-3 w-3 text-green-600" />
-                                                        ) : (
-                                                            <AlertTriangle className="h-3 w-3 text-orange-500" />
-                                                        )}
-                                                        <span className={cn(payment.thresholdMet ? "text-green-600" : "text-orange-600")}>
-                                                            {payment.thresholdMet ? "Threshold Met" : "Threshold Pending"}
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-muted-foreground">Required: {payment.threshold}%</span>
-                                                </div>
+                                                
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <Button variant="ghost" className="w-full h-auto p-2 justify-between group hover:bg-white/50 border border-transparent hover:border-primary/20">
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                                                                {payment.thresholdMet ? (
+                                                                    <CheckCircle className="h-3 w-3 text-green-600" />
+                                                                ) : (
+                                                                    <AlertTriangle className="h-3 w-3 text-orange-500" />
+                                                                )}
+                                                                <span className={cn(payment.thresholdMet ? "text-green-600" : "text-orange-600")}>
+                                                                    {payment.thresholdMet ? "Good Standing" : "Threshold Pending"}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 text-[10px] opacity-60">
+                                                                <span>Req: {payment.threshold}%</span>
+                                                                <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+                                                            </div>
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
+                                                        <div className="space-y-4">
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Defaulter Status Audit</h4>
+                                                            <div className="space-y-2">
+                                                                <p className="text-xs leading-relaxed">Based on institutional policy, the following restrictions apply if your threshold is not met after the grace period:</p>
+                                                                <div className="grid gap-2 pt-2">
+                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
+                                                                        <span>New Semester Registration</span>
+                                                                        {restrictions.registration ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
+                                                                    </div>
+                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
+                                                                        <span>Exam Result Visibility</span>
+                                                                        {restrictions.results ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
+                                                                    </div>
+                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
+                                                                        <span>Library Book Loans</span>
+                                                                        {restrictions.library ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
+                                                                    </div>
+                                                                    <div className={cn("flex items-center justify-between p-2 rounded border text-[10px] font-bold uppercase", payment.thresholdMet ? "bg-muted/30 opacity-50" : "bg-red-50 border-red-100")}>
+                                                                        <span>Final Exam Eligibility</span>
+                                                                        {restrictions.exams ? (payment.thresholdMet ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <XCircle className="h-3 w-3 text-destructive"/>) : <Badge className="h-4 text-[8px] px-1">Inactive</Badge>}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
                                             </div>
                                         </div>
                                     </div>
@@ -434,7 +477,7 @@ export default function StudentPaymentsPage() {
                                         disabled={actionLoading === `dl-${payment.invoice.invoiceId}`}
                                     >
                                         {actionLoading === `dl-${payment.invoice.invoiceId}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}
-                                        Download PDF Statement
+                                        Statement of Account
                                     </Button>
                                     <Button size="sm" asChild className="h-9 shadow-md font-bold">
                                         <Link href="/student/dashboard"><DollarSign className="mr-2 h-4 w-4"/>Make a Payment</Link>
@@ -442,22 +485,73 @@ export default function StudentPaymentsPage() {
                                 </div>
                             </CardFooter>
                         </Card>
-                    ))}
+                    )) : (
+                        <Card className="border-dashed border-2 bg-muted/10">
+                            <CardContent className="py-24 text-center text-muted-foreground">
+                                <DollarSign className="mx-auto h-16 w-16 opacity-10 mb-4" />
+                                <h3 className="text-xl font-bold text-foreground">No Billing History</h3>
+                                <p className="text-sm max-w-xs mx-auto mt-2">
+                                    Your account currently has no active invoices. Please ensure you have completed your semester registration.
+                                </p>
+                                <Button className="mt-8 shadow-lg font-bold" asChild>
+                                    <Link href="/student/registration">Register for Semester</Link>
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
-            ) : (
-                <Card className="border-dashed border-2 bg-muted/10">
-                    <CardContent className="py-24 text-center text-muted-foreground">
-                        <DollarSign className="mx-auto h-16 w-16 opacity-10 mb-4" />
-                        <h3 className="text-xl font-bold text-foreground">No Billing History</h3>
-                        <p className="text-sm max-w-xs mx-auto mt-2">
-                            Your account currently has no active invoices. Please ensure you have completed your semester registration.
-                        </p>
-                        <Button className="mt-8 shadow-lg font-bold" asChild>
-                            <Link href="/student/registration">Register for Semester</Link>
-                        </Button>
-                    </CardContent>
-                </Card>
-            )}
+
+                <div className="space-y-6">
+                    <Card className="border-2 border-primary/10 shadow-md">
+                        <CardHeader className="bg-primary/5 border-b">
+                            <div className="flex items-center gap-2">
+                                <ShieldAlert className="h-5 w-5 text-primary" />
+                                <CardTitle className="text-lg">Policies & Standing</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-6">
+                            <div className="space-y-4">
+                                <h4 className="text-sm font-bold">Defaulter Restrictions</h4>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    To ensure academic continuity, students must maintain a minimum payment threshold. Failure to do so by installment deadlines may trigger the following restrictions:
+                                </p>
+                                <ul className="space-y-2">
+                                    <li className="flex items-start gap-2 text-xs">
+                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.registration ? "bg-red-100" : "bg-muted")}>
+                                            {restrictions.registration ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
+                                        </div>
+                                        <span className={cn(restrictions.registration && "font-bold")}>Semester Registration Block</span>
+                                    </li>
+                                    <li className="flex items-start gap-2 text-xs">
+                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.results ? "bg-red-100" : "bg-muted")}>
+                                            {restrictions.results ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
+                                        </div>
+                                        <span className={cn(restrictions.results && "font-bold")}>Exam Results Visibility Block</span>
+                                    </li>
+                                    <li className="flex items-start gap-2 text-xs">
+                                        <div className={cn("mt-1 p-0.5 rounded-full", restrictions.library ? "bg-red-100" : "bg-muted")}>
+                                            {restrictions.library ? <AlertCircle className="h-3 w-3 text-red-600"/> : <CheckCircle className="h-3 w-3 text-muted-foreground"/>}
+                                        </div>
+                                        <span className={cn(restrictions.library && "font-bold")}>Library Borrowing Suspension</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <Separator />
+                            <div className="bg-muted/30 p-4 rounded-lg space-y-2 border border-dashed">
+                                <h4 className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+                                    <Info className="h-3 w-3" /> Need Assistance?
+                                </h4>
+                                <p className="text-[10px] text-muted-foreground leading-relaxed italic">
+                                    If you have entered into a special arrangement with the finance office that is not reflected here, please contact the accounts department with your supporting documents.
+                                </p>
+                                <Button variant="link" size="sm" asChild className="h-auto p-0 text-[10px] font-bold">
+                                    <Link href="/contact">Message Finance Team <ArrowRight className="ml-1 h-2 w-2"/></Link>
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
         </div>
     );
 }
