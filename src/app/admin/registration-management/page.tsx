@@ -78,6 +78,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 // --- CONSTANTS ---
 const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -550,40 +551,6 @@ export default function RegistrationManagementPage() {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
-    const semestersByProgramme = React.useMemo(() => {
-        const result: Record<string, Semester[]> = {};
-        allProgrammes.forEach(p => result[p.id] = []);
-        
-        semesters.forEach(s => {
-            const pathsUsingSem = allCoursePaths.filter(path => path.semesters && path.semesters[s.id]);
-            pathsUsingSem.forEach(path => {
-                if (!result[path.programmeId].find(existing => existing.id === s.id)) {
-                    result[path.programmeId].push(s);
-                }
-            });
-        });
-        return result;
-    }, [allProgrammes, semesters, allCoursePaths]);
-
-    const handleSaveChanges = async () => {
-        setSaving(true);
-        try { 
-            await set(ref(db, `semesterOfferings`), activePathSemesters);
-            toast({ title: 'Registration paths updated.' });
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Save Failed' }); }
-        finally { setSaving(false); }
-    };
-    
-    const handleToggleSemester = (pathId: string, semesterId: string) => {
-      setActivePathSemesters(prev => {
-        const next = JSON.parse(JSON.stringify(prev));
-        if (!next[pathId]) next[pathId] = {};
-        if (!next[pathId][semesterId]) next[pathId][semesterId] = { active: false, showReason: false };
-        next[pathId][semesterId].active = !next[pathId][semesterId].active;
-        return next;
-      });
-    };
-
     const confirmDeleteSemester = async () => {
         if (!semesterToDeleteId) return;
         setSaving(true);
@@ -685,7 +652,7 @@ export default function RegistrationManagementPage() {
         }
     };
 
-    const getDeadlineSummary = (semester: Semester) => {
+    const getDeadlineSummary = React.useCallback((semester: Semester) => {
         const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
         const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
         const summary: { title: string; date: string | null }[] = [];
@@ -695,7 +662,7 @@ export default function RegistrationManagementPage() {
         plans.forEach(plan => {
             for (let i = 0; i < plan.installments; i++) {
                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semester.name}`;
-                const event = Object.values(calendarEvents).find(e => e.title?.trim() === title.trim()) as any;
+                const event = Object.values(calendarEvents).find((e: any) => e.title?.trim() === title.trim()) as any;
                 if (!event) {
                     isMissing = true;
                 } else if (!isDateInSemesterRange(parseISO(event.date), semester)) {
@@ -726,7 +693,40 @@ export default function RegistrationManagementPage() {
         }
 
         return { summary, isMissing: shouldWarnMissing, hasPlans: plans.length > 0, isOutOfRange };
-    };
+    }, [allPaymentPlans, calendarEvents, semesters]);
+
+    // Handle Preloading for Bulk Deadlines
+    React.useEffect(() => {
+        if (!isBulkDeadlineOpen || !bulkSelectedPlanId || !bulkSelectedProgrammeId) return;
+
+        const targets: Semester[] = [];
+        allIntakes.forEach(intake => {
+            const path = allCoursePaths.find(p => p.intakeId === intake.id && p.programmeId === bulkSelectedProgrammeId);
+            if (!path || !calendarSettings) return;
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (!intakeStartStr) return;
+            const state = calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+            const matched = semesters.find(s => s.intakeId === intake.id && s.year === state.year && s.semesterInYear === state.semester);
+            if (matched) targets.push(matched);
+        });
+
+        if (targets.length > 0) {
+            const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
+            if (plan) {
+                const newBulkDates: Record<number, Date | null> = {};
+                // Preload from the first target semester's existing events if possible
+                const firstSem = targets[0];
+                for (let i = 0; i < plan.installments; i++) {
+                    const fullTitle = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${firstSem.name}`;
+                    const existing = Object.values(calendarEvents).find((e: any) => e.title?.trim() === fullTitle.trim()) as any;
+                    if (existing) {
+                        newBulkDates[i] = parseISO(existing.date);
+                    }
+                }
+                setBulkDeadlineDates(newBulkDates);
+            }
+        }
+    }, [isBulkDeadlineOpen, bulkSelectedPlanId, bulkSelectedProgrammeId, allIntakes, allCoursePaths, calendarSettings, semesters, allPaymentPlans, calendarEvents]);
 
     const handleSaveBulkDeadlines = async () => {
         const plan = allPaymentPlans.find(p => p.id === bulkSelectedPlanId);
@@ -814,6 +814,16 @@ export default function RegistrationManagementPage() {
         setIsHistoryDialogOpen(true);
     };
 
+    const handleToggleSemester = (pathId: string, semesterId: string) => {
+      setActivePathSemesters(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        if (!next[pathId]) next[pathId] = {};
+        if (!next[pathId][semesterId]) next[pathId][semesterId] = { active: false, showReason: false };
+        next[pathId][semesterId].active = !next[pathId][semesterId].active;
+        return next;
+      });
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg">
@@ -888,7 +898,7 @@ export default function RegistrationManagementPage() {
                                                         const semDetails = semesterDetails!;
                                                         const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                         const historyItems = semData.history ? Object.values(semData.history) : [];
-                                                        const { summary, isMissing, hasPlans, isOutOfRange } = getDeadlineSummary(semDetails);
+                                                        const { isMissing, hasPlans, isOutOfRange } = getDeadlineSummary(semDetails);
                                                         
                                                         const isCurrentStanding = currentState && 
                                                             semDetails.year === currentState.year && 
@@ -916,7 +926,7 @@ export default function RegistrationManagementPage() {
                                                                                         </Badge>
                                                                                     )}
                                                                                     {isOutOfRange && (
-                                                                                        <Badge variant="destructive" className="flex items-center gap-1 animate-pulse">
+                                                                                        <Badge variant="destructive" className="flex items-center gap-1 animate-pulse bg-red-100 text-red-700 border-red-200 shadow-sm">
                                                                                             <AlertTriangle className="h-3 w-3"/>Date Conflict
                                                                                         </Badge>
                                                                                     )}
@@ -943,34 +953,6 @@ export default function RegistrationManagementPage() {
                                                                             <Button variant="ghost" size="icon" onClick={() => { setEditingSemester(semDetails); setIsEditDialogOpen(true); }} title="Edit Semester Settings"><Pencil className="h-4 w-4"/></Button>
                                                                             <Button variant="ghost" size="icon" className="text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }} title="Delete Semester"><Trash2 className="h-4 w-4"/></Button>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="space-y-2">
-                                                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">Schedules & Timetable</Label>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                                        {(semData.courses || []).map(cid => {
-                                                                            const course = allCourses[cid];
-                                                                            if(!course) return null;
-                                                                            const lecturerNames = (course.lecturerIds || []).map(lid => users[lid]?.name).filter(Boolean).join(', ') || users[course.lecturerId || '']?.name || 'Unassigned';
-                                                                            const timetableEntries = timetables[semId]?.[cid] ? Object.values(timetables[semId][cid]) : [];
-                                                                            return (
-                                                                                <div key={cid} className={cn("p-2 border rounded text-xs", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "bg-muted/20" : "bg-orange-50 border-orange-200")}>
-                                                                                    <div className="flex justify-between font-bold">
-                                                                                        <span>{course.code} - {course.name}</span>
-                                                                                    </div>
-                                                                                    <div className={cn("flex items-center gap-1 mt-1 font-medium", (course.lecturerId || (course.lecturerIds && course.lecturerIds.length > 0)) ? "text-muted-foreground" : "text-orange-700")}>
-                                                                                        <UserCheck className="h-3 w-3" /> {lecturerNames === 'Unassigned' ? 'NO LECTURER ASSIGNED' : lecturerNames}
-                                                                                    </div>
-                                                                                    {timetableEntries.length > 0 && (
-                                                                                        <div className="flex items-center gap-1 text-primary mt-1">
-                                                                                            <Clock className="h-3 w-3" /> 
-                                                                                            {timetableEntries.map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`).join(', ')}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        })}
                                                                     </div>
                                                                 </div>
 
@@ -1047,7 +1029,7 @@ export default function RegistrationManagementPage() {
                                                         <div className="flex justify-between items-center">
                                                             <span className="text-sm font-medium">{getOrdinalSuffix(i+1)} Installment</span>
                                                             {!isValid && currentVal && (
-                                                                <Badge variant="destructive" className="h-5 gap-1 text-[10px] uppercase font-black animate-pulse">
+                                                                <Badge variant="destructive" className="h-5 gap-1 text-[10px] uppercase font-black animate-pulse bg-red-100 text-red-700 border-red-200">
                                                                     <AlertTriangle className="h-3 w-3" /> Out of Semester Range
                                                                 </Badge>
                                                             )}
