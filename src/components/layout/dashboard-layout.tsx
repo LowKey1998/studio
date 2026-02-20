@@ -206,14 +206,13 @@ export default function DashboardLayout({
 
     if (userProfile.role === 'Student') {
         const checkFinancialStanding = async () => {
-            const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, plansSnap, intakeSnap] = await Promise.all([
+            const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'transactions')),
                 get(ref(db, `invoices/${user.uid}`)),
                 get(refs.sems),
                 get(refs.cal),
                 get(refs.events),
-                get(refs.plans),
                 get(refs.intakes)
             ]);
 
@@ -280,6 +279,7 @@ export default function DashboardLayout({
         if (isDefaulter && financialSettings?.defaulterRestrictions?.sidebar) {
             const restrictedCategories = financialSettings.defaulterRestrictions.sidebar;
             return studentMenuItems.filter(category => {
+                // Finances and Communications are never restricted to ensure students can fix standing
                 if (category.label === 'Finances' || category.label === 'Communications') return true;
                 return !restrictedCategories[category.label];
             });
@@ -303,7 +303,7 @@ export default function DashboardLayout({
 
   React.useEffect(() => {
     if (loading || !menuItems.length) return;
-    const activeCategory = menuItems.find(item => item.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
+    const activeCategory = menuItems.find(item => item?.items?.some((sub: any) => pathname.startsWith(sub.href)))?.label;
     if(activeCategory && !openAccordion.includes(activeCategory)) {
         setOpenAccordion(prev => [...new Set([...prev, activeCategory!])]);
     }
