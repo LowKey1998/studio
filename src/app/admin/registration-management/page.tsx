@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval } from 'date-fns';
+import { format, parseISO, startOfDay, isAfter, addDays, isWithinInterval, isBefore } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
@@ -479,18 +479,15 @@ export default function RegistrationManagementPage() {
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     
-    // States for fixing runtime errors
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [generating, setGenerating] = React.useState(false);
 
-    // Per-semester deadline state
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [eventMap, setEventMap] = React.useState<Map<string, { date: string, id: string }>>(new Map());
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | null | undefined>>({});
 
-    // Bulk deadline state
     const [isBulkDeadlineOpen, setIsBulkDeadlineOpen] = React.useState(false);
     const [bulkSelectedProgrammeId, setBulkSelectedProgrammeId] = React.useState('');
     const [bulkSelectedPlanId, setBulkSelectedPlanId] = React.useState('');
@@ -502,7 +499,6 @@ export default function RegistrationManagementPage() {
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = React.useState(false);
     const [viewingHistory, setViewingHistory] = React.useState<CoursePathHistoryItem[]>([]);
 
-    // Confirmation states
     const [isDeleteSemesterDialogOpen, setIsDeleteSemesterDialogOpen] = React.useState(false);
     const [semesterToDeleteId, setSemesterToDeleteId] = React.useState<string | null>(null);
     const [isDeleteDeadlineDialogOpen, setIsDeleteDeadlineDialogOpen] = React.useState(false);
@@ -710,31 +706,27 @@ export default function RegistrationManagementPage() {
             }
         });
 
-        // Refined Warning Logic: Only warn for current or immediate upcoming semesters
         const now = startOfDay(new Date());
-        let shouldWarn = false;
+        let shouldWarnMissing = false;
         if (semester.startDate && semester.endDate) {
             const start = startOfDay(parseISO(semester.startDate));
-            const end = startOfDay(parseISO(semester.endDate));
-            
-            const isCurrent = now >= start && now <= end;
+            const isCurrent = now >= start && now <= startOfDay(parseISO(semester.endDate));
             const isFuture = isAfter(start, now);
             
             if (isCurrent) {
-                shouldWarn = isMissing;
+                shouldWarnMissing = isMissing;
             } else if (isFuture) {
-                // Find if it's the "immediate next" one
                 const futureSems = semesters
                     .filter(s => s.status !== 'Archived' && s.startDate && isAfter(startOfDay(parseISO(s.startDate)), now))
                     .sort((a, b) => parseISO(a.startDate!).getTime() - parseISO(b.startDate!).getTime());
                 
                 if (futureSems.length > 0 && futureSems[0].id === semester.id) {
-                    shouldWarn = isMissing;
+                    shouldWarnMissing = isMissing;
                 }
             }
         }
 
-        return { summary, isMissing: shouldWarn, hasPlans: plans.length > 0, isOutOfRange };
+        return { summary, isMissing: shouldWarnMissing, hasPlans: plans.length > 0, isOutOfRange };
     };
 
     const handleSaveBulkDeadlines = async () => {
@@ -744,7 +736,6 @@ export default function RegistrationManagementPage() {
             return;
         }
 
-        // Filter: Target only the current semesters for this programme
         const now = startOfDay(new Date());
         const targetSems = (semestersByProgramme[bulkSelectedProgrammeId] || []).filter(sem => {
             if (!sem.startDate || !sem.endDate) return false;
@@ -899,7 +890,7 @@ export default function RegistrationManagementPage() {
                                                                         <div className="flex items-center gap-2">
                                                                             <Label className="font-bold text-base">{semDetails.name}</Label>
                                                                             {isCurrentStanding && (
-                                                                                <Badge className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700 h-5 text-[9px] uppercase font-black">Current Standing</Badge>
+                                                                                <Badge className="bg-blue-600 text-white border-blue-700 hover:bg-blue-700 h-5 text-[9px] uppercase font-black tracking-widest">Current Standing</Badge>
                                                                             )}
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2 pt-1">
