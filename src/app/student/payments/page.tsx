@@ -259,7 +259,18 @@ export default function StudentPaymentsPage() {
                                     <div className="space-y-4">
                                         <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Receipt className="h-3 w-3" /> Billing Breakdown</h4>
                                         <div className="rounded-xl border p-4 bg-card space-y-3">
-                                            <div className="flex justify-between text-sm"><span>Total Due</span><span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span></div>
+                                            <div className="flex justify-between text-sm">
+                                                <span>Total Due</span>
+                                                <div className="text-right">
+                                                    {payment.totalDue > 0 ? (
+                                                        <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
+                                                    ) : (
+                                                        <span className={cn("text-xs italic font-bold", !payment.invoice.applyScholarship ? "text-orange-600" : "text-primary")}>
+                                                            {payment.invoice.applyScholarship ? 'Waiver Applied' : 'Will reflect once set'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                             <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
                                             <Separator />
                                             <div className="flex justify-between font-black text-destructive"><span>Balance</span><span>ZMW {payment.balance.toFixed(2)}</span></div>

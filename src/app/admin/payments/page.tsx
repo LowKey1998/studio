@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { 
@@ -1024,7 +1023,7 @@ export default function PaymentsManagementPage() {
                                             </div>
                                             <div className="p-3 rounded-lg border bg-red-50/50">
                                                 <p className="text-[9px] font-black uppercase text-red-700 tracking-widest">Balance</p>
-                                                <p className="text-lg font-black text-red-600">ZMW {p.balance.toFixed(2)}</p>
+                                                <p className="text-lg font-black text-green-600">ZMW {p.balance.toFixed(2)}</p>
                                             </div>
                                         </div>
                                         <div className="flex-1 overflow-auto border rounded-xl shadow-inner bg-background">
