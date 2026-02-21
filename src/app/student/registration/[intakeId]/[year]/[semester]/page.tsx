@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -458,7 +457,7 @@ export default function RegisterForSemesterPage() {
                             <div className="flex items-center space-x-2 p-4 border rounded-lg bg-blue-50/50">
                                 <Checkbox id="apply-scholarship" checked={applyScholarship} onCheckedChange={c => setApplyScholarship(!!c)} disabled={existingRegistration && existingRegistration.status === 'Completed'}/>
                                 <Label htmlFor="apply-scholarship" className="cursor-pointer">
-                                    <p className="font-bold text-blue-700">I have a Scholarship</p>
+                                    <p className="font-bold text-blue-700">I am on Scholarship/Apply for Scholarship</p>
                                 </Label>
                             </div>
                         </div>
