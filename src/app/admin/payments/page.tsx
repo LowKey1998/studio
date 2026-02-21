@@ -23,11 +23,12 @@ import {
     CalendarDays,
     TrendingUp,
     MapPin,
-    Wallet
+    Wallet,
+    History
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -225,6 +226,7 @@ export default function PaymentsManagementPage() {
 
     // Consolidated Data Fetching
     const fetchPaymentData = React.useCallback(async () => {
+        if (!userData) return;
         setLoading(true);
         try {
             const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap] = await Promise.all([
@@ -329,7 +331,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast]);
+    }, [userData, toast]);
 
     React.useEffect(() => {
         fetchPaymentData();
@@ -792,3 +794,4 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
+
