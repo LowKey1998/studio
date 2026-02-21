@@ -81,7 +81,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    setTotalDue?: string; // New field to allow setting total due if invoice is missing
+    setTotalDue?: string; 
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -197,6 +197,7 @@ export default function PaymentsManagementPage() {
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
     const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
@@ -344,7 +345,6 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
-            // Load personal defaults if they exist
             const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
             if (defaultsSnap.exists()) {
                 const def = defaultsSnap.val();
@@ -735,7 +735,7 @@ export default function PaymentsManagementPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>System ID</TableHead>
-                                        <TableHead>Student Name</TableHead>
+                                        <TableHead>User</TableHead>
                                         <TableHead>Programme</TableHead>
                                         <TableHead className="text-right">Balance</TableHead>
                                         <TableHead className="text-right">Total Paid</TableHead>
