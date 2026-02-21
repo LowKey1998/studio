@@ -2,9 +2,9 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info, Settings2, Mail } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info, Settings2, Mail, CalendarDays, MapPin, CheckCircle2 } from "lucide-react";
 import { db } from '@/lib/firebase';
-import { ref, get, update, push } from 'firebase/database';
+import { ref, get, update, push, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -44,6 +44,28 @@ type Course = { id: string; name: string; code: string; assessmentTemplateId?: s
 type AssessmentScore = { score?: number; feedback?: string; };
 type AllScores = Record<string, Record<string, Record<string, AssessmentScore>>>;
 
+type TimeSlot = { id: string; startTime: string; endTime: string; };
+type TimetableEntry = {
+    id: string;
+    semesterId: string;
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    day: string;
+    startTime: string;
+    endTime: string;
+    venue: string;
+    intakeName: string;
+};
+
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 export default function CAEntryPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
@@ -51,6 +73,11 @@ export default function CAEntryPage() {
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [templates, setTemplates] = React.useState<Record<string, { name: string, components: any }>>({});
     
+    // Metadata for timetable
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
+    const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
+    const [registrations, setRegistrations] = React.useState<Record<string, any>>({});
+
     const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedYear, setSelectedYear] = React.useState('');
@@ -69,6 +96,9 @@ export default function CAEntryPage() {
     const [emailSubject, setEmailSubject] = React.useState('New Assessment Results: [CourseCode]');
     const [emailBody, setEmailBody] = React.useState('Hello [Name],<br><br>Your results for [CourseName] have been updated for [Semester].<br><br>[Scores]<br><br>Regards,<br>Academics');
 
+    // Timetable Dialog State
+    const [isTimetableOpen, setIsTimetableOpen] = React.useState(false);
+
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
@@ -83,18 +113,44 @@ export default function CAEntryPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [pSnap, iSnap, uSnap, sSnap, tSnap] = await Promise.all([
+                const [pSnap, iSnap, uSnap, sSnap, tSnap, timesSnap, ttSnap, regSnap] = await Promise.all([
                     get(ref(db, 'programmes')),
                     get(ref(db, 'intakes')),
                     get(ref(db, 'users')),
                     get(ref(db, 'semesters')),
-                    get(ref(db, 'settings/assessmentTemplates'))
+                    get(ref(db, 'settings/assessmentTemplates')),
+                    get(ref(db, 'settings/teachingTimes')),
+                    get(ref(db, 'timetables')),
+                    get(ref(db, 'registrations'))
                 ]);
+
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
                 if (uSnap.exists()) setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
                 if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (tSnap.exists()) setTemplates(tSnap.val() || {});
+                if (regSnap.exists()) setRegistrations(regSnap.val());
+
+                if (timesSnap.exists()) {
+                    const data = timesSnap.val();
+                    setTeachingTimes({
+                        days: data.days || calendarDays.slice(1, 6),
+                        slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                    });
+                }
+
+                if (ttSnap.exists()) {
+                    const tData = ttSnap.val();
+                    const entries: TimetableEntry[] = [];
+                    for (const semId in tData) {
+                        for (const cId in tData[semId]) {
+                            Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                                entries.push({ id: entryId, semesterId: semId, courseId: cId, ...entry });
+                            });
+                        }
+                    }
+                    setMasterTimetable(entries);
+                }
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
@@ -197,12 +253,9 @@ export default function CAEntryPage() {
                     const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
                     roster = found ? [found] : [];
                 } else {
-                    const registrationsSnap = await get(ref(db, 'registrations'));
-                    const allRegs = registrationsSnap.val() || {};
                     const registeredUids = new Set<string>();
-
                     if (targetSemesterId) {
-                        Object.keys(allRegs).forEach(uid => { if (allRegs[uid][targetSemesterId]) registeredUids.add(uid); });
+                        Object.keys(registrations).forEach(uid => { if (registrations[uid][targetSemesterId]) registeredUids.add(uid); });
                     }
 
                     if (registeredUids.size > 0) {
@@ -216,7 +269,7 @@ export default function CAEntryPage() {
             finally { setLoading(false); }
         };
         fetchRosterData();
-    }, [selectedCourseIds, targetSemesterId, allStudents, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId]);
+    }, [selectedCourseIds, targetSemesterId, allStudents, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId, registrations]);
 
     const handleScoreChange = (courseId: string, studentUid: string, componentId: string, value: string) => {
         const numericValue = value === '' ? undefined : Number(value);
@@ -329,6 +382,50 @@ export default function CAEntryPage() {
     const filteredRoster = studentsInRoster.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || s.id.toLowerCase().includes(rosterSearch.toLowerCase()));
     const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase()));
 
+    const currentIntakeName = intakes.find(i => i.id === selectedIntakeId)?.name;
+    const timetableEntries = masterTimetable.filter(e => {
+        const matchesSemester = e.semesterId === 'master' || e.semesterId === targetSemesterId;
+        const matchesIntake = e.intakeName === currentIntakeName || e.intakeName === 'Master';
+        return matchesSemester && matchesIntake;
+    });
+
+    const getCourseGradingStatus = (courseId: string) => {
+        const courseScores = scores[courseId] || {};
+        const registeredForCourse = studentsInRoster.filter(s => {
+            const reg = registrations[s.uid]?.[targetSemesterId || ''];
+            return reg?.courses?.includes(courseId);
+        });
+        
+        if (registeredForCourse.length === 0) return { count: 0, total: 0, percentage: 0 };
+        
+        let gradedCount = 0;
+        registeredForCourse.forEach(s => {
+            const studentScores = courseScores[s.uid];
+            if (studentScores && Object.values(studentScores).some(comp => comp.score !== undefined)) {
+                gradedCount++;
+            }
+        });
+
+        return {
+            count: gradedCount,
+            total: registeredForCourse.length,
+            percentage: (gradedCount / registeredForCourse.length) * 100
+        };
+    };
+
+    const handleSelectFromTimetable = (courseId: string) => {
+        setSelectedCourseIds(prev => {
+            if (prev.includes(courseId)) return prev;
+            return [...prev, courseId];
+        });
+        setIsTimetableOpen(false);
+        // Add a small delay to allow accordion to render if it was just added
+        setTimeout(() => {
+            const element = document.getElementById(`course-accordion-${courseId}`);
+            if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -339,6 +436,12 @@ export default function CAEntryPage() {
                             <CardDescription>Record results for a specific cohort and academic phase.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
+                            {selectedIntakeId && targetSemesterId && (
+                                <Button variant="outline" onClick={() => setIsTimetableOpen(true)} className="h-10 border-primary/30">
+                                    <CalendarDays className="h-4 w-4 mr-2 text-primary" />
+                                    Class Timetable
+                                </Button>
+                            )}
                             {selectedSearchStudentUid && (
                                 <Button variant="ghost" size="sm" onClick={handleClearSearch} className="h-10 text-destructive">
                                     <X className="h-4 w-4 mr-1"/> Clear Focus
@@ -346,7 +449,7 @@ export default function CAEntryPage() {
                             )}
                             <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-[300px] justify-between text-left font-normal border-primary/30 bg-background">
+                                    <Button variant="outline" className="w-[200px] md:w-[300px] justify-between text-left font-normal border-primary/30 bg-background">
                                         <div className="flex items-center gap-2"><User className="h-4 w-4 text-primary" /><span className="truncate">{selectedSearchStudentName || "Jump to Student..."}</span></div>
                                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
@@ -355,7 +458,14 @@ export default function CAEntryPage() {
                                     <div className="p-2">
                                         <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
                                     </div>
-                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (<Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}><div className="flex flex-col text-left"><span className="font-bold">{student.name}</span><span className="text-[10px] text-muted-foreground">{student.id}</span></div></Button>))}</div></ScrollArea>
+                                    <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (
+                                        <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}>
+                                            <div className="flex flex-col text-left">
+                                                <span className="font-bold">{student.name}</span>
+                                                <span className="text-[10px] text-muted-foreground">{student.id}</span>
+                                            </div>
+                                        </Button>
+                                    ))}</div></ScrollArea>
                                 </PopoverContent>
                             </Popover>
                             <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => setIsEmailConfigOpen(true)} title="Email Notification Settings">
@@ -375,7 +485,27 @@ export default function CAEntryPage() {
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
                             <div className="flex items-center justify-between mb-1"><Label className="text-[10px] font-black uppercase">Course(s)</Label><div className="flex items-center gap-1.5"><Switch id="ca-load-all" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" /><Label htmlFor="ca-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label></div></div>
-                            <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}><span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span><ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start"><ScrollArea className="h-64"><div className="p-2 space-y-1">{courses.map(c => (<div key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded-md transition-colors"><Checkbox id={`course-${c.id}`} checked={selectedCourseIds.includes(c.id)} onCheckedChange={(checked) => setSelectedCourseIds(prev => checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} /><Label htmlFor={`course-${c.id}`} className="text-xs flex-1 cursor-pointer"><span className="font-bold">{c.code}</span> - {c.name}</Label></div>))}{courses.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No courses found for this criteria.</p>}</div></ScrollArea></PopoverContent></Popover>
+                            <Popover shadow="lg">
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}>
+                                        <span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                    <ScrollArea className="h-64">
+                                        <div className="p-2 space-y-1">
+                                            {courses.map(c => (
+                                                <div key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded-md transition-colors">
+                                                    <Checkbox id={`course-${c.id}`} checked={selectedCourseIds.includes(c.id)} onCheckedChange={(checked) => setSelectedCourseIds(prev => checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} />
+                                                    <Label htmlFor={`course-${c.id}`} className="text-xs flex-1 cursor-pointer"><span className="font-bold">{c.code}</span> - {c.name}</Label>
+                                                </div>
+                                            ))}
+                                            {courses.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No courses found.</p>}
+                                        </div>
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                     </div>
                 </CardHeader>
@@ -390,24 +520,195 @@ export default function CAEntryPage() {
                                     if (!course) return null;
                                     const template = course.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
                                     const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
+                                    const stats = getCourseGradingStatus(courseId);
+
                                     return (
-                                        <AccordionItem value={courseId} key={courseId} className="border rounded-lg bg-card overflow-hidden shadow-sm">
-                                            <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline"><div className="flex items-center gap-3"><BookOpen className="h-5 w-5 text-primary"/><div className="text-left"><span className="font-bold">{course.code}: {course.name}</span><p className="text-[10px] text-muted-foreground uppercase font-medium">{template?.name || "No Structure Assigned"}</p></div></div></AccordionTrigger>
+                                        <AccordionItem value={courseId} key={courseId} id={`course-accordion-${courseId}`} className="border rounded-lg bg-card overflow-hidden shadow-sm">
+                                            <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline">
+                                                <div className="flex flex-col md:flex-row md:items-center gap-3 w-full pr-4 text-left">
+                                                    <BookOpen className="h-5 w-5 text-primary shrink-0"/>
+                                                    <div className="flex-1">
+                                                        <span className="font-bold">{course.code}: {course.name}</span>
+                                                        <p className="text-[10px] text-muted-foreground uppercase font-medium">{template?.name || "No Structure Assigned"}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex flex-col items-end">
+                                                            <span className="text-[10px] font-black uppercase text-muted-foreground">Progress</span>
+                                                            <span className={cn("text-xs font-bold", stats.percentage === 100 ? "text-green-600" : "text-primary")}>
+                                                                {stats.count} / {stats.total} Graded
+                                                            </span>
+                                                        </div>
+                                                        <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                                                            <div className={cn("h-full transition-all", stats.percentage === 100 ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </AccordionTrigger>
                                             <AccordionContent className="p-4 pt-0">
-                                                {components.length > 0 ? (<div className="overflow-x-auto border rounded-md"><Table><TableHeader className="bg-muted/30"><TableRow><TableHead className="min-w-[150px]">Student</TableHead>{components.map(c=><TableHead key={c.id} className="text-center">{c.name} ({c.weight}%)</TableHead>)}</TableRow></TableHeader><TableBody>{filteredRoster.map(s => (<TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{s.name}</span><span className="text-[10px] text-muted-foreground">{s.id}</span></div></TableCell>{components.map(c => (<TableCell key={c.id} className="text-center"><Input type="number" className="w-16 h-8 mx-auto text-center font-bold text-xs" value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} /></TableCell>))}</TableRow>))}</TableBody></Table></div>
-                                                ) : (<div className="p-10 border-2 border-dashed rounded-lg text-center bg-muted/10"><AlertCircle className="mx-auto h-8 w-8 text-muted-foreground opacity-50 mb-2"/><p className="text-sm font-medium">This course has no grading structure linked.</p><Button variant="link" size="sm" asChild className="mt-2"><Link href="/admin/academics/assessment-setup">Go to Assessment Setup &rarr;</Link></Button></div>)}
+                                                {components.length > 0 ? (
+                                                    <div className="overflow-x-auto border rounded-md">
+                                                        <Table>
+                                                            <TableHeader className="bg-muted/30">
+                                                                <TableRow>
+                                                                    <TableHead className="min-w-[150px]">Student</TableHead>
+                                                                    {components.map(c=><TableHead key={c.id} className="text-center">{c.name} ({c.weight}%)</TableHead>)}
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {filteredRoster.map(s => {
+                                                                    const isRegistered = registrations[s.uid]?.[targetSemesterId || '']?.courses?.includes(courseId);
+                                                                    if (!isRegistered && !selectedSearchStudentUid) return null;
+                                                                    
+                                                                    return (
+                                                                        <TableRow key={s.uid} className={cn(s.uid === selectedSearchStudentUid && "bg-primary/5")}>
+                                                                            <TableCell>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="font-bold text-xs">{s.name}</span>
+                                                                                    <span className="text-[10px] text-muted-foreground">{s.id}</span>
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            {components.map(c => (
+                                                                                <TableCell key={c.id} className="text-center">
+                                                                                    <Input 
+                                                                                        type="number" 
+                                                                                        className="w-16 h-8 mx-auto text-center font-bold text-xs" 
+                                                                                        value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} 
+                                                                                        onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} 
+                                                                                    />
+                                                                                </TableCell>
+                                                                            ))}
+                                                                        </TableRow>
+                                                                    )
+                                                                })}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-10 border-2 border-dashed rounded-lg text-center bg-muted/10">
+                                                        <AlertCircle className="mx-auto h-8 w-8 text-muted-foreground opacity-50 mb-2"/>
+                                                        <p className="text-sm font-medium">This course has no grading structure linked.</p>
+                                                        <Button variant="link" size="sm" asChild className="mt-2"><Link href="/admin/academics/assessment-setup">Go to Assessment Setup &rarr;</Link></Button>
+                                                    </div>
+                                                )}
                                             </AccordionContent>
                                         </AccordionItem>
                                     );
                                 })}
                             </Accordion>
                         </div>
-                    ) : (<div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5"><Layers className="mx-auto h-12 w-12 opacity-20 mb-4" /><h3 className="text-lg font-bold">No Course Selected</h3><p className="text-sm max-w-xs mx-auto">Please select the courses you wish to grade from the filter bar above.</p></div>)}
+                    ) : (
+                        <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                            <Layers className="mx-auto h-12 w-12 opacity-20 mb-4" />
+                            <h3 className="text-lg font-bold">No Course Selected</h3>
+                            <p className="text-sm max-w-xs mx-auto">Please select the courses you wish to grade from the filter bar above or via the Class Timetable.</p>
+                        </div>
+                    )}
                 </CardContent>
                 {selectedCourseIds.length > 0 && filteredRoster.length > 0 && (
-                    <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Scores</Button></CardFooter>
+                    <CardFooter className="justify-end border-t pt-6">
+                        <Button onClick={handleSave} disabled={saving}>
+                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Finalize & Save All Scores
+                        </Button>
+                    </CardFooter>
                 )}
             </Card>
+
+            {/* Timetable Dialog */}
+            <Dialog open={isTimetableOpen} onOpenChange={setIsTimetableOpen}>
+                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <DialogTitle>Class Timetable: {currentIntakeName}</DialogTitle>
+                                <DialogDescription>Click on a class session to record or check its results.</DialogDescription>
+                            </div>
+                            <Badge variant="secondary" className="gap-1.5 font-bold h-10 px-4 text-primary">
+                                <Info className="h-4 w-4"/>
+                                Viewing: Year {selectedYear}, Sem {selectedSemesterInYear}
+                            </Badge>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4">
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map((slot, index) => (
+                                            <TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {calendarDays.slice(1, 6).map(dayName => (
+                                        <TableRow key={dayName}>
+                                            <TableCell className="font-bold text-xs border-r text-center bg-muted/20">
+                                                <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                            </TableCell>
+                                            {teachingTimes.slots.map((slot, sIdx) => {
+                                                const slotStart = timeToMinutes(slot.startTime);
+                                                const slotEnd = timeToMinutes(slot.endTime);
+                                                const sessionsInSlot = timetableEntries.filter(e => 
+                                                    e.day === dayName && 
+                                                    timeToMinutes(e.startTime) >= slotStart && 
+                                                    timeToMinutes(e.startTime) < slotEnd
+                                                );
+
+                                                return (
+                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                        <div className="space-y-2">
+                                                            {sessionsInSlot.map((entry, eIdx) => {
+                                                                const course = allCourses[entry.courseId];
+                                                                const stats = getCourseGradingStatus(entry.courseId);
+                                                                const isFullyGraded = stats.total > 0 && stats.count === stats.total;
+
+                                                                return (
+                                                                    <div 
+                                                                        key={eIdx} 
+                                                                        className={cn(
+                                                                            "p-2 rounded-md border bg-background shadow-sm transition-all cursor-pointer hover:ring-2 hover:ring-primary",
+                                                                            isFullyGraded ? "border-green-500 bg-green-50/20" : "border-primary/20",
+                                                                            selectedCourseIds.includes(entry.courseId) && "ring-2 ring-primary"
+                                                                        )}
+                                                                        onClick={() => handleSelectFromTimetable(entry.courseId)}
+                                                                    >
+                                                                        <div className="flex justify-between items-start gap-1">
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                            {isFullyGraded && <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0"/>}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                            <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                        </div>
+                                                                        <div className="mt-2 pt-1 border-t flex flex-col gap-1">
+                                                                            <div className="flex justify-between text-[8px] font-black uppercase tracking-tighter">
+                                                                                <span className="opacity-60">Status</span>
+                                                                                <span className={cn(isFullyGraded ? "text-green-600" : "text-primary")}>
+                                                                                    {stats.count}/{stats.total}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                                                                                <div className={cn("h-full", isFullyGraded ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <DialogClose asChild><Button variant="outline">Close Timetable</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={isEmailConfigOpen} onOpenChange={setIsEmailConfigOpen}>
                 <DialogContent className="max-w-2xl">
