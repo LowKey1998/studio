@@ -373,7 +373,12 @@ function CreateOrEditDialogContent({
                 </TabsContent>
                 <TabsContent value="fees" className="space-y-4 pt-4 max-h-[60vh] overflow-y-auto pr-2">
                     <div className="p-4 border rounded-xl bg-primary/5 mb-4">
-                        <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
+                            <Badge variant="secondary" className="uppercase text-[9px] font-black tracking-widest bg-primary/10 text-primary">
+                                Active: {billingPolicy === 'course' ? 'Pay Per Course' : 'Flat Semester Fee'}
+                            </Badge>
+                        </div>
                         <RadioGroup value={billingPolicy} onValueChange={(val) => setBillingPolicy(val as any)} className="grid grid-cols-2 gap-4 mt-3">
                             <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'course' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
                                 <RadioGroupItem value="course" id="bp-course" className="sr-only" />

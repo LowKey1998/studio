@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -16,12 +17,25 @@ import { format, parseISO } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { logError } from '@/lib/error-logger';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Separator } from '@/components/ui/separator';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
-type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };
+type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; cost: number; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }>; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
-type SemesterWithStatus = Semester & { isRegistered: boolean; hasPaymentPlan: boolean; isOpen: boolean; courses: Course[]; deadlines: { title: string; date: string | null }[]; isMissingDeadlines: boolean; isCurrentStanding: boolean; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, {name: string, amount: number}>; optionalFees?: Record<string, {name: string, amount: number}>; };
+type SemesterWithStatus = Semester & { 
+    isRegistered: boolean; 
+    hasPaymentPlan: boolean; 
+    isOpen: boolean; 
+    courses: Course[]; 
+    deadlines: { title: string; date: string | null }[]; 
+    isMissingDeadlines: boolean; 
+    isCurrentStanding: boolean;
+    selectedPaymentPlan?: string;
+    mandatoryFeesList: { name: string; amount: number }[];
+    optionalFeesList: { name: string; amount: number }[];
+    totalTuition: number;
+};
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -91,7 +105,7 @@ export default function StudentRegistrationPage() {
             const sData = sSnap.val() || {};
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
-            const eventsData = eventsSnap.val() || {};
+            const eventsData = Object.values(eventsSnap.val() || {}) as any[];
             const timetablesData = timetablesSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
@@ -108,11 +122,12 @@ export default function StudentRegistrationPage() {
                     const hasPaymentPlan = !!registration?.paymentPlan;
                     const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
+                    const enrolledCourseIds = new Set(registration?.courses || []);
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
                         const timetable = timetablesData[semId]?.[id] ? Object.values(timetablesData[semId][id]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`) : [];
-                        return { id, name: course?.name, code: course?.code, lecturerNames, timetable };
+                        return { id, name: course?.name, code: course?.code, lecturerNames, timetable, cost: Number(course?.cost || 0) };
                     });
 
                     const deadlines: { title: string; date: string | null }[] = [];
@@ -123,12 +138,28 @@ export default function StudentRegistrationPage() {
                         if (plan && !plan.archived) {
                             for (let i = 0; i < plan.installments; i++) {
                                 const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${details.name}`;
-                                const event = Object.values(eventsData).find((e: any) => e.title?.trim() === title.trim()) as any;
+                                const event = eventsData.find((e: any) => e.title?.trim() === title.trim());
                                 if (!event) isMissingDeadlines = true;
                                 deadlines.push({ title: `${plan.name} ${getOrdinalSuffix(i + 1)}`, date: event?.date || null });
                             }
                         }
                     });
+
+                    const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
+                    const optionalFeesList = Object.entries(details.optionalFees || {})
+                        .filter(([id]) => registration?.optionalFees?.includes(id))
+                        .map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
+
+                    let totalTuition = 0;
+                    if (details.billingPolicy === 'semester') {
+                        totalTuition = Number(details.tuitionFee || 0);
+                    } else {
+                        courses.forEach(c => {
+                            if (enrolledCourseIds.has(c.id) || !isRegistered) {
+                                totalTuition += c.cost;
+                            }
+                        });
+                    }
 
                     list.push({ 
                         ...details, 
@@ -139,7 +170,11 @@ export default function StudentRegistrationPage() {
                         courses,
                         deadlines,
                         isMissingDeadlines,
-                        isCurrentStanding
+                        isCurrentStanding,
+                        selectedPaymentPlan: registration?.paymentPlan,
+                        mandatoryFeesList,
+                        optionalFeesList,
+                        totalTuition
                     });
                 }
             }
@@ -222,28 +257,67 @@ export default function StudentRegistrationPage() {
                                     </Alert>
                                 )}
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                            <BookCopy className="h-3 w-3" /> Proposed Courses
-                                        </Label>
-                                        <div className="grid gap-2">
-                                            {sem.courses.map(course => (
-                                                <div key={course.id} className="p-2 border rounded bg-muted/20">
-                                                    <div className="flex justify-between items-start text-sm font-semibold">
-                                                        <span>{course.code} - {course.name}</span>
+                                    <div className="space-y-4">
+                                        <div className="space-y-3">
+                                            <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+                                                <BookCopy className="h-3 w-3" /> Proposed Courses
+                                            </Label>
+                                            <div className="grid gap-2">
+                                                {sem.courses.map(course => (
+                                                    <div key={course.id} className="p-2 border rounded bg-muted/20">
+                                                        <div className="flex justify-between items-start text-sm font-semibold">
+                                                            <span>{course.code} - {course.name}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
+                                                            <UserCheck className="h-3 w-3" /> {course.lecturerNames}
+                                                        </div>
+                                                        {course.timetable.length > 0 && (
+                                                            <div className="flex items-center gap-1 text-[10px] text-primary mt-0.5">
+                                                                <Clock className="h-3 w-3" /> 
+                                                                {course.timetable.join(', ')}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
-                                                        <UserCheck className="h-3 w-3" /> {course.lecturerNames}
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {sem.isRegistered && (
+                                            <div className="space-y-3 p-4 border rounded-xl bg-primary/5">
+                                                <Label className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                                    <Receipt className="h-3 w-3" /> Financial Summary
+                                                </Label>
+                                                <div className="space-y-2 text-xs">
+                                                    <div className="flex justify-between">
+                                                        <span className="opacity-70">Tuition Cost:</span>
+                                                        <span className="font-bold">ZMW {sem.totalTuition.toFixed(2)}</span>
                                                     </div>
-                                                    {course.timetable.length > 0 && (
-                                                        <div className="flex items-center gap-1 text-[10px] text-primary mt-0.5">
-                                                            <Clock className="h-3 w-3" /> 
-                                                            {course.timetable.join(', ')}
+                                                    {sem.mandatoryFeesList.map((f, i) => (
+                                                        <div key={i} className="flex justify-between">
+                                                            <span className="opacity-70">{f.name}:</span>
+                                                            <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                    {sem.optionalFeesList.map((f, i) => (
+                                                        <div key={i} className="flex justify-between">
+                                                            <span className="opacity-70">{f.name}:</span>
+                                                            <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                    <Separator className="my-1"/>
+                                                    <div className="flex justify-between text-sm font-black">
+                                                        <span className="text-primary">Total Invoiced:</span>
+                                                        <span className="text-primary">ZMW {(sem.totalTuition + sem.mandatoryFeesList.reduce((acc,f)=>acc+f.amount,0) + sem.optionalFeesList.reduce((acc,f)=>acc+f.amount,0)).toFixed(2)}</span>
+                                                    </div>
+                                                    {sem.hasPaymentPlan && (
+                                                        <div className="flex justify-between pt-1 border-t border-dashed border-primary/20">
+                                                            <span className="opacity-70">Selected Plan:</span>
+                                                            <Badge variant="outline" className="h-4 text-[8px] font-bold uppercase">{sem.selectedPaymentPlan}</Badge>
                                                         </div>
                                                     )}
                                                 </div>
-                                            ))}
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="space-y-3">
