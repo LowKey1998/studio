@@ -91,7 +91,7 @@ export default function StudentRegistrationPage() {
             const sData = sSnap.val() || {};
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
-            const eventsData = eventsSnap.val() || {};
+            const eventsData = eventsSnapshot.val() || {};
             const timetablesData = timetablesSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
@@ -187,12 +187,18 @@ export default function StudentRegistrationPage() {
                                                 <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                             </Badge>
                                         ) : (
-                                            <Button asChild variant="secondary" className={cn("font-bold", sem.isCurrentStanding ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-muted text-muted-foreground")}>
-                                                <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                    <AlertCircle className="mr-2 h-4 w-4"/>
-                                                    {sem.isCurrentStanding ? "Complete Setup" : "Pending Setup"}
-                                                </Link>
-                                            </Button>
+                                            sem.isCurrentStanding ? (
+                                                <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm">
+                                                    <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                        <AlertCircle className="mr-2 h-4 w-4"/>
+                                                        Complete Setup
+                                                    </Link>
+                                                </Button>
+                                            ) : (
+                                                <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60">
+                                                    <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
+                                                </Badge>
+                                            )
                                         )
                                     ) : sem.isOpen ? (
                                         <Button asChild>
