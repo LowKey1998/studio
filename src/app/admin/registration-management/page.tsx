@@ -44,7 +44,9 @@ import {
     History,
     Trash2,
     BookCopy,
-    Save
+    Save,
+    BookOpen,
+    Tag
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -107,10 +109,23 @@ type CreateOrEditDialogContentProps = {
     feeTemplates: FeeTemplate[];
     allIntakes: Intake[];
     calendarSettings: any;
+    allCourses: Record<string, any>;
+    allCoursePaths: any[];
     initialTab?: string;
 };
 
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes, calendarSettings, initialTab = 'details' }: CreateOrEditDialogContentProps) {
+function CreateOrEditDialogContent({ 
+    editingSemester, 
+    onClose, 
+    onSaveSuccess, 
+    allPaymentPlans, 
+    feeTemplates, 
+    allIntakes, 
+    calendarSettings, 
+    allCourses,
+    allCoursePaths,
+    initialTab = 'details' 
+}: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
     const [intakeId, setIntakeId] = React.useState('');
     const [year, setYear] = React.useState('');
@@ -129,6 +144,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState(0);
     const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester'>('course');
     const [tuitionFee, setTuitionFee] = React.useState('');
+    const [coursePrices, setCoursePrices] = React.useState<Record<string, string>>({});
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
     const [isOptionalFeeDialogOpen, setIsOptionalFeeDialogOpen] = React.useState(false);
@@ -138,6 +154,18 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
 
     const { toast } = useToast();
     
+    // Find courses relevant to this semester ID across all paths
+    const relevantCourseIds = React.useMemo(() => {
+        if (!editingSemester) return new Set<string>();
+        const ids = new Set<string>();
+        allCoursePaths.forEach(path => {
+            if (path.semesters && path.semesters[editingSemester.id]) {
+                path.semesters[editingSemester.id].courses?.forEach((cid: string) => ids.add(cid));
+            }
+        });
+        return ids;
+    }, [editingSemester, allCoursePaths]);
+
     React.useEffect(() => {
         if (editingSemester) {
             setIntakeId(editingSemester.intakeId || '');
@@ -159,8 +187,15 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             setLateRegistrationFee(editingSemester.lateRegistrationFee ?? 0);
             setBillingPolicy(editingSemester.billingPolicy || 'course');
             setTuitionFee(String(editingSemester.tuitionFee || ''));
+
+            // Initialize course prices from master records
+            const prices: Record<string, string> = {};
+            relevantCourseIds.forEach(cid => {
+                prices[cid] = String(allCourses[cid]?.cost || '0');
+            });
+            setCoursePrices(prices);
         }
-    }, [editingSemester]);
+    }, [editingSemester, relevantCourseIds, allCourses]);
 
     React.useEffect(() => {
         if (intakeId && year && semesterInYear && calendarSettings) {
@@ -211,13 +246,24 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 tuitionFee: Number(tuitionFee) || 0
             };
 
+            const updates: Record<string, any> = {};
+            
             if (editingSemester) {
-                await update(ref(db, `semesters/${editingSemester.id}`), semesterData);
-                toast({ title: 'Semester Updated' });
+                updates[`semesters/${editingSemester.id}`] = semesterData;
             } else {
-                await set(push(ref(db, 'semesters')), semesterData);
-                toast({ title: 'Semester Created' });
+                const newRef = push(ref(db, 'semesters'));
+                updates[`semesters/${newRef.key}`] = semesterData;
             }
+
+            // Also update course costs globally if we are in pay-by-course mode
+            if (billingPolicy === 'course') {
+                Object.entries(coursePrices).forEach(([cid, price]) => {
+                    updates[`courses/${cid}/cost`] = Number(price);
+                });
+            }
+
+            await update(ref(db), updates);
+            toast({ title: editingSemester ? 'Semester Updated' : 'Semester Created' });
             onSaveSuccess();
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Operation Failed', description: error.message });
@@ -325,7 +371,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                         </div>
                     </div>
                 </TabsContent>
-                <TabsContent value="fees" className="space-y-4 pt-4">
+                <TabsContent value="fees" className="space-y-4 pt-4 max-h-[60vh] overflow-y-auto pr-2">
                     <div className="p-4 border rounded-xl bg-primary/5 mb-4">
                         <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
                         <RadioGroup value={billingPolicy} onValueChange={(val) => setBillingPolicy(val as any)} className="grid grid-cols-2 gap-4 mt-3">
@@ -338,10 +384,39 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                 <Label htmlFor="bp-semester" className="cursor-pointer text-center font-bold">Flat Semester Fee</Label>
                             </div>
                         </RadioGroup>
-                        {billingPolicy === 'semester' && (
+                        {billingPolicy === 'semester' ? (
                             <div className="space-y-1 mt-4 animate-in fade-in slide-in-from-top-2">
                                 <Label className="text-xs font-bold uppercase">Flat Tuition Amount (ZMW)</Label>
                                 <Input type="number" value={tuitionFee} onChange={e => setTuitionFee(e.target.value)} placeholder="5000.00" className="bg-background" />
+                            </div>
+                        ) : (
+                            <div className="space-y-4 mt-4 animate-in fade-in slide-in-from-top-2">
+                                <Label className="text-xs font-bold uppercase flex items-center gap-2"><Tag className="h-3 w-3" /> Course Price List</Label>
+                                <div className="space-y-2 border rounded-lg bg-background p-3 shadow-inner">
+                                    {Array.from(relevantCourseIds).map(cid => {
+                                        const c = allCourses[cid];
+                                        return (
+                                            <div key={cid} className="flex items-center justify-between gap-4 p-2 rounded hover:bg-muted/30 transition-colors">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold truncate">{c?.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground uppercase">{c?.code}</p>
+                                                </div>
+                                                <div className="relative w-32">
+                                                    <Input 
+                                                        type="number" 
+                                                        value={coursePrices[cid] || ''} 
+                                                        onChange={e => setCoursePrices(prev => ({...prev, [cid]: e.target.value}))}
+                                                        className="h-8 pl-7 text-xs font-bold"
+                                                    />
+                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] opacity-50">K</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {relevantCourseIds.size === 0 && (
+                                        <p className="text-center py-4 text-xs text-muted-foreground italic">No courses mapped to this semester phase yet.</p>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -359,7 +434,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                 </div>
                             </div>
                         ))}
-                        <Button variant="outline" size="sm" onClick={() => setIsMandatoryFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Mandatory Fee</Button>
+                        <Button variant="outline" type="button" size="sm" onClick={() => setIsMandatoryFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Mandatory Fee</Button>
                     </div>
                     <Separator />
                     <Label className="font-bold">Optional Fees</Label>
@@ -373,7 +448,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                                 </div>
                             </div>
                         ))}
-                        <Button variant="outline" size="sm" onClick={() => setIsOptionalFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Optional Fee</Button>
+                        <Button variant="outline" type="button" size="sm" onClick={() => setIsOptionalFeeDialogOpen(true)} className="w-full mt-2 h-7 text-[10px] uppercase font-black"><PlusCircle className="h-3 w-3 mr-1"/>Add Optional Fee</Button>
                     </div>
                 </TabsContent>
                 <TabsContent value="controls" className="space-y-6 pt-4">
@@ -753,6 +828,8 @@ export default function RegistrationManagementPage() {
                         feeTemplates={feeTemplates}
                         allIntakes={allIntakes}
                         calendarSettings={calendarSettings}
+                        allCourses={allCourses}
+                        allCoursePaths={allCoursePaths}
                         initialTab={editInitialTab}
                     />
                 </DialogContent>
