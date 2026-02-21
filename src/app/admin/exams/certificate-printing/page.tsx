@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -123,7 +122,8 @@ export default function CertificatePrintingPage() {
         try {
             const bgUrl = placeholderImages.certificates.background.url;
             
-            const img = new Image();
+            // Using document.createElement('img') to avoid "Illegal constructor" error
+            const img = document.createElement('img');
             img.crossOrigin = "anonymous";
             img.src = bgUrl;
 
