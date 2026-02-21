@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -399,33 +398,23 @@ export default function StudentDashboardPage() {
                 </div>
             </div>
 
-            {missingPlanPrompt && (
-                <Card className="border-2 border-orange-200 bg-orange-50/20 shadow-lg animate-in fade-in zoom-in-95 duration-500">
-                    <CardHeader className="pb-3 border-b border-orange-100">
-                        <div className="flex items-center gap-2 text-orange-800">
-                            <ShieldAlert className="h-5 w-5" />
-                            <CardTitle className="text-lg font-bold">Action Required: Finalize Registration</CardTitle>
+            {financialWarning && (
+                <Alert variant="destructive" className="border-2 shadow-md">
+                    <ShieldX className="h-5 w-5" />
+                    <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3">
+                        <p>{financialWarning.message}</p>
+                        <div className="text-xs space-y-1">
+                            <p className="font-bold uppercase opacity-70">Active Restrictions:</p>
+                            <ul className="list-disc pl-5 opacity-90">
+                                <li>Semester results are hidden</li>
+                                <li>New registrations are blocked</li>
+                                <li>Library borrowing suspended</li>
+                            </ul>
                         </div>
-                    </CardHeader>
-                    <CardContent className="pt-4 space-y-3">
-                        <p className="text-sm text-orange-700 leading-relaxed">
-                            You are currently attending classes for <strong>{missingPlanPrompt.semesterName}</strong>, but your registration is incomplete because you haven't selected a <strong>Payment Plan</strong>.
-                        </p>
-                        <Alert variant="default" className="bg-white border-orange-200 py-2">
-                            <Info className="h-4 w-4 text-orange-600" />
-                            <AlertDescription className="text-xs font-medium text-orange-800">
-                                Unfinished registrations may lead to portal restrictions and could prevent you from viewing your results or taking exams.
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                    <CardFooter>
-                        <Button className="w-full bg-orange-600 hover:bg-orange-700 shadow-md" asChild>
-                            <Link href={`/student/registration/${userProfile?.intakeId}/${missingPlanPrompt.year}/${missingPlanPrompt.sem}`}>
-                                Select Payment Plan Now <ChevronRight className="ml-2 h-4 w-4"/>
-                            </Link>
-                        </Button>
-                    </CardFooter>
-                </Card>
+                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive font-bold" asChild><Link href="/student/payments">Pay to Restore Access</Link></Button>
+                    </AlertDescription>
+                </Alert>
             )}
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -483,25 +472,6 @@ export default function StudentDashboardPage() {
                     <CardContent><div className="text-2xl font-black">{enrolledCourses.length}</div></CardContent>
                 </Card>
             </div>
-
-            {financialWarning && (
-                <Alert variant="destructive" className="border-2 shadow-md">
-                    <ShieldX className="h-5 w-5" />
-                    <AlertTitle className="font-bold">Financial Standing Alert</AlertTitle>
-                    <AlertDescription className="flex flex-col gap-3">
-                        <p>{financialWarning.message}</p>
-                        <div className="text-xs space-y-1">
-                            <p className="font-bold uppercase opacity-70">Active Restrictions:</p>
-                            <ul className="list-disc pl-5 opacity-90">
-                                <li>Semester results are hidden</li>
-                                <li>New registrations are blocked</li>
-                                <li>Library borrowing suspended</li>
-                            </ul>
-                        </div>
-                        <Button variant="outline" size="sm" className="w-fit border-destructive text-destructive font-bold" asChild><Link href="/student/payments">Pay to Restore Access</Link></Button>
-                    </AlertDescription>
-                </Alert>
-            )}
 
             <div className="grid gap-6 lg:grid-cols-3">
                 <Card className="lg:col-span-2 shadow-lg border-0 bg-muted/10">

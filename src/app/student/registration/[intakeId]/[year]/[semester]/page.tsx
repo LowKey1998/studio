@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -204,7 +203,6 @@ export default function RegisterForSemesterPage() {
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
 
-                // If policy is semester-based, we pre-select and lock all courses
                 const initialSelectedCourses = semesterCourses
                     .map(c => c.id)
                     .filter(id => !userDataVal.exemptedCourses?.[id]);
@@ -247,7 +245,7 @@ export default function RegisterForSemesterPage() {
     }, [selectedPaymentPlan, availablePaymentPlans, semesterDetails]);
 
     const toggleCourseSelection = (courseId: string) => {
-        if (billingPolicy === 'semester') return; // Cannot deselect if on flat fee
+        if (billingPolicy === 'semester') return;
         setSelectedCourseIds(prev => prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]);
     };
 
@@ -327,9 +325,7 @@ export default function RegisterForSemesterPage() {
         }
     };
     
-    if (loading) {
-        return <div className="space-y-4"><Skeleton className="h-96 w-full"/></div>
-    }
+    if (loading) return <div className="space-y-4"><Skeleton className="h-96 w-full"/></div>
 
     if (error) {
         return (
@@ -427,8 +423,7 @@ export default function RegisterForSemesterPage() {
                             <div className="flex items-center space-x-2 p-4 border rounded-lg bg-blue-50/50">
                                 <Checkbox id="apply-scholarship" checked={applyScholarship} onCheckedChange={c => setApplyScholarship(!!c)}/>
                                 <Label htmlFor="apply-scholarship" className="cursor-pointer">
-                                    <p className="font-bold text-blue-700">I have a scholarship</p>
-                                    <p className="text-xs text-blue-600">Apply for 100% Tuition Waiver</p>
+                                    <p className="font-bold text-blue-700">I have a Scholarship</p>
                                 </Label>
                             </div>
                         </div>

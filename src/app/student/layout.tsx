@@ -1,4 +1,3 @@
-
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,9 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [checkingStanding, setCheckingStanding] = useState(false);
   const [financialSettings, setFinancialSettings] = useState<any>(null);
   
-  // Ref to prevent re-checking unless critical data changes
   const hasCheckedStanding = useRef<boolean>(false);
-  const lastCheckedUid = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading && (!userProfile || userProfile.role?.toLowerCase() !== 'student')) {
@@ -37,19 +34,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading || !user?.uid || !userProfile?.intakeId) return;
-    
-    // Only check once per session load unless the user changes
-    if (hasCheckedStanding.current && lastCheckedUid.current === user.uid) return;
+    if (hasCheckedStanding.current) return;
 
     const checkStanding = async () => {
         hasCheckedStanding.current = true;
-        lastCheckedUid.current = user.uid;
         setCheckingStanding(true);
         
-        // Safety timeout to prevent infinite sync screen
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-        }, 10000);
+        }, 8000);
 
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
