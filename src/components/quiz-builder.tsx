@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -7,20 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, Loader2, Save, X, GripVertical } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, Save, X, GripVertical, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { ref, get, set, push, serverTimestamp, update, remove, onValue } from 'firebase/database';
+import { ref, get, set, push, serverTimestamp, update, onValue } from 'firebase/database';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from './ui/checkbox';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Skeleton } from './ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { Info } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
+import { Badge } from './ui/badge';
 
 
 type Question = {
@@ -50,10 +50,13 @@ type Quiz = {
     semesterId?: string | null;
     courseIds?: string[];
     semesterIds?: string[];
+    intakeIds?: string[];
+    programmeIds?: string[];
+    linkedComponentId?: string | null;
 };
 
-type Course = { id: string; name: string; code: string; };
-type Programme = { id: string; name: string; courseIds?: Record<string, boolean>; };
+type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
+type Programme = { id: string; name: string; };
 type Semester = { id: string; name: string; status: 'Open' | 'Closed' | 'Archived'; };
 
 const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, removeQuestion, updateOption, addOption, removeOption, setCorrectAnswer }: {
@@ -102,7 +105,12 @@ const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, remo
     );
 };
 
-export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?: string, courseId?: string | null, semesterId?: string | null }) {
+export default function QuizBuilder({ quizId }: { quizId?: string }) {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const { toast } = useToast();
+    const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
     const [quiz, setQuiz] = React.useState<Quiz>({
         title: '',
         description: '',
@@ -112,73 +120,55 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
         shuffleQuestions: true,
         questionsPerPage: 10,
         sections: [{ id: `section-${Date.now()}`, title: 'Section 1', questions: [] }],
-        courseId: courseId || null,
-        semesterId: semesterId || null,
-        courseIds: courseId ? [courseId] : [],
-        semesterIds: semesterId ? [semesterId] : [],
+        courseIds: [],
+        intakeIds: [],
+        programmeIds: [],
+        linkedComponentId: null,
     });
     
-    const [programmes, setProgrammes] = React.useState<Programme[]>([]);
-    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
-    const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
-
+    const [courses, setAllCourses] = React.useState<Course[]>([]);
+    const [templates, setTemplates] = React.useState<Record<string, any>>({});
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
-    const { toast } = useToast();
-    const router = useRouter();
-    const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-    
-    const [isReady, setIsReady] = React.useState(false);
 
     React.useEffect(() => {
-        if (quizId || (courseId && semesterId)) {
-            setIsReady(true);
-        }
-    }, [quizId, courseId, semesterId]);
-
-    const handleMultiSelectChange = (id: string, state: string[] = [], setState: React.Dispatch<React.SetStateAction<string[]>>) => {
-        setState(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
-    };
-    
-    React.useEffect(() => {
-        if (!isReady) {
-             setLoading(false);
-             return;
-        };
-
-        const fetchDetails = async () => {
+        const fetchMetadata = async () => {
             setLoading(true);
             try {
-                const [coursesSnap, programmesSnap, semestersSnap] = await Promise.all([
+                const [cSnap, tSnap] = await Promise.all([
                     get(ref(db, 'courses')),
-                    get(ref(db, 'programmes')),
-                    get(ref(db, 'semesters')),
+                    get(ref(db, 'settings/assessmentTemplates'))
                 ]);
-
-                setAllCourses(coursesSnap.exists() ? Object.keys(coursesSnap.val()).map(id => ({ id, ...coursesSnap.val()[id] })) : []);
-                setProgrammes(programmesSnap.exists() ? Object.keys(programmesSnap.val()).map(id => ({ id, ...programmesSnap.val()[id] })) : []);
-                setAllSemesters(semestersSnap.exists() ? Object.keys(semestersSnap.val()).map(id => ({ id, ...semestersSnap.val()[id] })).filter(s => s.status !== 'Archived') : []);
+                if (cSnap.exists()) setAllCourses(Object.entries(cSnap.val()).map(([id, d]:[string, any]) => ({ id, ...d })));
+                if (tSnap.exists()) setTemplates(tSnap.val());
 
                 if (quizId) {
-                    const quizRef = ref(db, `quizzes/${quizId}`);
-                    const snapshot = await get(quizRef);
-                    if (snapshot.exists()) {
-                        const quizData = snapshot.val();
-                        setQuiz(quizData);
-                    } else {
-                        toast({ variant: 'destructive', title: 'Quiz not found' });
-                    }
-                } else if (courseId && semesterId) {
-                     setQuiz(prev => ({...prev, courseIds: [courseId], semesterIds: [semesterId]}));
+                    const quizSnap = await get(ref(db, `quizzes/${quizId}`));
+                    if (quizSnap.exists()) setQuiz(quizSnap.val());
+                } else {
+                    // Initialize from search params for new quiz
+                    const cId = searchParams.get('courseId');
+                    const iIds = searchParams.get('intakeIds')?.split(',') || [];
+                    const pIds = searchParams.get('programmeIds')?.split(',') || [];
+                    const lcId = searchParams.get('linkedComponentId');
+
+                    setQuiz(prev => ({
+                        ...prev,
+                        courseId: cId, // Keep legacy field for compatibility
+                        courseIds: cId ? [cId] : [],
+                        intakeIds: iIds,
+                        programmeIds: pIds,
+                        linkedComponentId: lcId
+                    }));
                 }
-            } catch (error) {
-                 toast({ variant: 'destructive', title: 'Error loading details' });
+            } catch (e) {
+                console.error(e);
             } finally {
                 setLoading(false);
             }
         };
-        fetchDetails();
-    }, [quizId, courseId, semesterId, toast, isReady]);
+        fetchMetadata();
+    }, [quizId, searchParams]);
 
     const handleQuizChange = (field: keyof Quiz, value: any) => {
         setQuiz(prev => ({ ...prev, [field]: value }));
@@ -273,12 +263,13 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
     };
 
     const handleSaveQuiz = async () => {
+        if (!quiz.title.trim()) { toast({ variant: 'destructive', title: 'Title required' }); return; }
         setSaving(true);
         try {
-            const quizRef = quizId ? ref(db, `quizzes/${quizId}`) : push(ref(db, 'quizzes'));
-            await set(quizRef, quiz);
-            toast({ title: 'Quiz Saved', description: 'Your quiz has been successfully saved.' });
-            router.push('/admin/e-learning/online-quizzes');
+            const finalRef = quizId ? ref(db, `quizzes/${quizId}`) : push(ref(db, 'quizzes'));
+            await set(finalRef, { ...quiz, timestamp: serverTimestamp() });
+            toast({ title: 'Quiz Saved' });
+            router.push('/staff/quizzes');
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
         } finally {
@@ -317,82 +308,54 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
         });
     };
 
-    const filteredCourses = React.useMemo(() => {
-        if ((quiz.semesterIds || []).length === 0) return [];
-        const courseIds = new Set<string>();
-        (quiz.semesterIds || []).forEach(semId => {
-            const prog = programmes.find(p => p.id === semId); // Incorrect logic, should be based on programme filter
-            // This part of logic needs rethink, for now, let's assume we show courses of selected programmes
-        });
-        // Simplified: for now just return all courses
-        return allCourses;
-    }, [quiz.semesterIds, programmes, allCourses]);
-    
-    if (!isReady) {
-        return (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Quiz Builder</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Alert variant="destructive">
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Missing Information</AlertTitle>
-                        <AlertDescription>
-                            No course or quiz ID was provided. Please create a quiz from the main quizzes page.
-                        </AlertDescription>
-                    </Alert>
-                </CardContent>
-            </Card>
-        )
-    }
+    const linkedCourse = quiz.courseIds?.[0] ? courses.find(c => c.id === quiz.courseIds![0]) : null;
+    const linkedComponent = linkedCourse?.assessmentTemplateId && quiz.linkedComponentId 
+        ? templates[linkedCourse.assessmentTemplateId]?.components?.[quiz.linkedComponentId]
+        : null;
 
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                 <Skeleton className="h-40 w-full" />
-                 <Skeleton className="h-64 w-full" />
-                 <div className="flex justify-end"><Skeleton className="h-10 w-24" /></div>
-            </div>
-        )
-    }
+    if (loading) return <div className="space-y-6"><Skeleton className="h-40 w-full" /><Skeleton className="h-96 w-full" /></div>;
 
     return (
         <div className="space-y-6">
             <Card>
-                <CardHeader>
-                    <CardTitle className="text-2xl">{quizId ? 'Edit Quiz' : 'Create New Quiz'}</CardTitle>
-                    <CardDescription>
-                         Define quiz settings, sections, and questions below.
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-2xl">{quizId ? 'Edit' : 'Create'} Automated Exam</CardTitle>
+                        <CardDescription>Configure rules and link to curriculum assessments.</CardDescription>
+                    </div>
+                    {linkedComponent && (
+                        <Badge className="bg-blue-600 hover:bg-blue-700 py-1.5 px-4 gap-2">
+                            <LinkIcon className="h-3 w-3" />
+                            Fulfills CA: {linkedComponent.name}
+                        </Badge>
+                    )}
                 </CardHeader>
-                <CardContent className="space-y-4">
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div className="space-y-2"><Label>Semester(s)</Label>
-                            <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-start">{quiz.semesterIds?.length ? `${quiz.semesterIds.length} selected` : 'Select semesters...'}</Button></PopoverTrigger>
-                                <PopoverContent className="p-0"><ScrollArea className="h-64"><div className="p-2 space-y-1">
-                                    {allSemesters.map(s => <div key={s.id} className="flex items-center gap-2"><Checkbox id={`sem-${s.id}`} checked={quiz.semesterIds?.includes(s.id)} onCheckedChange={() => handleMultiSelectChange(s.id, quiz.semesterIds, (ids) => handleQuizChange('semesterIds', ids))}/><Label htmlFor={`sem-${s.id}`}>{s.name}</Label></div>)}
-                                </div></ScrollArea></PopoverContent>
-                            </Popover>
+                <CardContent className="space-y-6">
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                            <Label>Quiz Title</Label>
+                            <Input placeholder="e.g., Mid-Term Anatomy Exam" value={quiz.title} onChange={e => handleQuizChange('title', e.target.value)} />
                         </div>
-                        <div className="space-y-2"><Label>Course(s)</Label>
-                            <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-start">{quiz.courseIds?.length ? `${quiz.courseIds.length} selected` : 'Select courses...'}</Button></PopoverTrigger>
-                                <PopoverContent className="p-0"><ScrollArea className="h-64"><div className="p-2 space-y-1">
-                                    {filteredCourses.map(c => <div key={c.id} className="flex items-center gap-2"><Checkbox id={`course-${c.id}`} checked={quiz.courseIds?.includes(c.id)} onCheckedChange={() => handleMultiSelectChange(c.id, quiz.courseIds, (ids) => handleQuizChange('courseIds', ids))}/><Label htmlFor={`course-${c.id}`}>{c.name}</Label></div>)}
-                                </div></ScrollArea></PopoverContent>
-                            </Popover>
+                        <div className="space-y-1">
+                            <Label>Course Information</Label>
+                            <div className="h-10 px-3 flex items-center border rounded-md bg-muted text-sm font-bold">
+                                {linkedCourse ? `${linkedCourse.code}: ${linkedCourse.name}` : 'Standalone Assessment'}
+                            </div>
                         </div>
                     </div>
-                    <Input placeholder="Quiz Title" value={quiz.title} onChange={e => handleQuizChange('title', e.target.value)} />
-                    <Textarea placeholder="Quiz Description" value={quiz.description} onChange={e => handleQuizChange('description', e.target.value)} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div><Label>Start Time</Label><Input type="datetime-local" value={quiz.startTime} onChange={e => handleQuizChange('startTime', e.target.value)}/></div>
-                        <div><Label>End Time</Label><Input type="datetime-local" value={quiz.endTime} onChange={e => handleQuizChange('endTime', e.target.value)}/></div>
-                         <div><Label>Questions Per Page</Label><Input type="number" min="0" placeholder="0 for all" value={quiz.questionsPerPage} onChange={e => handleQuizChange('questionsPerPage', Number(e.target.value))}/><p className="text-xs text-muted-foreground">Set to 0 to show all questions on one page.</p></div>
-                        <div className="flex items-end gap-4">
-                            <div className="flex items-center space-x-2"><Switch id="shuffle" checked={quiz.shuffleQuestions} onCheckedChange={c => handleQuizChange('shuffleQuestions', c)}/><Label htmlFor="shuffle">Shuffle Questions</Label></div>
-                            <div className="flex items-center space-x-2"><Switch id="mc-only" checked={quiz.isMultipleChoiceOnly} onCheckedChange={c => handleQuizChange('isMultipleChoiceOnly', c)}/><Label htmlFor="mc-only">Auto-Grade</Label></div>
-                        </div>
+                    <div className="space-y-1">
+                        <Label>Instructions for Students</Label>
+                        <Textarea placeholder="Explain rules, time limits, and guidelines..." value={quiz.description} onChange={e => handleQuizChange('description', e.target.value)} rows={3} />
+                    </div>
+                    <Separator />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="space-y-1"><Label>Opening Date/Time</Label><Input type="datetime-local" value={quiz.startTime} onChange={e => handleQuizChange('startTime', e.target.value)}/></div>
+                        <div className="space-y-1"><Label>Closing Date/Time</Label><Input type="datetime-local" value={quiz.endTime} onChange={e => handleQuizChange('endTime', e.target.value)}/></div>
+                        <div className="space-y-1"><Label>Questions Per Page</Label><Input type="number" min="0" value={quiz.questionsPerPage} onChange={e => handleQuizChange('questionsPerPage', Number(e.target.value))}/><p className="text-[10px] text-muted-foreground italic">Set to 0 to show all at once.</p></div>
+                    </div>
+                    <div className="flex flex-wrap gap-6 p-4 border rounded-xl bg-primary/5">
+                        <div className="flex items-center space-x-2"><Switch id="shuffle" checked={quiz.shuffleQuestions} onCheckedChange={c => handleQuizChange('shuffleQuestions', c)}/><Label htmlFor="shuffle" className="text-xs font-bold uppercase">Shuffle Questions</Label></div>
+                        <div className="flex items-center space-x-2"><Switch id="mc-only" checked={quiz.isMultipleChoiceOnly} onCheckedChange={c => handleQuizChange('isMultipleChoiceOnly', c)}/><Label htmlFor="mc-only" className="text-xs font-bold uppercase">Auto-Grade (MCQ Only)</Label></div>
                     </div>
                 </CardContent>
             </Card>
@@ -401,11 +364,14 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                 <div className="space-y-4">
                     {quiz.sections.map((section, sectionIndex) => (
                         <Card key={section.id}>
-                            <CardHeader className="flex-row items-center justify-between">
-                                <Input className="text-lg font-bold border-none shadow-none focus-visible:ring-0 p-0" value={section.title} onChange={(e) => updateSectionTitle(section.id, e.target.value)} />
+                            <CardHeader className="flex-row items-center justify-between border-b pb-4">
+                                <div className="flex-1 flex items-center gap-2">
+                                    <Badge variant="secondary" className="font-mono">{sectionIndex + 1}</Badge>
+                                    <Input className="text-lg font-black border-none shadow-none focus-visible:ring-0 p-0" value={section.title} onChange={(e) => updateSectionTitle(section.id, e.target.value)} />
+                                </div>
                                 <Button variant="ghost" size="icon" onClick={() => removeSection(section.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-4 pt-6">
                                 <SortableContext items={section.questions.map(q => q.id)} strategy={verticalListSortingStrategy}>
                                     {section.questions.map((question, qIndex) => (
                                         <SortableQuestionItem
@@ -422,16 +388,19 @@ export default function QuizBuilder({ quizId, courseId, semesterId }: { quizId?:
                                         />
                                     ))}
                                 </SortableContext>
-                                <Button variant="outline" onClick={() => addQuestion(section.id)}><PlusCircle className="mr-2 h-4 w-4"/>Add Question</Button>
+                                <Button variant="outline" onClick={() => addQuestion(section.id)} className="w-full border-dashed border-2 py-8"><PlusCircle className="mr-2 h-4 w-4"/>Add Question to Section {sectionIndex + 1}</Button>
                             </CardContent>
                         </Card>
                     ))}
                 </div>
             </DndContext>
             
-            <div className="flex justify-between">
-                <Button variant="secondary" onClick={addSection}><PlusCircle className="mr-2 h-4 w-4"/>Add Section</Button>
-                <Button onClick={handleSaveQuiz} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}Save Quiz</Button>
+            <div className="flex justify-between items-center bg-muted/20 p-6 border-t rounded-xl">
+                <Button variant="secondary" onClick={addSection} className="shadow-sm"><PlusCircle className="mr-2 h-4 w-4"/>Add New Section</Button>
+                <Button size="lg" onClick={handleSaveQuiz} disabled={saving} className="shadow-lg px-12 font-bold">
+                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4 mr-2" />}
+                    Save & Publish Quiz
+                </Button>
             </div>
         </div>
     );

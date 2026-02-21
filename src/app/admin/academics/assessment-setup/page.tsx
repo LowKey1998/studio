@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, Trash2, Percent, AlertCircle, Pencil, Link as LinkIcon, Search, Check, X, BookOpen } from "lucide-react";
+import { PlusCircle, Loader2, Trash2, Percent, AlertCircle, Pencil, Link as LinkIcon, Search, Check, X, BookOpen, Monitor } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, onValue, push, remove, update, get } from 'firebase/database';
@@ -25,12 +25,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 type AssessmentComponent = {
     id: string;
     name: string;
     weight: number;
+    isOnlineQuiz?: boolean;
 };
 
 type AssessmentTemplate = {
@@ -105,7 +107,7 @@ export default function AssessmentSetupPage() {
 
     const resetForm = () => {
         setTemplateName('');
-        setComponents([{ id: `new-${Date.now()}`, name: '', weight: 0 }]);
+        setComponents([{ id: `new-${Date.now()}`, name: '', weight: 0, isOnlineQuiz: false }]);
         setEditingTemplate(null);
     };
     
@@ -113,19 +115,19 @@ export default function AssessmentSetupPage() {
         if (template) {
             setEditingTemplate(template);
             setTemplateName(template.name);
-            setComponents(template.components ? Object.entries(template.components).map(([id, comp]) => ({id, ...comp})) : [{ id: `new-${Date.now()}`, name: '', weight: 0 }]);
+            setComponents(template.components ? Object.entries(template.components).map(([id, comp]) => ({id, ...comp})) : [{ id: `new-${Date.now()}`, name: '', weight: 0, isOnlineQuiz: false }]);
         } else {
             resetForm();
         }
         setIsDialogOpen(true);
     };
 
-    const handleComponentChange = (id: string, field: 'name' | 'weight', value: string | number) => {
+    const handleComponentChange = (id: string, field: keyof AssessmentComponent, value: any) => {
         setComponents(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
 
     const addComponent = () => {
-        setComponents(prev => [...prev, { id: `new-${Date.now()}`, name: '', weight: 0 }]);
+        setComponents(prev => [...prev, { id: `new-${Date.now()}`, name: '', weight: 0, isOnlineQuiz: false }]);
     };
     
     const removeComponent = (id: string) => {
@@ -147,7 +149,11 @@ export default function AssessmentSetupPage() {
             const componentsData: Record<string, Omit<AssessmentComponent, 'id'>> = {};
             components.forEach(comp => {
                 const compId = comp.id.startsWith('new-') ? push(ref(db)).key! : comp.id;
-                componentsData[compId] = { name: comp.name, weight: Number(comp.weight) };
+                componentsData[compId] = { 
+                    name: comp.name, 
+                    weight: Number(comp.weight),
+                    isOnlineQuiz: !!comp.isOnlineQuiz 
+                };
             });
 
             const templateData = { name: templateName, components: componentsData };
@@ -280,8 +286,11 @@ export default function AssessmentSetupPage() {
                                     <CardContent className="flex-grow">
                                         <ul className="space-y-1 text-sm border-b pb-4 mb-4">
                                             {Object.values(template.components).map((comp, i) => (
-                                                <li key={i} className="flex justify-between">
-                                                    <span className="text-muted-foreground">{comp.name}</span>
+                                                <li key={i} className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-muted-foreground">{comp.name}</span>
+                                                        {comp.isOnlineQuiz && <Badge variant="outline" className="h-4 text-[8px] uppercase border-blue-200 bg-blue-50 text-blue-700">Online MCQ</Badge>}
+                                                    </div>
                                                     <span className="font-semibold">{comp.weight}%</span>
                                                 </li>
                                             ))}
@@ -307,7 +316,7 @@ export default function AssessmentSetupPage() {
             </Card>
             
             <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsDialogOpen(open); }}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>{editingTemplate ? 'Edit' : 'Create'} Assessment Template</DialogTitle>
                         <DialogDescription>Define the name and weighted components for this assessment structure.</DialogDescription>
@@ -319,25 +328,36 @@ export default function AssessmentSetupPage() {
                         </div>
                         
                         <Label>Assessment Components</Label>
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             {components.map(comp => (
-                                <div key={comp.id} className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 shadow-sm">
-                                    <div className="flex-grow space-y-1">
-                                        <Label htmlFor={`name-${comp.id}`} className="text-[10px] uppercase font-bold text-muted-foreground">Component Name</Label>
-                                        <Input id={`name-${comp.id}`} placeholder="e.g., Quiz 1" value={comp.name} onChange={e => handleComponentChange(comp.id, 'name', e.target.value)} />
-                                    </div>
-                                    <div className="space-y-1 w-24">
-                                        <Label htmlFor={`weight-${comp.id}`} className="text-[10px] uppercase font-bold text-muted-foreground">Weight (%)</Label>
-                                        <div className="relative">
-                                            <Input id={`weight-${comp.id}`} type="number" placeholder="%" value={comp.weight} onChange={e => handleComponentChange(comp.id, 'weight', e.target.value)} className="pr-6"/>
-                                            <Percent className="h-3 w-3 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+                                <div key={comp.id} className="flex flex-col gap-3 p-4 border rounded-xl bg-muted/20 shadow-sm relative group">
+                                    <Button variant="ghost" size="icon" onClick={() => removeComponent(comp.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Component Name</Label>
+                                            <Input placeholder="e.g., Quiz 1" value={comp.name} onChange={e => handleComponentChange(comp.id, 'name', e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Weight (%)</Label>
+                                            <div className="relative">
+                                                <Input type="number" placeholder="%" value={comp.weight} onChange={e => handleComponentChange(comp.id, 'weight', e.target.value)} className="pr-10"/>
+                                                <Percent className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground opacity-50"/>
+                                            </div>
                                         </div>
                                     </div>
-                                    <Button variant="ghost" size="icon" onClick={() => removeComponent(comp.id)} className="self-end mb-0.5"><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                                    <div className="flex items-center space-x-2 p-3 border rounded-lg bg-background/50">
+                                        <Switch id={`online-${comp.id}`} checked={comp.isOnlineQuiz} onCheckedChange={(val) => handleComponentChange(comp.id, 'isOnlineQuiz', val)} />
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor={`online-${comp.id}`} className="text-xs font-bold flex items-center gap-2">
+                                                <Monitor className="h-3 w-3 text-primary"/> Online MCQ Quiz
+                                            </Label>
+                                            <p className="text-[10px] text-muted-foreground leading-tight italic">Students will take this via the online quiz engine. Grades will be auto-calculated.</p>
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
                         </div>
-                        <Button type="button" variant="outline" onClick={addComponent} className="border-dashed"><PlusCircle className="mr-2 h-4 w-4"/>Add Component</Button>
+                        <Button type="button" variant="outline" onClick={addComponent} className="border-dashed border-2 py-6"><PlusCircle className="mr-2 h-4 w-4"/>Add Component</Button>
                         <Alert variant={totalWeight !== 100 ? 'destructive' : 'default'} className="bg-muted/30">
                             <AlertCircle className="h-4 w-4" />
                             <AlertTitle className="text-xs font-bold uppercase">Structure Status: {totalWeight}%</AlertTitle>
@@ -346,7 +366,7 @@ export default function AssessmentSetupPage() {
                             </AlertDescription>
                         </Alert>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t pt-4">
                         <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                         <Button onClick={handleSaveTemplate} disabled={saving || totalWeight !== 100}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save Template</Button>
                     </DialogFooter>

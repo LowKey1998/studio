@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info, Settings2, Mail, CalendarDays, MapPin, CheckCircle2 } from "lucide-react";
+import { Loader2, Save, AlertCircle, Search, User, ChevronsUpDown, X, BookOpen, Layers, Info, Settings2, Mail, CalendarDays, MapPin, CheckCircle2, Monitor } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, update, push, onValue } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -459,7 +459,7 @@ export default function CAEntryPage() {
                                 </PopoverTrigger>
                                 <PopoverContent className="w-[300px] p-0" align="end">
                                     <div className="p-2">
-                                        <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8 h-9" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
+                                        <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search student body..." className="pl-8" value={studentSearchInput} onChange={e => setStudentSearchInput(e.target.value)} /></div>
                                     </div>
                                     <Separator /><ScrollArea className="h-64"><div className="p-1">{searchableStudents.map(student => (
                                         <Button key={student.uid} variant="ghost" className="w-full justify-start text-xs py-2 h-auto" onClick={() => handleSelectStudentFromSearch(student)}>
@@ -485,7 +485,7 @@ export default function CAEntryPage() {
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={selectedProgrammeId} onValueChange={(val) => { setSelectedProgrammeId(val); handleClearSearch(); }}><SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{programmes.map(p=><SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); handleClearSearch(); }}><SelectTrigger className="bg-background"><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
                             <div className="flex items-center justify-between mb-1"><Label className="text-[10px] font-black uppercase">Course(s)</Label><div className="flex items-center gap-1.5"><Switch id="ca-load-all" checked={loadAllCourses} onCheckedChange={setLoadAllCourses} className="h-4 w-7" /><Label htmlFor="ca-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label></div></div>
                             <Popover shadow="lg">
@@ -572,12 +572,20 @@ export default function CAEntryPage() {
                                                                             </TableCell>
                                                                             {components.map(c => (
                                                                                 <TableCell key={c.id} className="text-center">
-                                                                                    <Input 
-                                                                                        type="number" 
-                                                                                        className="w-16 h-8 mx-auto text-center font-bold text-xs" 
-                                                                                        value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} 
-                                                                                        onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} 
-                                                                                    />
+                                                                                    <div className="flex flex-col items-center gap-1">
+                                                                                        <Input 
+                                                                                            type="number" 
+                                                                                            className="w-16 h-8 mx-auto text-center font-bold text-xs" 
+                                                                                            value={scores[courseId]?.[s.uid]?.[c.id]?.score ?? ''} 
+                                                                                            onChange={e => handleScoreChange(courseId, s.uid, c.id, e.target.value)} 
+                                                                                            disabled={c.isOnlineQuiz}
+                                                                                        />
+                                                                                        {c.isOnlineQuiz && (
+                                                                                            <Badge variant="outline" className="text-[8px] uppercase border-blue-200 bg-blue-50 text-blue-700 gap-1 h-3.5">
+                                                                                                <Monitor className="h-2 w-2"/> Automated
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                    </div>
                                                                                 </TableCell>
                                                                             ))}
                                                                         </TableRow>
