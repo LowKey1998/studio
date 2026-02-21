@@ -1,32 +1,29 @@
-
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
-    Loader2, 
-    Search, 
-    Download, 
+    Receipt, 
     DollarSign, 
-    PlusCircle, 
-    Users, 
-    PiggyBank, 
-    Scale, 
-    Trash2, 
-    ChevronsUpDown, 
-    Info, 
-    X, 
-    History, 
-    Mail, 
+    ChevronDown, 
     CheckCircle2, 
-    Clock, 
+    Loader2, 
+    Download, 
+    Calculator, 
     AlertTriangle, 
-    CalendarDays, 
-    TrendingUp, 
+    Search,
+    PlusCircle,
+    Users,
+    PiggyBank,
+    Scale,
+    Trash2,
+    ChevronsUpDown,
+    Clock,
+    CalendarDays,
+    TrendingUp,
     MapPin,
-    Calendar as CalendarIcon,
-    Wallet,
-    ArrowRight
+    Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,7 +33,7 @@ import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfM
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -45,8 +42,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/use-auth';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { PaymentCountdown } from '@/components/payment-countdown';
+import type { DateRange } from 'react-day-picker';
 
 // --- TYPE DEFINITIONS ---
 
@@ -73,7 +73,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    // Cached audit data
+    // Cached audit data for the UI
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -96,7 +96,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
@@ -145,7 +145,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9" 
                         value={search} 
-                        onChange={e => setSearchTerm(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                     />
                 </div>
                 <Separator />
@@ -183,7 +183,6 @@ export default function PaymentsManagementPage() {
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
     const [programmes, setProgrammes] = React.useState<any[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [courses, setCourses] = React.useState<Record<string, any>>({});
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
@@ -228,7 +227,7 @@ export default function PaymentsManagementPage() {
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, cSnap, fSnap] = await Promise.all([
+            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -236,7 +235,6 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'invoices')),
-                get(ref(db, 'courses')),
                 get(ref(db, 'settings/financialSettings'))
             ]);
             
@@ -252,7 +250,6 @@ export default function PaymentsManagementPage() {
             setProgrammes(Object.keys(progsData).map(id => ({ id, ...progsData[id]})));
             setSemesters(Object.keys(semsData).map(id => ({ id, ...semsData[id]})));
             setAllIntakes(Object.keys(intsData).map(id => ({ id, ...intsData[id] })));
-            setCourses(cSnap.val() || {});
             setFinancialSettings(finData);
 
             const studentList: StudentInfo[] = [];
@@ -336,7 +333,17 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => {
         fetchPaymentData();
-    }, []); // Only fetch once on mount
+    }, [fetchPaymentData]);
+
+    const revenueMetrics = React.useMemo(() => {
+        const today = format(getCurrentServerDate(), 'yyyy-MM-dd');
+        const month = format(getCurrentServerDate(), 'yyyy-MM');
+        return rawTransactions.reduce((acc, t) => {
+            if(t.paymentDate.startsWith(today)) acc.today += t.amount;
+            if(t.paymentDate.startsWith(month)) acc.month += t.amount;
+            return acc;
+        }, { today: 0, month: 0 });
+    }, [rawTransactions, serverTimeOffset]);
 
     const filteredTransactions = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -438,7 +445,11 @@ export default function PaymentsManagementPage() {
         }));
     };
 
-    const handleSaveBulkPayments = async () => {
+    const handleRemovePaymentRow = (key: number) => {
+        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
+    };
+
+    const handleSaveAllBulk = async () => {
         const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.userId && p.semesterId);
         if(paymentsToRecord.length === 0) { toast({ variant: 'destructive', title: 'No valid payments entered.' }); return; }
         
@@ -476,7 +487,7 @@ export default function PaymentsManagementPage() {
             }
             
             await update(ref(db), updates);
-            toast({ variant: 'success', title: "Transactions Recorded", description: `Processed ${paymentsToRecord.length} records.` });
+            toast({ title: "Transactions Recorded", description: `Processed ${paymentsToRecord.length} records.` });
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
             await fetchPaymentData();
@@ -516,7 +527,7 @@ export default function PaymentsManagementPage() {
             };
 
             await update(ref(db), updates);
-            toast({ variant: 'success', title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
+            toast({ title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
             setIsRecordPaymentOpen(false);
             setSelectedStudent(null);
             setPaymentAmount('');
@@ -635,7 +646,7 @@ export default function PaymentsManagementPage() {
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
-                                <TableHeader className="bg-muted/50">
+                                <TableHeader>
                                     <TableRow>
                                         <TableHead>System ID</TableHead>
                                         <TableHead>Student Name</TableHead>
@@ -780,13 +791,4 @@ export default function PaymentsManagementPage() {
             </Dialog>
         </div>
     );
-}
-
-function useToast() {
-    const [state, setState] = React.useState({ toasts: [] });
-    return {
-        toast: ({ title, variant, description }: { title: string, variant?: string, description?: string }) => {
-            console.log(title, description);
-        }
-    }
 }
