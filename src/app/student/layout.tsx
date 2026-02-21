@@ -36,7 +36,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     // 3. Perform Standing Check
     const checkStanding = async () => {
         setCheckingStanding(true);
+        // Safety timeout to prevent permanent hang
+        const safetyTimer = setTimeout(() => {
+            console.warn("[GUARD] Standing check timed out. Proceeding with caution.");
+            setCheckingStanding(false);
+        }, 8000);
+
         try {
+            if (!user) {
+                setCheckingStanding(false);
+                return;
+            }
+
             // Check for missing intake assignment
             if (!userProfile.intakeId) {
                 console.warn("[GUARD] No intake assigned to student profile.");
@@ -147,6 +158,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         } catch (error) {
             console.error("Standing guard error:", error);
         } finally {
+            clearTimeout(safetyTimer);
             setCheckingStanding(false);
         }
     };
@@ -170,7 +182,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <Card className="max-w-md w-full border-2 border-destructive/20 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
                       <CardHeader className="bg-destructive/5 border-b border-destructive/10 text-center pb-8">
                           <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <ShieldAlert className="h-10 w-10 text-destructive" />
+                              <ShieldX className="h-10 w-10 text-destructive" />
                           </div>
                           <CardTitle className="text-2xl font-headline font-black uppercase tracking-tight text-destructive">Access Restricted</CardTitle>
                           <CardDescription className="font-medium text-destructive/80">Institutional Payment Compliance Required</CardDescription>
