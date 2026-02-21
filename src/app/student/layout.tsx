@@ -1,4 +1,3 @@
-
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -42,7 +41,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         setCheckingStanding(true);
         
         try {
-            const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
+            const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, settingsSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'transactions')),
                 get(ref(db, `invoices/${user.uid}`)),
@@ -50,7 +49,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 get(ref(db, 'settings/academicCalendar')),
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'settings/financialSettings'))
+                get(ref(db, 'settings'))
             ]);
 
             if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
@@ -58,7 +57,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 return;
             }
 
-            const finData = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
+            const allSettings = settingsSnap.val() || {};
+            const finData = allSettings.financialSettings || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
             setFinancialSettings(finData);
 
             const intake = intakeSnap.val()[userProfile.intakeId];
@@ -99,9 +99,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const totalPaid = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.invoiceId === reg.invoiceId && t.status === 'successful').reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
             
             const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-            const globalThreshold = finData.paymentThreshold || 75;
-            const threshold = semData.paymentThreshold || globalThreshold;
-            const grace = semData.gracePeriodDays || 0;
+            const threshold = semData.paymentThreshold || finData.paymentThreshold || 75;
+            const grace = semData.gracePeriodDays || allSettings.registrationPolicy?.gracePeriodDays || 0;
 
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
             const semDeadlines = calendarEvents.filter(ev => ev.semester === semData.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
@@ -130,13 +129,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const restrictedCategories = restrictedFuncs.sidebar || {};
     let isPathBlocked = false;
 
+    // Check specific functional blocks
     if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) isPathBlocked = true;
     if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) isPathBlocked = true;
     if (restrictedFuncs.library && pathname.startsWith('/student/library')) isPathBlocked = true;
 
+    // Check sidebar category locks
     const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
     if (currentCategory && restrictedCategories[currentCategory.label]) isPathBlocked = true;
 
+    // Essentials are always public
     const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
     setIsRestrictedRoute(isPathBlocked && !isEssential);
 

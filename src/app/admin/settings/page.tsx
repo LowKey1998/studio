@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Wand2, PlusCircle, Trash2, KeyRound, Mail, Percent, Banknote, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, BellRing, ShieldAlert } from 'lucide-react';
+import { Loader2, Save, PlusCircle, Trash2, KeyRound, Mail, Percent, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, LayoutGrid, ShieldAlert, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -27,8 +27,19 @@ type IDPrefixes = {
 };
 
 type LeavePolicy = { maxDays: number; };
-type OverduePolicy = 'doNothing' | 'suspendAccess';
-type PaymentMethods = { flutterwave: { enabled: boolean }; }
+type OverduePolicy = 'doNothing' | 'restrict';
+
+type FinancialSettings = {
+    paymentThreshold: number;
+    defaulterRestrictions: {
+        registration: boolean;
+        results: boolean;
+        library: boolean;
+        exams: boolean;
+        sidebar: Record<string, boolean>;
+    }
+};
+
 type NotificationRules = {
     registration: boolean;
     grading: boolean;
@@ -61,12 +72,29 @@ type EmailTemplates = {
     credentials: EmailTemplate;
 };
 
+const studentSidebarCategories = [
+    "Academics",
+    "eLearning",
+    "Campus Life",
+    "Innovation",
+    "Spiritual Life"
+];
+
 export default function SettingsPage() {
     const [prefixes, setPrefixes] = React.useState<IDPrefixes>({ student: 'STU', staff: 'STF', admin: 'ADM', includeYear: false, includeMonth: false });
     const [leavePolicy, setLeavePolicy] = React.useState<LeavePolicy>({ maxDays: 14 });
     const [overduePolicy, setOverduePolicy] = React.useState<OverduePolicy>('doNothing');
+    const [financialSettings, setFinancialSettings] = React.useState<FinancialSettings>({
+        paymentThreshold: 75,
+        defaulterRestrictions: {
+            registration: true,
+            results: true,
+            library: false,
+            exams: false,
+            sidebar: {}
+        }
+    });
     const [registrationPolicy, setRegistrationPolicy] = React.useState<RegistrationPolicy>({ lateRegistrationFee: 0, gracePeriodDays: 7 });
-    const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethods>({ flutterwave: { enabled: true } });
     const [notificationRules, setNotificationRules] = React.useState<NotificationRules>({
         registration: true,
         grading: true,
@@ -106,8 +134,16 @@ export default function SettingsPage() {
                 const data = snapshot.val();
                 if (data.idPrefixes) setPrefixes(data.idPrefixes);
                 if (data.leavePolicy) setLeavePolicy(data.leavePolicy);
-                if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
                 if (data.overduePolicy) setOverduePolicy(data.overduePolicy);
+                if (data.financialSettings) {
+                    setFinancialSettings({
+                        ...data.financialSettings,
+                        defaulterRestrictions: {
+                            ...data.financialSettings.defaulterRestrictions,
+                            sidebar: data.financialSettings.defaulterRestrictions?.sidebar || {}
+                        }
+                    });
+                }
                 if (data.registrationPolicy) setRegistrationPolicy(prev => ({ ...prev, ...data.registrationPolicy }));
                 if (data.notificationRules) setNotificationRules(prev => ({ ...prev, ...data.notificationRules }));
                 if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
@@ -148,8 +184,8 @@ export default function SettingsPage() {
             await update(settingsRef, { 
                 idPrefixes: prefixes,
                 leavePolicy: leavePolicy,
-                paymentMethods: paymentMethods,
                 overduePolicy: overduePolicy,
+                financialSettings: financialSettings,
                 registrationPolicy: registrationPolicy,
                 integrations: integrations,
                 emailTemplates: emailTemplates,
@@ -182,6 +218,29 @@ export default function SettingsPage() {
 
     const toggleNotificationRule = (key: keyof NotificationRules) => {
         setNotificationRules(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const handleRestrictionChange = (key: keyof Omit<FinancialSettings['defaulterRestrictions'], 'sidebar'>) => {
+        setFinancialSettings(prev => ({
+            ...prev,
+            defaulterRestrictions: {
+                ...prev.defaulterRestrictions,
+                [key]: !prev.defaulterRestrictions[key]
+            }
+        }));
+    };
+
+    const handleSidebarRestrictionToggle = (category: string) => {
+        setFinancialSettings(prev => ({
+            ...prev,
+            defaulterRestrictions: {
+                ...prev.defaulterRestrictions,
+                sidebar: {
+                    ...prev.defaulterRestrictions.sidebar,
+                    [category]: !prev.defaulterRestrictions.sidebar[category]
+                }
+            }
+        }));
     };
 
     if (loading) return <Skeleton className="h-screen w-full" />;
@@ -339,7 +398,7 @@ export default function SettingsPage() {
                 <CardContent>
                     <Accordion type="multiple" defaultValue={['reg-policy']} className="w-full">
                         <AccordionItem value="reg-policy">
-                            <AccordionTrigger className="font-bold flex gap-2"><Settings2 className="h-4 w-4"/>Registration & Finance</AccordionTrigger>
+                            <AccordionTrigger className="font-bold flex gap-2"><Settings2 className="h-4 w-4"/>Registration & Finance Compliance</AccordionTrigger>
                             <AccordionContent className="space-y-6 pt-4">
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <div className="space-y-1">
@@ -353,24 +412,74 @@ export default function SettingsPage() {
                                             <Clock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                         </div>
                                     </div>
-                                    <div className="space-y-1 md:col-span-2">
-                                        <Label>Overdue Balance Action</Label>
-                                        <Select value={overduePolicy} onValueChange={val => setOverduePolicy(val as any)}>
-                                            <SelectTrigger><SelectValue/></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="doNothing">Do Nothing (Display Only)</SelectItem>
-                                                <SelectItem value="suspendAccess">Suspend Portal Access</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                </div>
+
+                                <Separator />
+
+                                <div className="space-y-4">
+                                    <Label className="text-base font-bold flex items-center gap-2 text-destructive"><ShieldAlert className="h-4 w-4"/> Overdue Balance Action</Label>
+                                    <div className="grid md:grid-cols-3 gap-6 items-start">
+                                        <div className="space-y-1">
+                                            <Label>Global Strategy</Label>
+                                            <Select value={overduePolicy} onValueChange={val => setOverduePolicy(val as any)}>
+                                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="doNothing">Do Nothing (Display Only)</SelectItem>
+                                                    <SelectItem value="restrict">Enforce Functional Restrictions</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {overduePolicy === 'restrict' && (
+                                            <div className="md:col-span-2 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs font-black uppercase text-muted-foreground">Functional Restrictions</Label>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        {[
+                                                            { key: 'registration', label: 'Block Registration', desc: 'Prevent future enrollment.' },
+                                                            { key: 'results', label: 'Hide Exam Results', desc: 'Restrict grade visibility.' },
+                                                            { key: 'library', label: 'Suspend Library', desc: 'Block book borrowing.' },
+                                                            { key: 'exams', label: 'Restrict Exams', desc: 'Ineligible for seat numbers.' }
+                                                        ].map((item) => (
+                                                            <div key={item.key} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                                                                <div className="space-y-0.5">
+                                                                    <p className="text-xs font-bold">{item.label}</p>
+                                                                    <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                                                                </div>
+                                                                <Switch 
+                                                                    checked={financialSettings.defaulterRestrictions[item.key as keyof typeof financialSettings.defaulterRestrictions] as boolean} 
+                                                                    onCheckedChange={() => handleRestrictionChange(item.key as any)} 
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs font-black uppercase text-muted-foreground">Sidebar Page Restrictions (Hide Categories)</Label>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border rounded-md bg-muted/20">
+                                                        {studentSidebarCategories.map(category => (
+                                                            <div key={category} className="flex items-center space-x-2">
+                                                                <Checkbox 
+                                                                    id={`restrict-${category}`} 
+                                                                    checked={!!financialSettings.defaulterRestrictions.sidebar[category]} 
+                                                                    onCheckedChange={() => handleSidebarRestrictionToggle(category)} 
+                                                                />
+                                                                <Label htmlFor={`restrict-${category}`} className="text-xs font-medium cursor-pointer">{category} Section</Label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
+
                                 <Alert className="bg-primary/5 border-primary/20">
                                     <Info className="h-4 w-4 text-primary" />
-                                    <AlertTitle className="font-bold">Understanding the Grace Period</AlertTitle>
+                                    <AlertTitle className="font-bold">Understanding Compliance Enforcement</AlertTitle>
                                     <AlertDescription className="text-xs leading-relaxed italic space-y-2">
-                                        <p>The **Grace Period** defines how many days a student is allowed to remain in "Good Standing" after an installment deadline has passed.</p>
-                                        <p>1. **Late Fees**: If enabled, the late fee is applied immediately once the standard deadline is missed.</p>
-                                        <p>2. **Portal Restrictions**: If "Suspend Portal Access" is active, students will automatically lose access to restricted pages and sidebar sections (as configured in Financial Controls) only AFTER the deadline PLUS the grace period has elapsed, provided they haven't met the payment threshold.</p>
+                                        <p>Restrictions are triggered automatically when a student's <strong>Total Paid %</strong> falls below the <strong>Threshold</strong> set for their active semester, and the <strong>Grace Period</strong> has elapsed.</p>
+                                        <p>Navigation locks will hide entire sidebar modules to prevent unauthorized access while the account is in arrears.</p>
                                     </AlertDescription>
                                 </Alert>
                             </AccordionContent>
