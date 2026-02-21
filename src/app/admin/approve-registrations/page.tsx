@@ -3,13 +3,30 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, UserCheck, Check, X, ClipboardCheck, GraduationCap, AlertCircle, Edit, Save, CheckCircle2, History, AlertTriangle } from 'lucide-react';
+import { 
+    Loader2, 
+    UserCheck, 
+    Check, 
+    X, 
+    ClipboardCheck, 
+    GraduationCap, 
+    AlertCircle, 
+    Edit, 
+    Save, 
+    CheckCircle2, 
+    History, 
+    AlertTriangle, 
+    ArrowRight,
+    UserMinus,
+    Info,
+    CalendarDays
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, createNotification } from '@/lib/firebase';
 import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +34,28 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { cn } from '@/lib/utils';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
+import { 
+    Dialog, 
+    DialogContent, 
+    DialogHeader, 
+    DialogTitle, 
+    DialogDescription, 
+    DialogFooter, 
+    DialogClose 
+} from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { syncInvoiceToQuickbooks, voidQbInvoice } from '@/ai/flows/sync-to-quickbooks';
+import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
-
 
 type RegistrationRequest = {
   userId: string;
@@ -40,7 +73,7 @@ type RegistrationRequest = {
   programmeId: string;
   programmeName: string;
   optionalFees: string[];
-  academicHistory: Record<string, 'Passed' | 'Failed'>; // courseId -> status
+  academicHistory: Record<string, 'Passed' | 'Failed'>;
   amountPaid: number;
 };
 
@@ -60,29 +93,14 @@ type Fee = {
     amount: number;
 }
 
-type GroupedCourses = {
-    [year: string]: Course[];
-}
-
 type CoursePath = {
     id: string;
     intakeId: string;
     programmeId: string;
-    semesters: Record<number, { courses: string[] }>;
+    semesters: Record<string, { courses: string[] }>;
 };
 
 type CurrentAdmin = { name: string; id: string; };
-
-const statusVariant: { [key in RegistrationRequest['status']]: 'destructive' | 'secondary' | 'default' } = {
-  'Pending Approval': 'secondary',
-  'Pending Payment': 'destructive',
-  'Completed': 'default',
-};
-const statusText: { [key in RegistrationRequest['status']]: string } = {
-    'Pending Approval': 'Pending Approval',
-    'Pending Payment': 'Approved (Awaiting Payment)',
-    'Completed': 'Enrolled'
-};
 
 export default function ApproveRegistrationsPage() {
     const [pendingRequests, setPendingRequests] = React.useState<GroupedRequests>({});
@@ -105,6 +123,7 @@ export default function ApproveRegistrationsPage() {
 
     const [editingSelections, setEditingSelections] = React.useState<Record<string, string[]>>({});
     const [scholarshipReviewRequest, setScholarshipReviewRequest] = React.useState<RegistrationRequest | null>(null);
+    const [timetablePreview, setTimetablePreview] = React.useState<string[]>([]);
     
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
@@ -145,10 +164,11 @@ export default function ApproveRegistrationsPage() {
             
             if (settingsSnap.exists()) {
                 const settingsData = settingsSnap.val();
-                setEnrollmentPolicy(settingsData.enrollmentPolicy);
+                setEnrollmentPolicy(settingsData.enrollmentPolicy || 'onFullPayment');
                 setIsQuickBooksEnabled(settingsData.integrations?.quickbooks?.enabled);
                 setIsSageEnabled(settingsData.integrations?.sage?.enabled);
             }
+
             const coursesData = new Map<string, Course>();
             if (coursesSnap.exists()) Object.entries(coursesSnap.val()).forEach(([id, data]) => coursesData.set(id, { id, ...(data as Omit<Course, 'id'>) }));
             setAllCourses(coursesData);
@@ -271,6 +291,48 @@ export default function ApproveRegistrationsPage() {
         }
     }, [currentUser, fetchRequests]);
 
+    const fetchTimetableCourses = async (semesterId: string, intakeId: string) => {
+        try {
+            const intakeSnap = await get(ref(db, `intakes/${intakeId}`));
+            const intakeName = intakeSnap.val()?.name;
+            const timetableSnap = await get(ref(db, `timetables/${semesterId}`));
+            const masterSnap = await get(ref(db, `timetables/master`));
+            
+            const courseIds = new Set<string>();
+            
+            const processTimetableNode = (node: any) => {
+                if (!node) return;
+                Object.entries(node).forEach(([cId, sessions]: [string, any]) => {
+                    const sessionArr = Object.values(sessions);
+                    const isForCohort = sessionArr.some((s: any) => s.intakeName === intakeName || s.intakeName === 'Master');
+                    if (isForCohort) courseIds.add(cId);
+                });
+            };
+
+            processTimetableNode(timetableSnap.val());
+            processTimetableNode(masterSnap.val());
+
+            return Array.from(courseIds);
+        } catch (e) {
+            console.error("Timetable fetch failed:", e);
+            return [];
+        }
+    };
+
+    const handleSyncWithTimetable = async (request: RegistrationRequest) => {
+        const timetableIds = await fetchTimetableCourses(request.semesterId, request.studentIntakeId);
+        if (timetableIds.length === 0) {
+            toast({ variant: 'destructive', title: 'No Timetable Found', description: 'Could not find a scheduled timetable for this cohort.' });
+            return;
+        }
+        
+        setEditingSelections(prev => ({
+            ...prev,
+            [`${request.userId}-${request.semesterId}`]: timetableIds
+        }));
+        toast({ title: 'Synced with Timetable', description: `Loaded ${timetableIds.length} scheduled courses.` });
+    };
+
     const handleForceEnroll = async (request: RegistrationRequest) => {
         if (!currentAdmin) {
              toast({ variant: 'destructive', title: 'Action Failed', description: 'Could not identify current admin.' });
@@ -317,25 +379,14 @@ export default function ApproveRegistrationsPage() {
             const invoiceRef = ref(db, `invoices/${request.userId}/${request.invoiceId}`);
 
             if (decision === 'approve') {
-                const originalCourses = new Set(request.courseIds);
                 const finalCourses = editingSelections[`${request.userId}-${request.semesterId}`] || [];
-                const finalCoursesSet = new Set(finalCourses);
-                
                 const newStatus = enrollmentPolicy === 'onApproval' ? 'Completed' : 'Pending Payment';
+                
                 let notificationMessage = `Your course registration for ${request.semesterName} has been approved!`;
                 if (newStatus === 'Completed') {
                     notificationMessage += ' You are now enrolled in your selected courses.';
                 } else {
                     notificationMessage += ' Please proceed to payments to finalize your enrollment.';
-                }
-
-                const added = finalCourses.filter(c => !originalCourses.has(c)).map(id => allCourses.get(id)?.code);
-                const removed = request.courseIds.filter(c => !finalCoursesSet.has(c)).map(id => allCourses.get(id)?.code);
-
-                if (added.length > 0 || removed.length > 0) {
-                     notificationMessage += ` The following adjustments were made by the registrar:`;
-                     if (added.length > 0) notificationMessage += ` Added: ${added.join(', ')}.`;
-                     if (removed.length > 0) notificationMessage += ` Removed: ${removed.join(', ')}.`;
                 }
 
                 const tuitionCost = finalCourses.reduce((acc, id) => acc + (allCourses.get(id)?.cost || 0), 0);
@@ -347,13 +398,11 @@ export default function ApproveRegistrationsPage() {
                     totalTuition: tuitionCost,
                     totalOptionalFees: optionalFeesCost,
                     totalMandatoryFees: mandatoryFeesCost,
-                    applyScholarship: false,
                 });
 
                 await update(registrationRef, { 
                     status: newStatus,
                     courses: finalCourses,
-                    originalCourses: request.courseIds
                 });
                 
                 await createNotification(request.userId, notificationMessage, '/student/registration');
@@ -362,7 +411,8 @@ export default function ApproveRegistrationsPage() {
                     title: 'Registration Approved',
                     description: `${request.studentName}'s registration is now ${newStatus === 'Completed' ? 'enrolled' : 'pending payment'}.`,
                 });
-                 // Sync to QuickBooks/Sage
+
+                // Financial Integration Logic
                 const syncData = {
                     invoiceId: request.invoiceId,
                     studentName: request.studentName,
@@ -372,35 +422,12 @@ export default function ApproveRegistrationsPage() {
                     description: `Invoice for ${request.semesterName}`,
                 };
                 
-                if(isQuickBooksEnabled) {
-                    try {
-                        await syncInvoiceToQuickbooks(syncData);
-                        toast({ title: 'Synced to QuickBooks' });
-                    } catch (qbError: any) {
-                        console.error("QuickBooks Sync Error:", qbError);
-                        toast({ variant: 'warning', title: 'QuickBooks Sync Postponed', description: 'The registration was approved but QuickBooks synchronization failed. Please sync manually from the Finance tab.' });
-                    }
-                }
-                if(isSageEnabled) {
-                    try {
-                        await syncInvoiceToSage(syncData as any);
-                        toast({ title: 'Synced to Sage' });
-                    } catch (sageError: any) {
-                        console.error("Sage Sync Error:", sageError);
-                        toast({ variant: 'warning', title: 'Sage Sync Postponed', description: 'The registration was approved but Sage synchronization failed. Please sync manually from the Finance tab.' });
-                    }
-                }
+                if(isQuickBooksEnabled) await syncInvoiceToQuickbooks(syncData).catch(() => {});
+                if(isSageEnabled) await syncInvoiceToSage(syncData as any).catch(() => {});
 
             } else { 
                 await remove(registrationRef);
                 await remove(invoiceRef);
-                if(isQuickBooksEnabled) {
-                    try {
-                        await voidQbInvoice(request.invoiceId);
-                    } catch (voidError) {
-                        console.warn("Failed to void QB invoice:", voidError);
-                    }
-                }
                 
                 await createNotification(
                     request.userId,
@@ -415,7 +442,6 @@ export default function ApproveRegistrationsPage() {
             }
             fetchRequests();
         } catch(error: any) {
-             console.error("Approval Action Error:", error);
              toast({ variant: 'destructive', title: 'Action Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setActionLoading(null); }
     };
@@ -432,34 +458,24 @@ export default function ApproveRegistrationsPage() {
             const isApproved = decision === 'approve';
             const newStatus = enrollmentPolicy === 'onApproval' ? 'Completed' : 'Pending Payment';
             
-            const registrationUpdates: Record<string, any> = {
+            await update(registrationRef, {
                 status: newStatus,
                 scholarshipStatus: isApproved ? 'Approved' : 'Denied',
                 applyScholarship: isApproved
-            };
-            
-            const invoiceSnapshot = await get(invoiceRef);
-            if(invoiceSnapshot.exists()){
-                const invoiceData = invoiceSnapshot.val();
-                const updatedInvoice = {...invoiceData, applyScholarship: isApproved };
-                await update(invoiceRef, updatedInvoice);
-            }
-
-            await update(registrationRef, registrationUpdates);
-
-            const notificationMessage = isApproved
-                ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved. Your tuition has been waived.`
-                : `Regarding your registration for ${request.semesterName}, your scholarship application was not approved. The full tuition amount is now due.`;
-
-            await createNotification(request.userId, notificationMessage, '/student/registration');
-            
-            toast({
-                title: `Scholarship ${isApproved ? 'Approved' : 'Denied'}`,
-                description: `The scholarship for ${request.studentName} has been processed.`,
             });
+            
+            await update(invoiceRef, { applyScholarship: isApproved });
+
+            const msg = isApproved
+                ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved. Your tuition has been waived.`
+                : `Your scholarship application for ${request.semesterName} was not approved. The full tuition amount is now due.`;
+
+            await createNotification(request.userId, msg, '/student/registration');
+            
+            toast({ title: `Scholarship ${isApproved ? 'Approved' : 'Denied'}` });
             fetchRequests();
         } catch(e: any) {
-             toast({ variant: 'destructive', title: 'Scholarship Action Failed', description: e.message });
+             toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
         } finally {
             setActionLoading(null);
             setScholarshipReviewRequest(null);
@@ -474,12 +490,6 @@ export default function ApproveRegistrationsPage() {
         });
     };
 
-    const getProgrammeCourses = (programmeId: string) => {
-        const programme = allProgrammes.get(programmeId);
-        if(!programme || !programme.courseIds) return [];
-        return Object.keys(programme.courseIds).map(id => allCourses.get(id)).filter(Boolean) as Course[];
-    };
-    
     const renderRequestList = (groupedRequests: GroupedRequests, type: 'pending' | 'approved' | 'completed') => {
         if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}</div>);
         if (Object.keys(groupedRequests).length === 0) return (<div className="py-16 text-center text-muted-foreground"><UserCheck className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">All Clear!</h3><p className="mt-2 text-sm">There are no {type} registrations to show.</p></div>);
@@ -497,7 +507,7 @@ export default function ApproveRegistrationsPage() {
                                 const coursePath = allCoursePaths.find(p => p.intakeId === request.studentIntakeId && p.programmeId === request.programmeId);
 
                                 return (
-                                <Card key={reqId} className="overflow-hidden shadow-md">
+                                <Card key={reqId} className="overflow-hidden shadow-md border-l-4 border-l-primary">
                                     <CardHeader className="bg-muted/50 p-4">
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div className="space-y-1">
@@ -506,20 +516,24 @@ export default function ApproveRegistrationsPage() {
                                                 <CardDescription>Submitted: {format(new Date(request.registrationDate), 'PPP')}</CardDescription>
                                                 {request.applyScholarship && type !== 'completed' && ( <Badge variant="default" className="bg-blue-600 hover:bg-blue-700"><GraduationCap className="mr-2 h-4 w-4" />Scholarship Applicant</Badge>)}
                                             </div>
-                                            {type === 'pending' ? ( <div className="flex gap-2 self-start sm:self-center">
-                                                    <Button size="sm" variant="destructive" onClick={() => handleApproval(request, 'decline')} disabled={!!actionLoading}><X className="h-4 w-4" /></Button>
-                                                    {request.applyScholarship ? (
-                                                        <Button size="sm" onClick={() => setScholarshipReviewRequest(request)} disabled={!!actionLoading} variant="default" className="bg-blue-600 hover:bg-blue-700">{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />} Review Scholarship</Button>
-                                                    ) : (
-                                                        <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
-                                                    )}</div>
+                                            {type === 'pending' ? ( <div className="flex flex-col gap-2">
+                                                    <div className="flex gap-2 self-start sm:self-end">
+                                                        <Button size="sm" variant="destructive" onClick={() => handleApproval(request, 'decline')} disabled={!!actionLoading}><X className="h-4 w-4" /></Button>
+                                                        {request.applyScholarship ? (
+                                                            <Button size="sm" onClick={() => setScholarshipReviewRequest(request)} disabled={!!actionLoading} variant="default" className="bg-blue-600 hover:bg-blue-700">{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />} Review Scholarship</Button>
+                                                        ) : (
+                                                            <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
+                                                        )}
+                                                    </div>
+                                                    <Button variant="outline" size="sm" onClick={() => handleSyncWithTimetable(request)} className="h-8 text-[10px] uppercase font-black tracking-widest"><RotateCcw className="h-3 w-3 mr-1"/> Sync with Timetable</Button>
+                                                </div>
                                             ) : (
                                                 <div className="flex flex-col items-end gap-2">
-                                                    <Badge variant={statusVariant[request.status]}>{statusText[request.status]}</Badge>
+                                                    <Badge variant={request.status === 'Completed' ? 'default' : 'secondary'}>{request.status === 'Completed' ? 'Enrolled' : 'Awaiting Payment'}</Badge>
                                                     {type === 'approved' && (
                                                         <AlertDialog>
-                                                            <AlertDialogTrigger asChild><Button variant="link" className="h-auto p-0 text-[10px]">Force Enroll</Button></AlertDialogTrigger>
-                                                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Bypass Payment Policy?</AlertDialogTitle><AlertDialogDescription>This will manually enroll the student regardless of payment status. Use only for cash-verified students.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleForceEnroll(request)}>Enroll Student</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                                                            <AlertDialogTrigger asChild><Button variant="link" className="h-auto p-0 text-[10px] font-bold text-destructive underline">Manual Force Enroll &rarr;</Button></AlertDialogTrigger>
+                                                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Bypass Payment Threshold?</AlertDialogTitle><AlertDialogDescription>This will manually enroll the student regardless of their current payment status. Use only if payment is verified via external slip or cash.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleForceEnroll(request)}>Enroll Student</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                                                         </AlertDialog>
                                                     )}
                                                 </div>
@@ -528,43 +542,52 @@ export default function ApproveRegistrationsPage() {
                                     </CardHeader>
                                     <CardContent className="p-4 space-y-4">
                                         <div className="flex flex-col gap-2">
-                                            <Label className="text-xs uppercase text-muted-foreground font-bold tracking-widest">Course Selection</Label>
-                                            <ul className="space-y-2">
-                                                {currentSelection.map(courseId => allCourses.get(courseId)).filter(Boolean).map(course => {
-                                                    const history = request.academicHistory[course!.id];
-                                                    const isPathDeviation = coursePath && coursePath.semesters ? !Object.values(coursePath.semesters).some(s => s.courses.includes(course!.id)) : false;
+                                            <Label className="text-[10px] uppercase text-muted-foreground font-black tracking-[0.2em] mb-2">Class Roster Configuration</Label>
+                                            <div className="grid gap-2">
+                                                {Array.from(allCourses.values()).filter(c => c.status === 'active' && (currentSelection.includes(c.id) || request.courseIds.includes(c.id))).map(course => {
+                                                    const history = request.academicHistory[course.id];
+                                                    const isPathCourse = coursePath?.semesters?.[request.semesterId]?.courses?.includes(course.id);
+                                                    const isStudentSelected = request.courseIds.includes(course.id);
+                                                    
                                                     return(
-                                                    <li key={course!.id} className={cn("flex items-center gap-4 rounded-md border p-2 text-sm", type==='pending' && request.courseIds.includes(course!.id) && !currentSelection.includes(course!.id) && "bg-red-100 border-red-200", type==='pending' && !request.courseIds.includes(course!.id) && currentSelection.includes(course!.id) && "bg-green-100 border-green-200")}>
-                                                        <Checkbox id={`${reqId}-${course!.id}`} checked={type === 'pending' ? currentSelection.includes(course!.id) : request.courseIds.includes(course!.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course!.id)} disabled={type !== 'pending'}/>
-                                                        <label htmlFor={`${reqId}-${course!.id}`} className="flex-1 flex flex-col">
-                                                            <div><span className="font-medium">{course!.code}</span><span className="text-muted-foreground"> - {course!.name}</span></div>
-                                                            <div className='flex gap-2 items-center'>
-                                                                {history && (<Popover><PopoverTrigger asChild><Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='cursor-pointer h-4 px-1 text-[9px]'><History className="mr-1 h-3 w-3"/>{history}</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>Previously {history.toLowerCase()}.</PopoverContent></Popover>)}
-                                                                {isPathDeviation && (<Popover><PopoverTrigger asChild><Badge variant='destructive' className='cursor-pointer h-4 px-1 text-[9px]'><AlertTriangle className="mr-1 h-3 w-3"/>Path Deviation</Badge></PopoverTrigger><PopoverContent className='w-auto p-2 text-sm'>This course is not in the defined path.</PopoverContent></Popover>)}
+                                                    <div key={course.id} className={cn(
+                                                        "flex items-center gap-4 rounded-xl border p-3 text-sm transition-all",
+                                                        currentSelection.includes(course.id) ? "bg-primary/5 border-primary/20" : "opacity-50 grayscale bg-muted/20"
+                                                    )}>
+                                                        <Checkbox id={`${reqId}-${course.id}`} checked={currentSelection.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
+                                                        <div className="flex-1 flex flex-col gap-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold">{course.code}</span>
+                                                                <span className="text-muted-foreground text-xs">{course.name}</span>
+                                                                {!isPathCourse && <Badge variant="destructive" className="h-4 text-[8px] uppercase">Path Deviation</Badge>}
+                                                                {!isStudentSelected && currentSelection.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
                                                             </div>
-                                                        </label>
-                                                        <span className="font-mono text-right">ZMW {course!.cost.toFixed(2)}</span>
-                                                    </li>
+                                                            <div className='flex gap-2 items-center'>
+                                                                {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><History className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
+                                                            </div>
+                                                        </div>
+                                                        <span className="font-mono font-bold text-xs">ZMW {course.cost.toFixed(2)}</span>
+                                                    </div>
                                                 )})}
-                                            </ul>
+                                            </div>
                                         </div>
                                         
                                         <Separator />
                                         
-                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">
-                                            <div className="flex items-center gap-4">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-2">
+                                            <div className="flex items-center gap-6">
                                                 <div className="flex flex-col">
-                                                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Total Invoiced</span>
-                                                    <span className="font-mono font-bold">ZMW {totalCost.toFixed(2)}</span>
+                                                    <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Total Invoiced</span>
+                                                    <span className="font-black text-lg">ZMW {totalCost.toFixed(2)}</span>
                                                 </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Amount Paid</span>
-                                                    <span className={cn("font-mono font-bold", request.amountPaid > 0 ? "text-green-600" : "text-muted-foreground")}>ZMW {request.amountPaid.toFixed(2)}</span>
+                                                <div className="flex flex-col border-l pl-6">
+                                                    <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Amount Paid</span>
+                                                    <span className={cn("font-black text-lg", request.amountPaid > 0 ? "text-green-600" : "text-muted-foreground")}>ZMW {request.amountPaid.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                             <div className="flex flex-col items-end">
-                                                <span className="text-[10px] uppercase font-bold text-muted-foreground">Outstanding Balance</span>
-                                                <span className={cn("text-lg font-bold", (totalCost - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalCost - request.amountPaid).toFixed(2)}</span>
+                                                <span className="text-[9px] font-black uppercase text-primary tracking-widest leading-none">Outstanding Balance</span>
+                                                <span className={cn("text-2xl font-black", (totalCost - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalCost - request.amountPaid).toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -581,15 +604,22 @@ export default function ApproveRegistrationsPage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><ClipboardCheck className="text-primary"/> Manage Course Registrations</CardTitle>
-                    <CardDescription>Review student course selections and financial status. Approval follows institutional payment thresholds.</CardDescription>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary rounded-lg shadow-md">
+                            <ClipboardCheck className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Course Registration Audit</CardTitle>
+                            <CardDescription>Verify student enrollments, process scholarships, and reconcile with the institutional timetable.</CardDescription>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 h-auto py-1">
-                            <TabsTrigger value="pending" className="py-2">Pending ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(pendingRequests).flat().length})</TabsTrigger>
-                            <TabsTrigger value="approved" className="py-2">Awaiting Payment ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(approvedRequests).flat().length})</TabsTrigger>
-                            <TabsTrigger value="completed" className="py-2">Enrolled ({loading ? <Loader2 className="h-4 w-4 animate-spin ml-2"/> : Object.values(completedRequests).flat().length})</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-muted/50 rounded-xl">
+                            <TabsTrigger value="pending" className="py-3 rounded-lg font-bold">Pending ({loading ? '...' : Object.values(pendingRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="approved" className="py-3 rounded-lg font-bold">Approved ({loading ? '...' : Object.values(approvedRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="completed" className="py-3 rounded-lg font-bold">Enrolled ({loading ? '...' : Object.values(completedRequests).flat().length})</TabsTrigger>
                         </TabsList>
                         <TabsContent value="pending" className="mt-6">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
                         <TabsContent value="approved" className="mt-6">{renderRequestList(approvedRequests, 'approved')}</TabsContent>
@@ -599,14 +629,29 @@ export default function ApproveRegistrationsPage() {
             </Card>
 
             <Dialog open={!!scholarshipReviewRequest} onOpenChange={() => setScholarshipReviewRequest(null)}>
-                <DialogContent>
+                <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Scholarship Review</DialogTitle>
-                        <DialogDescription>Reviewing scholarship application for <span className="font-bold">{scholarshipReviewRequest?.studentName}</span> ({scholarshipReviewRequest?.studentId}). Approving the scholarship will waive 100% of the tuition fees for this registration.</DialogDescription>
+                        <div className="flex items-center gap-2 text-primary mb-2">
+                            <GraduationCap className="h-6 w-6" />
+                            <DialogTitle className="text-xl">Scholarship Verification</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-base">
+                            Reviewing tuition waiver application for <span className="font-black text-foreground">{scholarshipReviewRequest?.studentName}</span>. 
+                        </DialogDescription>
                     </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="destructive" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Scholarship</Button>
-                        <Button onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>{actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Approve Scholarship</Button>
+                    <div className="p-4 bg-primary/5 border rounded-xl space-y-3">
+                        <div className="flex justify-between text-sm"><span>Proposed Programme:</span> <span className="font-bold">{scholarshipReviewRequest?.programmeName}</span></div>
+                        <div className="flex justify-between text-sm"><span>Cohort Intake:</span> <span className="font-bold">{allIntakes.get(scholarshipReviewRequest?.studentIntakeId || '')?.name}</span></div>
+                        <Alert variant="default" className="bg-white border-primary/20 py-2">
+                            <Info className="h-4 w-4 text-primary" />
+                            <AlertDescription className="text-[10px] leading-tight">Approving this will apply a <strong>100% waiver</strong> to all tuition line items for this semester registration.</AlertDescription>
+                        </Alert>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="ghost" className="flex-1" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny</Button>
+                        <Button className="flex-1" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>
+                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Approve Waiver
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
