@@ -204,7 +204,11 @@ export default function StudentPaymentsPage() {
             const semester = allSemesters[p.semesterId];
             const doc = new jsPDF();
             if (institutionSettings.logoUrl) {
-                try { doc.addImage(institutionSettings.logoUrl, 'PNG', 14, 15, 20, 20); } catch (e) {}
+                try { 
+                    const img = document.createElement('img');
+                    img.src = institutionSettings.logoUrl;
+                    doc.addImage(img, 'PNG', 14, 15, 20, 20); 
+                } catch (e) {}
             }
             doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
             doc.setFontSize(12); doc.text('Combined Invoice & Statement', 190, 25, { align: 'right' });

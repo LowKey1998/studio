@@ -67,6 +67,7 @@ import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 // --- TYPE DEFINITIONS ---
 
@@ -302,7 +303,6 @@ export default function PaymentsManagementPage() {
                 case 9: setCalendarSettings(data); break;
             }
             
-            // Re-calculate derived data on any relevant change
             const refreshDerived = async () => {
                 if(isFirstLoad.current) setLoading(true);
                 
@@ -879,7 +879,6 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            {/* Record Single Payment */}
             <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
@@ -938,7 +937,6 @@ export default function PaymentsManagementPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Record Transactions (Bulk) */}
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
                     <DialogHeader><DialogTitle>Record Transaction(s)</DialogTitle><DialogDescription>Batch process multiple manual student payments.</DialogDescription></DialogHeader>
@@ -986,11 +984,16 @@ export default function PaymentsManagementPage() {
                         ))}
                         <Button variant="outline" className="w-full border-dashed" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
                     </div>
-                    <DialogFooter className="border-t pt-4"><Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : "Confirm & Save Transactions"}</Button></DialogFooter>
+                    <DialogFooter className="border-t pt-4">
+                        <Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0}>
+                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
+                            Confirm & Save Transactions
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* History Statement Dialog */}
             <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) setHistoryStudent(null); setIsHistoryOpen(o); }}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
@@ -1079,7 +1082,9 @@ export default function PaymentsManagementPage() {
                             }
                         </Tabs>
                     )}
-                    <DialogFooter className="border-t pt-4"><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close Statement</Button></DialogFooter>
+                    <DialogFooter className="border-t pt-4">
+                        <DialogClose asChild><Button variant="outline">Close Statement</Button></DialogClose>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
