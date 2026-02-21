@@ -153,13 +153,13 @@ function CreateOrEditDialogContent({
 
     const { toast } = useToast();
     
-    // Find courses relevant to this semester ID across all paths
     const relevantCourseIds = React.useMemo(() => {
         if (!editingSemester) return new Set<string>();
         const ids = new Set<string>();
         allCoursePaths.forEach(path => {
             if (path.semesters && path.semesters[editingSemester.id]) {
-                path.semesters[editingSemester.id].courses?.forEach((cid: string) => ids.add(cid));
+                const semesterCourses = path.semesters[editingSemester.id].courses || [];
+                semesterCourses.forEach((cid: string) => ids.add(cid));
             }
         });
         return ids;
@@ -187,7 +187,6 @@ function CreateOrEditDialogContent({
             setBillingPolicy(editingSemester.billingPolicy || 'course');
             setTuitionFee(String(editingSemester.tuitionFee || ''));
 
-            // Initialize course prices from master records
             const prices: Record<string, string> = {};
             relevantCourseIds.forEach(cid => {
                 prices[cid] = String(allCourses[cid]?.cost || '0');
@@ -254,7 +253,6 @@ function CreateOrEditDialogContent({
                 updates[`semesters/${newRef.key}`] = semesterData;
             }
 
-            // Also update course costs globally if we are in pay-by-course mode
             if (billingPolicy === 'course') {
                 Object.entries(coursePrices).forEach(([cid, price]) => {
                     updates[`courses/${cid}/cost`] = Number(price);
@@ -491,7 +489,7 @@ function CreateOrEditDialogContent({
 
 export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
+    const [allProgrammes, setAllProgrammes] = React.useState<any[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
     const [allCoursePaths, setAllCoursePaths] = React.useState<any[]>([]);
     const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, any>>>({});
@@ -499,8 +497,6 @@ export default function RegistrationManagementPage() {
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [calendarEvents, setCalendarEvents] = React.useState<any[]>([]);
-    const [allTimetables, setAllTimetables] = React.useState<Record<string, any>>({});
-    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [institutionSettings, setInstitutionSettings] = React.useState<any>(null);
     
@@ -549,9 +545,7 @@ export default function RegistrationManagementPage() {
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
-                case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
-                case 11: setAllTimetables(data); break;
                 case 12: setInstitutionSettings(data); break;
             }
             if(i === 12) setLoading(false);
@@ -707,8 +701,8 @@ export default function RegistrationManagementPage() {
                                                 const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
                                                 const courses = (path.semesters[semId].courses || []).map(cid => {
                                                     const c = allCourses[cid];
-                                                    const lNames = (c?.lecturerIds || []).map(uid => allUsers[uid]?.name).filter(Boolean).join(', ') || allUsers[c?.lecturerId || '']?.name || 'Unassigned';
-                                                    return { id: cid, code: c?.code, name: c?.name, lecturer: lNames };
+                                                    const lNames = (c?.lecturerIds || []).map((uid: string) => allUsers[uid]?.name).filter(Boolean).join(', ') || allUsers[c?.lecturerId || '']?.name || 'Unassigned';
+                                                    return { id: cid, code: c?.code, name: c?.name, lecturer: lNames, cost: Number(c?.cost || 0) };
                                                 });
 
                                                 const hasNoManualDates = !sem.startDate || !sem.endDate;
@@ -786,7 +780,17 @@ export default function RegistrationManagementPage() {
                                                             <div className="space-y-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Curriculum</Label>
                                                                 <div className="grid gap-1">
-                                                                    {courses.map(c => <div key={c.id} className="text-xs p-1.5 bg-muted/30 rounded border border-dashed"><span className="font-bold">{c.code}</span>: {c.name} <p className="text-[10px] opacity-60">{c.lecturer}</p></div>)}
+                                                                    {courses.map(c => (
+                                                                        <div key={c.id} className="text-xs p-1.5 bg-muted/30 rounded border border-dashed flex justify-between items-center">
+                                                                            <div>
+                                                                                <span className="font-bold">{c.code}</span>: {c.name} 
+                                                                                <p className="text-[10px] opacity-60">{c.lecturer}</p>
+                                                                            </div>
+                                                                            {!isFlatFee && (
+                                                                                <Badge variant="outline" className="h-5 font-mono text-[9px] bg-background">K{c.cost.toFixed(0)}</Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
                                                             </div>
                                                             <Separator />
@@ -821,7 +825,10 @@ export default function RegistrationManagementPage() {
             </Accordion>}
 
             <div className="flex justify-end p-6 bg-muted/20 border-t rounded-xl shadow-inner">
-                <Button size="lg" className="shadow-xl px-12 font-bold" onClick={handleSaveChanges} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}<Save className="mr-2 h-4 w-4"/>Save Master Configuration</Button>
+                <Button size="lg" className="shadow-xl px-12 font-bold" onClick={handleSaveChanges} disabled={saving}>
+                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                    Save Master Configuration
+                </Button>
             </div>
 
             <Dialog open={isCreateDialogOpen || isEditDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>

@@ -1,8 +1,8 @@
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, Wallet } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -18,9 +18,8 @@ import { logError } from '@/lib/error-logger';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 
-type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
+type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; exemptedCourses?: Record<string, boolean>; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; cost: number; };
-type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }>; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, {name: string, amount: number}>; optionalFees?: Record<string, {name: string, amount: number}>; };
 type SemesterWithStatus = Semester & { 
     isRegistered: boolean; 
@@ -34,6 +33,7 @@ type SemesterWithStatus = Semester & {
     mandatoryFeesList: { name: string; amount: number }[];
     optionalFeesList: { name: string; amount: number }[];
     totalTuition: number;
+    billingPolicy: 'course' | 'semester';
 };
 
 const getOrdinalSuffix = (i: number) => {
@@ -51,14 +51,15 @@ export default function StudentRegistrationPage() {
     const { toast } = useToast();
 
     React.useEffect(() => {
-        onAuthStateChanged(auth, user => setCurrentUser(user));
+        const unsubscribe = onAuthStateChanged(auth, user => setCurrentUser(user));
+        return () => unsubscribe();
     }, []);
 
     const fetchData = React.useCallback(async () => {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, timetablesSnap, plansSnap, calSnap] = await Promise.all([
+            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, tSnap, plansSnap, calSnap, instSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)), 
                 get(ref(db, 'programmes')), 
                 get(ref(db, 'intakes')),
@@ -71,7 +72,8 @@ export default function StudentRegistrationPage() {
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'settings/academicCalendar'))
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'settings/institution'))
             ]);
             
             if (!uSnap.exists()) return;
@@ -87,12 +89,17 @@ export default function StudentRegistrationPage() {
                 p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
             );
 
-            if (!userPathEntry) { setSemestersForPath([]); setLoading(false); return; }
+            if (!userPathEntry) { 
+                setSemestersForPath([]); 
+                setLoading(false); 
+                return; 
+            }
             const [userPathId, userPath] = userPathEntry as [string, any];
             
             const intakeName = iSnap.val()?.[profile.intakeId]?.name;
             const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
             const calSettings = calSnap.val();
+            const globalInstSettings = instSnap.val() || { billingPolicy: 'course' };
             let currentStanding: { year: number, semester: number } | null = null;
 
             if (intakeStartStr && calSettings) {
@@ -110,7 +117,7 @@ export default function StudentRegistrationPage() {
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
             const eventsData = Object.values(eventsSnap.val() || {}) as any[];
-            const timetablesData = timetablesSnap.val() || {};
+            const timetablesData = tSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
             const list: SemesterWithStatus[] = [];
@@ -150,16 +157,19 @@ export default function StudentRegistrationPage() {
                     });
 
                     const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
-                    const optionalFeesList = Object.entries(details.optionalFees || {})
-                        .filter(([id]) => registration?.optionalFees?.includes(id))
-                        .map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
+                    const optionalFeesSource = isRegistered 
+                        ? Object.entries(details.optionalFees || {}).filter(([id]) => registration?.optionalFees?.includes(id))
+                        : []; 
+
+                    const optionalFeesList = optionalFeesSource.map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
+                    const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
                     let totalTuition = 0;
-                    if (details.billingPolicy === 'semester') {
+                    if (activePolicy === 'semester') {
                         totalTuition = Number(details.tuitionFee || 0);
                     } else {
                         courses.forEach(c => {
-                            if (enrolledCourseIds.has(c.id) || !isRegistered) {
+                            if (enrolledCourseIds.has(c.id) || (!isRegistered && !profile.exemptedCourses?.[c.id])) {
                                 totalTuition += c.cost;
                             }
                         });
@@ -178,7 +188,8 @@ export default function StudentRegistrationPage() {
                         selectedPaymentPlan: registration?.paymentPlan,
                         mandatoryFeesList,
                         optionalFeesList,
-                        totalTuition
+                        totalTuition,
+                        billingPolicy: activePolicy
                     });
                 }
             }
@@ -186,8 +197,9 @@ export default function StudentRegistrationPage() {
         } catch (error: any) { 
             logError(error.message, 'Registration Fetch', error);
             toast({ variant: 'destructive', title: 'Error loading semesters' }); 
+        } finally { 
+            setLoading(false); 
         }
-        finally { setLoading(false); }
     }, [currentUser, toast]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
@@ -209,7 +221,13 @@ export default function StudentRegistrationPage() {
                     <CardDescription>View available semesters and complete your enrollment requirements.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {semestersForPath.length > 0 ? semestersForPath.map(sem => (
+                    {semestersForPath.length > 0 ? semestersForPath.map(sem => {
+                        const isActionable = sem.isRegistered || sem.isOpen;
+                        const totalMandatory = sem.mandatoryFeesList.reduce((acc, f) => acc + f.amount, 0);
+                        const totalOptional = sem.optionalFeesList.reduce((acc, f) => acc + f.amount, 0);
+                        const grandTotal = sem.totalTuition + totalMandatory + totalOptional;
+
+                        return (
                         <Card key={sem.id} className={cn("overflow-hidden border-l-4", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
                             <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                 <div className="space-y-1">
@@ -264,36 +282,37 @@ export default function StudentRegistrationPage() {
                                     <div className="space-y-4">
                                         <div className="space-y-3">
                                             <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                                <BookCopy className="h-3 w-3" /> Proposed Courses
+                                                <BookCopy className="h-3 w-3" /> Curriculum
                                             </Label>
                                             <div className="grid gap-2">
                                                 {sem.courses.map(course => (
-                                                    <div key={course.id} className="p-2 border rounded bg-muted/20">
-                                                        <div className="flex justify-between items-start text-sm font-semibold">
-                                                            <span>{course.code} - {course.name}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
-                                                            <UserCheck className="h-3 w-3" /> {course.lecturerNames}
-                                                        </div>
-                                                        {course.timetable.length > 0 && (
-                                                            <div className="flex items-center gap-1 text-[10px] text-primary mt-0.5">
-                                                                <Clock className="h-3 w-3" /> 
-                                                                {course.timetable.join(', ')}
+                                                    <div key={course.id} className="p-2 border rounded bg-muted/20 flex items-center justify-between gap-4">
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex justify-between items-start text-sm font-semibold">
+                                                                <span className="truncate">{course.code} - {course.name}</span>
                                                             </div>
+                                                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
+                                                                <UserCheck className="h-3 w-3" /> {course.lecturerNames}
+                                                            </div>
+                                                        </div>
+                                                        {sem.billingPolicy === 'course' && (
+                                                            <Badge variant="outline" className="h-6 font-mono text-[10px] bg-background border-primary/20 shrink-0">
+                                                                K{course.cost.toFixed(2)}
+                                                            </Badge>
                                                         )}
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                         
-                                        {sem.isRegistered && (
-                                            <div className="space-y-3 p-4 border rounded-xl bg-primary/5">
+                                        {isActionable && (
+                                            <div className="space-y-3 p-4 border rounded-xl bg-primary/5 shadow-inner">
                                                 <Label className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                                                    <Receipt className="h-3 w-3" /> Financial Summary
+                                                    <Receipt className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
                                                 </Label>
                                                 <div className="space-y-2 text-xs">
                                                     <div className="flex justify-between">
-                                                        <span className="opacity-70">Tuition Cost:</span>
+                                                        <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
                                                         <span className="font-bold">ZMW {sem.totalTuition.toFixed(2)}</span>
                                                     </div>
                                                     {sem.mandatoryFeesList.map((f, i) => (
@@ -308,15 +327,15 @@ export default function StudentRegistrationPage() {
                                                             <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
                                                         </div>
                                                     ))}
-                                                    <Separator className="my-1"/>
+                                                    <Separator className="my-1 bg-primary/10"/>
                                                     <div className="flex justify-between text-sm font-black">
-                                                        <span className="text-primary">Total Invoiced:</span>
-                                                        <span className="text-primary">ZMW {(sem.totalTuition + sem.mandatoryFeesList.reduce((acc,f)=>acc+f.amount,0) + sem.optionalFeesList.reduce((acc,f)=>acc+f.amount,0)).toFixed(2)}</span>
+                                                        <span className="text-primary">Total Amount:</span>
+                                                        <span className="text-primary text-base">ZMW {grandTotal.toFixed(2)}</span>
                                                     </div>
                                                     {sem.hasPaymentPlan && (
-                                                        <div className="flex justify-between pt-1 border-t border-dashed border-primary/20">
-                                                            <span className="opacity-70">Selected Plan:</span>
-                                                            <Badge variant="outline" className="h-4 text-[8px] font-bold uppercase">{sem.selectedPaymentPlan}</Badge>
+                                                        <div className="flex justify-between pt-2 border-t border-dashed border-primary/20 mt-1">
+                                                            <span className="opacity-70 font-medium">Selected Plan:</span>
+                                                            <Badge variant="outline" className="h-5 text-[9px] font-black uppercase bg-primary text-white border-primary">{sem.selectedPaymentPlan}</Badge>
                                                         </div>
                                                     )}
                                                 </div>
@@ -330,8 +349,8 @@ export default function StudentRegistrationPage() {
                                         </Label>
                                         <div className="space-y-2">
                                             {sem.deadlines.length > 0 ? sem.deadlines.map((d, i) => (
-                                                <div key={i} className="flex justify-between items-center text-xs p-2 rounded border border-dashed">
-                                                    <span>{d.title}</span>
+                                                <div key={i} className="flex justify-between items-center text-xs p-2 rounded border border-dashed hover:bg-muted/30 transition-colors">
+                                                    <span className="font-medium">{d.title}</span>
                                                     {d.date ? (
                                                         <span className="font-bold">{format(parseISO(d.date), 'PPP')}</span>
                                                     ) : (
@@ -339,13 +358,16 @@ export default function StudentRegistrationPage() {
                                                     )}
                                                 </div>
                                             )) : (
-                                                <p className="text-xs text-muted-foreground italic">No specific deadlines published.</p>
+                                                <div className="py-8 text-center border rounded-lg border-dashed bg-muted/10">
+                                                    <Clock className="h-6 w-6 mx-auto opacity-20 mb-2"/>
+                                                    <p className="text-xs text-muted-foreground italic">No deadlines published for this period.</p>
+                                                </div>
                                             )}
                                             {sem.isMissingDeadlines && (
-                                                <Alert variant="default" className="py-2 bg-yellow-50 border-yellow-200">
-                                                    <Info className="h-3 w-3 text-yellow-600" />
-                                                    <AlertDescription className="text-[10px] text-yellow-700">
-                                                        Administration is still finalizing some dates.
+                                                <Alert variant="default" className="py-2 bg-yellow-50 border-yellow-200 shadow-sm mt-4">
+                                                    <Info className="h-4 w-4 text-yellow-600" />
+                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
+                                                        Note: Some payment deadlines are still being finalized by the administration.
                                                     </AlertDescription>
                                                 </Alert>
                                             )}
@@ -354,7 +376,8 @@ export default function StudentRegistrationPage() {
                                 </div>
                             </CardContent>
                         </Card>
-                    )) : (
+                        );
+                    }) : (
                         <Alert>
                             <Info className="h-4 w-4"/><AlertTitle>No Active Paths</AlertTitle>
                             <AlertDescription>There are currently no active registration paths for your intake and programme.</AlertDescription>
