@@ -11,7 +11,7 @@ import { calculateAcademicState, parseIntakeDate } from "@/lib/semester-utils";
 import { addDays, isAfter, parseISO } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import Link from "link";
 import { studentMenuItems } from "@/lib/menu-items";
 import { Badge } from "@/components/ui/badge";
 
@@ -25,25 +25,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [checkingStanding, setCheckingStanding] = useState(false);
   const [financialSettings, setFinancialSettings] = useState<any>(null);
   
-  // Use a ref to ensure we only run the expensive standing check once per session/intake change
+  // Ref to prevent re-checking unless critical data changes
   const hasCheckedStanding = useRef<string | null>(null);
 
-  // Effect 1: Basic Authentication Guard
   useEffect(() => {
     if (!loading && (!userProfile || userProfile.role?.toLowerCase() !== 'student')) {
       if (userProfile) router.replace('/dashboard');
     }
   }, [userProfile, loading, router]);
 
-  // Effect 2: Standing Calculation (Optimized to prevent loops)
   useEffect(() => {
     const checkKey = `${user?.uid}-${userProfile?.intakeId}`;
     if (loading || !user?.uid || !userProfile?.intakeId || hasCheckedStanding.current === checkKey) return;
 
     const checkStanding = async () => {
         setCheckingStanding(true);
-
-        // Safety timeout to prevent infinite hang
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
             hasCheckedStanding.current = checkKey;
@@ -61,22 +57,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 get(ref(db, 'settings/financialSettings'))
             ]);
 
-            if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
-                throw new Error("Metadata missing");
-            }
+            if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) return;
 
             const finData = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
             setFinancialSettings(finData);
 
             const intake = intakeSnap.val()[userProfile.intakeId];
             const intakeStart = parseIntakeDate(intake?.name);
-            if (!intakeStart) throw new Error("Invalid format");
+            if (!intakeStart) return;
 
             const standing = calculateAcademicState(
                 intakeStart,
                 new Date(),
                 calSnap.val().standardCycles,
-                Object.values(calSnap.val().anomalies || {})
+                Object.values(calSettings.anomalies || {})
             );
 
             const activeSemesterEntry = Object.entries(semSnap.val() || {}).find(([_, s]: [string, any]) => 
@@ -101,7 +95,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const totalPaid = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.invoiceId === reg.invoiceId && t.status === 'successful').reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
             
             const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-            const threshold = semData.paymentThreshold || finData.paymentThreshold;
+            const globalThreshold = finData.paymentThreshold || 75;
+            const threshold = semData.paymentThreshold || globalThreshold;
             const grace = semData.gracePeriodDays || 0;
 
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
@@ -111,7 +106,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             setIsDefaulter(passedDeadlines.length > 0 && paidPercentage < threshold);
 
         } catch (error) {
-            console.warn("Standing fail-safe triggered:", error);
+            console.warn("Standing guard check failed:", error);
             setIsDefaulter(false); 
         } finally {
             clearTimeout(safetyTimer);
@@ -123,7 +118,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     checkStanding();
   }, [user?.uid, userProfile?.intakeId, loading]);
 
-  // Effect 3: Route Guard
   useEffect(() => {
     if (!hasCheckedStanding.current || !isDefaulter || !financialSettings) {
         setIsRestrictedRoute(false);

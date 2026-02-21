@@ -23,7 +23,8 @@ import {
     Layers,
     Video,
     ShieldX,
-    Info
+    Info,
+    Receipt
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -38,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PaymentCountdown } from '@/components/payment-countdown';
+import { Separator } from '@/components/ui/separator';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -74,6 +76,12 @@ export default function StudentDashboardPage() {
     const [enrolledCourses, setEnrolledCourses] = React.useState<Course[]>([]);
     const [attendanceRate, setAttendanceRate] = React.useState(0);
     const [feeBalance, setFeeBalance] = React.useState(0);
+    const [currentSemesterFinance, setCurrentSemesterFinance] = React.useState<{
+        due: number;
+        paid: number;
+        balance: number;
+        semesterName: string;
+    } | null>(null);
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
     const [paymentDeadline, setPaymentDeadline] = React.useState<{ title: string; date: string } | null>(null);
@@ -113,7 +121,7 @@ export default function StudentDashboardPage() {
             const allIntakes = iSnap.val() || {};
             const allAttendance = aSnap.val() || {};
             const allTimetables = tSnap.val() || {};
-            const allCalendarEvents = calSnap.val() || {};
+            const allCalendarEvents = Object.values(calSnap.val() || {}) as any[];
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
             const allAssessments = assSnap.val() || {};
@@ -152,7 +160,6 @@ export default function StudentDashboardPage() {
                 }
             }
 
-            // --- Check for Missing Payment Plan Prompt ---
             if (matchingSemesterId) {
                 const reg = allRegistrations[matchingSemesterId];
                 if (reg && !reg.paymentPlan) {
@@ -230,37 +237,54 @@ export default function StudentDashboardPage() {
             }
             setAttendanceRate(totalMarked > 0 ? (totalPresent / totalMarked) * 100 : 100);
 
-            let totalDue = 0;
+            let totalDueOverall = 0;
             Object.values(allInvoices).forEach((inv: any) => {
                 const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) + (inv.lateFee || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
-                totalDue += due;
+                totalDueOverall += due;
             });
-            const totalPaid = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
-            const currentBalance = Math.max(0, totalDue - totalPaid);
-            setFeeBalance(currentBalance);
+            const totalPaidOverall = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+            setFeeBalance(Math.max(0, totalDueOverall - totalPaidOverall));
 
-            if (matchingSemesterId && currentBalance > 0) {
+            if (matchingSemesterId && allRegistrations[matchingSemesterId]) {
+                const reg = allRegistrations[matchingSemesterId];
+                const invoice = allInvoices[reg.invoiceId];
                 const semester = allSemesters[matchingSemesterId];
-                const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
-                const grace = semester.gracePeriodDays || 0;
                 
-                const semDeadlines = Object.values(allCalendarEvents)
-                    .filter((ev: any) => ev.semester === semester.name && ev.title.includes('Deadline'))
-                    .sort((a: any, b: any) => a.date.localeCompare(b.date));
+                if (invoice) {
+                    const due = invoice.applyScholarship 
+                        ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
+                        : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
+                    
+                    const paid = allTransactions.filter((t: any) => t.invoiceId === reg.invoiceId).reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
+                    
+                    setCurrentSemesterFinance({
+                        due,
+                        paid,
+                        balance: Math.max(0, due - paid),
+                        semesterName: semester?.name || 'Current Semester'
+                    });
 
-                const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), getCurrentServerDate()));
-                if (nextDeadline) {
-                    setPaymentDeadline({ title: nextDeadline.title.split(' - ')[0], date: nextDeadline.date });
-                }
+                    const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
+                    const grace = semester.gracePeriodDays || 0;
+                    
+                    const semDeadlines = allCalendarEvents
+                        .filter((ev: any) => ev.semester === semester.name && ev.title.includes('Deadline'))
+                        .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
-                const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(getCurrentServerDate(), addDays(parseISO(ev.date), grace)));
-                if (passedDeadlines.length > 0) {
-                    const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-                    if (paidPercentage < threshold) {
-                        setFinancialWarning({
-                            message: `Standing Alert: Your payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
-                            restriction: true
-                        });
+                    const nextDeadline: any = semDeadlines.find((ev: any) => isAfter(parseISO(ev.date), getCurrentServerDate()));
+                    if (nextDeadline) {
+                        setPaymentDeadline({ title: nextDeadline.title.split(' - ')[0], date: nextDeadline.date });
+                    }
+
+                    const passedDeadlines = semDeadlines.filter((ev: any) => isAfter(getCurrentServerDate(), addDays(parseISO(ev.date), grace)));
+                    if (passedDeadlines.length > 0) {
+                        const paidPercentage = due > 0 ? (paid / due) * 100 : 100;
+                        if (paidPercentage < threshold) {
+                            setFinancialWarning({
+                                message: `Standing Alert: Your payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
+                                restriction: true
+                            });
+                        }
                     }
                 }
             }
@@ -312,7 +336,7 @@ export default function StudentDashboardPage() {
             const deadlines: DeadlineEvent[] = [];
             const currentSemesterName = matchingSemesterId ? allSemesters[matchingSemesterId]?.name : null;
 
-            Object.values(allCalendarEvents).forEach((ev: any) => {
+            allCalendarEvents.forEach((ev: any) => {
                 const isFuture = new Date(ev.date) >= startOfDay(getCurrentServerDate());
                 if (!isFuture) return;
                 const isForThisSemester = currentSemesterName && ev.semester === currentSemesterName;
@@ -400,6 +424,35 @@ export default function StudentDashboardPage() {
             )}
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                {currentSemesterFinance && (
+                    <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                <DollarSign className="h-4 w-4"/> Fee Summary
+                            </CardTitle>
+                            <CardDescription className="text-[10px] font-bold uppercase">
+                                {currentSemesterFinance.semesterName}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="opacity-70">Paid to date:</span>
+                                <span className="font-bold text-green-600">ZMW {currentSemesterFinance.paid.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="opacity-70">Total Expected:</span>
+                                <span className="font-bold">ZMW {currentSemesterFinance.due.toFixed(2)}</span>
+                            </div>
+                            <Separator className="bg-primary/10"/>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs font-black uppercase text-primary">Balance:</span>
+                                <span className={cn("text-lg font-black", currentSemesterFinance.balance > 0 ? "text-destructive" : "text-green-600")}>
+                                    ZMW {currentSemesterFinance.balance.toFixed(2)}
+                                </span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
                 {paymentDeadline && feeBalance > 0 && (
                     <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
                         <CardHeader className="pb-2">
@@ -409,16 +462,12 @@ export default function StudentDashboardPage() {
                     </Card>
                 )}
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Active Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
                     <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
                 </Card>
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
                     <CardContent><div className="text-2xl font-black">{enrolledCourses.length}</div></CardContent>
-                </Card>
-                <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Attendance</CardTitle><Hand className="h-4 w-4 text-primary" /></CardHeader>
-                    <CardContent className="space-y-2"><div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div><Progress value={attendanceRate} className="h-1.5" /></CardContent>
                 </Card>
             </div>
 
@@ -448,7 +497,7 @@ export default function StudentDashboardPage() {
                             <CardTitle className="font-headline">Daily Schedule</CardTitle>
                             <CardDescription>{format(getCurrentServerDate(), 'EEEE, MMMM do')}</CardDescription>
                         </div>
-                        <Button variant="ghost" size="sm" asChild className="text-primary font-bold"><Link href="/student/timetable">Full View <ChevronRight className="h-4 w-4"/></Link></Button>
+                        <Button variant="ghost" size="sm" asChild className="text-primary font-bold"><Link href="/student/timetable">Full View <ChevronRight className="ml-2 h-4 w-4"/></Link></Button>
                     </CardHeader>
                     <CardContent className="pt-6">
                         {todaySchedule.length > 0 ? (
