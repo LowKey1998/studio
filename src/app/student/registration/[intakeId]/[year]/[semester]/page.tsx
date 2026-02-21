@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronLeft, Check, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, Info, ChevronLeft, Check, AlertCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds } from '@/lib/firebase';
