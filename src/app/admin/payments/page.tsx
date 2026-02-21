@@ -1,6 +1,5 @@
 'use client';
 import * as React from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
@@ -39,7 +38,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays } from 'date-fns';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -58,6 +58,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // --- TYPE DEFINITIONS ---
 
@@ -357,6 +359,7 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
+            // Load Defaults
             const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
             if (defaultsSnap.exists()) {
                 const def = defaultsSnap.val();
@@ -369,6 +372,7 @@ export default function PaymentsManagementPage() {
             }
 
         } catch (error: any) {
+            console.error("Payment Data Fetch Error:", error);
             toast({ variant: 'destructive', title: 'Data Load Failed' });
         } finally {
             setLoading(false);
@@ -376,12 +380,15 @@ export default function PaymentsManagementPage() {
     }, [userData, toast, user?.uid, serverTimeOffset]);
 
     React.useEffect(() => {
-        fetchPaymentData();
-    }, [fetchPaymentData]);
+        if (userData) {
+            fetchPaymentData();
+        }
+    }, [userData, fetchPaymentData]);
 
     const revenueMetrics = React.useMemo(() => {
-        const today = format(getCurrentServerDate(), 'yyyy-MM-dd');
-        const month = format(getCurrentServerDate(), 'yyyy-MM');
+        const now = getCurrentServerDate();
+        const today = format(now, 'yyyy-MM-dd');
+        const month = format(now, 'yyyy-MM');
         return rawTransactions.reduce((acc, t) => {
             if(t.paymentDate.startsWith(today)) acc.today += t.amount;
             if(t.paymentDate.startsWith(month)) acc.month += t.amount;
@@ -460,8 +467,6 @@ export default function PaymentsManagementPage() {
             setSaving(false);
         }
     };
-
-    // --- Bulk Action Handling ---
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -1039,13 +1044,4 @@ export default function PaymentsManagementPage() {
             </Dialog>
         </div>
     );
-}
-
-function useToast() {
-    const [state, setState] = React.useState({ toasts: [] });
-    return {
-        toast: ({ title, variant, description }: { title: string, variant?: string, description?: string }) => {
-            console.log(title, description);
-        }
-    }
 }
