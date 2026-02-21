@@ -187,9 +187,10 @@ export default function StudentRegistrationPage() {
                                                 <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                             </Badge>
                                         ) : (
-                                            <Button asChild variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-200">
+                                            <Button asChild variant="secondary" className={cn("font-bold", sem.isCurrentStanding ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-muted text-muted-foreground")}>
                                                 <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                    <AlertCircle className="mr-2 h-4 w-4"/>Complete Setup
+                                                    <AlertCircle className="mr-2 h-4 w-4"/>
+                                                    {sem.isCurrentStanding ? "Complete Setup" : "Pending Setup"}
                                                 </Link>
                                             </Button>
                                         )

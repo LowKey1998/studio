@@ -217,7 +217,7 @@ export default function FinalExamEntryPage() {
                 return;
             }
 
-            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
+            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseIds([]); return; }
 
             const coursePathsSnap = await get(ref(db, 'coursePaths'));
             if (coursePathsSnap.exists()) {
@@ -415,7 +415,8 @@ export default function FinalExamEntryPage() {
     const filteredRoster = studentsInRoster.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || s.id.toLowerCase().includes(rosterSearch.toLowerCase()));
     const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase()));
 
-    const currentIntakeName = intakes.find(i => i.id === selectedIntakeId)?.name;
+    const currentIntake = intakes.find(i => i.id === selectedIntakeId);
+    const currentIntakeName = currentIntake?.name;
     const timetableEntries = masterTimetable.filter(e => {
         const matchesSemester = e.semesterId === 'master' || e.semesterId === targetSemesterId;
         const matchesIntake = e.intakeName === currentIntakeName || e.intakeName === 'Master';
