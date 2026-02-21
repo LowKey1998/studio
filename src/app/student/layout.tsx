@@ -11,7 +11,7 @@ import { calculateAcademicState, parseIntakeDate } from "@/lib/semester-utils";
 import { addDays, isAfter, parseISO } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import Link from "link";
+import Link from "next/link";
 import { studentMenuItems } from "@/lib/menu-items";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,7 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [financialSettings, setFinancialSettings] = useState<any>(null);
   
   // Ref to prevent re-checking unless critical data changes
-  const hasCheckedStanding = useRef<string | null>(null);
+  const lastCheckedKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading && (!userProfile || userProfile.role?.toLowerCase() !== 'student')) {
@@ -36,13 +36,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkKey = `${user?.uid}-${userProfile?.intakeId}`;
-    if (loading || !user?.uid || !userProfile?.intakeId || hasCheckedStanding.current === checkKey) return;
+    if (loading || !user?.uid || !userProfile?.intakeId || lastCheckedKey.current === checkKey) return;
 
     const checkStanding = async () => {
+        // Set ref early to block concurrent triggers
+        lastCheckedKey.current = checkKey;
         setCheckingStanding(true);
+        
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-            hasCheckedStanding.current = checkKey;
         }, 8000);
 
         try {
@@ -70,7 +72,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 intakeStart,
                 new Date(),
                 calSnap.val().standardCycles,
-                Object.values(calSettings.anomalies || {})
+                Object.values(calSnap.val().anomalies || {})
             );
 
             const activeSemesterEntry = Object.entries(semSnap.val() || {}).find(([_, s]: [string, any]) => 
@@ -111,7 +113,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         } finally {
             clearTimeout(safetyTimer);
             setCheckingStanding(false);
-            hasCheckedStanding.current = checkKey;
         }
     };
 
@@ -119,7 +120,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [user?.uid, userProfile?.intakeId, loading]);
 
   useEffect(() => {
-    if (!hasCheckedStanding.current || !isDefaulter || !financialSettings) {
+    if (!lastCheckedKey.current || !isDefaulter || !financialSettings) {
         setIsRestrictedRoute(false);
         return;
     }
@@ -140,7 +141,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   }, [pathname, isDefaulter, financialSettings]);
 
-  if (loading || (checkingStanding && !hasCheckedStanding.current)) {
+  if (loading || (checkingStanding && !lastCheckedKey.current)) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

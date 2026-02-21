@@ -8,7 +8,7 @@ import {
     Hand, 
     Calendar as CalendarIcon, 
     Clock, 
-    Banknote, 
+    DollarSign, 
     UserCheck, 
     ChevronRight, 
     CreditCard,
@@ -24,7 +24,8 @@ import {
     Video,
     ShieldX,
     Info,
-    Receipt
+    Receipt,
+    TrendingUp
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -81,6 +82,7 @@ export default function StudentDashboardPage() {
         paid: number;
         balance: number;
         semesterName: string;
+        academicStanding: string;
     } | null>(null);
     const [todaySchedule, setTodaySchedule] = React.useState<TimetableEntry[]>([]);
     const [upcomingDeadlines, setUpcomingDeadlines] = React.useState<DeadlineEvent[]>([]);
@@ -135,6 +137,7 @@ export default function StudentDashboardPage() {
             let currentIntakeNameVal = '';
             let matchingSemesterId: string | null = null;
             let currentPhase = { year: 1, semester: 1 };
+            let standingLabel = '';
 
             if (userProfile?.intakeId) {
                 currentIntakeNameVal = allIntakes[userProfile.intakeId]?.name || 'Your Intake';
@@ -149,7 +152,8 @@ export default function StudentDashboardPage() {
                         Object.values(calSettings.anomalies || {})
                     );
                     currentPhase = { year: state.year, semester: state.semester };
-                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                    standingLabel = `Year ${state.year}, Sem ${state.semester}`;
+                    setAcademicStanding(standingLabel);
 
                     const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {
                         return s.intakeId === userProfile.intakeId && 
@@ -261,7 +265,8 @@ export default function StudentDashboardPage() {
                         due,
                         paid,
                         balance: Math.max(0, due - paid),
-                        semesterName: semester?.name || 'Current Semester'
+                        semesterName: semester?.name || 'Current Semester',
+                        academicStanding: standingLabel
                     });
 
                     const threshold = semester.paymentThreshold || fSettings.paymentThreshold || 75;
@@ -373,7 +378,7 @@ export default function StudentDashboardPage() {
         });
 
         return () => unsub();
-    }, [user, userProfile, toast, serverTimeOffset]);
+    }, [user, userProfile, serverTimeOffset]);
 
     if (authLoading || loading) return <Skeleton className="h-screen w-full" />;
 
@@ -424,33 +429,38 @@ export default function StudentDashboardPage() {
             )}
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                {currentSemesterFinance && (
+                {currentSemesterFinance ? (
                     <Card className="shadow-lg border-2 border-primary/20 bg-primary/5">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-black uppercase text-primary tracking-widest flex items-center gap-2">
                                 <DollarSign className="h-4 w-4"/> Fee Summary
                             </CardTitle>
                             <CardDescription className="text-[10px] font-bold uppercase">
-                                {currentSemesterFinance.semesterName}
+                                {currentSemesterFinance.academicStanding}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <div className="flex justify-between items-center text-xs">
-                                <span className="opacity-70">Paid to date:</span>
+                                <span className="opacity-70 italic font-medium text-muted-foreground">You've paid:</span>
                                 <span className="font-bold text-green-600">ZMW {currentSemesterFinance.paid.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center text-xs">
-                                <span className="opacity-70">Total Expected:</span>
+                                <span className="opacity-70 italic font-medium text-muted-foreground">Total supposed to pay:</span>
                                 <span className="font-bold">ZMW {currentSemesterFinance.due.toFixed(2)}</span>
                             </div>
                             <Separator className="bg-primary/10"/>
                             <div className="flex justify-between items-center">
-                                <span className="text-xs font-black uppercase text-primary">Balance:</span>
+                                <span className="text-xs font-black uppercase text-primary">Left to pay:</span>
                                 <span className={cn("text-lg font-black", currentSemesterFinance.balance > 0 ? "text-destructive" : "text-green-600")}>
                                     ZMW {currentSemesterFinance.balance.toFixed(2)}
                                 </span>
                             </div>
                         </CardContent>
+                    </Card>
+                ) : (
+                    <Card className="shadow-md">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Active Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
+                        <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
                     </Card>
                 )}
                 {paymentDeadline && feeBalance > 0 && (
@@ -462,8 +472,11 @@ export default function StudentDashboardPage() {
                     </Card>
                 )}
                 <Card className="shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Active Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
-                    <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Overall Attendance</CardTitle><TrendingUp className="h-4 w-4 text-primary" /></CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-black">{attendanceRate.toFixed(0)}%</div>
+                        <Progress value={attendanceRate} className="h-1 mt-2" />
+                    </CardContent>
                 </Card>
                 <Card className="shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Courses</CardTitle><BookOpen className="h-4 w-4 text-primary" /></CardHeader>
