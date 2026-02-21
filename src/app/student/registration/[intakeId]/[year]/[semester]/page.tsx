@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronLeft, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Info, ChevronLeft, Check, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, set, push, serverTimestamp } from 'firebase/database';
+import { db, auth, getRegistrarIds } from '@/lib/firebase';
+import { ref, get, set, push } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -49,6 +49,7 @@ type Semester = {
     mandatoryFees?: Record<string, Fee>;
     optionalFees?: Record<string, Fee>;
     paymentPlanIds?: Record<string, boolean>;
+    lateRegistrationActive?: boolean;
 };
 
 type Fee = {

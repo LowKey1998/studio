@@ -26,7 +26,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [financialSettings, setFinancialSettings] = useState<any>(null);
   
   // Ref to prevent re-checking unless critical data changes
-  const lastCheckedKey = useRef<string | null>(null);
+  const hasCheckedStanding = useRef<boolean>(false);
+  const lastCheckedUid = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading && (!userProfile || userProfile.role?.toLowerCase() !== 'student')) {
@@ -35,17 +36,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [userProfile, loading, router]);
 
   useEffect(() => {
-    const checkKey = `${user?.uid}-${userProfile?.intakeId}`;
-    if (loading || !user?.uid || !userProfile?.intakeId || lastCheckedKey.current === checkKey) return;
+    if (loading || !user?.uid || !userProfile?.intakeId) return;
+    
+    // Only check once per session load unless the user changes
+    if (hasCheckedStanding.current && lastCheckedUid.current === user.uid) return;
 
     const checkStanding = async () => {
-        // Set ref early to block concurrent triggers
-        lastCheckedKey.current = checkKey;
+        hasCheckedStanding.current = true;
+        lastCheckedUid.current = user.uid;
         setCheckingStanding(true);
         
+        // Safety timeout to prevent infinite sync screen
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-        }, 8000);
+        }, 10000);
 
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
@@ -120,7 +124,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [user?.uid, userProfile?.intakeId, loading]);
 
   useEffect(() => {
-    if (!lastCheckedKey.current || !isDefaulter || !financialSettings) {
+    if (!isDefaulter || !financialSettings) {
         setIsRestrictedRoute(false);
         return;
     }
@@ -141,7 +145,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   }, [pathname, isDefaulter, financialSettings]);
 
-  if (loading || (checkingStanding && !lastCheckedKey.current)) {
+  if (loading || (checkingStanding && !hasCheckedStanding.current)) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
