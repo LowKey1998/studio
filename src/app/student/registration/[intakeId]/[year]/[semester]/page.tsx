@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronLeft, Check, AlertCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
