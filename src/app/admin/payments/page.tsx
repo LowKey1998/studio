@@ -35,6 +35,14 @@ import {
     Lock,
     Unlock
 } from 'lucide-react';
+import { 
+    Card, 
+    CardContent, 
+    CardDescription, 
+    CardHeader, 
+    CardTitle, 
+    CardFooter 
+} from "@/components/ui/card";
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification } from '@/lib/firebase';
@@ -247,6 +255,16 @@ export default function PaymentsManagementPage() {
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
+    const calculateStandingForUser = (userId: string) => {
+        const studentInfo = allStudents.find(s => s.uid === userId);
+        if (!studentInfo || !studentInfo.intakeId || !calendarSettings) return 'N/A';
+        const intake = allIntakes.find(i => i.id === studentInfo.intakeId);
+        const intakeStart = parseIntakeDate(intake?.name || '');
+        if (!intakeStart) return 'N/A';
+        const state = calculateAcademicState(intakeStart, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+        return `Year ${state.year}, Sem ${state.semester}`;
+    };
+
     const fetchPaymentData = React.useCallback(async () => {
         if (!userData) return;
         setLoading(true);
@@ -271,7 +289,7 @@ export default function PaymentsManagementPage() {
             const semsData = sSnap.val() || {};
             const intsData = iSnap.val() || {};
             const invsData = invSnap.val() || {};
-            const finData = fSnap.val() || { paymentThreshold: 75 };
+            const finData = fSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
             const calendarEvents = Object.values(eSnap.val() || {}) as any[];
             setCalendarSettings(calSnap.val());
 
@@ -630,16 +648,6 @@ export default function PaymentsManagementPage() {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
-
-    const calculateStandingForUser = (userId: string) => {
-        const studentInfo = allStudents.find(s => s.uid === userId);
-        if (!studentInfo || !studentInfo.intakeId || !calendarSettings) return 'N/A';
-        const intake = allIntakes.find(i => i.id === studentInfo.intakeId);
-        const intakeStart = parseIntakeDate(intake?.name || '');
-        if (!intakeStart) return 'N/A';
-        const state = calculateAcademicState(intakeStart, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-        return `Year ${state.year}, Sem ${state.semester}`;
-    };
 
     const resetDialog = () => {
         setSelectedStudent(null);
