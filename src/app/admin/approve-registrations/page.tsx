@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -27,7 +26,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, createNotification } from '@/lib/firebase';
+import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
 import { format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
@@ -229,8 +228,10 @@ export default function ApproveRegistrationsPage() {
             
             if(coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val()));
 
+            let scholarshipsList: Scholarship[] = [];
             if (scholarshipsSnap.exists()) {
-                setAllScholarships(Object.entries(scholarshipsSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+                scholarshipsList = Object.entries(scholarshipsSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data }));
+                setAllScholarships(scholarshipsList);
             }
 
             const optionalFeesData = new Map<string, Fee>();
@@ -310,7 +311,7 @@ export default function ApproveRegistrationsPage() {
                     const key = req.semesterName;
                     if (!acc[key]) acc[key] = [];
                     acc[key].push(req);
-                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.dateRequested).getTime());
+                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.registrationDate).getTime());
                     return acc;
                 }, {} as GroupedRequests);
 
@@ -336,12 +337,15 @@ export default function ApproveRegistrationsPage() {
 
                     let totalDue = 0;
                     if (invoice) {
-                        totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-                        if (invoice.applyScholarship) {
-                            const schol = allScholarships.find(s => s.id === invoice.scholarshipId);
-                            const perc = schol?.percentage || 100;
-                            totalDue -= (invoice.totalTuition || 0) * (perc / 100);
-                        }
+                        const tuition = Number(invoice.totalTuition || 0);
+                        const mandatory = Number(invoice.totalMandatoryFees || 0);
+                        const optional = Number(invoice.totalOptionalFees || 0);
+                        const late = Number(invoice.lateFee || 0);
+                        const percentage = Number(invoice.scholarshipPercentage || 100);
+
+                        totalDue = invoice.applyScholarship 
+                            ? (tuition * (1 - (percentage / 100))) + mandatory + optional + late
+                            : tuition + mandatory + optional + late;
                     }
 
                     const totalPaid = allTransactions
@@ -367,7 +371,7 @@ export default function ApproveRegistrationsPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast, allScholarships]);
+    }, [toast]);
 
     React.useEffect(() => {
         if (currentUser) {
@@ -616,6 +620,14 @@ export default function ApproveRegistrationsPage() {
                 
                 invoiceUpdates.scholarshipId = scholarship.id;
                 invoiceUpdates.scholarshipPercentage = scholarship.percentage;
+            } else if (!isApproved) {
+                // If denied, ensure we clear any existing scholarship markings
+                updates.scholarshipId = null;
+                updates.scholarshipName = null;
+                updates.scholarshipPercentage = null;
+                
+                invoiceUpdates.scholarshipId = null;
+                invoiceUpdates.scholarshipPercentage = null;
             }
 
             await update(registrationRef, updates);
@@ -824,7 +836,7 @@ export default function ApproveRegistrationsPage() {
                                                         Decline
                                                     </Button>
                                                     <Button size="sm" className="bg-primary font-bold shadow-md" onClick={() => handleClassRequestDecision(req, 'Approved')} disabled={!!actionLoading}>
-                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4 mr-1"/>}
+                                                        {actionLoading === req.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4 mr-1"/>}
                                                         Approve Enrollment
                                                     </Button>
                                                 </div>

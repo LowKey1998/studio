@@ -243,7 +243,15 @@ export default function StudentDashboardPage() {
 
             let totalDueOverall = 0;
             Object.values(allInvoices).forEach((inv: any) => {
-                const due = (Number(inv.totalTuition) || 0) + (Number(inv.totalMandatoryFees) || 0) + (Number(inv.totalOptionalFees) || 0) + (inv.lateFee || 0) - (inv.applyScholarship ? (Number(inv.totalTuition) || 0) : 0);
+                const tuition = Number(inv.totalTuition || 0);
+                const mandatory = Number(inv.totalMandatoryFees || 0);
+                const optional = Number(inv.totalOptionalFees || 0);
+                const late = Number(inv.lateFee || 0);
+                const scholarPerc = Number(inv.scholarshipPercentage || 100);
+
+                const due = inv.applyScholarship 
+                    ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
+                    : tuition + mandatory + optional + late;
                 totalDueOverall += due;
             });
             const totalPaidOverall = allTransactions.reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
@@ -255,9 +263,15 @@ export default function StudentDashboardPage() {
                 const semester = allSemesters[matchingSemesterId];
                 
                 if (invoice) {
+                    const tuition = Number(invoice.totalTuition || 0);
+                    const mandatory = Number(invoice.totalMandatoryFees || 0);
+                    const optional = Number(invoice.totalOptionalFees || 0);
+                    const late = Number(invoice.lateFee || 0);
+                    const scholarPerc = Number(invoice.scholarshipPercentage || 100);
+
                     const due = invoice.applyScholarship 
-                        ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
-                        : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
+                        ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
+                        : tuition + mandatory + optional + late;
                     
                     const paid = allTransactions.filter((t: any) => t.invoiceId === reg.invoiceId).reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
                     

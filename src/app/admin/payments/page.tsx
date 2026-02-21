@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { 
     Receipt, 
-    DollarSign, 
     ChevronDown, 
     CheckCircle2, 
     Loader2, 
@@ -54,8 +53,6 @@ import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfM
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
@@ -366,8 +363,9 @@ export default function PaymentsManagementPage() {
                                 mandatory = Object.values(semesterInfo.mandatoryFees as Record<string, any>).reduce((acc, f) => acc + (f.amount || 0), 0);
                             }
 
+                            const scholarPerc = Number(invoice.scholarshipPercentage || 100);
                             const totalPayable = invoice.applyScholarship 
-                                ? (mandatory + Number(invoice.totalOptionalFees || 0))
+                                ? (tuition * (1 - (scholarPerc / 100))) + mandatory + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)
                                 : (tuition + mandatory + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
 
                             const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
@@ -745,7 +743,7 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <Input className="pl-8 h-9 bg-background shadow-sm h-10 border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -996,8 +994,16 @@ export default function PaymentsManagementPage() {
             <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) setHistoryStudent(null); setIsHistoryOpen(o); }}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Transaction History: {historyStudent?.studentName}</DialogTitle>
-                        <DialogDescription>Viewing full institutional ledger for {historyStudent?.studentId}</DialogDescription>
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <DialogTitle>Transaction History: {historyStudent?.studentName}</DialogTitle>
+                                <DialogDescription>Viewing full institutional ledger for {historyStudent?.studentId}</DialogDescription>
+                            </div>
+                            <div className="flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-lg border border-primary/10">
+                                <UserCheck className="h-4 w-4 text-primary" />
+                                <span className="text-xs font-bold text-primary uppercase">Standing: {historyStudent ? calculateStandingForUser(historyStudent.userId) : ''}</span>
+                            </div>
+                        </div>
                     </DialogHeader>
                     {historyStudent && (
                         <Tabs defaultValue={historyStudent.semesterId || ''} className="flex-1 overflow-hidden flex flex-col mt-4">
@@ -1037,7 +1043,7 @@ export default function PaymentsManagementPage() {
                                             </div>
                                             <div className="p-3 rounded-lg border bg-red-50/50">
                                                 <p className="text-[9px] font-black uppercase text-red-700 tracking-widest">Balance</p>
-                                                <p className="text-lg font-black text-green-600">ZMW {p.balance.toFixed(2)}</p>
+                                                <p className="text-lg font-black text-destructive">ZMW {p.balance.toFixed(2)}</p>
                                             </div>
                                         </div>
                                         <div className="flex-1 overflow-auto border rounded-xl shadow-inner bg-background">

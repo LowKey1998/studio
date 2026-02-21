@@ -48,6 +48,7 @@ type Invoice = {
     courses?: string[]; 
     optionalFees?: string[]; 
     applyScholarship?: boolean; 
+    scholarshipPercentage?: number;
 };
 
 type Transaction = { 
@@ -151,7 +152,16 @@ export default function StudentPaymentsPage() {
                     const semesterInfo = semestersData[semesterId];
                     if (semesterInfo && semesterInfo.intakeId !== userProfile.intakeId) return null;
 
-                    const totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0) - (invoice.applyScholarship ? (invoice.totalTuition || 0) : 0);
+                    const tuition = Number(invoice.totalTuition || 0);
+                    const mandatory = Number(invoice.totalMandatoryFees || 0);
+                    const optional = Number(invoice.totalOptionalFees || 0);
+                    const late = Number(invoice.lateFee || 0);
+                    const scholarPerc = Number(invoice.scholarshipPercentage || 100);
+
+                    const totalDue = invoice.applyScholarship 
+                        ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
+                        : tuition + mandatory + optional + late;
+
                     const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
                     const totalPaid = invoiceTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
                     const balance = Math.max(0, totalDue - totalPaid);
@@ -203,7 +213,16 @@ export default function StudentPaymentsPage() {
             doc.text(`Invoice ID: ${p.invoice.invoiceId}`, 190, 40, { align: 'right' });
             doc.text(`Semester: ${semester?.name || p.semesterName}`, 14, 45);
 
-            const body = (p.invoice.courses || []).map(id => [allCourses[id]?.code || 'N/A', `Tuition: ${allCourses[id]?.name || 'Unknown'}`, `ZMW ${(allCourses[id]?.cost || 0).toFixed(2)}`]);
+            const scholarPerc = Number(p.invoice.scholarshipPercentage || 100);
+            const body = (p.invoice.courses || []).map(id => {
+                const cost = allCourses[id]?.cost || 0;
+                const finalCost = p.invoice.applyScholarship ? cost * (1 - (scholarPerc/100)) : cost;
+                return [
+                    allCourses[id]?.code || 'N/A', 
+                    `Tuition: ${allCourses[id]?.name || 'Unknown'}${p.invoice.applyScholarship ? ` (${scholarPerc}% Waiver)` : ''}`, 
+                    `ZMW ${finalCost.toFixed(2)}`
+                ];
+            });
             const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(f => ['', `Mandatory Fee: ${f.name}`, `ZMW ${f.amount.toFixed(2)}`]) : [];
             const optional = semester?.optionalFees && p.invoice.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
             const finalBody = [...body, ...fees, ...optional];
