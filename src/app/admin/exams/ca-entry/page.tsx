@@ -341,7 +341,7 @@ export default function CAEntryPage() {
                     let hasNewData = false;
 
                     for (const courseId of selectedCourseIds) {
-                        const course = courses.find(c => c.id === courseId);
+                        const course = allCourses[courseId];
                         const template = course?.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
                         const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
                         const studentScores = scores[courseId]?.[student.uid];
@@ -362,13 +362,13 @@ export default function CAEntryPage() {
                     if (hasNewData) {
                         const finalSubject = emailSubject
                             .replace(/\[Name\]/g, student.name)
-                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.code || '' : 'Multiple Courses')
                             .replace(/\[Semester\]/g, semesterName);
 
                         const finalBody = emailBody
                             .replace(/\[Name\]/g, student.name)
-                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.name || '' : 'your enrolled courses')
-                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.name || '' : 'your enrolled courses')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.code || '' : 'Multiple Courses')
                             .replace(/\[Semester\]/g, semesterName)
                             .replace(/\[Scores\]/g, studentCoursesHtml);
 
@@ -519,7 +519,7 @@ export default function CAEntryPage() {
                             <div className="relative max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter visible roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)}/></div>
                             <Accordion type="multiple" defaultValue={selectedCourseIds} className="w-full space-y-4">
                                 {selectedCourseIds.map(courseId => {
-                                    const course = courses.find(c => c.id === courseId);
+                                    const course = allCourses[courseId];
                                     if (!course) return null;
                                     const template = course.assessmentTemplateId ? templates[course.assessmentTemplateId] : null;
                                     const components = template?.components ? Object.entries(template.components).map(([id, c]: [string, any]) => ({ id, ...c })) : [];
@@ -677,7 +677,7 @@ export default function CAEntryPage() {
                                                                         onClick={() => handleSelectFromTimetable(entry.courseId)}
                                                                     >
                                                                         <div className="flex justify-between items-start gap-1">
-                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{entry.courseCode}: {entry.courseName}</p>
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{allCourses[entry.courseId]?.code}: {allCourses[entry.courseId]?.name}</p>
                                                                             {isFullyGraded && <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0"/>}
                                                                         </div>
                                                                         <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">

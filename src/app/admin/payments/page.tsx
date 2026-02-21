@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { 
@@ -123,6 +122,7 @@ type Transaction = {
     semesterName?: string;
     semesterId?: string;
     academicStanding?: string;
+    intakeName?: string;
 };
 
 type Intake = { id: string; name: string; };
@@ -318,11 +318,15 @@ export default function PaymentsManagementPage() {
                 const userId = tx.userId;
                 const userRegs = regsData[userId] || {};
                 const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
+                const sInfo = semesterId ? semsData[semesterId] : null;
+                const iInfo = sInfo ? intsData[sInfo.intakeId] : null;
+
                 transactionsList.push({
                     key: txId,
                     ...tx,
                     semesterId,
                     semesterName: semesterId ? semsData[semesterId]?.name : undefined,
+                    intakeName: iInfo?.name,
                     academicStanding: semesterId ? `Y${semsData[semesterId].year}S${semsData[semesterId].semesterInYear}` : undefined
                 });
             }
@@ -1056,9 +1060,10 @@ export default function PaymentsManagementPage() {
                                     .map(p => {
                                         const sem = semesters.find(s => s.id === p.semesterId);
                                         const intake = allIntakes.find(i => i.id === sem?.intakeId);
+                                        const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
                                         return (
                                             <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
-                                                {intake?.name} - {sem ? `Y${sem.year}S${sem.semesterInYear}` : 'Unknown'}
+                                                {intake?.name} - {standing}
                                             </TabsTrigger>
                                         )
                                     })
