@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Smartphone, ShieldCheck } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { logError } from "@/lib/error-logger";
 
@@ -47,15 +47,12 @@ export default function LoginPage() {
       let userRole = '';
       let firebaseUid = '';
 
-      // Check if it's an email (Parent) or User ID (Student/Staff)
       if (identifier.includes('@')) {
-          // Parent Login Flow - Attempt to sign in with email
           await signInWithEmailAndPassword(auth, emailToSign, password);
           toast({ variant: 'success', title: 'Parent Login Successful' });
           router.push('/parent/dashboard');
           return;
       } else {
-          // Student/Staff/Admin Login Flow via User ID
           const usersRef = ref(db, 'users');
           const q = query(usersRef, orderByChild('id'), equalTo(identifier.trim()));
           const snapshot = await get(q);
@@ -101,7 +98,6 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error("Login failed:", error);
       
-      // Log the failed attempt for institutional audit
       logError(
         error.message || "Login failed", 
         "Authentication", 
@@ -128,19 +124,19 @@ export default function LoginPage() {
             <Logo />
           </div>
         </div>
-        <Card className="shadow-2xl">
+        <Card className="shadow-2xl border-primary/10">
           <CardHeader>
-            <CardTitle className="font-headline text-2xl">Portal Access</CardTitle>
-            <CardDescription>Enter your User ID or Guardian Email to access your dashboard.</CardDescription>
+            <CardTitle className="font-headline text-2xl">Institutional Portal</CardTitle>
+            <CardDescription>Sign in with your User ID or registered staff email.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleLogin}>
               <div className="space-y-2">
-                <Label htmlFor="identifier">User ID or Email</Label>
+                <Label htmlFor="identifier">User ID / Email</Label>
                 <Input
                   id="identifier"
                   type="text"
-                  placeholder="e.g., STU-001 or parent@example.com"
+                  placeholder="e.g., STU-001 or john.doe@mail.com"
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
@@ -160,20 +156,30 @@ export default function LoginPage() {
               </div>
              
               <Button type="submit" className="w-full !mt-6" disabled={loading}>
-                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Log in'}
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Enter Dashboard'}
               </Button>
             </form>
-             <Separator className="my-6" />
-             <div className="space-y-2 text-center">
-                <p className="text-xs text-muted-foreground">
-                    Parents: Use the email address you provided during your child's registration.
-                </p>
-             </div>
+             
+             <div className="relative my-8">
+                <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground font-black tracking-widest">Guardian Access</span>
+                </div>
+            </div>
+
+            <Button variant="outline" className="w-full h-12 border-2 border-primary/20 hover:bg-primary/5 gap-2" asChild>
+                <Link href="/parent-login">
+                    <Smartphone className="h-4 w-4 text-primary" />
+                    Parent Secure Login (Phone)
+                </Link>
+            </Button>
           </CardContent>
            <CardFooter className="flex flex-col gap-2 justify-center mt-4 border-t pt-4">
              <Button variant="link" size="sm" asChild>
-                <Link href="/contact">
-                    Contact Administrator
+                <Link href="/contact" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Need technical assistance?
                 </Link>
              </Button>
           </CardFooter>
