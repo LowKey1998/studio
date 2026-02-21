@@ -32,9 +32,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [userProfile, loading, router]);
 
-  // Effect 2: Standing Calculation (Only runs when User/Profile changes)
+  // Effect 2: Standing Calculation (Only runs when specific ID identifiers change)
   useEffect(() => {
-    if (loading || !user || !userProfile?.intakeId) return;
+    if (loading || !user?.uid || !userProfile?.intakeId) return;
 
     const checkStanding = async () => {
         setCheckingStanding(true);
@@ -43,7 +43,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
             setHasCheckedStanding(true);
-        }, 8000);
+        }, 10000);
 
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
@@ -158,7 +158,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse tracking-widest">Establishing Portal standing...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">Syncing Portal standing...</p>
       </div>
     );
   }

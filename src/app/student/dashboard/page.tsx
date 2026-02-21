@@ -114,6 +114,7 @@ export default function StudentDashboardPage() {
             const allCalendarEvents = calSnap.val() || {};
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
+            const allAssessments = assSnap.val() || {};
             const calSettings = settingsSnap.val() || {};
             const fSettings = fSnap.val() || { paymentThreshold: 75 };
             const allSemesters = semSnap.val() || {};

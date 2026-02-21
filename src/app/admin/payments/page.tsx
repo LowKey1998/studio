@@ -269,9 +269,8 @@ export default function PaymentsManagementPage() {
     };
 
     React.useEffect(() => {
-        if (!userData) return;
+        if (!userData?.uid) return;
         
-        setLoading(true);
         const refs = [
             ref(db, 'users'),
             ref(db, 'registrations'),
@@ -286,21 +285,24 @@ export default function PaymentsManagementPage() {
         ];
 
         const unsubs = refs.map((r, index) => onValue(r, (snapshot) => {
-            if (index === 0) {
-                const users = snapshot.val() || {};
-                const studentList: StudentInfo[] = [];
-                for (const uid in users) {
-                    if (users[uid].role?.toLowerCase() === 'student') {
-                        studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
+            const data = snapshot.val() || {};
+            switch(index) {
+                case 0: {
+                    const users = data;
+                    const studentList: StudentInfo[] = [];
+                    for (const uid in users) {
+                        if (users[uid].role?.toLowerCase() === 'student') {
+                            studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
+                        }
                     }
-                }
-                setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
+                    setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
+                } break;
+                case 3: setProgrammes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
+                case 4: setSemesters(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
+                case 5: setAllIntakes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
+                case 7: setFinancialSettings(data); break;
+                case 9: setCalendarSettings(data); break;
             }
-            if (index === 3) setProgrammes(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
-            if (index === 4) setSemesters(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
-            if (index === 5) setAllIntakes(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
-            if (index === 7) setFinancialSettings(snapshot.val());
-            if (index === 9) setCalendarSettings(snapshot.val());
             
             // Re-calculate derived data on any relevant change
             const refreshDerived = async () => {
@@ -345,7 +347,7 @@ export default function PaymentsManagementPage() {
                     if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
 
                     for (const semesterId in regsData[userId]) {
-                        const reg = regsData[userId][semesterId];
+                        const reg = registrationsData[userId][semesterId];
                         const semesterInfo = semsData[semesterId];
                         if (!semesterInfo) continue;
 
@@ -387,7 +389,7 @@ export default function PaymentsManagementPage() {
         }));
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData, serverTimeOffset]);
+    }, [userData?.uid, serverTimeOffset]);
 
     React.useEffect(() => {
         if (!user?.uid) return;
