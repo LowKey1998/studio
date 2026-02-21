@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Smartphone, ShieldCheck } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { logError } from "@/lib/error-logger";
 
 export default function LoginPage() {
@@ -48,10 +47,13 @@ export default function LoginPage() {
       let firebaseUid = '';
 
       if (identifier.includes('@')) {
-          await signInWithEmailAndPassword(auth, emailToSign, password);
-          toast({ variant: 'success', title: 'Parent Login Successful' });
-          router.push('/parent/dashboard');
-          return;
+          const userCredential = await signInWithEmailAndPassword(auth, emailToSign, password);
+          const userRef = ref(db, `users/${userCredential.user.uid}`);
+          const userSnap = await get(userRef);
+          if (userSnap.exists()) {
+              userRole = userSnap.val().role?.toLowerCase();
+              firebaseUid = userCredential.user.uid;
+          }
       } else {
           const usersRef = ref(db, 'users');
           const q = query(usersRef, orderByChild('id'), equalTo(identifier.trim()));
@@ -75,9 +77,9 @@ export default function LoginPage() {
 
           emailToSign = userRecord.email;
           userRole = userRecord.role.toLowerCase();
+          
+          await signInWithEmailAndPassword(auth, emailToSign, password);
       }
-      
-      await signInWithEmailAndPassword(auth, emailToSign, password);
       
       if (firebaseUid) {
           await update(ref(db, `users/${firebaseUid}`), {
