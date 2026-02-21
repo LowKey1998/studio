@@ -32,7 +32,8 @@ import {
     XCircle,
     ShieldAlert,
     GraduationCap,
-    Info
+    Info,
+    X
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -56,6 +57,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // --- TYPE DEFINITIONS ---
 
@@ -957,32 +959,93 @@ export default function PaymentsManagementPage() {
             </Dialog>
 
             {/* History Statement Dialog */}
-            <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+            <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) setHistoryStudent(null); setIsHistoryOpen(o); }}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Statement: {historyStudent?.studentName}</DialogTitle></DialogHeader>
-                    <div className="flex-1 overflow-auto border rounded-xl my-4">
-                        <Table>
-                            <TableHeader className="sticky top-0 bg-background z-10 border-b">
-                                <TableRow><TableHead>Date</TableHead>                                <TableHead>Method</TableHead>                                <TableHead>Comment</TableHead>                                <TableHead className="text-right">Amount</TableHead></TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).map(tx => (
-                                    <TableRow key={tx.key} className="border-b-0">
-                                        <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                        <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method}</Badge></TableCell>
-                                        <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment}</TableCell>
-                                        <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                    </TableRow>
-                                ))}
-                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).length === 0 && (
-                                    <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">No historical transactions found for this account.</TableCell></TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <DialogFooter><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close</Button></DialogFooter>
+                    <DialogHeader>
+                        <DialogTitle>Transaction History: {historyStudent?.studentName}</DialogTitle>
+                        <DialogDescription>Viewing full institutional ledger for {historyStudent?.studentId}</DialogDescription>
+                    </DialogHeader>
+                    {historyStudent && (
+                        <Tabs defaultValue={historyStudent.semesterId || ''} className="flex-1 overflow-hidden flex flex-col mt-4">
+                            <TabsList className="justify-start h-10 w-full overflow-x-auto bg-muted/50 p-1 shrink-0">
+                                {paymentInfos
+                                    .filter(p => p.userId === historyStudent.userId)
+                                    .sort((a,b) => {
+                                        const semA = semesters.find(s => s.id === a.semesterId);
+                                        const semB = semesters.find(s => s.id === b.semesterId);
+                                        if (!semA || !semB) return 0;
+                                        return (semB.year * 10 + semB.semesterInYear) - (semA.year * 10 + semA.semesterInYear);
+                                    })
+                                    .map(p => (
+                                        <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
+                                            {semesters.find(s => s.id === p.semesterId)?.name.split(' ').slice(-2).join(' ') || 'Unknown'}
+                                        </TabsTrigger>
+                                    ))
+                                }
+                            </TabsList>
+                            {paymentInfos
+                                .filter(p => p.userId === historyStudent.userId)
+                                .map(p => (
+                                    <TabsContent key={p.semesterId} value={p.semesterId || ''} className="flex-1 flex flex-col min-h-0 pt-4 data-[state=active]:flex">
+                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                            <div className="p-3 rounded-lg border bg-muted/20">
+                                                <p className="text-[9px] font-black uppercase opacity-60 tracking-widest">Total Due</p>
+                                                <p className="text-lg font-black">ZMW {p.totalDue.toFixed(2)}</p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border bg-green-50/50">
+                                                <p className="text-[9px] font-black uppercase text-green-700 tracking-widest">Paid</p>
+                                                <p className="text-lg font-black text-green-600">ZMW {p.totalPaid.toFixed(2)}</p>
+                                            </div>
+                                            <div className="p-3 rounded-lg border bg-red-50/50">
+                                                <p className="text-[9px] font-black uppercase text-red-700 tracking-widest">Balance</p>
+                                                <p className="text-lg font-black text-red-600">ZMW {p.balance.toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 overflow-auto border rounded-xl shadow-inner bg-background">
+                                            <Table>
+                                                <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                                                    <TableRow>
+                                                        <TableHead>Date</TableHead>
+                                                        <TableHead>Method</TableHead>
+                                                        <TableHead>Comment / Ref</TableHead>
+                                                        <TableHead className="text-right">Amount</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {rawTransactions
+                                                        .filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId)
+                                                        .map(tx => (
+                                                            <TableRow key={tx.key} className="group hover:bg-muted/30">
+                                                                <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                                <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black tracking-tighter">{tx.method}</Badge></TableCell>
+                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment || '-'}</TableCell>
+                                                                <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                            </TableRow>
+                                                        ))
+                                                    }
+                                                    {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (
+                                                        <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">No transactions found for this semester.</TableCell></TableRow>
+                                                    )}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </TabsContent>
+                                ))
+                            }
+                        </Tabs>
+                    )}
+                    <DialogFooter className="border-t pt-4"><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close Statement</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
     );
+}
+
+function useToast() {
+    const [state, setState] = React.useState({ toasts: [] });
+    return {
+        toast: ({ title, variant, description }: { title: string, variant?: string, description?: string }) => {
+            console.log(title, description);
+        }
+    }
 }
