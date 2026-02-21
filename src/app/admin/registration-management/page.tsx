@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -479,6 +480,13 @@ export default function RegistrationManagementPage() {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
+    const isDateInSemesterRange = (date: Date, semester: Semester, autoDates?: { from: Date; to: Date } | null) => {
+        let start = semester.startDate ? parseISO(semester.startDate) : autoDates?.from;
+        let end = semester.endDate ? parseISO(semester.endDate) : autoDates?.to;
+        if (!start || !end) return true;
+        return isWithinInterval(date, { start, end });
+    };
+
     const getDeadlineSummary = React.useCallback((semester: Semester, autoDates?: { from: Date; to: Date } | null) => {
         const linkedPlanIds = Object.keys(semester.paymentPlanIds || {});
         const plans = allPaymentPlans.filter(p => linkedPlanIds.includes(p.id));
@@ -639,9 +647,9 @@ export default function RegistrationManagementPage() {
                                                         <CardHeader className="pb-3">
                                                             <div className="flex justify-between items-start">
                                                                 <div className="space-y-1">
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex flex-wrap items-center gap-2 pr-8">
                                                                         <CardTitle className="text-base">{sem.name}</CardTitle>
-                                                                        {isCurrentStanding && <Badge className="h-4 text-[8px] bg-primary text-primary-foreground font-black uppercase">Current Standing</Badge>}
+                                                                        {isCurrentStanding && <Badge className="h-4 text-[8px] bg-primary text-primary-foreground font-black uppercase whitespace-nowrap shrink-0">Current Standing</Badge>}
                                                                     </div>
                                                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
@@ -649,7 +657,7 @@ export default function RegistrationManagementPage() {
                                                                         <Badge variant="outline" className="h-4 text-[8px] uppercase">{isFlatFee ? 'Flat Fee' : 'Course Fee'}</Badge>
                                                                     </div>
                                                                 </div>
-                                                                <Switch checked={isActive} onCheckedChange={() => {
+                                                                <Switch className="absolute top-6 right-4" checked={isActive} onCheckedChange={() => {
                                                                     const next = {...activePathSemesters};
                                                                     if(!next[path.id]) next[path.id] = {};
                                                                     next[path.id][semId] = { active: !isActive, showReason: false };
