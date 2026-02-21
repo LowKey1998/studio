@@ -24,17 +24,23 @@ import {
     TrendingUp,
     MapPin,
     Wallet,
-    History
+    History,
+    Calendar as CalendarIcon,
+    Filter,
+    Save,
+    CheckCircle,
+    XCircle,
+    ShieldAlert
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -46,7 +52,7 @@ import autoTable from 'jspdf-autotable';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/use-auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { PaymentCountdown } from '@/components/payment-countdown';
+import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 
 // --- TYPE DEFINITIONS ---
@@ -65,6 +71,7 @@ type StudentPaymentInfo = {
     invoiceId: string;
     enrolledCourses: string[];
     thresholdMet: boolean;
+    penaltiesActive: boolean;
 };
 
 type PaymentRecord = {
@@ -74,7 +81,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    // Cached audit data for the UI
+    setTotalDue?: string; // New field to allow setting total due if invoice is missing
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -97,12 +104,12 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
-// --- HELPERS ---
+// --- COMPONENTS ---
 
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
@@ -179,7 +186,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 }
 
 export default function PaymentsManagementPage() {
-    const { userProfile: userData } = useAuth();
+    const { user, userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
     const [programmes, setProgrammes] = React.useState<any[]>([]);
@@ -206,6 +213,7 @@ export default function PaymentsManagementPage() {
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [transactionId, setTransactionId] = React.useState('');
+    const [manualTotalDue, setManualTotalDue] = React.useState('');
 
     // Bulk Recording State
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
@@ -224,12 +232,11 @@ export default function PaymentsManagementPage() {
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
-    // Consolidated Data Fetching
     const fetchPaymentData = React.useCallback(async () => {
         if (!userData) return;
         setLoading(true);
         try {
-            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap] = await Promise.all([
+            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -237,7 +244,8 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'invoices')),
-                get(ref(db, 'settings/financialSettings'))
+                get(ref(db, 'settings/financialSettings')),
+                get(ref(db, 'calendarEvents'))
             ]);
             
             const users = uSnap.val() || {};
@@ -248,6 +256,7 @@ export default function PaymentsManagementPage() {
             const intsData = iSnap.val() || {};
             const invsData = invSnap.val() || {};
             const finData = fSnap.val() || { paymentThreshold: 75 };
+            const calendarEvents = Object.values(eSnap.val() || {}) as any[];
 
             setProgrammes(Object.keys(progsData).map(id => ({ id, ...progsData[id]})));
             setSemesters(Object.keys(semsData).map(id => ({ id, ...semsData[id]})));
@@ -281,6 +290,7 @@ export default function PaymentsManagementPage() {
 
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
             const globalThreshold = finData.paymentThreshold || 75;
+            const now = getCurrentServerDate();
 
             for (const userId in regsData) {
                  const user = users[userId];
@@ -304,7 +314,14 @@ export default function PaymentsManagementPage() {
                         const balance = Math.max(0, totalPayable - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const thresholdMet = totalPayable > 0 ? (totalPaid / totalPayable) * 100 >= threshold : true;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const thresholdMet = paidPercentage >= threshold;
+
+                        // Check for penalties
+                        const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
+                        const grace = semesterInfo.gracePeriodDays ?? 7;
+                        const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
+                        const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
 
                         studentPaymentMap[key] = {
                             userId,
@@ -319,6 +336,7 @@ export default function PaymentsManagementPage() {
                             invoiceId: reg.invoiceId,
                             enrolledCourses: reg.courses || [],
                             thresholdMet,
+                            penaltiesActive,
                             status: balance <= 0.01 ? 'Paid' : 'Pending'
                         };
                     }
@@ -326,12 +344,21 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
+            // Load personal defaults if they exist
+            const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
+            if (defaultsSnap.exists()) {
+                const def = defaultsSnap.val();
+                if (def.programmeFilter) setProgrammeFilter(def.programmeFilter);
+                if (def.intakeFilter) setIntakeFilter(def.intakeFilter);
+                if (def.timeFilter) setTimeFilter(def.timeFilter);
+            }
+
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Data Load Failed' });
         } finally {
             setLoading(false);
         }
-    }, [userData, toast]);
+    }, [userData, toast, user?.uid]);
 
     React.useEffect(() => {
         fetchPaymentData();
@@ -384,17 +411,6 @@ export default function PaymentsManagementPage() {
         });
     }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, minPaidFilter, filteredTransactions, timeFilter]);
 
-    const currentYearCollections = React.useMemo(() => {
-        const thisYear = new Date().getFullYear();
-        return rawTransactions
-            .filter(tx => {
-                const sem = semesters.find(s => s.id === tx.semesterId);
-                if (!sem) return false;
-                return sem.name.includes(String(thisYear));
-            })
-            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    }, [rawTransactions, semesters]);
-
     const summaryStats = React.useMemo(() => {
         const stats = filteredData.reduce((acc, p) => {
             acc.totalDue += Number(p.totalDue) || 0;
@@ -406,6 +422,23 @@ export default function PaymentsManagementPage() {
         const periodCollected = filteredTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         return { ...stats, periodCollected };
     }, [filteredData, filteredTransactions]);
+
+    const handleSaveAsDefault = async () => {
+        if (!user) return;
+        setSaving(true);
+        try {
+            await set(ref(db, `settings/paymentFilters/${user.uid}`), {
+                programmeFilter,
+                intakeFilter,
+                timeFilter
+            });
+            toast({ title: 'Default Filters Saved' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Failed to save defaults' });
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // --- Bulk Action Handling ---
 
@@ -472,8 +505,15 @@ export default function PaymentsManagementPage() {
                     const newInvoiceRef = push(ref(db, `invoices/${studentUid}`));
                     invoiceId = newInvoiceRef.key!;
                     updates[`invoices/${studentUid}/${invoiceId}`] = {
-                        invoiceId, totalTuition: record.totalDue || 0, totalMandatoryFees: 0, totalOptionalFees: 0,
-                        dateCreated: now, semester: semesterInfo.name, semesterId: semId, courses: [], optionalFees: [],
+                        invoiceId, 
+                        totalTuition: record.setTotalDue ? parseFloat(record.setTotalDue) : (record.totalDue || 0), 
+                        totalMandatoryFees: 0, 
+                        totalOptionalFees: 0,
+                        dateCreated: now, 
+                        semester: semesterInfo.name, 
+                        semesterId: semId, 
+                        courses: [], 
+                        optionalFees: [],
                     };
                     updates[`registrations/${studentUid}/${semId}/invoiceId`] = invoiceId;
                 }
@@ -513,8 +553,13 @@ export default function PaymentsManagementPage() {
                 const newInvRef = push(ref(db, `invoices/${selectedStudent.userId}`));
                 invId = newInvRef.key!;
                 updates[`invoices/${selectedStudent.userId}/${invId}`] = {
-                    invoiceId: invId, totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0,
-                    dateCreated: now, semester: sem.name, semesterId: sem.id
+                    invoiceId: invId, 
+                    totalTuition: manualTotalDue ? parseFloat(manualTotalDue) : 0, 
+                    totalMandatoryFees: 0, 
+                    totalOptionalFees: 0,
+                    dateCreated: now, 
+                    semester: sem.name, 
+                    semesterId: sem.id
                 };
                 updates[`registrations/${selectedStudent.userId}/${sem.id}/invoiceId`] = invId;
             }
@@ -531,8 +576,7 @@ export default function PaymentsManagementPage() {
             await update(ref(db), updates);
             toast({ title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
             setIsRecordPaymentOpen(false);
-            setSelectedStudent(null);
-            setPaymentAmount('');
+            resetDialog();
             await fetchPaymentData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Recording Failed' }); }
         finally { setFormLoading(false); }
@@ -556,6 +600,16 @@ export default function PaymentsManagementPage() {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
+
+    const resetDialog = () => {
+        setSelectedStudent(null);
+        setPaymentAmount('');
+        setPaymentMethod('Cash');
+        setTransactionId('');
+        setManualTotalDue('');
+        setSingleYear('');
+        setSingleSemId('');
+    };
 
     return (
         <div className="space-y-6">
@@ -581,8 +635,8 @@ export default function PaymentsManagementPage() {
                                 <CalendarDays className="h-4 w-4 text-primary" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black">ZMW {currentYearCollections.toFixed(2)}</div>
-                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Sum of all {new Date().getFullYear()} sessions</p>
+                                <div className="text-2xl font-black">ZMW {summaryStats.totalPaid.toFixed(2)}</div>
+                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Total successful collections</p>
                             </CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
@@ -611,13 +665,14 @@ export default function PaymentsManagementPage() {
                             <CardDescription>Filter and audit student financial compliance.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Default Filters</Button>
                             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6 p-4 rounded-xl border bg-muted/10 items-end">
+                <CardContent className="pt-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Programme</Label>
                             <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
@@ -633,8 +688,17 @@ export default function PaymentsManagementPage() {
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Amount Paid ≥</Label>
-                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-9 bg-background" />
+                            <Label className="text-[10px] font-black uppercase">Time Range</Label>
+                            <Select value={timeFilter} onValueChange={(val:any) => setTimeFilter(val)}>
+                                <SelectTrigger className="h-9 bg-background"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Time</SelectItem>
+                                    <SelectItem value="today">Today</SelectItem>
+                                    <SelectItem value="week">This Week</SelectItem>
+                                    <SelectItem value="month">This Month</SelectItem>
+                                    <SelectItem value="period">Custom Period</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="space-y-1 lg:col-span-2">
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
@@ -644,6 +708,26 @@ export default function PaymentsManagementPage() {
                             </div>
                         </div>
                     </div>
+
+                    {timeFilter === 'period' && (
+                        <div className="p-4 border rounded-xl bg-muted/5 flex items-center gap-4 animate-in fade-in slide-in-from-top-2">
+                            <div className="space-y-1">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Custom Date Range</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className={cn("w-[280px] justify-start text-left font-normal", !customRange && "text-muted-foreground")}>
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {customRange?.from ? (customRange.to ? `${format(customRange.from, "LLL dd")} - ${format(customRange.to, "LLL dd, y")}` : format(customRange.from, "LLL dd, y")) : <span>Select Range</span>}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar initialFocus mode="range" selected={customRange} onSelect={setCustomRange} numberOfMonths={2} />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                            {customRange?.from && <Button variant="ghost" size="sm" onClick={() => setCustomRange(undefined)} className="h-10 mt-5"><X className="h-4 w-4 mr-1"/> Clear</Button>}
+                        </div>
+                    )}
 
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border shadow-sm overflow-hidden">
@@ -673,9 +757,12 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
-                                                <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px]">
-                                                    {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good' : 'Defaulter')}
-                                                </Badge>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px]">
+                                                        {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
+                                                    </Badge>
+                                                    {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
+                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -685,6 +772,16 @@ export default function PaymentsManagementPage() {
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {filteredData.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="h-48 text-center text-muted-foreground">
+                                                <div className="flex flex-col items-center justify-center gap-2">
+                                                    <Filter className="h-8 w-8 opacity-20" />
+                                                    <p className="text-sm">No payment records found for the current filters.</p>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -706,7 +803,15 @@ export default function PaymentsManagementPage() {
                                 <Label className="text-[10px] font-black uppercase opacity-60">Semester Audit</Label>
                                 {(() => {
                                     const info = paymentInfos.find(p => p.userId === selectedStudent?.userId && p.semesterId === singleSemId);
-                                    if (!info) return <p className="text-[10px] italic">No active invoice. Record will initialize on save.</p>;
+                                    if (!info) return (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] italic text-primary font-bold">No active invoice found. Setting payment will initialize registration.</p>
+                                            <div className="space-y-1">
+                                                <Label className="text-[9px] uppercase">Set Expected Total Due (Optional)</Label>
+                                                <Input type="number" value={manualTotalDue} onChange={e => setManualTotalDue(e.target.value)} placeholder="0.00" className="h-8 text-xs"/>
+                                            </div>
+                                        </div>
+                                    );
                                     return (
                                         <div className="grid grid-cols-3 gap-2 text-center">
                                             <div className="flex flex-col"><span className="text-[9px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
@@ -717,7 +822,16 @@ export default function PaymentsManagementPage() {
                                 })()}
                             </div>
                         )}
-                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="font-bold text-lg h-12" /></div>
+                        <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
+                        
+                        <Alert className="bg-muted/50 border-0">
+                            <Clock className="h-4 w-4" />
+                            <AlertTitle className="text-[10px] font-black uppercase tracking-widest opacity-70">Audit Notice</AlertTitle>
+                            <AlertDescription className="text-[10px] italic leading-tight">
+                                Manual entries are timestamped and logged against your staff profile for financial audit.
+                            </AlertDescription>
+                        </Alert>
+
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1"><Label>Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Direct Transfer">Transfer</SelectItem></SelectContent></Select></div>
                             <div className="space-y-1"><Label>Reference #</Label><Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF#" /></div>
@@ -743,14 +857,20 @@ export default function PaymentsManagementPage() {
                                             <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.userId}><SelectTrigger className="h-9"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
                                             <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9"><SelectValue placeholder="Semester..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
                                         </div>
+                                        {row.semesterId && !paymentInfos.find(p => p.userId === row.userId && p.semesterId === row.semesterId) && (
+                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                                <Label className="text-[9px] uppercase font-bold text-primary">Initialize Semester Total Due</Label>
+                                                <Input type="number" placeholder="Set Expected Total" value={row.setTotalDue} onChange={e => handleBulkPaymentRowChange(row.key, 'setTotalDue', e.target.value)} className="h-8 text-xs" />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
                                         <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Semester Audit</Badge>}</div>
                                         {row.semesterId ? (
                                             <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Total Due</span><span className="font-black text-xs">K{(row.totalDue || 0).toFixed(0)}</span></div>
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Total Due</span><span className="font-black text-xs">K{(row.totalDue || (parseFloat(row.setTotalDue || '0'))).toFixed(0)}</span></div>
                                                 <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Balance</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Balance</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || parseFloat(row.setTotalDue || '0')) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
                                         ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic">Select student & semester to audit</div>}
                                         <div className="grid grid-cols-2 gap-2">
@@ -785,6 +905,9 @@ export default function PaymentsManagementPage() {
                                         <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
+                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).length === 0 && (
+                                    <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">No historical transactions found for this account.</TableCell></TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     </div>
@@ -794,4 +917,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
