@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -164,7 +165,7 @@ export default function FinalExamEntryPage() {
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
             const intake = intakes.find(i => i.id === student.intakeId);
-            if (intake) {
+            if (input) {
                 get(ref(db, 'settings/academicCalendar')).then(calSnap => {
                     const startStr = parseIntakeDate(intake.name);
                     if (calSnap.exists() && startStr) {
