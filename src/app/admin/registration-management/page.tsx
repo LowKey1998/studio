@@ -93,27 +93,6 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
-const isDateInSemesterRange = (date: Date | null | undefined, sem: Semester | null, autoDates?: { from: Date; to: Date } | null) => {
-    if (!date) return true;
-    const d = startOfDay(date);
-    
-    // Check manual dates first
-    if (sem?.startDate && sem?.endDate) {
-        const start = startOfDay(parseISO(sem.startDate));
-        const end = startOfDay(parseISO(sem.endDate));
-        return (d >= start && d <= end);
-    }
-
-    // Fallback to auto dates if available
-    if (autoDates) {
-        const start = startOfDay(autoDates.from);
-        const end = startOfDay(autoDates.to);
-        return (d >= start && d <= end);
-    }
-
-    return true;
-};
-
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
 type Intake = { id: string; name: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
@@ -127,9 +106,10 @@ type CreateOrEditDialogContentProps = {
     feeTemplates: FeeTemplate[];
     allIntakes: Intake[];
     calendarSettings: any;
+    initialTab?: string;
 };
 
-function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes, calendarSettings }: CreateOrEditDialogContentProps) {
+function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, allPaymentPlans, feeTemplates, allIntakes, calendarSettings, initialTab = 'details' }: CreateOrEditDialogContentProps) {
     const [saving, setSaving] = React.useState(false);
     const [intakeId, setIntakeId] = React.useState('');
     const [year, setYear] = React.useState('');
@@ -181,7 +161,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
         }
     }, [editingSemester]);
 
-    // AUTO-CALCULATION LOGIC: Runs when required identifiers are available
     React.useEffect(() => {
         if (intakeId && year && semesterInYear && calendarSettings) {
             const intake = allIntakes.find(i => i.id === intakeId);
@@ -189,7 +168,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
             const intakeDateStr = parseIntakeDate(intake.name);
             if (!intakeDateStr) return;
 
-            // Only auto-update if we are CREATING or if the existing record is MISSING dates
             if (!editingSemester || (!editingSemester.startDate && !editingSemester.endDate)) {
                 const predictedRange = calculateSemesterDateRange(
                     intakeDateStr,
@@ -283,7 +261,7 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                 <DialogTitle>{editingSemester ? 'Edit' : 'Create'} Academic Semester</DialogTitle>
                 <DialogDescription>Configure base settings and rules for this academic period.</DialogDescription>
             </DialogHeader>
-            <Tabs defaultValue="details" className="w-full">
+            <Tabs defaultValue={initialTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="details">Academic</TabsTrigger>
                     <TabsTrigger value="fees">Fees</TabsTrigger>
@@ -347,6 +325,28 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     </div>
                 </TabsContent>
                 <TabsContent value="fees" className="space-y-4 pt-4">
+                    <div className="p-4 border rounded-xl bg-primary/5 mb-4">
+                        <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
+                        <RadioGroup value={billingPolicy} onValueChange={(val) => setBillingPolicy(val as any)} className="grid grid-cols-2 gap-4 mt-3">
+                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'course' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
+                                <RadioGroupItem value="course" id="bp-course" className="sr-only" />
+                                <Label htmlFor="bp-course" className="cursor-pointer text-center font-bold">Pay Per Course</Label>
+                            </div>
+                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'semester' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
+                                <RadioGroupItem value="semester" id="bp-semester" className="sr-only" />
+                                <Label htmlFor="bp-semester" className="cursor-pointer text-center font-bold">Flat Semester Fee</Label>
+                            </div>
+                        </RadioGroup>
+                        {billingPolicy === 'semester' && (
+                            <div className="space-y-1 mt-4 animate-in fade-in slide-in-from-top-2">
+                                <Label className="text-xs font-bold uppercase">Flat Tuition Amount (ZMW)</Label>
+                                <Input type="number" value={tuitionFee} onChange={e => setTuitionFee(e.target.value)} placeholder="5000.00" className="bg-background" />
+                            </div>
+                        )}
+                    </div>
+
+                    <Separator />
+
                     <Label className="font-bold">Mandatory Fees</Label>
                     <div className="border rounded p-2 min-h-[100px] bg-muted/10 space-y-1">
                         {Object.entries(mandatoryFees).map(([id, fee]) => (
@@ -376,28 +376,6 @@ function CreateOrEditDialogContent({ editingSemester, onClose, onSaveSuccess, al
                     </div>
                 </TabsContent>
                 <TabsContent value="controls" className="space-y-6 pt-4">
-                    <div className="space-y-4 p-4 border rounded-xl bg-primary/5">
-                        <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
-                        <RadioGroup value={billingPolicy} onValueChange={(val) => setBillingPolicy(val as any)} className="grid grid-cols-2 gap-4">
-                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'course' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
-                                <RadioGroupItem value="course" id="bp-course" className="sr-only" />
-                                <Label htmlFor="bp-course" className="cursor-pointer text-center font-bold">Pay Per Course</Label>
-                            </div>
-                            <div className={cn("flex flex-col items-center justify-between gap-2 p-4 rounded-lg border-2 cursor-pointer transition-all", billingPolicy === 'semester' ? "border-primary bg-primary/10" : "bg-card border-transparent")}>
-                                <RadioGroupItem value="semester" id="bp-semester" className="sr-only" />
-                                <Label htmlFor="bp-semester" className="cursor-pointer text-center font-bold">Flat Semester Fee</Label>
-                            </div>
-                        </RadioGroup>
-                        {billingPolicy === 'semester' && (
-                            <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-                                <Label className="text-xs">Flat Tuition Amount (ZMW)</Label>
-                                <Input type="number" value={tuitionFee} onChange={e => setTuitionFee(e.target.value)} placeholder="5000.00" />
-                            </div>
-                        )}
-                    </div>
-
-                    <Separator />
-
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1"><Label>Payment Threshold (%)</Label><Input type="number" value={paymentThreshold} onChange={e => setPaymentThreshold(Number(e.target.value))}/></div>
                         <div className="space-y-1"><Label>Grace Period (Days)</Label><Input type="number" value={gracePeriodDays} onChange={e => setGracePeriodDays(Number(e.target.value))}/></div>
@@ -444,6 +422,7 @@ export default function RegistrationManagementPage() {
     const [allTimetables, setAllTimetables] = React.useState<Record<string, any>>({});
     const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
+    const [institutionSettings, setInstitutionSettings] = React.useState<any>(null);
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -454,19 +433,29 @@ export default function RegistrationManagementPage() {
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | null | undefined>>({});
+    const [editInitialTab, setEditInitialTab] = React.useState('details');
 
     const [semesterToDeleteId, setSemesterToDeleteId] = React.useState<string | null>(null);
     const [isDeleteSemesterDialogOpen, setIsDeleteSemesterDialogOpen] = React.useState(false);
 
     const { toast } = useToast();
     
+    const refreshData = React.useCallback(async () => {
+        const semestersSnap = await get(ref(db, 'semesters'));
+         if (semestersSnap.exists()) {
+            const data = semestersSnap.val();
+            const list: Semester[] = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+            setSemesters(list.sort((a, b) => b.name.localeCompare(a.name)));
+        }
+    }, []);
+
     React.useEffect(() => {
         setLoading(true);
         const refs = [
             ref(db, 'intakes'), ref(db, 'programmes'), ref(db, 'courses'), ref(db, 'coursePaths'),
             ref(db, 'semesterOfferings'), ref(db, 'settings/paymentPlans'), ref(db, 'semesters'), 
             ref(db, 'settings/feeTemplates'), ref(db, 'calendarEvents'), ref(db, 'users'),
-            ref(db, 'settings/academicCalendar'), ref(db, 'timetables')
+            ref(db, 'settings/academicCalendar'), ref(db, 'timetables'), ref(db, 'settings/institution')
         ];
         const unsubs = refs.map((r, i) => onValue(r, (snapshot) => {
             const data = snapshot.val() || {};
@@ -483,8 +472,9 @@ export default function RegistrationManagementPage() {
                 case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
                 case 11: setAllTimetables(data); break;
+                case 12: setInstitutionSettings(data); break;
             }
-            if(i === 11) setLoading(false);
+            if(i === 12) setLoading(false);
         }));
         return () => unsubs.forEach(unsub => unsub());
     }, []);
@@ -640,6 +630,10 @@ export default function RegistrationManagementPage() {
                                                 const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem, predictedDates);
                                                 const isCurrentStanding = standing && sem.year === standing.year && sem.semesterInYear === standing.semester;
                                                 
+                                                const currentPolicy = sem.billingPolicy || institutionSettings?.billingPolicy || 'course';
+                                                const isFlatFee = currentPolicy === 'semester';
+                                                const feeMissing = isFlatFee && (!sem.tuitionFee || Number(sem.tuitionFee) <= 0);
+
                                                 return (
                                                     <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80", isCurrentStanding && "ring-2 ring-primary ring-offset-2")}>
                                                         <CardHeader className="pb-3">
@@ -652,7 +646,7 @@ export default function RegistrationManagementPage() {
                                                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
                                                                         {isActive ? <Badge className="h-4 text-[8px] bg-green-100 text-green-700 border-green-200">Registration Open</Badge> : <Badge variant="secondary" className="h-4 text-[8px]">Closed</Badge>}
-                                                                        <Badge variant="outline" className="h-4 text-[8px] uppercase">{sem.billingPolicy === 'semester' ? 'Flat Fee' : 'Course Fee'}</Badge>
+                                                                        <Badge variant="outline" className="h-4 text-[8px] uppercase">{isFlatFee ? 'Flat Fee' : 'Course Fee'}</Badge>
                                                                     </div>
                                                                 </div>
                                                                 <Switch checked={isActive} onCheckedChange={() => {
@@ -664,6 +658,22 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="space-y-4">
+                                                            {isFlatFee && (
+                                                                <div className="p-2 rounded-lg border bg-primary/5 flex items-center justify-between">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[9px] font-black uppercase text-muted-foreground leading-none">Semester Tuition</span>
+                                                                        {feeMissing ? (
+                                                                            <span className="text-xs font-black text-destructive animate-pulse uppercase mt-1">Fees Not Set</span>
+                                                                        ) : (
+                                                                            <span className="text-sm font-black text-primary">ZMW {sem.tuitionFee?.toLocaleString()}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {feeMissing && (
+                                                                        <Button variant="outline" size="sm" className="h-7 text-[9px] font-black uppercase tracking-widest border-destructive/20 text-destructive hover:bg-destructive/10" onClick={() => { setEditingSemester(sem); setEditInitialTab('fees'); setIsEditDialogOpen(true); }}>Set Fee</Button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
                                                             <div className="space-y-1">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active window</Label>
                                                                 {hasNoManualDates ? (
@@ -704,7 +714,7 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardContent>
                                                         <CardFooter className="bg-muted/10 border-t flex justify-end gap-2 p-3">
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setEditInitialTab('details'); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDeadlineDialog(sem)}><CalendarIcon className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }}><Trash2 className="h-4 w-4"/></Button>
                                                         </CardFooter>
@@ -735,6 +745,7 @@ export default function RegistrationManagementPage() {
                         feeTemplates={feeTemplates}
                         allIntakes={allIntakes}
                         calendarSettings={calendarSettings}
+                        initialTab={editInitialTab}
                     />
                 </DialogContent>
             </Dialog>
@@ -776,7 +787,10 @@ export default function RegistrationManagementPage() {
             <AlertDialog open={isDeleteSemesterDialogOpen} onOpenChange={setIsDeleteSemesterDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the semester record and its associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel onClick={() => setSemesterToDeleteId(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground">Delete Semester</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setSemesterToDeleteId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground">Delete Semester</AlertDialogAction>
+                    </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </div>

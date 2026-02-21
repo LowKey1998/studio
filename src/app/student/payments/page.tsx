@@ -144,7 +144,6 @@ export default function StudentPaymentsPage() {
             setFinancialSettings(fSettings);
             if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
 
-            // Standing Logic
             if (userProfile.intakeId && calSettings) {
                 const iName = allIntakes[userProfile.intakeId]?.name;
                 setIntakeName(iName || 'Unknown Intake');
