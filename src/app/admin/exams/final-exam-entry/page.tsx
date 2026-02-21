@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Search, User, ChevronsUpDown, X, Info, BookOpen, Layers, Settings2, Mail } from "lucide-react";
+import { Loader2, Save, Search, User, ChevronsUpDown, X, Info, BookOpen, Layers, Settings2, Mail, CalendarDays, MapPin, CheckCircle2 } from "lucide-react";
 import { db } from '@/lib/firebase';
 import { ref, get, push, onValue, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from '@/components/ui/textarea';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { format, parseISO } from 'date-fns';
+import Link from 'next/link';
 
 type Student = {
     uid: string;
@@ -43,12 +44,40 @@ type AssessmentScore = { score?: number; feedback?: string; };
 type FinalExamScore = { finalExam?: AssessmentScore };
 type AllScores = Record<string, Record<string, FinalExamScore>>;
 
+type TimeSlot = { id: string; startTime: string; endTime: string; };
+type TimetableEntry = {
+    id: string;
+    semesterId: string;
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    day: string;
+    startTime: string;
+    endTime: string;
+    venue: string;
+    intakeName: string;
+};
+
+const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const timeToMinutes = (time: string) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 export default function FinalExamEntryPage() {
     const [allStudents, setAllStudents] = React.useState<Student[]>([]);
     const [programmes, setProgrammes] = React.useState<Programme[]>([]);
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     
+    // Metadata for timetable
+    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
+    const [masterTimetable, setMasterTimetable] = React.useState<TimetableEntry[]>([]);
+    const [registrations, setRegistrations] = React.useState<Record<string, any>>({});
+
     const [selectedProgrammeId, setSelectedProgrammeId] = React.useState('');
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedYear, setSelectedYear] = React.useState('');
@@ -67,6 +96,9 @@ export default function FinalExamEntryPage() {
     const [emailSubject, setEmailSubject] = React.useState('Final Exam Results: [CourseCode]');
     const [emailBody, setEmailBody] = React.useState('Hello [Name],<br><br>Your final examination score for [CourseName] has been recorded for [Semester].<br><br><strong>Score: [Score]%</strong><br><br>Please log in to the portal to view your official grade breakdown once published.');
 
+    // Timetable Dialog State
+    const [isTimetableOpen, setIsTimetableOpen] = React.useState(false);
+
     const [isSearchOpen, setIsSearchOpen] = React.useState(false);
     const [studentSearchInput, setStudentSearchInput] = React.useState('');
     const [selectedSearchStudentName, setSelectedSearchStudentName] = React.useState<string | null>(null);
@@ -81,16 +113,44 @@ export default function FinalExamEntryPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [pSnap, iSnap, uSnap, sSnap] = await Promise.all([
+                const [pSnap, iSnap, uSnap, sSnap, timesSnap, ttSnap, regSnap, cSnap] = await Promise.all([
                     get(ref(db, 'programmes')),
                     get(ref(db, 'intakes')),
                     get(ref(db, 'users')),
-                    get(ref(db, 'semesters'))
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'settings/teachingTimes')),
+                    get(ref(db, 'timetables')),
+                    get(ref(db, 'registrations')),
+                    get(ref(db, 'courses'))
                 ]);
+
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })).sort((a, b) => b.name.localeCompare(a.name)));
                 if (uSnap.exists()) setAllStudents(Object.entries(uSnap.val()).filter(([_, u]: [string, any]) => u.role === 'Student').map(([uid, u]: [string, any]) => ({ uid, ...u })));
                 if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+                if (regSnap.exists()) setRegistrations(regSnap.val());
+                if (cSnap.exists()) setAllCourses(cSnap.val());
+
+                if (timesSnap.exists()) {
+                    const data = timesSnap.val();
+                    setTeachingTimes({
+                        days: data.days || calendarDays.slice(1, 6),
+                        slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                    });
+                }
+
+                if (ttSnap.exists()) {
+                    const tData = ttSnap.val();
+                    const entries: TimetableEntry[] = [];
+                    for (const semId in tData) {
+                        for (const cId in tData[semId]) {
+                            Object.entries(tData[semId][cId]).forEach(([entryId, entry]: [string, any]) => {
+                                entries.push({ id: entryId, semesterId: semId, courseId: cId, ...entry });
+                            });
+                        }
+                    }
+                    setMasterTimetable(entries);
+                }
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
@@ -128,15 +188,17 @@ export default function FinalExamEntryPage() {
         if (!selectedIntakeId || (selectedYear && selectedSemesterInYear)) return;
         const intake = intakes.find(i => i.id === selectedIntakeId);
         if (!intake) return;
-        get(ref(db, 'settings/academicCalendar')).then(calSnap => {
-            const startStr = parseIntakeDate(intake.name);
-            if (calSnap.exists() && intakeStartStr) {
-                const state = calculateAcademicState(intakeStartStr, new Date(), calSnap.val().standardCycles, Object.values(calSnap.val().anomalies || {}));
+        const fetchStanding = async () => {
+            const calendarSnap = await get(ref(db, 'settings/academicCalendar'));
+            const intakeStartStr = parseIntakeDate(intake.name);
+            if (calendarSnap.exists() && intakeStartStr) {
+                const state = calculateAcademicState(intakeStartStr, new Date(), calendarSnap.val().standardCycles, Object.values(calendarSnap.val().anomalies || {}));
                 if (!selectedYear) setSelectedYear(String(state.year));
                 if (!selectedSemesterInYear) setSelectedSemesterInYear(String(state.semester));
             }
-        });
-    }, [selectedIntakeId, intakes, selectedYear, selectedSemesterInYear]);
+        };
+        fetchStanding();
+    }, [selectedIntakeId, intakes]);
 
     const targetSemesterId = React.useMemo(() => {
         if (!selectedIntakeId || !selectedYear || !selectedSemesterInYear) return null;
@@ -160,16 +222,13 @@ export default function FinalExamEntryPage() {
             if (coursePathsSnap.exists()) {
                 const paths = Object.values(coursePathsSnap.val() || {});
                 const userPath: any = paths.find((p: any) => p.intakeId === selectedIntakeId && p.programmeId === selectedProgrammeId);
-                
+
                 if (userPath?.semesters?.[targetSemesterId]) {
                     const courseIds = userPath.semesters[targetSemesterId].courses || [];
                     const foundCourses = courseIds.map((id: string) => ({ id, ...allCoursesData[id] })).filter((c: any) => c && c.status === 'active');
                     setCourses(foundCourses);
                     setSelectedCourseIds(prev => prev.filter(id => foundCourses.some(c => c.id === id)));
-                } else { 
-                    setCourses([]);
-                    setSelectedCourseIds([]);
-                }
+                } else { setCourses([]); setSelectedCourseIds([]); }
             }
         };
         fetchCourses();
@@ -177,7 +236,7 @@ export default function FinalExamEntryPage() {
 
     React.useEffect(() => {
         if (selectedCourseIds.length === 0) { setStudentsInRoster([]); setScores({}); return; }
-        const fetchData = async () => {
+        const fetchRosterData = async () => {
             setLoading(true);
             try {
                 const newScores: AllScores = {};
@@ -194,30 +253,23 @@ export default function FinalExamEntryPage() {
                     const found = allStudents.find(s => s.uid === selectedSearchStudentUid);
                     roster = found ? [found] : [];
                 } else {
-                    const registrationsSnap = await get(ref(db, 'registrations'));
-                    const allRegs = registrationsSnap.val() || {};
                     const registeredUids = new Set<string>();
-
                     if (targetSemesterId) {
-                        Object.keys(allRegs).forEach(uid => {
-                            if (allRegs[uid][targetSemesterId]) registeredUids.add(uid);
-                        });
+                        Object.keys(registrations).forEach(uid => { if (registrations[uid][targetSemesterId]) registeredUids.add(uid); });
                     }
 
                     if (registeredUids.size > 0) {
                         roster = allStudents.filter(s => registeredUids.has(s.uid));
                     } else if (selectedProgrammeId && selectedIntakeId) {
                         roster = allStudents.filter(s => s.programmeId === selectedProgrammeId && s.intakeId === selectedIntakeId);
-                    } else {
-                        roster = allStudents;
-                    }
+                    } else { roster = allStudents; }
                 }
                 setStudentsInRoster(roster.sort((a,b) => a.name.localeCompare(b.name)));
             } catch (e) { console.error(e); }
             finally { setLoading(false); }
         };
-        fetchData();
-    }, [selectedCourseIds, targetSemesterId, allStudents, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId]);
+        fetchRosterData();
+    }, [selectedCourseIds, targetSemesterId, allStudents, selectedSearchStudentUid, selectedProgrammeId, selectedIntakeId, registrations]);
 
     const handleScoreChange = (courseId: string, uid: string, value: string) => {
         const score = value === '' ? undefined : Number(value);
@@ -287,7 +339,7 @@ export default function FinalExamEntryPage() {
                     let studentExamListHtml = "<ul style='margin: 10px 0; padding-left: 20px;'>";
 
                     for (const courseId of selectedCourseIds) {
-                        const course = courses.find(c => c.id === courseId);
+                        const course = allCourses[courseId];
                         const examScore = scores[courseId]?.[student.uid]?.finalExam?.score;
 
                         if (examScore !== undefined) {
@@ -300,13 +352,13 @@ export default function FinalExamEntryPage() {
                     if (hasNewData) {
                         const finalSubject = emailSubject
                             .replace(/\[Name\]/g, student.name)
-                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Recent Exams')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.code || '' : 'Recent Exams')
                             .replace(/\[Semester\]/g, semesterName);
 
                         const finalBody = emailBody
                             .replace(/\[Name\]/g, student.name)
-                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.name || '' : 'multiple courses')
-                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? courses.find(c => c.id === selectedCourseIds[0])?.code || '' : 'Multiple Courses')
+                            .replace(/\[CourseName\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.name || '' : 'multiple courses')
+                            .replace(/\[CourseCode\]/g, selectedCourseIds.length === 1 ? allCourses[selectedCourseIds[0]]?.code || '' : 'Multiple Courses')
                             .replace(/\[Semester\]/g, semesterName)
                             .replace(/\[Score\]/g, studentExamListHtml);
 
@@ -323,8 +375,51 @@ export default function FinalExamEntryPage() {
         }
     };
 
+    const getCourseGradingStatus = (courseId: string) => {
+        const courseScores = scores[courseId] || {};
+        const registeredForCourse = allStudents.filter(s => {
+            const reg = registrations[s.uid]?.[targetSemesterId || ''];
+            return reg?.courses?.includes(courseId);
+        });
+        
+        if (registeredForCourse.length === 0) return { count: 0, total: 0, percentage: 0 };
+        
+        let gradedCount = 0;
+        registeredForCourse.forEach(s => {
+            const studentScore = courseScores[s.uid]?.finalExam?.score;
+            if (studentScore !== undefined) {
+                gradedCount++;
+            }
+        });
+
+        return {
+            count: gradedCount,
+            total: registeredForCourse.length,
+            percentage: (gradedCount / registeredForCourse.length) * 100
+        };
+    };
+
+    const handleSelectFromTimetable = (courseId: string) => {
+        setSelectedCourseIds(prev => {
+            if (prev.includes(courseId)) return prev;
+            return [...prev, courseId];
+        });
+        setIsTimetableOpen(false);
+        setTimeout(() => {
+            const element = document.getElementById(`final-accordion-${courseId}`);
+            if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    };
+
     const filteredRoster = studentsInRoster.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()) || s.id.toLowerCase().includes(rosterSearch.toLowerCase()));
     const searchableStudents = allStudents.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()) || s.id.toLowerCase().includes(studentSearchInput.toLowerCase()));
+
+    const currentIntakeName = intakes.find(i => i.id === selectedIntakeId)?.name;
+    const timetableEntries = masterTimetable.filter(e => {
+        const matchesSemester = e.semesterId === 'master' || e.semesterId === targetSemesterId;
+        const matchesIntake = e.intakeName === currentIntakeName || e.intakeName === 'Master';
+        return matchesSemester && matchesIntake;
+    });
 
     return (
         <div className="space-y-6">
@@ -336,6 +431,12 @@ export default function FinalExamEntryPage() {
                             <CardDescription>Record final examination results for a specific cohort.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
+                            {selectedIntakeId && targetSemesterId && (
+                                <Button variant="outline" onClick={() => setIsTimetableOpen(true)} className="h-10 border-primary/30">
+                                    <CalendarDays className="h-4 w-4 mr-2 text-primary" />
+                                    Class Timetable
+                                </Button>
+                            )}
                             {selectedSearchStudentUid && (
                                 <Button variant="ghost" size="sm" onClick={handleClearSearch} className="h-10 text-destructive">
                                     <X className="h-4 w-4 mr-1"/> Clear Focus
@@ -395,7 +496,7 @@ export default function FinalExamEntryPage() {
                                 <SelectContent>{intakes.map(i=><SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1"><Label>Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label>Study Year</Label><Select value={selectedYear} onValueChange={setSelectedYear}><SelectTrigger className="bg-background"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label>Semester</Label><Select value={selectedSemesterInYear} onValueChange={setSelectedSemesterInYear}><SelectTrigger><SelectValue placeholder="Sem..."/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1 lg:col-span-2">
                             <div className="flex items-center justify-between mb-1">
@@ -405,7 +506,7 @@ export default function FinalExamEntryPage() {
                                     <Label htmlFor="exam-load-all" className="text-[8px] font-bold uppercase text-muted-foreground">Catalog Mode</Label>
                                 </div>
                             </div>
-                            <Popover>
+                            <Popover shadow="lg">
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" className="w-full justify-between bg-background font-normal" disabled={!loadAllCourses && courses.length === 0}>
                                         <span className="truncate">{selectedCourseIds.length > 0 ? `${selectedCourseIds.length} Courses Selected` : "Select Course(s)..."}</span>
@@ -448,15 +549,29 @@ export default function FinalExamEntryPage() {
                             <div className="relative max-sm:w-full sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Filter roster..." className="pl-8" value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} /></div>
                             <Accordion type="multiple" defaultValue={selectedCourseIds} className="w-full space-y-4">
                                 {selectedCourseIds.map(courseId => {
-                                    const course = courses.find(c => c.id === courseId);
+                                    const course = allCourses[courseId];
                                     if (!course) return null;
+                                    const stats = getCourseGradingStatus(courseId);
 
                                     return (
-                                        <AccordionItem value={courseId} key={courseId} className="border rounded-lg bg-card overflow-hidden shadow-sm">
+                                        <AccordionItem value={courseId} key={courseId} id={`final-accordion-${courseId}`} className="border rounded-lg bg-card overflow-hidden shadow-sm">
                                             <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 hover:no-underline font-bold">
-                                                <div className="flex items-center gap-3">
-                                                    <BookOpen className="h-5 w-5 text-primary"/>
-                                                    <span>{course.code}: {course.name}</span>
+                                                <div className="flex flex-col md:flex-row md:items-center gap-3 w-full pr-4 text-left">
+                                                    <BookOpen className="h-5 w-5 text-primary shrink-0"/>
+                                                    <div className="flex-1">
+                                                        <span>{course.code}: {course.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex flex-col items-end">
+                                                            <span className="text-[10px] font-black uppercase text-muted-foreground">Exam Progress</span>
+                                                            <span className={cn("text-xs font-bold", stats.percentage === 100 ? "text-green-600" : "text-primary")}>
+                                                                {stats.count} / {stats.total} Graded
+                                                            </span>
+                                                        </div>
+                                                        <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                                                            <div className={cn("h-full transition-all", stats.percentage === 100 ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </AccordionTrigger>
                                             <AccordionContent className="p-4 pt-0">
@@ -500,6 +615,100 @@ export default function FinalExamEntryPage() {
                     <CardFooter className="justify-end border-t pt-6"><Button onClick={handleSave} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Finalize & Save All Exam Scores</Button></CardFooter>
                 )}
             </Card>
+
+            <Dialog open={isTimetableOpen} onOpenChange={setIsTimetableOpen}>
+                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <DialogTitle>Class Timetable: {currentIntakeName}</DialogTitle>
+                                <DialogDescription>Select a class session to record final exam marks.</DialogDescription>
+                            </div>
+                            <Badge variant="secondary" className="gap-1.5 font-bold h-10 px-4 text-primary shadow-sm border-primary/20 bg-primary/5">
+                                <Info className="h-4 w-4"/>
+                                Examining: Year {selectedYear}, Sem {selectedSemesterInYear}
+                            </Badge>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto py-4">
+                        <div className="border rounded-lg overflow-hidden bg-muted/10 min-w-[800px] shadow-inner">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="w-32 border-r font-bold text-center">DAY</TableHead>
+                                        {teachingTimes.slots.map((slot, index) => (
+                                            <TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {calendarDays.slice(1, 6).map(dayName => (
+                                        <TableRow key={dayName}>
+                                            <TableCell className="font-bold text-xs border-r text-center bg-muted/20">
+                                                <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                            </TableCell>
+                                            {teachingTimes.slots.map((slot, sIdx) => {
+                                                const slotStart = timeToMinutes(slot.startTime);
+                                                const slotEnd = timeToMinutes(slot.endTime);
+                                                const sessionsInSlot = timetableEntries.filter(e => 
+                                                    e.day === dayName && 
+                                                    timeToMinutes(e.startTime) >= slotStart && 
+                                                    timeToMinutes(e.startTime) < slotEnd
+                                                );
+
+                                                return (
+                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                        <div className="space-y-2">
+                                                            {sessionsInSlot.map((entry, eIdx) => {
+                                                                const stats = getCourseGradingStatus(entry.courseId);
+                                                                const isFullyGraded = stats.total > 0 && stats.count === stats.total;
+
+                                                                return (
+                                                                    <div 
+                                                                        key={eIdx} 
+                                                                        className={cn(
+                                                                            "p-2 rounded-md border bg-background shadow-sm transition-all cursor-pointer hover:ring-2 hover:ring-primary",
+                                                                            isFullyGraded ? "border-green-500 bg-green-50/20" : "border-primary/20",
+                                                                            selectedCourseIds.includes(entry.courseId) && "ring-2 ring-primary"
+                                                                        )}
+                                                                        onClick={() => handleSelectFromTimetable(entry.courseId)}
+                                                                    >
+                                                                        <div className="flex justify-between items-start gap-1">
+                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{allCourses[entry.courseId]?.code}: {allCourses[entry.courseId]?.name}</p>
+                                                                            {isFullyGraded && <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0"/>}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
+                                                                            <MapPin className="h-2.5 w-2.5" /> {entry.venue}
+                                                                        </div>
+                                                                        <div className="mt-2 pt-1 border-t flex flex-col gap-1">
+                                                                            <div className="flex justify-between text-[8px] font-black uppercase tracking-tighter">
+                                                                                <span className="opacity-60">Status</span>
+                                                                                <span className={cn(isFullyGraded ? "text-green-600" : "text-primary")}>
+                                                                                    {stats.count}/{stats.total}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                                                                                <div className={cn("h-full", isFullyGraded ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </TableCell>
+                                                );
+                                            })}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                    <DialogFooter className="border-t pt-4">
+                        <DialogClose asChild><Button variant="outline">Close Timetable</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={isEmailConfigOpen} onOpenChange={setIsEmailConfigOpen}>
                 <DialogContent className="max-w-2xl">
