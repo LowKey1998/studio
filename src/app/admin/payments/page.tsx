@@ -30,7 +30,9 @@ import {
     Save,
     CheckCircle,
     XCircle,
-    ShieldAlert
+    ShieldAlert,
+    GraduationCap,
+    Info
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -72,6 +74,9 @@ type StudentPaymentInfo = {
     enrolledCourses: string[];
     thresholdMet: boolean;
     penaltiesActive: boolean;
+    isScholarship: boolean;
+    paidPercentage: number;
+    targetThreshold: number;
 };
 
 type PaymentRecord = {
@@ -203,6 +208,8 @@ export default function PaymentsManagementPage() {
     const [semesterFilter, setSemesterFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [minPaidFilter, setMinPaidFilter] = React.useState('');
+    const [maxPaidFilter, setMaxPaidFilter] = React.useState('');
+    const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
     const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('all');
     const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
 
@@ -338,6 +345,9 @@ export default function PaymentsManagementPage() {
                             enrolledCourses: reg.courses || [],
                             thresholdMet,
                             penaltiesActive,
+                            isScholarship: !!invoice.applyScholarship,
+                            paidPercentage,
+                            targetThreshold: threshold,
                             status: balance <= 0.01 ? 'Paid' : 'Pending'
                         };
                     }
@@ -358,7 +368,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [userData, toast, user?.uid]);
+    }, [userData, toast, user?.uid, serverTimeOffset]);
 
     React.useEffect(() => {
         fetchPaymentData();
@@ -395,7 +405,7 @@ export default function PaymentsManagementPage() {
 
     const filteredData = React.useMemo(() => {
         const uidsInPeriod = new Set(filteredTransactions.map(t => t.userId));
-        const isGroupingFilterActive = programmeFilter !== 'all' || semesterFilter !== 'all' || intakeFilter !== 'all' || minPaidFilter !== '';
+        const isGroupingFilterActive = programmeFilter !== 'all' || semesterFilter !== 'all' || intakeFilter !== 'all' || minPaidFilter !== '' || maxPaidFilter !== '' || equalPaidFilter !== '';
         
         return paymentInfos.filter(p => {
             const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -403,13 +413,16 @@ export default function PaymentsManagementPage() {
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            const amountMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
+            
+            const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
+            const maxMatch = maxPaidFilter === '' || p.totalPaid <= parseFloat(maxPaidFilter);
+            const equalMatch = equalPaidFilter === '' || Math.abs(p.totalPaid - parseFloat(equalPaidFilter)) < 0.01;
             
             const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
 
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch && amountMatch && timeMatch;
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && minMatch && maxMatch && equalMatch && timeMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, minPaidFilter, filteredTransactions, timeFilter]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, minPaidFilter, maxPaidFilter, equalPaidFilter, filteredTransactions, timeFilter]);
 
     const summaryStats = React.useMemo(() => {
         const stats = filteredData.reduce((acc, p) => {
@@ -636,7 +649,7 @@ export default function PaymentsManagementPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-black">ZMW {summaryStats.totalPaid.toFixed(2)}</div>
-                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Total successful collections</p>
+                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Sum of all current year sessions</p>
                             </CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
@@ -676,21 +689,21 @@ export default function PaymentsManagementPage() {
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Programme</Label>
                             <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
-                                <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Programmes"/></SelectTrigger>
+                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue placeholder="All Programmes"/></SelectTrigger>
                                 <SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Intake</Label>
                             <Select value={intakeFilter} onValueChange={setIntakeFilter}>
-                                <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
+                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue placeholder="All Intakes"/></SelectTrigger>
                                 <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Time Range</Label>
                             <Select value={timeFilter} onValueChange={(val:any) => setTimeFilter(val)}>
-                                <SelectTrigger className="h-9 bg-background"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Time</SelectItem>
                                     <SelectItem value="today">Today</SelectItem>
@@ -704,8 +717,23 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input className="pl-8 h-9 bg-background" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border bg-muted/5 items-end">
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid ≥</Label>
+                            <Input type="number" placeholder="Min. Amount" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-9 bg-background" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid ≤</Label>
+                            <Input type="number" placeholder="Max. Amount" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-9 bg-background" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid =</Label>
+                            <Input type="number" placeholder="Exact Amount" value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="h-9 bg-background" />
                         </div>
                     </div>
 
@@ -749,7 +777,14 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-sm">{info.studentName}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-sm">{info.studentName}</span>
+                                                        {info.isScholarship && (
+                                                            <Badge variant="outline" className="h-4 text-[8px] uppercase border-blue-200 bg-blue-50 text-blue-700">
+                                                                <GraduationCap className="h-2.5 w-2.5 mr-1"/> Scholarship
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                     <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name}</span>
                                                 </div>
                                             </TableCell>
@@ -757,12 +792,40 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px]">
-                                                        {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
-                                                    </Badge>
-                                                    {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
-                                                </div>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <div className="flex flex-col items-center gap-1 cursor-pointer">
+                                                            <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px] h-5 px-2">
+                                                                {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
+                                                            </Badge>
+                                                            {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
+                                                        </div>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-64 p-4 shadow-2xl border-primary/20">
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Threshold Analysis</h4>
+                                                            <div className="space-y-2">
+                                                                <div className="flex justify-between text-xs">
+                                                                    <span className="text-muted-foreground">Target Threshold:</span>
+                                                                    <span className="font-bold">{info.targetThreshold}%</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-xs">
+                                                                    <span className="text-muted-foreground">Paid Percentage:</span>
+                                                                    <span className={cn("font-bold", info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
+                                                                </div>
+                                                                <Separator className="my-2"/>
+                                                                {info.thresholdMet ? (
+                                                                    <p className="text-[10px] text-green-600 font-medium italic">Student has met the minimum required payment level for this semester.</p>
+                                                                ) : (
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[10px] text-destructive font-bold uppercase">Restoration Required</p>
+                                                                        <p className="text-[10px] text-muted-foreground">A payment of <strong>ZMW {(info.totalDue * (info.targetThreshold/100) - info.totalPaid).toFixed(2)}</strong> is needed to reach good standing.</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -822,7 +885,7 @@ export default function PaymentsManagementPage() {
                                 })()}
                             </div>
                         )}
-                        <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
+                        <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
                         
                         <Alert className="bg-muted/50 border-0">
                             <Clock className="h-4 w-4" />
@@ -894,7 +957,7 @@ export default function PaymentsManagementPage() {
                     <div className="flex-1 overflow-auto border rounded-xl my-4">
                         <Table>
                             <TableHeader className="sticky top-0 bg-background z-10 border-b">
-                                <TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead>Comment</TableHead><TableHead className="text-right">Amount</TableHead></TableRow>
+                                <TableRow><TableHead>Date</TableHead>                                <TableHead>Method</TableHead>                                <TableHead>Comment</TableHead>                                <TableHead className="text-right">Amount</TableHead></TableRow>
                             </TableHeader>
                             <TableBody>
                                 {rawTransactions.filter(t => t.userId === historyStudent?.userId).map(tx => (
