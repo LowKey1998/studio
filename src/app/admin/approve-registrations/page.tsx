@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -55,6 +56,13 @@ import {
     DialogFooter, 
     DialogClose 
 } from '@/components/ui/dialog';
+import { 
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
@@ -72,11 +80,20 @@ type RegistrationRequest = {
   status: 'Pending Approval' | 'Pending Payment' | 'Completed';
   applyScholarship?: boolean;
   scholarshipStatus?: 'Approved' | 'Denied';
+  scholarshipId?: string;
   programmeId: string;
   programmeName: string;
   optionalFees: string[];
   academicHistory: Record<string, 'Passed' | 'Failed'>;
   amountPaid: number;
+};
+
+type Scholarship = {
+    id: string;
+    name: string;
+    percentage: number;
+    description: string;
+    donor?: string;
 };
 
 type EnrollmentRequest = {
@@ -132,6 +149,7 @@ export default function ApproveRegistrationsPage() {
     const [allSemesters, setAllSemesters] = React.useState<Map<string, any>>(new Map());
     const [allIntakes, setAllIntakes] = React.useState<Map<string, any>>(new Map());
     const [allCoursePaths, setAllCoursePaths] = React.useState<CoursePath[]>([]);
+    const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
     const [allOptionalFees, setAllOptionalFees] = React.useState<Map<string, Fee>>(new Map());
     const [allMandatoryFees, setAllMandatoryFees] = React.useState<Map<string, Fee>>(new Map());
     const [enrollmentPolicy, setEnrollmentPolicy] = React.useState('onFullPayment');
@@ -144,6 +162,7 @@ export default function ApproveRegistrationsPage() {
 
     const [editingSelections, setEditingSelections] = React.useState<Record<string, string[]>>({});
     const [scholarshipReviewRequest, setScholarshipReviewRequest] = React.useState<RegistrationRequest | null>(null);
+    const [selectedScholarshipId, setSelectedScholarshipId] = React.useState<string>('');
     
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
@@ -168,7 +187,7 @@ export default function ApproveRegistrationsPage() {
     const fetchRequests = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap, classReqsSnap, invoicesSnap] = await Promise.all([
+            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap, classReqsSnap, invoicesSnap, scholarshipsSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'optionalFees')),
@@ -181,7 +200,8 @@ export default function ApproveRegistrationsPage() {
                 get(ref(db, 'assessments')),
                 get(ref(db, 'transactions')),
                 get(ref(db, 'classEnrollmentRequests')),
-                get(ref(db, 'invoices'))
+                get(ref(db, 'invoices')),
+                get(ref(db, 'scholarships'))
             ]);
             
             if (settingsSnap.exists()) {
@@ -208,6 +228,10 @@ export default function ApproveRegistrationsPage() {
             setAllIntakes(intakesData);
             
             if(coursePathsSnap.exists()) setAllCoursePaths(Object.values(coursePathsSnap.val()));
+
+            if (scholarshipsSnap.exists()) {
+                setAllScholarships(Object.entries(scholarshipsSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
+            }
 
             const optionalFeesData = new Map<string, Fee>();
             if (optionalFeesSnap.exists()) Object.entries(optionalFeesSnap.val()).forEach(([id, data]) => optionalFeesData.set(id, { id, ...(data as Omit<Fee, 'id'>) }));
@@ -265,6 +289,7 @@ export default function ApproveRegistrationsPage() {
                                         status: registration.status,
                                         applyScholarship: registration.applyScholarship || false,
                                         scholarshipStatus: registration.scholarshipStatus,
+                                        scholarshipId: registration.scholarshipId,
                                         programmeId: registration.programmeId,
                                         programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
                                         optionalFees: registration.optionalFees || [],
@@ -312,7 +337,11 @@ export default function ApproveRegistrationsPage() {
                     let totalDue = 0;
                     if (invoice) {
                         totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
-                        if (invoice.applyScholarship) totalDue -= (invoice.totalTuition || 0);
+                        if (invoice.applyScholarship) {
+                            const schol = allScholarships.find(s => s.id === invoice.scholarshipId);
+                            const perc = schol?.percentage || 100;
+                            totalDue -= (invoice.totalTuition || 0) * (perc / 100);
+                        }
                     }
 
                     const totalPaid = allTransactions
@@ -338,7 +367,7 @@ export default function ApproveRegistrationsPage() {
         } finally {
             setLoading(false);
         }
-    }, [toast]);
+    }, [toast, allScholarships]);
 
     React.useEffect(() => {
         if (currentUser) {
@@ -555,9 +584,16 @@ export default function ApproveRegistrationsPage() {
 
     const handleScholarshipDecision = async (decision: 'approve' | 'deny') => {
         if (!scholarshipReviewRequest) return;
+        
+        if (decision === 'approve' && !selectedScholarshipId) {
+            toast({ variant: 'destructive', title: 'Selection Required', description: 'Please select a scholarship to apply.' });
+            return;
+        }
+
         setActionLoading(scholarshipReviewRequest.userId);
         
         const request = scholarshipReviewRequest;
+        const scholarship = allScholarships.find(s => s.id === selectedScholarshipId);
         const registrationRef = ref(db, `registrations/${request.userId}/${request.semesterId}`);
         const invoiceRef = ref(db, `invoices/${request.userId}/${request.invoiceId}`);
 
@@ -565,16 +601,28 @@ export default function ApproveRegistrationsPage() {
             const isApproved = decision === 'approve';
             const newStatus = enrollmentPolicy === 'onApproval' ? 'Completed' : 'Pending Payment';
             
-            await update(registrationRef, {
+            const updates: any = {
                 status: newStatus,
                 scholarshipStatus: isApproved ? 'Approved' : 'Denied',
                 applyScholarship: isApproved
-            });
-            
-            await update(invoiceRef, { applyScholarship: isApproved });
+            };
+
+            const invoiceUpdates: any = { applyScholarship: isApproved };
+
+            if (isApproved && scholarship) {
+                updates.scholarshipId = scholarship.id;
+                updates.scholarshipName = scholarship.name;
+                updates.scholarshipPercentage = scholarship.percentage;
+                
+                invoiceUpdates.scholarshipId = scholarship.id;
+                invoiceUpdates.scholarshipPercentage = scholarship.percentage;
+            }
+
+            await update(registrationRef, updates);
+            await update(invoiceRef, invoiceUpdates);
 
             const msg = isApproved
-                ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved. Your tuition has been waived.`
+                ? `Congratulations! Your scholarship application for ${request.semesterName} has been approved (${scholarship?.name} - ${scholarship?.percentage}% waiver).`
                 : `Your scholarship application for ${request.semesterName} was not approved. The full tuition amount is now due.`;
 
             await createNotification(request.userId, msg, '/student/registration');
@@ -586,6 +634,7 @@ export default function ApproveRegistrationsPage() {
         } finally {
             setActionLoading(null);
             setScholarshipReviewRequest(null);
+            setSelectedScholarshipId('');
         }
     }
     
@@ -621,7 +670,12 @@ export default function ApproveRegistrationsPage() {
                                                 <CardTitle className="text-lg">{request.studentName}</CardTitle>
                                                 <CardDescription>ID: {request.studentId} | Programme: <strong>{request.programmeName}</strong> | Intake: <strong>{allIntakes.get(request.studentIntakeId)?.name || 'N/A'}</strong></CardDescription>
                                                 <CardDescription>Submitted: {format(new Date(request.registrationDate), 'PPP')}</CardDescription>
-                                                {request.applyScholarship && type !== 'completed' && ( <Badge variant="default" className="bg-blue-600 hover:bg-blue-700"><GraduationCap className="mr-2 h-4 w-4" />Scholarship Applicant</Badge>)}
+                                                {request.applyScholarship && type !== 'completed' && ( 
+                                                    <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                                                        <GraduationCap className="mr-2 h-4 w-4" />
+                                                        {request.scholarshipStatus === 'Approved' ? 'Scholarship Awarded' : 'Scholarship Applicant'}
+                                                    </Badge>
+                                                )}
                                             </div>
                                             {type === 'pending' ? ( <div className="flex flex-col gap-2">
                                                     <div className="flex gap-2 self-start sm:self-end">
@@ -801,18 +855,46 @@ export default function ApproveRegistrationsPage() {
                             Reviewing tuition waiver application for <span className="font-black text-foreground">{scholarshipReviewRequest?.studentName}</span>. 
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="p-4 bg-primary/5 border rounded-xl space-y-3">
-                        <div className="flex justify-between text-sm"><span>Proposed Programme:</span> <span className="font-bold">{scholarshipReviewRequest?.programmeName}</span></div>
-                        <div className="flex justify-between text-sm"><span>Cohort Intake:</span> <span className="font-bold">{allIntakes.get(scholarshipReviewRequest?.studentIntakeId || '')?.name}</span></div>
-                        <Alert variant="default" className="bg-white border-primary/20 py-2">
+                    <div className="space-y-4 py-4">
+                        <div className="p-4 bg-primary/5 border rounded-xl space-y-3 text-sm">
+                            <div className="flex justify-between"><span>Programme:</span> <span className="font-bold">{scholarshipReviewRequest?.programmeName}</span></div>
+                            <div className="flex justify-between"><span>Intake:</span> <span className="font-bold">{allIntakes.get(scholarshipReviewRequest?.studentIntakeId || '')?.name}</span></div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase">Select Scholarship to Apply</Label>
+                            <Select value={selectedScholarshipId} onValueChange={setSelectedScholarshipId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Choose a scholarship..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {allScholarships.length > 0 ? allScholarships.map(s => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                            <div className="flex flex-col items-start">
+                                                <span className="font-bold">{s.name} ({s.percentage}% Waiver)</span>
+                                                {s.donor && <span className="text-[10px] opacity-60">Funder: {s.donor}</span>}
+                                            </div>
+                                        </SelectItem>
+                                    )) : (
+                                        <div className="p-4 text-center text-xs text-muted-foreground italic">
+                                            No active scholarships found in management.
+                                        </div>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <Alert variant="default" className="bg-blue-50 border-blue-200 py-2">
                             <Info className="h-4 w-4 text-primary" />
-                            <AlertDescription className="text-[10px] leading-tight">Approving this will apply a <strong>100% waiver</strong> to all tuition line items for this semester registration.</AlertDescription>
+                            <AlertDescription className="text-[10px] leading-tight">
+                                Approving this will apply the selected <strong>Waiver Percentage</strong> to the tuition line item for this registration cycle.
+                            </AlertDescription>
                         </Alert>
                     </div>
                     <DialogFooter className="gap-2">
-                        <Button variant="ghost" className="flex-1" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny</Button>
-                        <Button className="flex-1" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading}>
-                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Approve Waiver
+                        <Button variant="ghost" className="flex-1" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Application</Button>
+                        <Button className="flex-1" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading || !selectedScholarshipId}>
+                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Award Scholarship
                         </Button>
                     </DialogFooter>
                 </DialogContent>
