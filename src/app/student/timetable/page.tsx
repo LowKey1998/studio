@@ -1,13 +1,12 @@
-
 "use client";
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { ref, get, set, onValue, push, update } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -15,6 +14,10 @@ import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } fr
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 
 type TimeSlot = {
     id: string;
@@ -53,12 +56,21 @@ export default function StudentTimetablePage() {
     const [loading, setLoading] = React.useState(true);
     const [viewWeek, setViewWeek] = React.useState(new Date());
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
+    const [currentSemesterId, setCurrentSemesterId] = React.useState<string | null>(null);
+    
+    // Enrollment Request State
+    const [isRequestOpen, setIsRequestOpen] = React.useState(false);
+    const [availablePathCourses, setAvailablePathCourses] = React.useState<{id: string, name: string, code: string}[]>([]);
+    const [selectedRequestCourse, setSelectedRequestCourse] = React.useState('');
+    const [submittingRequest, setSubmittingRequest] = React.useState(false);
+
+    const { toast } = useToast();
 
     const fetchData = React.useCallback(async () => {
         if (!user?.uid || !userProfile) return;
         setLoading(true);
         try {
-            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap, calendarSnap] = await Promise.all([
+            const [regsSnap, coursesSnap, timetablesSnap, settingsSnap, usersSnap, semestersSnap, intakesSnap, calendarSnap, pathSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'courses')),
                 get(ref(db, 'timetables')),
@@ -66,7 +78,8 @@ export default function StudentTimetablePage() {
                 get(ref(db, 'users')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'settings/academicCalendar'))
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'coursePaths'))
             ]);
 
             const allSemesters = semestersSnap.val() || {};
@@ -81,7 +94,6 @@ export default function StudentTimetablePage() {
                 return;
             }
 
-            // 1. Calculate Current Academic Standing strictly based on Intake Date
             const intakeStartStr = parseIntakeDate(studentIntake.name);
             if (!intakeStartStr) {
                 setTimetable([]);
@@ -100,33 +112,29 @@ export default function StudentTimetablePage() {
             const currentSemesterInYear = state.semester;
             setAcademicStanding(`Year ${currentYear}, Sem ${currentSemesterInYear}`);
 
-            // 2. Find the specific semester record that represents this standing for this intake
             const matchingSemesterEntry = Object.entries(allSemesters).find(([_, s]: [string, any]) => {
                 return s.intakeId === userProfile.intakeId && 
                        s.year === currentYear && 
                        s.semesterInYear === currentSemesterInYear;
             });
             
-            const matchingSemesterId = matchingSemesterEntry ? matchingSemesterEntry[0] : null;
+            const matchingSemId = matchingSemesterEntry ? matchingSemesterEntry[0] : null;
+            setCurrentSemesterId(matchingSemId);
 
-            if (!matchingSemesterId) {
+            if (!matchingSemId) {
                 setTimetable([]);
                 setLoading(false);
                 return;
             }
 
-            // 3. Identify courses enrolled in THIS specific semester strictly
+            // Identify enrolled courses
             const enrolledCourseIds = new Set<string>();
             const userRegs = regsSnap.val() || {};
-            const currentReg = userRegs[matchingSemesterId];
+            const currentReg = userRegs[matchingSemId];
             
-            if (currentReg && (currentReg.status === 'Completed' || currentReg.status === 'Pending Payment')) {
+            if (currentReg && (currentReg.status === 'Completed' || currentReg.status === 'Pending Payment' || currentReg.status === 'Pending Approval')) {
                 const coursesArr = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
                 coursesArr.forEach((cid: string) => enrolledCourseIds.add(cid));
-            } else {
-                setTimetable([]);
-                setLoading(false);
-                return;
             }
 
             const cData = coursesSnap.val() || {};
@@ -139,9 +147,15 @@ export default function StudentTimetablePage() {
                 slots: (settingsData.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
             });
 
-            // 4. Construct Timetable from matching Semester node and Master Template
+            // Fetch available courses for this specific standing path for "Request Enrollment"
+            const path = Object.values(pathSnap.val() || {}).find((p: any) => p.intakeId === userProfile.intakeId && p.programmeId === userProfile.programmeId) as any;
+            if (path?.semesters?.[matchingSemId]) {
+                const pathCids = path.semesters[matchingSemId].courses || [];
+                setAvailablePathCourses(pathCids.map((id: string) => ({ id, name: cData[id]?.name, code: cData[id]?.code })).filter((c: any) => c.name && !enrolledCourseIds.has(c.id)));
+            }
+
             const sessionMap = new Map<string, TimetableEntry>();
-            const relevantSemesterNodes = ['master', matchingSemesterId];
+            const relevantSemesterNodes = ['master', matchingSemId];
 
             relevantSemesterNodes.forEach(semId => {
                 const isMaster = semId === 'master';
@@ -149,7 +163,6 @@ export default function StudentTimetablePage() {
                 if (!semesterSessions) return;
 
                 for (const cid in semesterSessions) {
-                    // Rule: Course MUST be in the student's enrolled list for the specific calculated semester
                     if (!enrolledCourseIds.has(cid)) continue;
 
                     const courseInfo = cData[cid];
@@ -158,15 +171,12 @@ export default function StudentTimetablePage() {
                     const entries = Object.values(semesterSessions[cid]) as any[];
                     entries.forEach(entry => {
                         let shouldInclude = false;
-                        
                         const entryIntake = entry.intakeName?.trim().toUpperCase();
-                        const studentIntake = studentIntakeName;
+                        const studentIntakeNameRef = studentIntakeName;
 
                         if (isMaster) {
-                            // Rule: For Master node, include if it matches student's intake OR is marked as global 'MASTER'
-                            shouldInclude = (studentIntake && entryIntake === studentIntake) || (entryIntake === 'MASTER');
+                            shouldInclude = (studentIntakeNameRef && entryIntake === studentIntakeNameRef) || (entryIntake === 'MASTER');
                         } else {
-                            // Instance specific entry always matches if student is enrolled in that specific sem
                             shouldInclude = true;
                         }
 
@@ -174,7 +184,6 @@ export default function StudentTimetablePage() {
                             const sessionKey = `${cid}-${entry.day}-${entry.startTime}`;
                             const existing = sessionMap.get(sessionKey);
 
-                            // Instance specific entries override baseline master entries
                             if (!existing || (semId !== 'master' && existing.semesterId === 'master')) {
                                 const lecturerNames = (courseInfo.lecturerIds || [])
                                     .map((uid: string) => usersData[uid]?.name)
@@ -209,6 +218,43 @@ export default function StudentTimetablePage() {
         if (!authLoading && user && userProfile) fetchData();
     }, [user, userProfile, authLoading, fetchData]);
 
+    const handleRequestEnrollment = async () => {
+        if (!selectedRequestCourse || !currentSemesterId || !user || !userProfile) return;
+        setSubmittingRequest(true);
+        try {
+            const course = availablePathCourses.find(c => c.id === selectedRequestCourse);
+            const requestRef = push(ref(db, 'classEnrollmentRequests'));
+            await set(requestRef, {
+                userId: user.uid,
+                studentId: userProfile.id,
+                studentName: userProfile.name,
+                courseId: selectedRequestCourse,
+                courseCode: course?.code,
+                courseName: course?.name,
+                semesterId: currentSemesterId,
+                status: 'Pending',
+                timestamp: serverTimestamp()
+            });
+
+            const registrarIds = await getRegistrarIds();
+            if (registrarIds.length > 0) {
+                await createNotification(
+                    registrarIds,
+                    `${userProfile.name} has requested enrollment in ${course?.code}.`,
+                    '/admin/approve-registrations'
+                );
+            }
+
+            toast({ title: "Request Sent", description: "Your enrollment request has been submitted for approval." });
+            setIsRequestOpen(false);
+            setSelectedRequestCourse('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Request Failed" });
+        } finally {
+            setSubmittingRequest(false);
+        }
+    };
+
     const currentWeekInterval = React.useMemo(() => {
         const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
         return [0, 1, 2, 3, 4, 5, 6].map(i => {
@@ -224,8 +270,15 @@ export default function StudentTimetablePage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
-                    <CardDescription>Your personalized schedule for the current session. Navigation is date-specific.</CardDescription>
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
+                            <CardDescription>Your personalized schedule for the current session.</CardDescription>
+                        </div>
+                        <Button onClick={() => setIsRequestOpen(true)} disabled={loading || availablePathCourses.length === 0} className="shadow-md">
+                            <PlusCircle className="mr-2 h-4 w-4"/> Request Class Enrollment
+                        </Button>
+                    </div>
                 </CardHeader>
             </Card>
 
@@ -324,6 +377,44 @@ export default function StudentTimetablePage() {
                     )}
                 </CardContent>
             </Card>
+
+            <Dialog open={isRequestOpen} onOpenChange={setIsRequestOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Request Class Enrollment</DialogTitle>
+                        <DialogDescription>
+                            Select a course from your curriculum roadmap to request manual enrollment for the current semester ({academicStanding}).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-1">
+                            <Label>Target Course</Label>
+                            <Select value={selectedRequestCourse} onValueChange={setSelectedRequestCourse}>
+                                <SelectTrigger><SelectValue placeholder="Select from roadmap..." /></SelectTrigger>
+                                <SelectContent>
+                                    {availablePathCourses.map(c => (
+                                        <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Alert variant="default" className="bg-primary/5 border-primary/20">
+                            <Info className="h-4 w-4 text-primary" />
+                            <AlertTitle className="text-xs font-bold uppercase tracking-widest text-primary">Process Notice</AlertTitle>
+                            <AlertDescription className="text-[10px] leading-relaxed italic">
+                                Enrollment requests are reviewed by the Registrar. Approval depends on capacity and financial standing.
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button onClick={handleRequestEnrollment} disabled={submittingRequest || !selectedRequestCourse}>
+                            {submittingRequest ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4"/>}
+                            Submit Request
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

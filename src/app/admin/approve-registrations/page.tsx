@@ -19,7 +19,9 @@ import {
     ArrowRight,
     UserMinus,
     Info,
-    CalendarDays
+    CalendarDays,
+    RotateCcw,
+    BookOpen
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -77,6 +79,23 @@ type RegistrationRequest = {
   amountPaid: number;
 };
 
+type EnrollmentRequest = {
+    id: string;
+    userId: string;
+    studentId: string;
+    studentName: string;
+    courseId: string;
+    courseCode: string;
+    courseName: string;
+    semesterId: string;
+    status: 'Pending' | 'Approved' | 'Declined';
+    timestamp: number;
+    // Financial standing data for the registrar
+    totalDue?: number;
+    totalPaid?: number;
+    balance?: number;
+};
+
 type GroupedRequests = Record<string, RegistrationRequest[]>;
 
 type Course = {
@@ -106,6 +125,8 @@ export default function ApproveRegistrationsPage() {
     const [pendingRequests, setPendingRequests] = React.useState<GroupedRequests>({});
     const [approvedRequests, setApprovedRequests] = React.useState<GroupedRequests>({});
     const [completedRequests, setCompletedRequests] = React.useState<GroupedRequests>({});
+    const [classRequests, setClassRequests] = React.useState<EnrollmentRequest[]>([]);
+    
     const [allCourses, setAllCourses] = React.useState<Map<string, Course>>(new Map());
     const [allProgrammes, setAllProgrammes] = React.useState<Map<string, any>>(new Map());
     const [allSemesters, setAllSemesters] = React.useState<Map<string, any>>(new Map());
@@ -123,7 +144,6 @@ export default function ApproveRegistrationsPage() {
 
     const [editingSelections, setEditingSelections] = React.useState<Record<string, string[]>>({});
     const [scholarshipReviewRequest, setScholarshipReviewRequest] = React.useState<RegistrationRequest | null>(null);
-    const [timetablePreview, setTimetablePreview] = React.useState<string[]>([]);
     
     const [isQuickBooksEnabled, setIsQuickBooksEnabled] = React.useState(false);
     const [isSageEnabled, setIsSageEnabled] = React.useState(false);
@@ -148,7 +168,7 @@ export default function ApproveRegistrationsPage() {
     const fetchRequests = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap] = await Promise.all([
+            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap, classReqsSnap, invoicesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'optionalFees')),
@@ -160,6 +180,8 @@ export default function ApproveRegistrationsPage() {
                 get(ref(db, 'coursePaths')),
                 get(ref(db, 'assessments')),
                 get(ref(db, 'transactions')),
+                get(ref(db, 'classEnrollmentRequests')),
+                get(ref(db, 'invoices'))
             ]);
             
             if (settingsSnap.exists()) {
@@ -197,85 +219,118 @@ export default function ApproveRegistrationsPage() {
             
             const assessmentsData = assessmentsSnap.exists() ? assessmentsSnap.val() : {};
             const allTransactions = transactionsSnap.exists() ? Object.values(transactionsSnap.val() as Record<string, any>) : [];
+            const allInvoices = invoicesSnap.val() || {};
 
-            if (!registrationsSnap.exists()) { setLoading(false); return; }
+            // 1. Process Main Registrations
+            if (registrationsSnap.exists()) {
+                const allRegistrations = registrationsSnap.val();
+                const pending: RegistrationRequest[] = [], approved: RegistrationRequest[] = [], completed: RegistrationRequest[] = [];
+                const userPromises: Promise<any>[] = [];
 
-            const allRegistrations = registrationsSnap.val();
-            const pending: RegistrationRequest[] = [], approved: RegistrationRequest[] = [], completed: RegistrationRequest[] = [];
-            const userPromises: Promise<any>[] = [];
+                for (const userId in allRegistrations) {
+                    const userRegistrations = allRegistrations[userId];
+                    for (const semesterId in userRegistrations) {
+                        const registration = userRegistrations[semesterId];
+                        if (['Pending Approval', 'Pending Payment', 'Completed'].includes(registration.status)) {
+                            userPromises.push(get(ref(db, `users/${userId}`)).then(userSnapshot => {
+                                if(userSnapshot.exists()){
+                                    const userData = userSnapshot.val();
+                                    const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
+                                    
+                                    for (const prevSemesterId in userRegistrations) {
+                                        if(prevSemesterId === semesterId) continue;
+                                        const prevReg = userRegistrations[prevSemesterId];
+                                        if(prevReg.status === 'Completed') {
+                                            (prevReg.courses || []).forEach((courseId: string) => {
+                                                const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
+                                                academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
+                                            });
+                                        }
+                                    }
 
-            for (const userId in allRegistrations) {
-                const userRegistrations = allRegistrations[userId];
-                for (const semesterId in userRegistrations) {
-                    const registration = userRegistrations[semesterId];
-                    if (['Pending Approval', 'Pending Payment', 'Completed'].includes(registration.status)) {
-                         userPromises.push(get(ref(db, `users/${userId}`)).then(userSnapshot => {
-                             if(userSnapshot.exists()){
-                                 const userData = userSnapshot.val();
-                                 const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
-                                 
-                                 for (const prevSemesterId in userRegistrations) {
-                                     if(prevSemesterId === semesterId) continue;
-                                     const prevReg = userRegistrations[prevSemesterId];
-                                     if(prevReg.status === 'Completed') {
-                                         (prevReg.courses || []).forEach((courseId: string) => {
-                                             const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
-                                             academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
-                                         });
-                                     }
-                                 }
+                                    const amountPaid = allTransactions
+                                        .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
+                                        .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
-                                 const amountPaid = allTransactions
-                                    .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
-                                    .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
-
-                                 const requestData: RegistrationRequest = {
-                                    userId,
-                                    semesterId: semesterId,
-                                    semesterName: semestersData.get(semesterId)?.name || 'Unknown Semester',
-                                    studentName: userData.name,
-                                    studentId: userData.id,
-                                    studentIntakeId: userData.intakeId,
-                                    courseIds: registration.courses || [],
-                                    invoiceId: registration.invoiceId,
-                                    registrationDate: registration.registrationDate,
-                                    status: registration.status,
-                                    applyScholarship: registration.applyScholarship || false,
-                                    scholarshipStatus: registration.scholarshipStatus,
-                                    programmeId: registration.programmeId,
-                                    programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
-                                    optionalFees: registration.optionalFees || [],
-                                    academicHistory,
-                                    amountPaid
-                                };
-                                if (registration.status === 'Pending Approval') pending.push(requestData);
-                                else if (registration.status === 'Pending Payment') approved.push(requestData);
-                                else completed.push(requestData);
-                             }
-                         }));
+                                    const requestData: RegistrationRequest = {
+                                        userId,
+                                        semesterId: semesterId,
+                                        semesterName: semestersData.get(semesterId)?.name || 'Unknown Semester',
+                                        studentName: userData.name,
+                                        studentId: userData.id,
+                                        studentIntakeId: userData.intakeId,
+                                        courseIds: registration.courses || [],
+                                        invoiceId: registration.invoiceId,
+                                        registrationDate: registration.registrationDate,
+                                        status: registration.status,
+                                        applyScholarship: registration.applyScholarship || false,
+                                        scholarshipStatus: registration.scholarshipStatus,
+                                        programmeId: registration.programmeId,
+                                        programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
+                                        optionalFees: registration.optionalFees || [],
+                                        academicHistory,
+                                        amountPaid
+                                    };
+                                    if (registration.status === 'Pending Approval') pending.push(requestData);
+                                    else if (registration.status === 'Pending Payment') approved.push(requestData);
+                                    else completed.push(requestData);
+                                }
+                            }));
+                        }
                     }
                 }
+                await Promise.all(userPromises);
+                
+                const groupRequests = (requests: RegistrationRequest[]): GroupedRequests => requests.reduce((acc, req) => {
+                    const key = req.semesterName;
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(req);
+                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.dateRequested).getTime());
+                    return acc;
+                }, {} as GroupedRequests);
+
+                setPendingRequests(groupRequests(pending));
+                setApprovedRequests(groupRequests(approved));
+                setCompletedRequests(groupRequests(completed));
+
+                const initialEdits: Record<string, string[]> = {};
+                [...pending].forEach(req => {
+                    initialEdits[`${req.userId}-${req.semesterId}`] = req.courseIds;
+                });
+                setEditingSelections(initialEdits);
             }
-            
-            await Promise.all(userPromises);
-            
-            const groupRequests = (requests: RegistrationRequest[]): GroupedRequests => requests.reduce((acc, req) => {
-                const key = req.semesterName;
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(req);
-                acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.registrationDate).getTime());
-                return acc;
-            }, {} as GroupedRequests);
 
-            setPendingRequests(groupRequests(pending));
-            setApprovedRequests(groupRequests(approved));
-            setCompletedRequests(groupRequests(completed));
+            // 2. Process Class Enrollment Requests
+            if (classReqsSnap.exists()) {
+                const reqs = Object.entries(classReqsSnap.val()).map(([id, data]: [string, any]) => {
+                    const userId = data.userId;
+                    const semId = data.semesterId;
+                    const studentReg = registrationsSnap.val()?.[userId]?.[semId];
+                    const invoiceId = studentReg?.invoiceId;
+                    const invoice = allInvoices[userId]?.[invoiceId];
 
-            const initialEdits: Record<string, string[]> = {};
-            [...pending, ...approved, ...completed].forEach(req => {
-                initialEdits[`${req.userId}-${req.semesterId}`] = req.courseIds;
-            });
-            setEditingSelections(initialEdits);
+                    let totalDue = 0;
+                    if (invoice) {
+                        totalDue = (invoice.totalTuition || 0) + (invoice.totalMandatoryFees || 0) + (invoice.totalOptionalFees || 0) + (invoice.lateFee || 0);
+                        if (invoice.applyScholarship) totalDue -= (invoice.totalTuition || 0);
+                    }
+
+                    const totalPaid = allTransactions
+                        .filter(tx => tx.userId === userId && tx.invoiceId === invoiceId && tx.status === 'successful')
+                        .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
+
+                    return {
+                        id,
+                        ...data,
+                        totalDue,
+                        totalPaid,
+                        balance: Math.max(0, totalDue - totalPaid)
+                    } as EnrollmentRequest;
+                }).filter(r => r.status === 'Pending');
+                setClassRequests(reqs.sort((a,b) => b.timestamp - a.timestamp));
+            } else {
+                setClassRequests([]);
+            }
 
         } catch (error: any) {
             console.error('Error fetching registration requests:', error);
@@ -412,7 +467,6 @@ export default function ApproveRegistrationsPage() {
                     description: `${request.studentName}'s registration is now ${newStatus === 'Completed' ? 'enrolled' : 'pending payment'}.`,
                 });
 
-                // Financial Integration Logic
                 const syncData = {
                     invoiceId: request.invoiceId,
                     studentName: request.studentName,
@@ -444,6 +498,59 @@ export default function ApproveRegistrationsPage() {
         } catch(error: any) {
              toast({ variant: 'destructive', title: 'Action Failed', description: error.message || 'An unexpected error occurred.' });
         } finally { setActionLoading(null); }
+    };
+
+    const handleClassRequestDecision = async (request: EnrollmentRequest, decision: 'Approved' | 'Declined') => {
+        setActionLoading(request.id);
+        try {
+            if (decision === 'Approved') {
+                const regRef = ref(db, `registrations/${request.userId}/${request.semesterId}`);
+                const regSnap = await get(regRef);
+                const currentReg = regSnap.exists() ? regSnap.val() : null;
+
+                if (!currentReg) {
+                    throw new Error("Student registration record not found for this semester.");
+                }
+
+                const currentCourses = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
+                const updatedCourses = [...new Set([...currentCourses, request.courseId])];
+
+                // 1. Add course to registration
+                await update(regRef, { courses: updatedCourses });
+
+                // 2. Recalculate invoice
+                const invoiceRef = ref(db, `invoices/${request.userId}/${currentReg.invoiceId}`);
+                const invoiceSnap = await get(invoiceRef);
+                if (invoiceSnap.exists()) {
+                    const tuitionCost = updatedCourses.reduce((sum, cid) => sum + (allCourses.get(cid)?.cost || 0), 0);
+                    await update(invoiceRef, { 
+                        courses: updatedCourses,
+                        totalTuition: tuitionCost 
+                    });
+                }
+
+                await createNotification(
+                    request.userId,
+                    `Your request to enroll in ${request.courseCode} has been approved.`,
+                    '/student/classes'
+                );
+            } else {
+                await createNotification(
+                    request.userId,
+                    `Your request to enroll in ${request.courseCode} was not approved.`,
+                    '/student/registration'
+                );
+            }
+
+            // Update request status
+            await update(ref(db, `classEnrollmentRequests/${request.id}`), { status: decision });
+            toast({ title: `Request ${decision}` });
+            fetchRequests();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
     };
 
     const handleScholarshipDecision = async (decision: 'approve' | 'deny') => {
@@ -616,14 +723,69 @@ export default function ApproveRegistrationsPage() {
                 </CardHeader>
                 <CardContent>
                      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-muted/50 rounded-xl">
+                        <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted/50 rounded-xl">
                             <TabsTrigger value="pending" className="py-3 rounded-lg font-bold">Pending ({loading ? '...' : Object.values(pendingRequests).flat().length})</TabsTrigger>
                             <TabsTrigger value="approved" className="py-3 rounded-lg font-bold">Approved ({loading ? '...' : Object.values(approvedRequests).flat().length})</TabsTrigger>
                             <TabsTrigger value="completed" className="py-3 rounded-lg font-bold">Enrolled ({loading ? '...' : Object.values(completedRequests).flat().length})</TabsTrigger>
+                            <TabsTrigger value="requests" className="py-3 rounded-lg font-bold">Class Requests ({loading ? '...' : classRequests.length})</TabsTrigger>
                         </TabsList>
                         <TabsContent value="pending" className="mt-6">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
                         <TabsContent value="approved" className="mt-6">{renderRequestList(approvedRequests, 'approved')}</TabsContent>
                         <TabsContent value="completed" className="mt-6">{renderRequestList(completedRequests, 'completed')}</TabsContent>
+                        <TabsContent value="requests" className="mt-6">
+                            <div className="grid gap-4">
+                                {classRequests.map(req => (
+                                    <Card key={req.id} className="border-l-4 border-l-blue-500 shadow-sm">
+                                        <CardHeader className="py-4">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <CardTitle className="text-lg">{req.studentName} ({req.studentId})</CardTitle>
+                                                    <CardDescription>Requested: <strong>{req.courseCode}: {req.courseName}</strong></CardDescription>
+                                                </div>
+                                                <Badge variant="outline" className="text-[10px] font-black uppercase opacity-60">
+                                                    <CalendarDays className="h-3 w-3 mr-1" />
+                                                    {format(new Date(req.timestamp), 'PPP')}
+                                                </Badge>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="pb-4">
+                                            <div className="grid sm:grid-cols-2 gap-6 items-center">
+                                                <div className="space-y-2">
+                                                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Financial Audit</Label>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] uppercase font-bold opacity-60">Paid to date</span>
+                                                            <span className="font-black text-green-600">ZMW {req.totalPaid?.toFixed(2)}</span>
+                                                        </div>
+                                                        <Separator orientation="vertical" className="h-8" />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] uppercase font-bold opacity-60">Out. Balance</span>
+                                                            <span className="font-black text-destructive">ZMW {req.balance?.toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="sm" className="text-destructive font-bold" onClick={() => handleClassRequestDecision(req, 'Declined')} disabled={!!actionLoading}>
+                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <X className="h-4 w-4 mr-1"/>}
+                                                        Decline
+                                                    </Button>
+                                                    <Button size="sm" className="bg-primary font-bold shadow-md" onClick={() => handleClassRequestDecision(req, 'Approved')} disabled={!!actionLoading}>
+                                                        {actionLoading === req.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4 mr-1"/>}
+                                                        Approve Enrollment
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                                {classRequests.length === 0 && !loading && (
+                                    <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                                        <BookOpen className="mx-auto h-12 w-12 opacity-10 mb-4" />
+                                        <p>No individual class enrollment requests pending review.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </TabsContent>
                     </Tabs>
                 </CardContent>
             </Card>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getAllStudentAndStaffIds } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -20,7 +20,7 @@ type UserProfile = { intakeId: string; programmeId: string; programmeName: strin
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }>; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
-type SemesterWithStatus = Semester & { isRegistered: boolean; isOpen: boolean; courses: Course[]; deadlines: { title: string; date: string | null }[]; isMissingDeadlines: boolean; };
+type SemesterWithStatus = Semester & { isRegistered: boolean; hasPaymentPlan: boolean; isOpen: boolean; courses: Course[]; deadlines: { title: string; date: string | null }[]; isMissingDeadlines: boolean; };
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -84,11 +84,12 @@ export default function StudentRegistrationPage() {
             if (userPath.semesters) {
                 for (const semId in userPath.semesters) {
                     const details = sData[semId];
-                    // Defensive check: Skip if semester doesn't belong to the user's intake to avoid cross-cohort contamination
                     if (!details || details.status === 'Archived' || details.intakeId !== profile.intakeId) continue;
                     
                     const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
-                    const isRegistered = !!(regs[semId]?.courses?.length > 0);
+                    const registration = regs[semId];
+                    const isRegistered = !!(registration?.courses?.length > 0);
+                    const hasPaymentPlan = !!registration?.paymentPlan;
                     
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
@@ -116,6 +117,7 @@ export default function StudentRegistrationPage() {
                         ...details, 
                         id: semId, 
                         isRegistered, 
+                        hasPaymentPlan,
                         isOpen: isOfferingActive, 
                         courses,
                         deadlines,
@@ -151,7 +153,7 @@ export default function StudentRegistrationPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {semestersForPath.length > 0 ? semestersForPath.map(sem => (
-                        <Card key={sem.id} className={cn("overflow-hidden border-l-4", sem.isRegistered ? "border-l-green-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted"))}>
+                        <Card key={sem.id} className={cn("overflow-hidden border-l-4", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
                             <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                 <div className="space-y-1">
                                     <CardTitle className="text-xl">{sem.name}</CardTitle>
@@ -159,9 +161,17 @@ export default function StudentRegistrationPage() {
                                 </div>
                                 <div className="flex gap-2">
                                     {sem.isRegistered ? (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
-                                            <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
-                                        </Badge>
+                                        sem.hasPaymentPlan ? (
+                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
+                                                <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
+                                            </Badge>
+                                        ) : (
+                                            <Button asChild variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-200">
+                                                <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                    <AlertCircle className="mr-2 h-4 w-4"/>Complete Setup
+                                                </Link>
+                                            </Button>
+                                        )
                                     ) : sem.isOpen ? (
                                         <Button asChild>
                                             <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
@@ -176,6 +186,13 @@ export default function StudentRegistrationPage() {
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6 pb-6">
+                                {!sem.hasPaymentPlan && sem.isRegistered && (
+                                    <Alert className="bg-orange-50 border-orange-200">
+                                        <AlertCircle className="h-4 w-4 text-orange-600" />
+                                        <AlertTitle className="text-orange-800 font-bold">Action Required</AlertTitle>
+                                        <AlertDescription className="text-orange-700">You are enrolled in classes but have not yet selected a payment plan. Click "Complete Setup" to finalize your financial requirements.</AlertDescription>
+                                    </Alert>
+                                )}
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <div className="space-y-3">
                                         <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">

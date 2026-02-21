@@ -6,7 +6,7 @@ import { Loader2, Info, ChevronLeft, Check, AlertCircle, Clock } from 'lucide-re
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, set, push } from 'firebase/database';
+import { ref, get, set, push, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -104,6 +104,7 @@ export default function RegisterForSemesterPage() {
     const [paymentDeadlines, setPaymentDeadlines] = React.useState<string[]>([]);
     const [lateFee, setLateFee] = React.useState(0);
     const [isLateRegistration, setIsLateRegistration] = React.useState(false);
+    const [existingRegistration, setExistingRegistration] = React.useState<any>(null);
 
 
     const [error, setError] = React.useState<string | null>(null);
@@ -131,6 +132,7 @@ export default function RegisterForSemesterPage() {
                     semestersSnap, 
                     settingsSnap,
                     programmesSnap,
+                    myRegsSnap
                 ] = await Promise.all([
                     get(ref(db, `users/${currentUser.uid}`)),
                     get(ref(db, 'coursePaths')),
@@ -138,6 +140,7 @@ export default function RegisterForSemesterPage() {
                     get(ref(db, 'semesters')),
                     get(ref(db, 'settings')),
                     get(ref(db, 'programmes')),
+                    get(ref(db, `registrations/${currentUser.uid}`))
                 ]);
 
                 if (!userSnap.exists()) throw new Error("Could not find your user profile.");
@@ -203,10 +206,20 @@ export default function RegisterForSemesterPage() {
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
 
-                const initialSelectedCourses = semesterCourses
-                    .map(c => c.id)
-                    .filter(id => !userDataVal.exemptedCourses?.[id]);
-                setSelectedCourseIds(initialSelectedCourses);
+                // Check for existing registration
+                const myExisting = myRegsSnap.val()?.[semesterId];
+                if (myExisting) {
+                    setExistingRegistration(myExisting);
+                    setSelectedCourseIds(Array.isArray(myExisting.courses) ? myExisting.courses : Object.keys(myExisting.courses || {}));
+                    setSelectedOptionalFees(myExisting.optionalFees || []);
+                    if (myExisting.paymentPlan) setSelectedPaymentPlan(myExisting.paymentPlan);
+                    setApplyScholarship(!!myExisting.applyScholarship);
+                } else {
+                    const initialSelectedCourses = semesterCourses
+                        .map(c => c.id)
+                        .filter(id => !userDataVal.exemptedCourses?.[id]);
+                    setSelectedCourseIds(initialSelectedCourses);
+                }
 
             } catch (error: any) {
                 console.error(error);
@@ -269,8 +282,14 @@ export default function RegisterForSemesterPage() {
             const registrationId = semesterDetails.id;
             const registrationRef = ref(db, `registrations/${currentUser.uid}/${registrationId}`);
             
-            const newInvoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
-            const invoiceId = newInvoiceRef.key!;
+            let invoiceId = existingRegistration?.invoiceId;
+            let invoiceRef;
+            if (invoiceId) {
+                invoiceRef = ref(db, `invoices/${currentUser.uid}/${invoiceId}`);
+            } else {
+                invoiceRef = push(ref(db, `invoices/${currentUser.uid}`));
+                invoiceId = invoiceRef.key!;
+            }
 
             const tuitionCost = billingPolicy === 'semester' 
                 ? (programme?.tuitionFee || 0) 
@@ -280,46 +299,50 @@ export default function RegisterForSemesterPage() {
             const optionalFeesCost = selectedOptionalFees.reduce((sum, id) => sum + (semesterDetails.optionalFees?.[id]?.amount || 0), 0);
             const finalLateFee = isLateRegistration ? lateFee : 0;
 
-            await set(newInvoiceRef, {
+            const invoiceData = {
                 invoiceId,
                 totalTuition: tuitionCost,
                 totalMandatoryFees: mandatoryFeesCost,
                 totalOptionalFees: optionalFeesCost,
                 lateFee: finalLateFee,
                 paymentPlan: selectedPaymentPlan,
-                dateCreated: new Date().toISOString(),
+                dateCreated: existingRegistration?.registrationDate || new Date().toISOString(),
                 semester: semesterDetails.name,
                 semesterId: semesterDetails.id,
                 courses: selectedCourseIds,
                 optionalFees: selectedOptionalFees,
                 applyScholarship: applyScholarship,
-            });
+            };
 
-            await set(registrationRef, {
+            const registrationData = {
                 courses: selectedCourseIds,
-                coursePriority: selectedCourseIds,
                 optionalFees: selectedOptionalFees,
                 invoiceId,
-                status: 'Pending Approval',
+                status: existingRegistration?.status || 'Pending Approval',
                 paymentPlan: selectedPaymentPlan,
                 programmeId: userData.programmeId,
-                registrationDate: new Date().toISOString(),
+                registrationDate: existingRegistration?.registrationDate || new Date().toISOString(),
                 applyScholarship: applyScholarship,
                 semesterName: semesterDetails.name,
-            });
-            
-            const registrarIds = await getRegistrarIds();
-            const notificationPromises = registrarIds.map(id => 
-                createNotification(id, `${userData.name} has submitted a new course registration for review.`, '/admin/approve-registrations')
-            );
-            await Promise.all(notificationPromises);
+            };
 
-            toast({ variant: 'success', title: "Registration Submitted!", description: "Your registration is now pending approval." });
+            await set(invoiceRef, invoiceData);
+            await set(registrationRef, registrationData);
+            
+            if (!existingRegistration || existingRegistration.status === 'Pending Approval') {
+                const registrarIds = await getRegistrarIds();
+                const notificationPromises = registrarIds.map(id => 
+                    createNotification(id, `${userData.name} has ${existingRegistration ? 'updated' : 'submitted'} their registration for review.`, '/admin/approve-registrations')
+                );
+                await Promise.all(notificationPromises);
+            }
+
+            toast({ variant: 'success', title: existingRegistration ? "Details Updated" : "Registration Submitted!", description: "Your requirements have been saved." });
             router.push('/student/payments');
 
         } catch (error: any) {
             console.error(error);
-            toast({ variant: 'destructive', title: 'Registration failed', description: error.message });
+            toast({ variant: 'destructive', title: 'Action failed', description: error.message });
         } finally {
             setSaving(false);
         }
@@ -345,10 +368,21 @@ export default function RegisterForSemesterPage() {
     return (
         <div className="space-y-6">
             <Button variant="outline" asChild><Link href="/student/registration"><ChevronLeft className="mr-2 h-4 w-4"/>Back to Semesters</Link></Button>
+            
+            {existingRegistration && !existingRegistration.paymentPlan && (
+                <Alert className="bg-orange-50 border-orange-200 shadow-md">
+                    <AlertTriangle className="h-5 w-5 text-orange-600" />
+                    <AlertTitle className="font-bold text-orange-800">Final Step Required</AlertTitle>
+                    <AlertDescription className="text-orange-700">You are enrolled in classes, but you must select a payment plan below to generate your invoice and complete your registration.</AlertDescription>
+                </Alert>
+            )}
+
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Register for {semesterDetails?.name}</CardTitle>
-                    <CardDescription>Confirm your courses, select fees and a payment plan to complete your registration.</CardDescription>
+                    <CardTitle className="font-headline text-2xl">
+                        {existingRegistration && !existingRegistration.paymentPlan ? 'Complete Semester Setup' : (existingRegistration ? 'Edit Registration' : 'Register for Semester')}
+                    </CardTitle>
+                    <CardDescription>Confirm your courses, select fees and a payment plan to complete your registration for <strong>{semesterDetails?.name}</strong>.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                      <div className="space-y-2">
@@ -366,7 +400,7 @@ export default function RegisterForSemesterPage() {
                                         id={course.id} 
                                         checked={selectedCourseIds.includes(course.id)} 
                                         onCheckedChange={() => toggleCourseSelection(course.id)}
-                                        disabled={isLocked || !!userData?.exemptedCourses?.[course.id]}
+                                        disabled={isLocked || !!userData?.exemptedCourses?.[course.id] || (existingRegistration && existingRegistration.status === 'Completed')}
                                     />
                                     <Label htmlFor={course.id} className={`flex-1 ${isLocked ? 'cursor-default' : 'cursor-pointer'}`}>
                                         <p className="font-medium">{course.name}</p>
@@ -391,7 +425,7 @@ export default function RegisterForSemesterPage() {
                              ))}
                              {Object.entries(semesterDetails?.optionalFees || {}).map(([id, fee]) => (
                                 <div key={id} className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
-                                    <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} />
+                                    <Checkbox id={id} checked={selectedOptionalFees.includes(id)} onCheckedChange={() => toggleOptionalFee(id)} disabled={existingRegistration && existingRegistration.status === 'Completed'}/>
                                     <Label htmlFor={id} className="flex-1 cursor-pointer">
                                         <p className="text-sm font-medium">{fee.name}</p>
                                         <p className="text-xs text-muted-foreground">ZMW {fee.amount.toFixed(2)}</p>
@@ -411,7 +445,7 @@ export default function RegisterForSemesterPage() {
                      <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <Label className="font-bold">Payment Plan</Label>
-                            <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan}>
+                            <Select value={selectedPaymentPlan} onValueChange={setSelectedPaymentPlan} disabled={existingRegistration && !!existingRegistration.paymentPlan && existingRegistration.status !== 'Pending Approval'}>
                                 <SelectTrigger><SelectValue placeholder="Select a payment plan..." /></SelectTrigger>
                                 <SelectContent>{availablePaymentPlans.map(p => <SelectItem key={p.id} value={p.name}>{p.name} ({p.installments} installment{p.installments > 1 ? 's' : ''})</SelectItem>)}</SelectContent>
                             </Select>
@@ -421,7 +455,7 @@ export default function RegisterForSemesterPage() {
                         </div>
                          <div className="flex items-end">
                             <div className="flex items-center space-x-2 p-4 border rounded-lg bg-blue-50/50">
-                                <Checkbox id="apply-scholarship" checked={applyScholarship} onCheckedChange={c => setApplyScholarship(!!c)}/>
+                                <Checkbox id="apply-scholarship" checked={applyScholarship} onCheckedChange={c => setApplyScholarship(!!c)} disabled={existingRegistration && existingRegistration.status === 'Completed'}/>
                                 <Label htmlFor="apply-scholarship" className="cursor-pointer">
                                     <p className="font-bold text-blue-700">I have a Scholarship</p>
                                 </Label>
@@ -432,7 +466,7 @@ export default function RegisterForSemesterPage() {
                 <CardFooter className="flex justify-end border-t pt-6">
                     <Button size="lg" onClick={handleSubmitRegistration} disabled={saving}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                        Complete & Submit Registration
+                        {existingRegistration ? 'Update My Details' : 'Complete & Submit Registration'}
                     </Button>
                 </CardFooter>
             </Card>
