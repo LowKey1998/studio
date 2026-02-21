@@ -1,9 +1,10 @@
+
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX, Info } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { ref, get } from "firebase/database";
 import { calculateAcademicState, parseIntakeDate } from "@/lib/semester-utils";
@@ -23,7 +24,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isRestrictedRoute, setIsRestrictedRoute] = useState(false);
   const [checkingStanding, setCheckingStanding] = useState(false);
   const [financialSettings, setFinancialSettings] = useState<any>(null);
-  const [hasCheckedStanding, setHasCheckedStanding] = useState(false);
+  
+  // Use a ref to ensure we only run the expensive standing check once per session/intake change
+  const hasCheckedStanding = useRef<string | null>(null);
 
   // Effect 1: Basic Authentication Guard
   useEffect(() => {
@@ -32,9 +35,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [userProfile, loading, router]);
 
-  // Effect 2: Standing Calculation (Only runs when specific ID identifiers change)
+  // Effect 2: Standing Calculation (Optimized to prevent loops)
   useEffect(() => {
-    if (loading || !user?.uid || !userProfile?.intakeId) return;
+    const checkKey = `${user?.uid}-${userProfile?.intakeId}`;
+    if (loading || !user?.uid || !userProfile?.intakeId || hasCheckedStanding.current === checkKey) return;
 
     const checkStanding = async () => {
         setCheckingStanding(true);
@@ -42,8 +46,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         // Safety timeout to prevent infinite hang
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-            setHasCheckedStanding(true);
-        }, 10000);
+            hasCheckedStanding.current = checkKey;
+        }, 8000);
 
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
@@ -58,7 +62,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ]);
 
             if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
-                throw new Error("Required standing metadata missing");
+                throw new Error("Metadata missing");
             }
 
             const finData = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
@@ -66,7 +70,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             const intake = intakeSnap.val()[userProfile.intakeId];
             const intakeStart = parseIntakeDate(intake?.name);
-            if (!intakeStart) throw new Error("Invalid intake date format");
+            if (!intakeStart) throw new Error("Invalid format");
 
             const standing = calculateAcademicState(
                 intakeStart,
@@ -104,57 +108,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const semDeadlines = calendarEvents.filter(ev => ev.semester === semData.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
             const passedDeadlines = semDeadlines.filter(ev => isAfter(new Date(), addDays(parseISO(ev.date), grace)));
             
-            const defaulterStatus = passedDeadlines.length > 0 && paidPercentage < threshold;
-            setIsDefaulter(defaulterStatus);
+            setIsDefaulter(passedDeadlines.length > 0 && paidPercentage < threshold);
 
         } catch (error) {
-            console.error("Standing calculation failed:", error);
-            setIsDefaulter(false); // Fail safe
+            console.warn("Standing fail-safe triggered:", error);
+            setIsDefaulter(false); 
         } finally {
             clearTimeout(safetyTimer);
             setCheckingStanding(false);
-            setHasCheckedStanding(true);
+            hasCheckedStanding.current = checkKey;
         }
     };
 
     checkStanding();
   }, [user?.uid, userProfile?.intakeId, loading]);
 
-  // Effect 3: Route Guard (Only blocks specific routes if user is a defaulter)
+  // Effect 3: Route Guard
   useEffect(() => {
-    if (!hasCheckedStanding || !isDefaulter || !financialSettings) {
+    if (!hasCheckedStanding.current || !isDefaulter || !financialSettings) {
         setIsRestrictedRoute(false);
         return;
     }
 
     const restrictedFuncs = financialSettings.defaulterRestrictions || {};
     const restrictedCategories = restrictedFuncs.sidebar || {};
-    
     let isPathBlocked = false;
 
-    if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
-        isPathBlocked = true;
-    }
-    if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
-        isPathBlocked = true;
-    }
-    if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
-        isPathBlocked = true;
-    }
+    if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) isPathBlocked = true;
+    if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) isPathBlocked = true;
+    if (restrictedFuncs.library && pathname.startsWith('/student/library')) isPathBlocked = true;
 
     const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
-    if (currentCategory && restrictedCategories[currentCategory.label]) {
-        isPathBlocked = true;
-    }
+    if (currentCategory && restrictedCategories[currentCategory.label]) isPathBlocked = true;
 
-    // Never block essential financial/comm routes
     const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
-    
     setIsRestrictedRoute(isPathBlocked && !isEssential);
 
-  }, [pathname, isDefaulter, financialSettings, hasCheckedStanding]);
+  }, [pathname, isDefaulter, financialSettings]);
 
-  if (loading || (checkingStanding && !hasCheckedStanding)) {
+  if (loading || (checkingStanding && !hasCheckedStanding.current)) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -167,7 +159,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       return (
           <DashboardLayout>
               <div className="flex items-center justify-center min-h-[70vh]">
-                  <Card className="max-w-md w-full border-2 border-destructive/20 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+                  <Card className="max-w-md w-full border-2 border-destructive/20 shadow-2xl overflow-hidden">
                       <CardHeader className="bg-destructive/5 border-b border-destructive/10 text-center pb-8">
                           <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
                               <ShieldX className="h-10 w-10 text-destructive" />
@@ -176,26 +168,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           <CardDescription className="font-medium text-destructive/80">Institutional Payment Compliance Required</CardDescription>
                       </CardHeader>
                       <CardContent className="pt-8 space-y-4">
-                          <p className="text-sm text-center text-muted-foreground leading-relaxed">
-                              This section of the portal has been locked because your account has not met the minimum required payment threshold for the current academic cycle.
-                          </p>
+                          <p className="text-sm text-center text-muted-foreground leading-relaxed">This section has been locked because your account has not met the minimum required payment threshold.</p>
                           <div className="bg-muted/50 p-4 rounded-xl border border-dashed text-xs space-y-2">
-                              <div className="flex justify-between items-center">
-                                  <span className="font-bold opacity-60">Status:</span>
-                                  <Badge variant="destructive" className="font-black uppercase tracking-tighter text-[9px]">Arrears</Badge>
-                              </div>
-                              <p className="italic opacity-70 leading-snug">Access to restricted modules is suspended until standing is restored.</p>
+                              <div className="flex justify-between items-center"><span className="font-bold opacity-60">Status:</span><Badge variant="destructive" className="font-black uppercase tracking-tighter text-[9px]">Arrears</Badge></div>
+                              <p className="italic opacity-70 leading-snug">Access is suspended until standing is restored.</p>
                           </div>
                       </CardContent>
                       <CardFooter className="flex flex-col gap-2 p-6 bg-muted/5">
-                          <Button className="w-full h-12 font-bold shadow-md bg-primary hover:bg-primary/90" asChild>
-                              <Link href="/student/payments">
-                                  <Wallet className="mr-2 h-4 w-4"/> Make Payment <ArrowRight className="ml-2 h-4 w-4"/>
-                              </Link>
-                          </Button>
-                          <Button variant="ghost" className="w-full text-xs font-bold" asChild>
-                              <Link href="/student/dashboard">Return to Dashboard</Link>
-                          </Button>
+                          <Button className="w-full h-12 font-bold shadow-md bg-primary hover:bg-primary/90" asChild><Link href="/student/payments"><Wallet className="mr-2 h-4 w-4"/> Make Payment <ArrowRight className="ml-2 h-4 w-4"/></Link></Button>
+                          <Button variant="ghost" className="w-full text-xs font-bold" asChild><Link href="/student/dashboard">Return to Dashboard</Link></Button>
                       </CardFooter>
                   </Card>
               </div>

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { 
@@ -347,7 +348,7 @@ export default function PaymentsManagementPage() {
                     if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
 
                     for (const semesterId in regsData[userId]) {
-                        const reg = registrationsData[userId][semesterId];
+                        const reg = regsData[userId][semesterId];
                         const semesterInfo = semsData[semesterId];
                         if (!semesterInfo) continue;
 
@@ -390,21 +391,6 @@ export default function PaymentsManagementPage() {
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, serverTimeOffset]);
-
-    React.useEffect(() => {
-        if (!user?.uid) return;
-        get(ref(db, `settings/paymentFilters/${user.uid}`)).then(snap => {
-            if (snap.exists()) {
-                const def = snap.val();
-                setProgrammeFilter(def.programmeFilter || 'all');
-                setIntakeFilter(def.intakeFilter || 'all');
-                setTimeFilter(def.timeFilter || 'all');
-                setMinPaidFilter(def.minPaidFilter || '');
-                setMaxPaidFilter(def.maxPaidFilter || '');
-                setEqualPaidFilter(def.equalPaidFilter || '');
-            }
-        });
-    }, [user?.uid]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
