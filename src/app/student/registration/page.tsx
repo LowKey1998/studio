@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
-import { ref, get, set, onValue } from 'firebase/database';
+import { db, auth } from '@/lib/firebase';
+import { ref, get, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -91,7 +91,7 @@ export default function StudentRegistrationPage() {
             const sData = sSnap.val() || {};
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
-            const eventsData = eventsSnapshot.val() || {};
+            const eventsData = eventsSnap.val() || {};
             const timetablesData = timetablesSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
@@ -218,7 +218,7 @@ export default function StudentRegistrationPage() {
                                     <Alert className="bg-orange-50 border-orange-200">
                                         <AlertCircle className="h-4 w-4 text-orange-600" />
                                         <AlertTitle className="text-orange-800 font-bold">Action Required</AlertTitle>
-                                        <AlertDescription className="text-orange-700">You are enrolled in classes but have not yet selected a payment plan. Click "Complete Setup" to finalize your financial requirements.</AlertDescription>
+                                        <AlertDescription className="text-orange-700 text-sm">You are enrolled in classes but have not yet selected a payment plan. Click "Complete Setup" to finalize your financial requirements.</AlertDescription>
                                     </Alert>
                                 )}
                                 <div className="grid md:grid-cols-2 gap-6">
