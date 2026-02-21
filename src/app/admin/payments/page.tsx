@@ -49,7 +49,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, push, set, onValue } from 'firebase/database';
+import { ref, get, update, push, set, onValue, off } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -253,6 +253,7 @@ export default function PaymentsManagementPage() {
     React.useEffect(() => {
         const offsetRef = ref(db, '.info/serverTimeOffset');
         onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
+        return () => off(offsetRef);
     }, []);
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
@@ -267,131 +268,132 @@ export default function PaymentsManagementPage() {
         return `Year ${state.year}, Sem ${state.semester}`;
     };
 
-    const fetchPaymentData = React.useCallback(async () => {
+    React.useEffect(() => {
         if (!userData) return;
-        setLoading(true);
         
-        try {
-            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap, calSnap] = await Promise.all([
-                get(ref(db, 'users')),
-                get(ref(db, 'registrations')),
-                get(ref(db, 'transactions')),
-                get(ref(db, 'programmes')),
-                get(ref(db, 'semesters')),
-                get(ref(db, 'intakes')),
-                get(ref(db, 'invoices')),
-                get(ref(db, 'settings/financialSettings')),
-                get(ref(db, 'calendarEvents')),
-                get(ref(db, 'settings/academicCalendar'))
-            ]);
-            
-            const users = uSnap.val() || {};
-            const regsData = rSnap.val() || {};
-            const txsData = tSnap.val() || {};
-            const progsData = pSnap.val() || {};
-            const semsData = sSnap.val() || {};
-            const intsData = iSnap.val() || {};
-            const invsData = invSnap.val() || {};
-            const finData = fSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
-            const calendarEvents = Object.values(eSnap.val() || {}) as any[];
-            setCalendarSettings(calSnap.val());
+        setLoading(true);
+        const refs = [
+            ref(db, 'users'),
+            ref(db, 'registrations'),
+            ref(db, 'transactions'),
+            ref(db, 'programmes'),
+            ref(db, 'semesters'),
+            ref(db, 'intakes'),
+            ref(db, 'invoices'),
+            ref(db, 'settings/financialSettings'),
+            ref(db, 'calendarEvents'),
+            ref(db, 'settings/academicCalendar')
+        ];
 
-            setProgrammes(Object.keys(progsData).map(id => ({ id, ...progsData[id]})));
-            setSemesters(Object.keys(semsData).map(id => ({ id, ...semsData[id]})));
-            setAllIntakes(Object.keys(intsData).map(id => ({ id, ...intsData[id] })));
-            setFinancialSettings(finData);
-
-            const studentList: StudentInfo[] = [];
-            for (const uid in users) {
-                if (users[uid].role?.toLowerCase() === 'student') {
-                    studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
-                }
-            }
-            setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
-
-            const transactionsList: Transaction[] = [];
-            for (const txId in txsData) {
-                const tx = txsData[txId];
-                if(tx.status !== 'successful') continue;
-                const userId = tx.userId;
-                const userRegs = regsData[userId] || {};
-                const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
-                const sInfo = semesterId ? semsData[semesterId] : null;
-                const iInfo = sInfo ? intsData[sInfo.intakeId] : null;
-
-                transactionsList.push({
-                    key: txId,
-                    ...tx,
-                    semesterId,
-                    semesterName: semesterId ? semsData[semesterId]?.name : undefined,
-                    intakeName: iInfo?.name,
-                    academicStanding: semesterId ? `Y${semsData[semesterId].year}S${semsData[semesterId].semesterInYear}` : undefined
-                });
-            }
-            setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
-
-            const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
-            const globalThreshold = finData.paymentThreshold || 75;
-            const now = getCurrentServerDate();
-
-            for (const userId in regsData) {
-                 const userProfile = users[userId];
-                 if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
-
-                 for (const semesterId in regsData[userId]) {
-                    const reg = regsData[userId][semesterId];
-                    const semesterInfo = semsData[semesterId];
-                    if (!semesterInfo) continue;
-
-                    const key = `${userId}-${semesterId}`;
-                    const invoice = invsData[userId]?.[reg.invoiceId];
-
-                    if (invoice) {
-                        const totalPayable = invoice.applyScholarship 
-                            ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
-                            : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
-
-                        const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
-                        const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                        const balance = Math.max(0, totalPayable - totalPaid);
-                        
-                        const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
-                        const thresholdMet = paidPercentage >= threshold;
-
-                        const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
-                        const grace = semesterInfo.gracePeriodDays ?? 7;
-                        const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
-                        const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
-
-                        studentPaymentMap[key] = {
-                            userId,
-                            studentId: userProfile.id,
-                            studentName: userProfile.name,
-                            totalDue: totalPayable,
-                            totalPaid,
-                            balance,
-                            programmeId: reg.programmeId,
-                            intakeId: semesterInfo.intakeId || null,
-                            semesterId,
-                            invoiceId: reg.invoiceId,
-                            enrolledCourses: reg.courses || [],
-                            thresholdMet,
-                            penaltiesActive,
-                            isScholarship: !!invoice.applyScholarship,
-                            paidPercentage,
-                            targetThreshold: threshold,
-                            gracePeriod: grace,
-                            status: balance <= 0.01 ? 'Paid' : 'Pending'
-                        };
+        const unsubs = refs.map((r, index) => onValue(r, (snapshot) => {
+            if (index === 0) {
+                const users = snapshot.val() || {};
+                const studentList: StudentInfo[] = [];
+                for (const uid in users) {
+                    if (users[uid].role?.toLowerCase() === 'student') {
+                        studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
                     }
-                 }
+                }
+                setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
             }
-            setPaymentInfos(Object.values(studentPaymentMap));
+            if (index === 3) setProgrammes(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
+            if (index === 4) setSemesters(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
+            if (index === 5) setAllIntakes(Object.entries(snapshot.val() || {}).map(([id, d]:[string,any]) => ({id, ...d})));
+            if (index === 7) setFinancialSettings(snapshot.val());
+            if (index === 9) setCalendarSettings(snapshot.val());
+            
+            // Re-calculate derived data on any relevant change
+            const refreshDerived = async () => {
+                const [u, r, t, p, s, i, inv, f, ev] = await Promise.all(refs.slice(0, 9).map(ref => get(ref)));
+                
+                const users = u.val() || {};
+                const regsData = r.val() || {};
+                const txsData = t.val() || {};
+                const semsData = s.val() || {};
+                const intsData = i.val() || {};
+                const invsData = inv.val() || {};
+                const calendarEvents = Object.values(ev.val() || {}) as any[];
+                const finData = f.val() || { paymentThreshold: 75 };
 
-            const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
-            if (defaultsSnap.exists()) {
-                const def = defaultsSnap.val();
+                const transactionsList: Transaction[] = [];
+                for (const txId in txsData) {
+                    const tx = txsData[txId];
+                    if(tx.status !== 'successful') continue;
+                    const userId = tx.userId;
+                    const userRegs = regsData[userId] || {};
+                    const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
+                    const sInfo = semesterId ? semsData[semesterId] : null;
+                    const iInfo = sInfo ? intsData[sInfo.intakeId] : null;
+
+                    transactionsList.push({
+                        key: txId,
+                        ...tx,
+                        semesterId,
+                        semesterName: semesterId ? semsData[semesterId]?.name : undefined,
+                        intakeName: iInfo?.name,
+                        academicStanding: semesterId ? `Year ${semsData[semesterId].year}, Sem ${semsData[semesterId].semesterInYear}` : undefined
+                    });
+                }
+                setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
+
+                const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
+                const globalThreshold = finData.paymentThreshold || 75;
+                const now = getCurrentServerDate();
+
+                for (const userId in regsData) {
+                    const userProfile = users[userId];
+                    if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
+
+                    for (const semesterId in regsData[userId]) {
+                        const reg = regsData[userId][semesterId];
+                        const semesterInfo = semsData[semesterId];
+                        if (!semesterInfo) continue;
+
+                        const invoice = invsData[userId]?.[reg.invoiceId];
+                        if (invoice) {
+                            const totalPayable = invoice.applyScholarship 
+                                ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
+                                : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
+
+                            const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
+                            const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                            const balance = Math.max(0, totalPayable - totalPaid);
+                            
+                            const threshold = semesterInfo.paymentThreshold || globalThreshold;
+                            const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                            const thresholdMet = paidPercentage >= threshold;
+
+                            const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
+                            const grace = semesterInfo.gracePeriodDays ?? 7;
+                            const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
+                            const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
+
+                            studentPaymentMap[`${userId}-${semesterId}`] = {
+                                userId, studentId: userProfile.id, studentName: userProfile.name,
+                                totalDue: totalPayable, totalPaid, balance,
+                                programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
+                                invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
+                                thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
+                                paidPercentage, targetThreshold: threshold, gracePeriod: grace,
+                                status: balance <= 0.01 ? 'Paid' : 'Pending'
+                            };
+                        }
+                    }
+                }
+                setPaymentInfos(Object.values(studentPaymentMap));
+                setLoading(false);
+            };
+            refreshDerived();
+        }));
+
+        return () => unsubs.forEach(unsub => unsub());
+    }, [userData, serverTimeOffset]);
+
+    React.useEffect(() => {
+        if (!user?.uid) return;
+        get(ref(db, `settings/paymentFilters/${user.uid}`)).then(snap => {
+            if (snap.exists()) {
+                const def = snap.val();
                 setProgrammeFilter(def.programmeFilter || 'all');
                 setIntakeFilter(def.intakeFilter || 'all');
                 setTimeFilter(def.timeFilter || 'all');
@@ -399,18 +401,8 @@ export default function PaymentsManagementPage() {
                 setMaxPaidFilter(def.maxPaidFilter || '');
                 setEqualPaidFilter(def.equalPaidFilter || '');
             }
-
-        } catch (error: any) {
-            console.error("Payment Data Fetch Error:", error);
-            toast({ variant: 'destructive', title: 'Data Load Failed' });
-        } finally {
-            setLoading(false);
-        }
-    }, [userData, toast, user?.uid, serverTimeOffset]);
-
-    React.useEffect(() => {
-        if (userData) fetchPaymentData();
-    }, [userData, fetchPaymentData]);
+        });
+    }, [user?.uid]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -480,12 +472,7 @@ export default function PaymentsManagementPage() {
         setSaving(true);
         try {
             await set(ref(db, `settings/paymentFilters/${user.uid}`), {
-                programmeFilter,
-                intakeFilter,
-                timeFilter,
-                minPaidFilter,
-                maxPaidFilter,
-                equalPaidFilter
+                programmeFilter, intakeFilter, timeFilter, minPaidFilter, maxPaidFilter, equalPaidFilter
             });
             toast({ title: 'Default Filters Saved' });
         } catch (e) {
@@ -585,7 +572,6 @@ export default function PaymentsManagementPage() {
             toast({ title: "Transactions Recorded", description: `Processed ${paymentsToRecord.length} records.` });
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
-            await fetchPaymentData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Save Failed', description: e.message }); }
         finally { setFormLoading(false); }
     };
@@ -630,7 +616,6 @@ export default function PaymentsManagementPage() {
             toast({ title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
             setIsRecordPaymentOpen(false);
             resetDialog();
-            await fetchPaymentData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Recording Failed' }); }
         finally { setFormLoading(false); }
     };
@@ -1027,7 +1012,7 @@ export default function PaymentsManagementPage() {
                                     .map(p => {
                                         const sem = semesters.find(s => s.id === p.semesterId);
                                         const intake = allIntakes.find(i => i.id === sem?.intakeId);
-                                        const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
+                                        const standing = sem ? `Year ${sem.year}, Sem ${sem.semesterInYear}` : 'N/A';
                                         return (
                                             <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
                                                 {intake?.name} - {standing}

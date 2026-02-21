@@ -18,31 +18,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  
   const [isDefaulter, setIsDefaulter] = useState(false);
   const [isRestrictedRoute, setIsRestrictedRoute] = useState(false);
   const [checkingStanding, setCheckingStanding] = useState(false);
+  const [financialSettings, setFinancialSettings] = useState<any>(null);
+  const [hasCheckedStanding, setHasCheckedStanding] = useState(false);
 
+  // Effect 1: Basic Authentication Guard
   useEffect(() => {
-    if (loading) return;
-
-    if (!userProfile || userProfile.role?.toLowerCase() !== 'student') {
+    if (!loading && (!userProfile || userProfile.role?.toLowerCase() !== 'student')) {
       if (userProfile) router.replace('/dashboard');
-      return;
     }
+  }, [userProfile, loading, router]);
+
+  // Effect 2: Standing Calculation (Only runs when User/Profile changes)
+  useEffect(() => {
+    if (loading || !user || !userProfile?.intakeId) return;
 
     const checkStanding = async () => {
         setCheckingStanding(true);
 
+        // Safety timeout to prevent infinite hang
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-        }, 5000);
+            setHasCheckedStanding(true);
+        }, 8000);
 
         try {
-            if (!user || !userProfile.intakeId) {
-                setCheckingStanding(false);
-                return;
-            }
-
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
                 get(ref(db, 'transactions')),
@@ -55,16 +58,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ]);
 
             if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
-                setCheckingStanding(false);
-                return;
+                throw new Error("Required standing metadata missing");
             }
+
+            const finData = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
+            setFinancialSettings(finData);
 
             const intake = intakeSnap.val()[userProfile.intakeId];
             const intakeStart = parseIntakeDate(intake?.name);
-            if (!intakeStart) {
-                setCheckingStanding(false);
-                return;
-            }
+            if (!intakeStart) throw new Error("Invalid intake date format");
 
             const standing = calculateAcademicState(
                 intakeStart,
@@ -78,7 +80,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             );
 
             if (!activeSemesterEntry) {
-                setCheckingStanding(false);
+                setIsDefaulter(false);
                 return;
             }
 
@@ -87,7 +89,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const invoice = invSnap.val()?.[reg?.invoiceId];
 
             if (!reg || !invoice) {
-                setCheckingStanding(false);
+                setIsDefaulter(false);
                 return;
             }
 
@@ -95,8 +97,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const totalPaid = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.invoiceId === reg.invoiceId && t.status === 'successful').reduce((acc, t: any) => acc + (Number(t.amount) || 0), 0);
             
             const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-            const fSettings = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
-            const threshold = semData.paymentThreshold || fSettings.paymentThreshold;
+            const threshold = semData.paymentThreshold || finData.paymentThreshold;
             const grace = semData.gracePeriodDays || 0;
 
             const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
@@ -106,52 +107,58 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const defaulterStatus = passedDeadlines.length > 0 && paidPercentage < threshold;
             setIsDefaulter(defaulterStatus);
 
-            if (defaulterStatus) {
-                const restrictedFuncs = fSettings.defaulterRestrictions || {};
-                const restrictedCategories = restrictedFuncs.sidebar || {};
-                
-                let isPathBlocked = false;
-
-                if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
-                    isPathBlocked = true;
-                }
-                if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
-                    isPathBlocked = true;
-                }
-                if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
-                    isPathBlocked = true;
-                }
-
-                const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
-                if (currentCategory && restrictedCategories[currentCategory.label]) {
-                    isPathBlocked = true;
-                }
-
-                const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
-                if (isPathBlocked && !isEssential) {
-                    setIsRestrictedRoute(true);
-                } else {
-                    setIsRestrictedRoute(false);
-                }
-            } else {
-                setIsRestrictedRoute(false);
-            }
         } catch (error) {
-            console.error("Standing guard error:", error);
+            console.error("Standing calculation failed:", error);
+            setIsDefaulter(false); // Fail safe
         } finally {
             clearTimeout(safetyTimer);
             setCheckingStanding(false);
+            setHasCheckedStanding(true);
         }
     };
 
     checkStanding();
-  }, [user, userProfile, loading, router, pathname]);
+  }, [user?.uid, userProfile?.intakeId, loading]);
 
-  if (loading || checkingStanding) {
+  // Effect 3: Route Guard (Only blocks specific routes if user is a defaulter)
+  useEffect(() => {
+    if (!hasCheckedStanding || !isDefaulter || !financialSettings) {
+        setIsRestrictedRoute(false);
+        return;
+    }
+
+    const restrictedFuncs = financialSettings.defaulterRestrictions || {};
+    const restrictedCategories = restrictedFuncs.sidebar || {};
+    
+    let isPathBlocked = false;
+
+    if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
+        isPathBlocked = true;
+    }
+    if (restrictedFuncs.registration && pathname.startsWith('/student/registration/')) {
+        isPathBlocked = true;
+    }
+    if (restrictedFuncs.library && pathname.startsWith('/student/library')) {
+        isPathBlocked = true;
+    }
+
+    const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
+    if (currentCategory && restrictedCategories[currentCategory.label]) {
+        isPathBlocked = true;
+    }
+
+    // Never block essential financial/comm routes
+    const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
+    
+    setIsRestrictedRoute(isPathBlocked && !isEssential);
+
+  }, [pathname, isDefaulter, financialSettings, hasCheckedStanding]);
+
+  if (loading || (checkingStanding && !hasCheckedStanding)) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">Syncing Portal standing...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse tracking-widest">Establishing Portal standing...</p>
       </div>
     );
   }
