@@ -1,7 +1,5 @@
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
 import { 
     Receipt, 
     DollarSign, 
@@ -32,11 +30,14 @@ import {
     ShieldAlert,
     GraduationCap,
     Info,
-    X
+    X,
+    UserCheck,
+    Lock,
+    Unlock
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
@@ -81,6 +82,7 @@ type StudentPaymentInfo = {
     isScholarship: boolean;
     paidPercentage: number;
     targetThreshold: number;
+    gracePeriod: number;
 };
 
 type PaymentRecord = {
@@ -203,6 +205,7 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
     const [loading, setLoading] = React.useState(true);
@@ -248,7 +251,7 @@ export default function PaymentsManagementPage() {
         if (!userData) return;
         setLoading(true);
         try {
-            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap] = await Promise.all([
+            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap, calSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
@@ -257,7 +260,8 @@ export default function PaymentsManagementPage() {
                 get(ref(db, 'intakes')),
                 get(ref(db, 'invoices')),
                 get(ref(db, 'settings/financialSettings')),
-                get(ref(db, 'calendarEvents'))
+                get(ref(db, 'calendarEvents')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
             
             const users = uSnap.val() || {};
@@ -269,6 +273,7 @@ export default function PaymentsManagementPage() {
             const invsData = invSnap.val() || {};
             const finData = fSnap.val() || { paymentThreshold: 75 };
             const calendarEvents = Object.values(eSnap.val() || {}) as any[];
+            setCalendarSettings(calSnap.val());
 
             setProgrammes(Object.keys(progsData).map(id => ({ id, ...progsData[id]})));
             setSemesters(Object.keys(semsData).map(id => ({ id, ...semsData[id]})));
@@ -329,7 +334,6 @@ export default function PaymentsManagementPage() {
                         const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
-                        // Check for penalties
                         const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
                         const grace = semesterInfo.gracePeriodDays ?? 7;
                         const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
@@ -352,6 +356,7 @@ export default function PaymentsManagementPage() {
                             isScholarship: !!invoice.applyScholarship,
                             paidPercentage,
                             targetThreshold: threshold,
+                            gracePeriod: grace,
                             status: balance <= 0.01 ? 'Paid' : 'Pending'
                         };
                     }
@@ -359,7 +364,6 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
-            // Load Defaults
             const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
             if (defaultsSnap.exists()) {
                 const def = defaultsSnap.val();
@@ -627,6 +631,16 @@ export default function PaymentsManagementPage() {
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
 
+    const calculateStandingForUser = (userId: string) => {
+        const studentInfo = allStudents.find(s => s.uid === userId);
+        if (!studentInfo || !studentInfo.intakeId || !calendarSettings) return 'N/A';
+        const intake = allIntakes.find(i => i.id === studentInfo.intakeId);
+        const intakeStart = parseIntakeDate(intake?.name || '');
+        if (!intakeStart) return 'N/A';
+        const state = calculateAcademicState(intakeStart, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
+        return `Year ${state.year}, Sem ${state.semester}`;
+    };
+
     const resetDialog = () => {
         setSelectedStudent(null);
         setPaymentAmount('');
@@ -636,6 +650,8 @@ export default function PaymentsManagementPage() {
         setSingleYear('');
         setSingleSemId('');
     };
+
+    const restrictions = financialSettings?.defaulterRestrictions || {};
 
     return (
         <div className="space-y-6">
@@ -656,7 +672,7 @@ export default function PaymentsManagementPage() {
                             <CardContent><div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Semester Total</CardTitle>
                                 <CalendarDays className="h-4 w-4 text-primary" />
                             </CardHeader>
@@ -666,14 +682,14 @@ export default function PaymentsManagementPage() {
                             </CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
                             <CardContent><div className="text-2xl font-black">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Period Collected</CardTitle>
                                 <Scale className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
@@ -814,25 +830,56 @@ export default function PaymentsManagementPage() {
                                                             {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
                                                         </div>
                                                     </PopoverTrigger>
-                                                    <PopoverContent className="w-64 p-4 shadow-2xl border-primary/20">
-                                                        <div className="space-y-3">
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Threshold Analysis</h4>
+                                                    <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
+                                                        <div className="space-y-4">
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Compliance Audit</h4>
                                                             <div className="space-y-2">
                                                                 <div className="flex justify-between text-xs">
-                                                                    <span className="text-muted-foreground">Target Threshold:</span>
+                                                                    <span className="text-muted-foreground">Threshold Target:</span>
                                                                     <span className="font-bold">{info.targetThreshold}%</span>
                                                                 </div>
                                                                 <div className="flex justify-between text-xs">
-                                                                    <span className="text-muted-foreground">Paid Percentage:</span>
+                                                                    <span className="text-muted-foreground">Current Standing:</span>
                                                                     <span className={cn("font-bold", info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
                                                                 </div>
-                                                                <Separator className="my-2"/>
-                                                                {info.thresholdMet ? (
-                                                                    <p className="text-[10px] text-green-600 font-medium italic">Student has met the minimum required payment level for this semester.</p>
-                                                                ) : (
-                                                                    <div className="space-y-1">
-                                                                        <p className="text-[10px] text-destructive font-bold uppercase">Restoration Required</p>
-                                                                        <p className="text-[10px] text-muted-foreground">A payment of <strong>ZMW {(info.totalDue * (info.targetThreshold/100) - info.totalPaid).toFixed(2)}</strong> is needed to reach good standing.</p>
+                                                                <div className="flex justify-between text-xs">
+                                                                    <span className="text-muted-foreground">Grace Period:</span>
+                                                                    <span className="font-bold">{info.gracePeriod} Days</span>
+                                                                </div>
+                                                                
+                                                                <Separator className="my-3"/>
+                                                                
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[9px] font-black uppercase text-muted-foreground tracking-tighter">Restriction Status</p>
+                                                                    <div className="grid gap-1.5 text-[10px]">
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="opacity-70">Course Registration:</span>
+                                                                            <div className="flex items-center gap-1">
+                                                                                {restrictions.registration ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                <span className={cn(restrictions.registration ? "text-destructive" : "text-green-600")}>{restrictions.registration ? 'Enforced' : 'Unrestricted'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="opacity-70">Exam Publication:</span>
+                                                                            <div className="flex items-center gap-1">
+                                                                                {restrictions.results ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                <span className={cn(restrictions.results ? "text-destructive" : "text-green-600")}>{restrictions.results ? 'Enforced' : 'Unrestricted'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="opacity-70">Library Access:</span>
+                                                                            <div className="flex items-center gap-1">
+                                                                                {restrictions.library ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                <span className={cn(restrictions.library ? "text-destructive" : "text-green-600")}>{restrictions.library ? 'Enforced' : 'Unrestricted'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {!info.thresholdMet && (
+                                                                    <div className="mt-4 p-2 bg-destructive/5 border border-destructive/10 rounded-md">
+                                                                        <p className="text-[10px] font-bold text-destructive uppercase">Arrears Clearing Amount</p>
+                                                                        <p className="text-xs font-black">ZMW {( (info.totalDue * (info.targetThreshold/100)) - info.totalPaid ).toFixed(2)}</p>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -870,6 +917,13 @@ export default function PaymentsManagementPage() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
                     <div className="grid gap-4 py-4">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-xl">
+                            <UserCheck className="h-4 w-4 text-primary" />
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black uppercase text-muted-foreground leading-none">Calculated Standing</span>
+                                <span className="text-sm font-bold text-primary">{selectedStudent ? calculateStandingForUser(selectedStudent.userId) : 'Select student...'}</span>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1"><Label>Year</Label><Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}><SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger><SelectContent>{Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
                             <div className="space-y-1"><Label>Semester</Label><Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}><SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger><SelectContent>{semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
@@ -929,6 +983,12 @@ export default function PaymentsManagementPage() {
                                     <div className="space-y-3">
                                         <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student & Academic Period</Label></div>
                                         <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
+                                        {row.userId && (
+                                            <div className="text-[10px] font-bold text-primary animate-in fade-in flex items-center gap-1.5 px-1">
+                                                <UserCheck className="h-3 w-3" />
+                                                Current standing: {calculateStandingForUser(row.userId)}
+                                            </div>
+                                        )}
                                         <div className="grid grid-cols-2 gap-2">
                                             <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.userId}><SelectTrigger className="h-9"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
                                             <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9"><SelectValue placeholder="Semester..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
@@ -981,11 +1041,14 @@ export default function PaymentsManagementPage() {
                                         if (!semA || !semB) return 0;
                                         return (semB.year * 10 + semB.semesterInYear) - (semA.year * 10 + semA.semesterInYear);
                                     })
-                                    .map(p => (
-                                        <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
-                                            {semesters.find(s => s.id === p.semesterId)?.name.split(' ').slice(-2).join(' ') || 'Unknown'}
-                                        </TabsTrigger>
-                                    ))
+                                    .map(p => {
+                                        const sem = semesters.find(s => s.id === p.semesterId);
+                                        return (
+                                            <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
+                                                {sem ? `Year ${sem.year}, Sem ${sem.semesterInYear}` : 'Unknown'}
+                                            </TabsTrigger>
+                                        )
+                                    })
                                 }
                             </TabsList>
                             {paymentInfos
