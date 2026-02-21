@@ -15,12 +15,13 @@ import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { logError } from '@/lib/error-logger';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; };
 type CoursePath = { id: string; intakeId: string; programmeId: string; semesters: Record<string, { courses: string[] }>; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
-type SemesterWithStatus = Semester & { isRegistered: boolean; hasPaymentPlan: boolean; isOpen: boolean; courses: Course[]; deadlines: { title: string; date: string | null }[]; isMissingDeadlines: boolean; };
+type SemesterWithStatus = Semester & { isRegistered: boolean; hasPaymentPlan: boolean; isOpen: boolean; courses: Course[]; deadlines: { title: string; date: string | null }[]; isMissingDeadlines: boolean; isCurrentStanding: boolean; };
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -44,7 +45,7 @@ export default function StudentRegistrationPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, timetablesSnap, plansSnap] = await Promise.all([
+            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, timetablesSnap, plansSnap, calSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)), 
                 get(ref(db, 'programmes')), 
                 get(ref(db, 'intakes')),
@@ -56,7 +57,8 @@ export default function StudentRegistrationPage() {
                 get(ref(db, 'users')),
                 get(ref(db, 'calendarEvents')),
                 get(ref(db, 'timetables')),
-                get(ref(db, 'settings/paymentPlans'))
+                get(ref(db, 'settings/paymentPlans')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
             
             if (!uSnap.exists()) return;
@@ -70,6 +72,20 @@ export default function StudentRegistrationPage() {
             const userPath = Object.values(cpSnap.val() || {}).find((p: any) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId) as any;
             if (!userPath) { setSemestersForPath([]); setLoading(false); return; }
             
+            const intakeName = iSnap.val()?.[profile.intakeId]?.name;
+            const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
+            const calSettings = calSnap.val();
+            let currentStanding: { year: number, semester: number } | null = null;
+
+            if (intakeStartStr && calSettings) {
+                currentStanding = calculateAcademicState(
+                    intakeStartStr,
+                    new Date(),
+                    calSettings.standardCycles,
+                    Object.values(calSettings.anomalies || {})
+                );
+            }
+
             const offerings = soSnap.val() || {};
             const regs = rSnap.val() || {};
             const sData = sSnap.val() || {};
@@ -90,6 +106,7 @@ export default function StudentRegistrationPage() {
                     const registration = regs[semId];
                     const isRegistered = !!(registration?.courses?.length > 0);
                     const hasPaymentPlan = !!registration?.paymentPlan;
+                    const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
@@ -121,7 +138,8 @@ export default function StudentRegistrationPage() {
                         isOpen: isOfferingActive, 
                         courses,
                         deadlines,
-                        isMissingDeadlines
+                        isMissingDeadlines,
+                        isCurrentStanding
                     });
                 }
             }
@@ -156,7 +174,10 @@ export default function StudentRegistrationPage() {
                         <Card key={sem.id} className={cn("overflow-hidden border-l-4", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
                             <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                 <div className="space-y-1">
-                                    <CardTitle className="text-xl">{sem.name}</CardTitle>
+                                    <div className="flex items-center gap-2">
+                                        <CardTitle className="text-xl">{sem.name}</CardTitle>
+                                        {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
+                                    </div>
                                     <CardDescription>Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
                                 </div>
                                 <div className="flex gap-2">
@@ -186,7 +207,7 @@ export default function StudentRegistrationPage() {
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6 pb-6">
-                                {!sem.hasPaymentPlan && sem.isRegistered && (
+                                {!sem.hasPaymentPlan && sem.isRegistered && sem.isCurrentStanding && (
                                     <Alert className="bg-orange-50 border-orange-200">
                                         <AlertCircle className="h-4 w-4 text-orange-600" />
                                         <AlertTitle className="text-orange-800 font-bold">Action Required</AlertTitle>

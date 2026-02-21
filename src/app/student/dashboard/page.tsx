@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -133,7 +132,7 @@ export default function StudentDashboardPage() {
             const allUsers = uSnap.val() || {};
             const allIntakes = iSnap.val() || {};
             const allAttendance = aSnap.val() || {};
-            const tData = tSnap.val() || {}; // Defined tData here
+            const timetablesData = tSnap.val() || {};
             const allCalendarEvents = Object.values(calSnap.val() || {}) as any[];
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
@@ -329,7 +328,7 @@ export default function StudentDashboardPage() {
             if (matchingSemesterId && enrolledIds.size > 0) {
                 const relevantNodes = ['master', matchingSemesterId];
                 relevantNodes.forEach(nodeId => {
-                    const semesterSessions = tData[nodeId];
+                    const semesterSessions = timetablesData[nodeId];
                     if (!semesterSessions) return;
 
                     for (const cid in semesterSessions) {

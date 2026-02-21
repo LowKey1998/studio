@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -218,7 +217,7 @@ export default function FinalExamEntryPage() {
                 return;
             }
 
-            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseIds([]); return; }
+            if (!selectedProgrammeId || !selectedIntakeId || !targetSemesterId) { setCourses([]); setSelectedCourseId(''); return; }
 
             const coursePathsSnap = await get(ref(db, 'coursePaths'));
             if (coursePathsSnap.exists()) {
@@ -644,64 +643,65 @@ export default function FinalExamEntryPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {calendarDays.slice(1, 6).map(dayName => (
-                                        <TableRow key={dayName}>
-                                            <TableCell className="font-bold text-xs border-r text-center bg-muted/20">
-                                                <span className="uppercase text-[10px] opacity-70">{dayName}</span>
-                                            </TableCell>
-                                            {teachingTimes.slots.map((slot, sIdx) => {
-                                                const slotStart = timeToMinutes(slot.startTime);
-                                                const slotEnd = timeToMinutes(slot.endTime);
-                                                const sessionsInSlot = timetableEntries.filter(e => 
-                                                    e.day === dayName && 
-                                                    timeToMinutes(e.startTime) >= slotStart && 
-                                                    timeToMinutes(e.startTime) < slotEnd
-                                                );
+                                    {calendarDays.slice(1, 6).map(dayName => {
+                                        const isDayToday = format(new Date(), 'EEEE') === dayName;
+                                        return (
+                                            <TableRow key={dayName} className={cn(isDayToday && "bg-primary/5")}>
+                                                <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
+                                                    <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                </TableCell>
+                                                {teachingTimes.slots.map((slot, sIdx) => {
+                                                    const slotStart = timeToMinutes(slot.startTime);
+                                                    const slotEnd = timeToMinutes(slot.endTime);
+                                                    const sessionsInSlot = timetableEntries.filter(e => 
+                                                        e.day === dayName && 
+                                                        timeToMinutes(e.startTime) >= slotStart && 
+                                                        timeToMinutes(e.startTime) < slotEnd
+                                                    );
 
-                                                return (
-                                                    <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
-                                                        <div className="space-y-2">
-                                                            {sessionsInSlot.map((entry, eIdx) => {
-                                                                const stats = getCourseGradingStatus(entry.courseId);
-                                                                const isFullyGraded = stats.total > 0 && stats.count === stats.total;
+                                                    return (
+                                                        <TableCell key={sIdx} className="p-2 border-r align-top min-h-[100px]">
+                                                            <div className="space-y-2">
+                                                                {sessionsInSlot.map((entry, eIdx) => {
+                                                                    const stats = getCourseGradingStatus(entry.courseId);
+                                                                    const isFullyGraded = stats.total > 0 && stats.count === stats.total;
 
-                                                                return (
-                                                                    <div 
-                                                                        key={eIdx} 
-                                                                        className={cn(
-                                                                            "p-2 rounded-md border bg-background shadow-sm transition-all cursor-pointer hover:ring-2 hover:ring-primary",
-                                                                            isFullyGraded ? "border-green-500 bg-green-50/20" : "border-primary/20",
-                                                                            selectedCourseIds.includes(entry.courseId) && "ring-2 ring-primary"
-                                                                        )}
-                                                                        onClick={() => handleSelectFromTimetable(entry.courseId)}
-                                                                    >
-                                                                        <div className="flex justify-between items-start gap-1">
-                                                                            <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{allCourses[entry.courseId]?.code}: {allCourses[entry.courseId]?.name}</p>
-                                                                            {isFullyGraded && <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0"/>}
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1">
-                                                                            <MapPin className="h-2.5 w-2.5" /> {entry.venue}
-                                                                        </div>
-                                                                        <div className="mt-2 pt-1 border-t flex flex-col gap-1">
-                                                                            <div className="flex justify-between text-[8px] font-black uppercase tracking-tighter">
-                                                                                <span className="opacity-60">Status</span>
-                                                                                <span className={cn(isFullyGraded ? "text-green-600" : "text-primary")}>
-                                                                                    {stats.count}/{stats.total}
-                                                                                </span>
+                                                                    return (
+                                                                        <div 
+                                                                            key={eIdx} 
+                                                                            className={cn(
+                                                                                "p-2 rounded-md border bg-background shadow-sm transition-all cursor-pointer hover:ring-2 hover:ring-primary",
+                                                                                isFullyGraded ? "border-green-500 bg-green-50/20" : "border-primary/20",
+                                                                                selectedCourseIds.includes(entry.courseId) && "ring-2 ring-primary"
+                                                                            )}
+                                                                            onClick={() => handleSelectFromTimetable(entry.courseId)}
+                                                                        >
+                                                                            <div className="flex justify-between items-start gap-1">
+                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{allCourses[entry.courseId]?.code}: {allCourses[entry.courseId]?.name}</p>
+                                                                                {isFullyGraded && <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0"/>}
                                                                             </div>
-                                                                            <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
-                                                                                <div className={cn("h-full", isFullyGraded ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {entry.venue}</div>
+                                                                            <div className="mt-2 pt-1 border-t flex flex-col gap-1">
+                                                                                <div className="flex justify-between text-[8px] font-black uppercase tracking-tighter">
+                                                                                    <span className="opacity-60">Status</span>
+                                                                                    <span className={cn(isFullyGraded ? "text-green-600" : "text-primary")}>
+                                                                                        {stats.count}/{stats.total}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                                                                                    <div className={cn("h-full", isFullyGraded ? "bg-green-500" : "bg-primary")} style={{ width: `${stats.percentage}%` }} />
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </TableCell>
-                                                );
-                                            })}
-                                        </TableRow>
-                                    ))}
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
