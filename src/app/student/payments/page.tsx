@@ -195,6 +195,9 @@ export default function StudentPaymentsPage() {
                     const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
                     const thresholdMet = paidPercentage >= threshold;
 
+                    // Fix: If totalDue is 0 and not a scholarship waiver, it's unconfigured, so status should be Pending
+                    const isFullyPaid = totalDue > 0 && balance <= 0.01;
+
                     return {
                         semesterId,
                         semesterName: invoice.semester,
@@ -202,7 +205,7 @@ export default function StudentPaymentsPage() {
                         totalDue,
                         totalPaid,
                         balance,
-                        status: balance <= 0.01 ? 'Paid' : 'Pending',
+                        status: isFullyPaid ? 'Paid' : 'Pending',
                         transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.dateCreated).getTime()),
                         threshold,
                         paidPercentage,
