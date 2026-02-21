@@ -72,6 +72,7 @@ export default function CAEntryPage() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [allSemesters, setAllSemesters] = React.useState<Semester[]>([]);
     const [templates, setTemplates] = React.useState<Record<string, { name: string, components: any }>>({});
+    const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     
     // Metadata for timetable
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
@@ -113,7 +114,7 @@ export default function CAEntryPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [pSnap, iSnap, uSnap, sSnap, tSnap, timesSnap, ttSnap, regSnap] = await Promise.all([
+                const [pSnap, iSnap, uSnap, sSnap, tSnap, timesSnap, ttSnap, regSnap, cSnap] = await Promise.all([
                     get(ref(db, 'programmes')),
                     get(ref(db, 'intakes')),
                     get(ref(db, 'users')),
@@ -121,7 +122,8 @@ export default function CAEntryPage() {
                     get(ref(db, 'settings/assessmentTemplates')),
                     get(ref(db, 'settings/teachingTimes')),
                     get(ref(db, 'timetables')),
-                    get(ref(db, 'registrations'))
+                    get(ref(db, 'registrations')),
+                    get(ref(db, 'courses'))
                 ]);
 
                 if (pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
@@ -130,6 +132,7 @@ export default function CAEntryPage() {
                 if (sSnap.exists()) setAllSemesters(Object.entries(sSnap.val()).map(([id, data]: [string, any]) => ({ id, ...data })));
                 if (tSnap.exists()) setTemplates(tSnap.val() || {});
                 if (regSnap.exists()) setRegistrations(regSnap.val());
+                if (cSnap.exists()) setAllCourses(cSnap.val());
 
                 if (timesSnap.exists()) {
                     const data = timesSnap.val();
