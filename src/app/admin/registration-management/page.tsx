@@ -491,6 +491,7 @@ export default function RegistrationManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allProgrammes, setAllProgrammes] = React.useState<any[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
+    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [allCoursePaths, setAllCoursePaths] = React.useState<any[]>([]);
     const [activePathSemesters, setActivePathSemesters] = React.useState<Record<string, Record<string, any>>>({});
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
@@ -545,6 +546,7 @@ export default function RegistrationManagementPage() {
                 case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
+                case 9: setAllUsers(data); break;
                 case 10: setCalendarSettings(data); break;
                 case 12: setInstitutionSettings(data); break;
             }
@@ -720,11 +722,11 @@ export default function RegistrationManagementPage() {
                                                         <CardHeader className="pb-3">
                                                             <div className="flex justify-between items-start">
                                                                 <div className="space-y-1">
-                                                                    <div className="flex flex-wrap items-center gap-2 pr-8">
+                                                                    <div className="flex wrap items-center gap-2 pr-8">
                                                                         <CardTitle className="text-base">{sem.name}</CardTitle>
                                                                         {isCurrentStanding && <Badge className="h-4 text-[8px] bg-primary text-primary-foreground font-black uppercase whitespace-nowrap shrink-0">Current Standing</Badge>}
                                                                     </div>
-                                                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                    <div className="flex wrap gap-1.5 pt-1">
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
                                                                         {isActive ? <Badge className="h-4 text-[8px] bg-green-100 text-green-700 border-green-200">Registration Open</Badge> : <Badge variant="secondary" className="h-4 text-[8px]">Closed</Badge>}
                                                                         <Badge variant="outline" className="h-4 text-[8px] uppercase">{isFlatFee ? 'Flat Fee' : 'Course Fee'}</Badge>

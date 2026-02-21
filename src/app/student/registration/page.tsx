@@ -12,7 +12,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isBefore, startOfDay } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { logError } from '@/lib/error-logger';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
@@ -158,7 +158,7 @@ export default function StudentRegistrationPage() {
 
                     const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
                     const optionalFeesSource = isRegistered 
-                        ? Object.entries(details.optionalFees || {}).filter(([id]) => registration?.optionalFees?.includes(id))
+                        ? Object.entries(details.optionalFees || {}).filter(([id]) => (registration?.optionalFees || []).includes(id))
                         : []; 
 
                     const optionalFeesList = optionalFeesSource.map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
