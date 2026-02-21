@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -38,7 +39,7 @@ type Student = {
 
 type Programme = { id: string; name: string; };
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Course = { id: string; name: string; code: string; };
 
 type AssessmentScore = { score?: number; feedback?: string; };
@@ -165,7 +166,7 @@ export default function FinalExamEntryPage() {
         if (student.intakeId) {
             setSelectedIntakeId(student.intakeId);
             const intake = intakes.find(i => i.id === student.intakeId);
-            if (input) {
+            if (intake) {
                 get(ref(db, 'settings/academicCalendar')).then(calSnap => {
                     const startStr = parseIntakeDate(intake.name);
                     if (calSnap.exists() && startStr) {

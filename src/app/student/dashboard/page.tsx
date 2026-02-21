@@ -112,18 +112,28 @@ export default function StudentDashboardPage() {
             const allRegistrations = regSnap.val() || {};
             
             const [cSnap, uSnap, iSnap, aSnap, tSnap, calSnap, invSnap, txSnap, assSnap, settingsSnap, fSnap, semSnap, studentAssSnap, templatesSnap, pathsSnap] = await Promise.all([
-                get(ref(db, 'courses')), get(ref(db, 'users')), get(ref(db, 'intakes')), get(ref(db, 'attendance')), 
-                get(ref(db, 'timetables')), get(ref(db, 'calendarEvents')), get(ref(db, `invoices/${user.uid}`)), 
-                get(ref(db, 'transactions')), get(ref(db, 'assessments')), get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/financialSettings')), get(ref(db, 'semesters')), get(ref(db, 'assignments')),
-                get(ref(db, 'settings/assessmentTemplates')), get(ref(db, 'coursePaths'))
+                get(ref(db, 'courses')),
+                get(ref(db, 'users')),
+                get(ref(db, 'intakes')),
+                get(ref(db, 'attendance')),
+                get(ref(db, 'timetables')),
+                get(ref(db, 'calendarEvents')),
+                get(ref(db, `invoices/${user.uid}`)),
+                get(ref(db, 'transactions')),
+                get(ref(db, 'assessments')),
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, 'settings/financialSettings')),
+                get(ref(db, 'semesters')),
+                get(ref(db, 'assignments')),
+                get(ref(db, 'settings/assessmentTemplates')),
+                get(ref(db, 'coursePaths'))
             ]);
 
             const allCourses = cSnap.val() || {};
             const allUsers = uSnap.val() || {};
             const allIntakes = iSnap.val() || {};
             const allAttendance = aSnap.val() || {};
-            const allTimetables = tData || {}; // tData is likely null in prompt, using let
+            const allTimetables = tSnap.val() || {};
             const allCalendarEvents = Object.values(calSnap.val() || {}) as any[];
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
@@ -304,19 +314,22 @@ export default function StudentDashboardPage() {
                                 message: `Standing Alert: Your payment level (${paidPercentage.toFixed(0)}%) is below the required ${threshold}% threshold for ${semester.name}.`,
                                 restriction: true
                             });
+                        } else {
+                            setFinancialWarning(null);
                         }
+                    } else {
+                        setFinancialWarning(null);
                     }
                 }
             }
 
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const scheduleMap = new Map<string, TimetableEntry>();
-            const allTData = tSnap.val() || {};
 
             if (matchingSemesterId && enrolledIds.size > 0) {
                 const relevantNodes = ['master', matchingSemesterId];
                 relevantNodes.forEach(nodeId => {
-                    const semesterSessions = allTData[nodeId];
+                    const semesterSessions = allTimetables[nodeId];
                     if (!semesterSessions) return;
 
                     for (const cid in semesterSessions) {
