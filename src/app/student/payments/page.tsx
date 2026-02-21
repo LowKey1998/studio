@@ -18,7 +18,9 @@ import {
     ShieldAlert, 
     Info, 
     XCircle,
-    ArrowRight
+    ArrowRight,
+    CalendarDays,
+    Clock
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format, parseISO } from 'date-fns';
@@ -34,6 +36,7 @@ import autoTable from 'jspdf-autotable';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type Invoice = { 
     invoiceId: string; 
@@ -98,6 +101,8 @@ export default function StudentPaymentsPage() {
     const [allSemesters, setAllSemesters] = React.useState<Record<string, Semester>>({});
     const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+    const [academicStanding, setAcademicStanding] = React.useState<string>('');
+    const [intakeName, setIntakeName] = React.useState('');
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
@@ -115,7 +120,7 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap] = await Promise.all([
+            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
@@ -123,17 +128,37 @@ export default function StudentPaymentsPage() {
                 get(ref(db, 'courses')),
                 get(ref(db, 'settings/institution')),
                 get(ref(db, 'settings/financialSettings')),
+                get(ref(db, 'intakes')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
 
             const userProfile = userSnap.val() || {};
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
             const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { registration: true, results: true, library: false, exams: false } };
+            const allIntakes = intakesSnap.val() || {};
+            const calSettings = calendarSnap.val() || {};
             
             setAllCourses(coursesData);
             setAllSemesters(semestersData);
             setFinancialSettings(fSettings);
             if (institutionSnap.exists()) setInstitutionSettings(institutionSnap.val());
+
+            // Standing Logic
+            if (userProfile.intakeId && calSettings) {
+                const iName = allIntakes[userProfile.intakeId]?.name;
+                setIntakeName(iName || 'Unknown Intake');
+                const intakeStartStr = iName ? parseIntakeDate(iName) : null;
+                if (intakeStartStr) {
+                    const state = calculateAcademicState(
+                        intakeStartStr,
+                        new Date(),
+                        calSettings.standardCycles,
+                        Object.values(calSettings.anomalies || {})
+                    );
+                    setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
+                }
+            }
 
             if (!invoicesSnap.exists()) {
                 setPayments([]);
@@ -259,8 +284,21 @@ export default function StudentPaymentsPage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
-                    <CardDescription>View your billing history and payment records.</CardDescription>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="font-headline text-2xl">Payments & Invoices</CardTitle>
+                            <CardDescription>View your billing history and payment records.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-muted-foreground border-primary/20 bg-background shadow-sm px-3 py-1">Intake: {intakeName}</Badge>
+                            {academicStanding && (
+                                <Badge variant="secondary" className="gap-1.5 font-bold h-10 px-4 text-sm border-primary/20 bg-background text-primary shadow-md">
+                                    <CalendarDays className="h-4 w-4" />
+                                    Standing: {academicStanding}
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
                 </CardHeader>
             </Card>
 

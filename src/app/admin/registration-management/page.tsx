@@ -638,13 +638,17 @@ export default function RegistrationManagementPage() {
                                                 const predictedDates = intakeStartStr && calendarSettings ? calculateSemesterDateRange(intakeStartStr, sem.year, sem.semesterInYear, calendarSettings.standardCycles) : null;
 
                                                 const { summary: deadlines, isMissing, isOutOfRange, hasPlans } = getDeadlineSummary(sem, predictedDates);
+                                                const isCurrentStanding = standing && sem.year === standing.year && sem.semesterInYear === standing.semester;
                                                 
                                                 return (
-                                                    <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80")}>
+                                                    <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80", isCurrentStanding && "ring-2 ring-primary ring-offset-2")}>
                                                         <CardHeader className="pb-3">
                                                             <div className="flex justify-between items-start">
                                                                 <div className="space-y-1">
-                                                                    <CardTitle className="text-base">{sem.name}</CardTitle>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <CardTitle className="text-base">{sem.name}</CardTitle>
+                                                                        {isCurrentStanding && <Badge className="h-4 text-[8px] bg-primary text-primary-foreground font-black uppercase">Current Standing</Badge>}
+                                                                    </div>
                                                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
                                                                         {isActive ? <Badge className="h-4 text-[8px] bg-green-100 text-green-700 border-green-200">Registration Open</Badge> : <Badge variant="secondary" className="h-4 text-[8px]">Closed</Badge>}
@@ -726,7 +730,7 @@ export default function RegistrationManagementPage() {
                     <CreateOrEditDialogContent 
                         editingSemester={editingSemester} 
                         onClose={() => { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); }} 
-                        onSaveSuccess={() => { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); }} 
+                        onSaveSuccess={() => { refreshData(); setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); }} 
                         allPaymentPlans={allPaymentPlans} 
                         feeTemplates={feeTemplates}
                         allIntakes={allIntakes}
