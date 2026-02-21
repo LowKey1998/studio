@@ -125,7 +125,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
@@ -219,6 +219,7 @@ export default function PaymentsManagementPage() {
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
     const [loading, setLoading] = React.useState(true);
+    const isFirstLoad = React.useRef(true);
     const [saving, setSaving] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
@@ -306,6 +307,8 @@ export default function PaymentsManagementPage() {
             
             // Re-calculate derived data on any relevant change
             const refreshDerived = async () => {
+                if(isFirstLoad.current) setLoading(true);
+                
                 const [u, r, t, p, s, i, inv, f, ev] = await Promise.all(refs.slice(0, 9).map(ref => get(ref)));
                 
                 const users = u.val() || {};
@@ -353,9 +356,19 @@ export default function PaymentsManagementPage() {
 
                         const invoice = invsData[userId]?.[reg.invoiceId];
                         if (invoice) {
+                            let tuition = Number(invoice.totalTuition || 0);
+                            if (tuition === 0 && semesterInfo.billingPolicy === 'semester') {
+                                tuition = Number(semesterInfo.tuitionFee || 0);
+                            }
+                            
+                            let mandatory = Number(invoice.totalMandatoryFees || 0);
+                            if (mandatory === 0 && semesterInfo.mandatoryFees) {
+                                mandatory = Object.values(semesterInfo.mandatoryFees as Record<string, any>).reduce((acc, f) => acc + (f.amount || 0), 0);
+                            }
+
                             const totalPayable = invoice.applyScholarship 
-                                ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
-                                : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
+                                ? (mandatory + Number(invoice.totalOptionalFees || 0))
+                                : (tuition + mandatory + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
 
                             const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                             const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
@@ -384,6 +397,7 @@ export default function PaymentsManagementPage() {
                 }
                 setPaymentInfos(Object.values(studentPaymentMap));
                 setLoading(false);
+                isFirstLoad.current = false;
             };
             refreshDerived();
         }));

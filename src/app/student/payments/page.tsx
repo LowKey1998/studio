@@ -168,7 +168,7 @@ export default function StudentPaymentsPage() {
                         totalPaid,
                         balance,
                         status: balance <= 0.01 ? 'Paid' : 'Pending',
-                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()),
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.dateCreated).getTime()),
                         threshold,
                         paidPercentage,
                         thresholdMet
@@ -266,7 +266,7 @@ export default function StudentPaymentsPage() {
                                                         <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
                                                     ) : (
                                                         <span className={cn("text-xs italic font-bold", !payment.invoice.applyScholarship ? "text-orange-600" : "text-primary")}>
-                                                            {payment.invoice.applyScholarship ? 'Waiver Applied' : 'Will reflect once set'}
+                                                            {payment.invoice.applyScholarship ? 'Waiver Applied' : 'Fee total due will reflect once set in system'}
                                                         </span>
                                                     )}
                                                 </div>

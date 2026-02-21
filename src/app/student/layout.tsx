@@ -42,7 +42,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
-        }, 8000);
+        }, 10000);
 
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
@@ -56,14 +56,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 get(ref(db, 'settings/financialSettings'))
             ]);
 
-            if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) return;
+            if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
+                setCheckingStanding(false);
+                return;
+            }
 
             const finData = finSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { sidebar: {} } };
             setFinancialSettings(finData);
 
             const intake = intakeSnap.val()[userProfile.intakeId];
             const intakeStart = parseIntakeDate(intake?.name);
-            if (!intakeStart) return;
+            if (!intakeStart) {
+                setCheckingStanding(false);
+                return;
+            }
 
             const standing = calculateAcademicState(
                 intakeStart,
@@ -78,6 +84,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             if (!activeSemesterEntry) {
                 setIsDefaulter(false);
+                setCheckingStanding(false);
                 return;
             }
 
@@ -87,6 +94,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             if (!reg || !invoice) {
                 setIsDefaulter(false);
+                setCheckingStanding(false);
                 return;
             }
 

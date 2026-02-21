@@ -24,7 +24,8 @@ import {
     ShieldX,
     Info,
     Receipt,
-    TrendingUp
+    TrendingUp,
+    ArrowRight
 } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
@@ -397,6 +398,21 @@ export default function StudentDashboardPage() {
                     <Button size="sm" asChild><Link href="/student/payments"><CreditCard className="mr-2 h-4 w-4"/>Pay Fees</Link></Button>
                 </div>
             </div>
+
+            {missingPlanPrompt && (
+                <Alert className="border-orange-200 bg-orange-50/50 shadow-md animate-in fade-in slide-in-from-top-4">
+                    <AlertTriangle className="h-5 w-5 text-orange-600" />
+                    <AlertTitle className="font-bold text-orange-800 uppercase text-[10px] tracking-widest">Incomplete Registration</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3">
+                        <p className="text-orange-700 text-sm">You haven't selected a payment plan for <strong>{missingPlanPrompt.semesterName}</strong>. This is required to finalize your enrollment and generate your invoice.</p>
+                        <Button size="sm" className="w-fit bg-orange-600 hover:bg-orange-700 text-white font-bold" asChild>
+                            <Link href={`/student/registration/${userProfile?.intakeId}/${missingPlanPrompt.year}/${missingPlanPrompt.sem}`}>
+                                Select Payment Plan <ArrowRight className="ml-2 h-4 w-4"/>
+                            </Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
 
             {financialWarning && (
                 <Alert variant="destructive" className="border-2 shadow-md">
