@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -5,54 +6,49 @@ import { Button } from '@/components/ui/button';
 import { 
     Loader2, 
     Search, 
+    Download, 
     DollarSign, 
     PlusCircle, 
-    History, 
-    X, 
-    ChevronDown, 
-    Calendar as CalendarIcon, 
-    Save, 
+    Users, 
+    PiggyBank, 
+    Scale, 
+    Trash2, 
+    ChevronsUpDown, 
     Info, 
-    AlertTriangle,
-    CheckCircle2,
-    ShieldAlert,
-    User,
-    ArrowRight,
-    TrendingUp,
-    Clock,
-    ChevronsUpDown,
-    PencilLine,
-    Check,
-    RotateCcw,
-    Trash2,
-    UserPlus,
-    Settings2,
-    Send,
-    AlertCircle,
-    CalendarDays,
+    X, 
+    History, 
+    Mail, 
+    CheckCircle2, 
+    Clock, 
+    AlertTriangle, 
+    CalendarDays, 
+    TrendingUp, 
+    MapPin,
+    Calendar as CalendarIcon,
     Wallet,
-    Filter
+    ArrowRight
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, set, push, onValue, serverTimestamp, remove } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays, isAfter } from 'date-fns';
+import { db, createNotification } from '@/lib/firebase';
+import { ref, get, update, push, set, onValue } from 'firebase/database';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/hooks/use-auth';
-import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
-import { Textarea } from '@/components/ui/textarea';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useAuth } from '@/hooks/use-auth';
+
+// --- TYPE DEFINITIONS ---
 
 type StudentPaymentInfo = {
     userId: string;
@@ -68,10 +64,20 @@ type StudentPaymentInfo = {
     invoiceId: string;
     enrolledCourses: string[];
     thresholdMet: boolean;
-    paidPercentage: number;
-    requiredThreshold: number;
-    effectiveDeadline: Date | null;
-    planName: string;
+};
+
+type PaymentRecord = {
+    key: number;
+    userId?: string;
+    year?: string;
+    semesterId?: string;
+    amount: string;
+    comment: string;
+    // Cached audit data
+    totalDue?: number;
+    totalPaid?: number;
+    availableYears?: string[];
+    availableSemesters?: Semester[];
 };
 
 type Transaction = {
@@ -86,114 +92,168 @@ type Transaction = {
     comment?: string;
     semesterName?: string;
     semesterId?: string;
+    academicStanding?: string;
 };
 
 type Intake = { id: string; name: string; };
-type Programme = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentThreshold?: number; gracePeriodDays?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
-type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
-const getOrdinalSuffix = (i: number) => {
-    if (i === 1) return '1st';
-    if (i === 2) return '2nd';
-    if (i === 3) return '3rd';
-    return `${i}th`;
-};
+type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
+
+// --- HELPERS ---
+
+function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
+    options: OptionGroup[];
+    value: string | undefined;
+    onValueChange: (value: string) => void;
+    placeholder: string;
+    disabled?: boolean;
+}) {
+    const [open, setOpen] = React.useState(false);
+    const [search, setSearch] = React.useState('');
+
+    const filteredOptions = React.useMemo(() => {
+        if (!search) return options;
+        const lowerCaseSearch = search.toLowerCase();
+        return options.map(group => ({
+            ...group,
+            items: group.items.filter(item => item.label.toLowerCase().includes(lowerCaseSearch))
+        })).filter(group => group.items.length > 0);
+    }, [options, search]);
+
+    const selectedLabel = React.useMemo(() => {
+        if (!value) return placeholder;
+        for (const group of options) {
+            const foundItem = group.items.find(item => item.value === value);
+            if (foundItem) return foundItem.label;
+        }
+        return placeholder;
+    }, [value, options, placeholder]);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between h-10 px-3 bg-background border-primary/20" disabled={disabled}>
+                    <span className="truncate">{selectedLabel}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" side="bottom" align="start">
+                <div className="p-2">
+                    <Input 
+                        placeholder="Search roster..." 
+                        className="h-9" 
+                        value={search} 
+                        onChange={e => setSearchTerm(e.target.value)} 
+                    />
+                </div>
+                <Separator />
+                <ScrollArea className="h-[200px]">
+                    <div className="p-1">
+                    {filteredOptions.length > 0 ? filteredOptions.map(group => (
+                        <div key={group.groupName} className="p-1">
+                            <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">{group.groupName}</div>
+                            {group.items.map(option => (
+                                <Button
+                                    key={option.value}
+                                    variant="ghost"
+                                    className="w-full justify-start h-auto py-2 px-2 text-left text-sm"
+                                    onClick={() => {
+                                        onValueChange(option.value);
+                                        setOpen(false);
+                                        setSearch('');
+                                    }}
+                                >
+                                    {option.label}
+                                </Button>
+                            ))}
+                        </div>
+                    )) : <p className="p-4 text-center text-xs text-muted-foreground italic">No results found.</p>}
+                    </div>
+                </ScrollArea>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 export default function PaymentsManagementPage() {
-    const { user, userProfile: userData } = useAuth();
+    const { userProfile: userData } = useAuth();
     const [paymentInfos, setPaymentInfos] = React.useState<StudentPaymentInfo[]>([]);
     const [allStudents, setAllStudents] = React.useState<StudentInfo[]>([]);
+    const [programmes, setProgrammes] = React.useState<any[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
+    const [courses, setCourses] = React.useState<Record<string, any>>({});
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
-    const [allProgrammes, setAllProgrammes] = React.useState<Programme[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
-    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
-    const [institutionSettings, setInstitutionSettings] = React.useState<any>(null);
-    const [loading, setLoading] = React.useState(true);
+    const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
-    // Filters
+    const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
-    const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
-    const [minAmountFilter, setMinAmountFilter] = React.useState('');
+    const [semesterFilter, setSemesterFilter] = React.useState('all');
+    const [intakeFilter, setIntakeFilter] = React.useState('all');
+    const [minPaidFilter, setMinPaidFilter] = React.useState('');
+    const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('all');
+    const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
 
-    // Record Payment Form State
+    // Single Recording State
     const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
-    const [paymentSelectedUserId, setPaymentSelectedUserId] = React.useState('');
-    const [paymentSelectedYear, setPaymentSelectedYear] = React.useState('');
-    const [paymentSelectedSemInYear, setPaymentSelectedSemInYear] = React.useState('');
+    const [selectedStudent, setSelectedStudent] = React.useState<StudentPaymentInfo | null>(null);
+    const [singleYear, setSingleYear] = React.useState('');
+    const [singleSemId, setSingleSemId] = React.useState('');
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
-    const [paymentComment, setPaymentComment] = React.useState('');
-    const [dateReceived, setDateReceived] = React.useState<Date | undefined>(new Date());
-    const [dialogSearchTerm, setDialogSearchTerm] = React.useState('');
+    const [transactionId, setTransactionId] = React.useState('');
+
+    // Bulk Recording State
+    const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
+    const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
+    
+    const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+    const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [formLoading, setFormLoading] = React.useState(false);
-
-    // Bulk Manual State
-    const [isBulkManualOpen, setIsBulkManualOpen] = React.useState(false);
-    const [bulkEntries, setBulkEntries] = React.useState<any[]>([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '', year: '', semesterInYear: '', comment: '', intakeId: null }]);
-    const [bulkGlobalMethod, setBulkGlobalMethod] = React.useState('Cash');
-    const [bulkGlobalDate, setBulkGlobalDate] = React.useState<Date | undefined>(new Date());
-    const [bulkGlobalYear, setBulkGlobalYear] = React.useState('');
-    const [bulkGlobalSem, setBulkGlobalSem] = React.useState('');
-
-    // Request Account State
-    const [isRequestAccountOpen, setIsRequestAccountOpen] = React.useState(false);
-    const [requestMessage, setRequestMessage] = React.useState('');
-    const [requestSubject, setRequestSubject] = React.useState('New Student Account Request');
-    const [isTemplateSettingsOpen, setIsTemplateSettingsOpen] = React.useState(false);
-    const [accountRequestTemplate, setAccountRequestTemplate] = React.useState({
-        subject: 'New Student Account Request',
-        body: 'Please create a new student account for the following individual who has made a manual payment:\n\nName: \nIntake: \nProgramme: \nAmount Paid: '
-    });
-
-    // Edit Request State
-    const [isEditOpen, setIsEditOpen] = React.useState(false);
-    const [editRequestType, setEditRequestType] = React.useState<'transaction' | 'invoice'>('invoice');
-    const [editTargetId, setEditTargetId] = React.useState('');
-    const [oldValue, setOldValue] = React.useState(0);
-    const [newValue, setNewValue] = React.useState('');
-    const [editReason, setEditReason] = React.useState('');
-    const [editStudentInfo, setEditStudentInfo] = React.useState<StudentPaymentInfo | null>(null);
 
     const { toast } = useToast();
 
+    React.useEffect(() => {
+        const offsetRef = ref(db, '.info/serverTimeOffset');
+        onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
+    }, []);
+
+    const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
+
+    // Consolidated Data Fetching
     const fetchPaymentData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [usersSnap, regsSnap, transactionsSnap, semestersSnap, intakesSnap, programmesSnap, invoicesSnap, calSnap, finSnap, plansSnap, eventsSnap, instSnap] = await Promise.all([
+            const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, cSnap, fSnap] = await Promise.all([
                 get(ref(db, 'users')),
                 get(ref(db, 'registrations')),
                 get(ref(db, 'transactions')),
+                get(ref(db, 'programmes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'programmes')),
                 get(ref(db, 'invoices')),
-                get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/financialSettings')),
-                get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'calendarEvents')),
-                get(ref(db, 'settings/institution'))
+                get(ref(db, 'courses')),
+                get(ref(db, 'settings/financialSettings'))
             ]);
             
-            const users = usersSnap.val() || {};
-            const registrations = regsSnap.val() || {};
-            const transactionsData = transactionsSnap.val() || {};
-            const allSemestersData = semestersSnap.val() || {};
-            const allInvoicesData = invoicesSnap.val() || {};
-            const calendarEvents = Object.values(eventsSnap.val() || {}) as any[];
-            
-            setCalendarSettings(calSnap.val() || {});
-            setFinancialSettings(finSnap.val() || { paymentThreshold: 75 });
-            setInstitutionSettings(instSnap.val() || { name: 'Edutrack360' });
-            setSemesters(Object.keys(allSemestersData).map(id => ({ id, ...allSemestersData[id]})));
-            setAllIntakes(Object.keys(intakesSnap.val() || {}).map(id => ({ id, ...intakesSnap.val()[id] })));
-            setAllProgrammes(Object.keys(programmesSnap.val() || {}).map(id => ({ id, ...programmesSnap.val()[id] })));
-            setAllPaymentPlans(Object.keys(plansSnap.val() || {}).map(id => ({ id, ...plansSnap.val()[id] })));
+            const users = uSnap.val() || {};
+            const regsData = rSnap.val() || {};
+            const txsData = tSnap.val() || {};
+            const progsData = pSnap.val() || {};
+            const semsData = sSnap.val() || {};
+            const intsData = iSnap.val() || {};
+            const invsData = invSnap.val() || {};
+            const finData = fSnap.val() || { paymentThreshold: 75 };
+
+            setProgrammes(Object.keys(progsData).map(id => ({ id, ...progsData[id]})));
+            setSemesters(Object.keys(semsData).map(id => ({ id, ...semsData[id]})));
+            setAllIntakes(Object.keys(intsData).map(id => ({ id, ...intsData[id] })));
+            setCourses(cSnap.val() || {});
+            setFinancialSettings(finData);
 
             const studentList: StudentInfo[] = [];
             for (const uid in users) {
@@ -204,555 +264,414 @@ export default function PaymentsManagementPage() {
             setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
 
             const transactionsList: Transaction[] = [];
-            for (const txId in transactionsData) {
-                const tx = transactionsData[txId];
+            for (const txId in txsData) {
+                const tx = txsData[txId];
                 if(tx.status !== 'successful') continue;
-                transactionsList.push({ key: txId, ...tx });
+                const userId = tx.userId;
+                const userRegs = regsData[userId] || {};
+                const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
+                transactionsList.push({
+                    key: txId,
+                    ...tx,
+                    semesterId,
+                    semesterName: semesterId ? semsData[semesterId]?.name : undefined,
+                    academicStanding: semesterId ? `Y${semsData[semesterId].year}S${semsData[semesterId].semesterInYear}` : undefined
+                });
             }
-            setRawTransactions(transactionsList);
+            setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
-            const now = new Date();
+            const globalThreshold = finData.paymentThreshold || 75;
 
-            for (const userId in registrations) {
+            for (const userId in regsData) {
                  const user = users[userId];
                  if (!user || user.role?.toLowerCase() !== 'student') continue;
 
-                 for (const semesterId in registrations[userId]) {
-                    const reg = registrations[userId][semesterId];
-                    const semesterInfo = allSemestersData[semesterId];
+                 for (const semesterId in regsData[userId]) {
+                    const reg = regsData[userId][semesterId];
+                    const semesterInfo = semsData[semesterId];
                     if (!semesterInfo) continue;
 
                     const key = `${userId}-${semesterId}`;
-                    const invoice = allInvoicesData[userId]?.[reg.invoiceId];
+                    const invoice = invsData[userId]?.[reg.invoiceId];
 
                     if (invoice) {
                         const totalPayable = invoice.applyScholarship 
                             ? (Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0))
-                            : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0));
+                            : (Number(invoice.totalTuition || 0) + Number(invoice.totalMandatoryFees || 0) + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
 
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                         const balance = Math.max(0, totalPayable - totalPaid);
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
-
-                        let currentRequiredThreshold = 0;
-                        const plan = Object.values(plansSnap.val() || {}).find((p: any) => p.name === invoice.paymentPlan) as any;
-                        if (plan && plan.installmentPercentages) {
-                            for (let i = 0; i < plan.installments; i++) {
-                                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
-                                const deadlineEvent = calendarEvents.find(e => e.title?.trim() === title.trim());
-                                if (deadlineEvent) {
-                                    const grace = semesterInfo.gracePeriodDays || 0;
-                                    const deadlineDate = addDays(parseISO(deadlineEvent.date), grace);
-                                    if (isAfter(now, deadlineDate)) currentRequiredThreshold += (plan.installmentPercentages[i] || 0);
-                                }
-                            }
-                        }
-
-                        const thresholdMet = paidPercentage >= currentRequiredThreshold;
-                        const semDeadlines = calendarEvents.filter((ev: any) => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a: any, b: any) => a.date.localeCompare(b.date));
-                        const nextDeadlineDate = semDeadlines.length > 0 ? parseISO(semDeadlines[0].date) : null;
-                        const effectiveDeadline = nextDeadlineDate ? addDays(nextDeadlineDate, semesterInfo.gracePeriodDays || 0) : null;
+                        
+                        const threshold = semesterInfo.paymentThreshold || globalThreshold;
+                        const thresholdMet = totalPayable > 0 ? (totalPaid / totalPayable) * 100 >= threshold : true;
 
                         studentPaymentMap[key] = {
-                            userId, studentId: user.id, studentName: user.name, totalDue: totalPayable, totalPaid, balance,
-                            programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId, invoiceId: reg.invoiceId,
-                            enrolledCourses: reg.courses || [], thresholdMet, paidPercentage, requiredThreshold: currentRequiredThreshold,
-                            status: balance <= 0.01 ? 'Paid' : 'Pending', effectiveDeadline, planName: invoice.paymentPlan || 'Standard'
+                            userId,
+                            studentId: user.id,
+                            studentName: user.name,
+                            totalDue: totalPayable,
+                            totalPaid,
+                            balance,
+                            programmeId: reg.programmeId,
+                            intakeId: semesterInfo.intakeId || null,
+                            semesterId,
+                            invoiceId: reg.invoiceId,
+                            enrolledCourses: reg.courses || [],
+                            thresholdMet,
+                            status: balance <= 0.01 ? 'Paid' : 'Pending'
                         };
                     }
                  }
             }
             setPaymentInfos(Object.values(studentPaymentMap));
-        } catch (error: any) { toast({ variant: 'destructive', title: 'Failed to load data' }); } 
-        finally { setLoading(false); }
+
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Data Load Failed' });
+        } finally {
+            setLoading(false);
+        }
     }, [toast]);
 
-    React.useEffect(() => { fetchPaymentData(); }, [fetchPaymentData]);
+    React.useEffect(() => {
+        fetchPaymentData();
+    }, []); // Only fetch once on mount
 
-    const handleRecordPaymentDialog = async () => {
-        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
-        if(!student || !paymentSelectedYear || !paymentSelectedSemInYear || !paymentAmount || !dateReceived) { 
-            toast({ variant: 'destructive', title: 'Missing required fields' }); 
-            return; 
-        }
+    const filteredTransactions = React.useMemo(() => {
+        const now = getCurrentServerDate();
+        const startOfW = startOfWeek(now, { weekStartsOn: 1 });
+        const endOfW = endOfWeek(now, { weekStartsOn: 1 });
+        const startOfM = startOfMonth(now);
+        const endOfM = endOfMonth(now);
 
-        const targetSemester = semesters.find(s => 
-            s.intakeId === student.intakeId && 
-            s.year === Number(paymentSelectedYear) && 
-            s.semesterInYear === Number(paymentSelectedSemInYear)
-        );
-
-        if (!targetSemester) {
-            toast({ variant: 'destructive', title: 'No Semester Record', description: 'The selected Year/Semester does not have an active record for this intake.' });
-            return;
-        }
-
-        setFormLoading(true);
-        try {
-            const info = paymentInfos.find(p => p.userId === student.uid && p.semesterId === targetSemester.id);
-            const updates: Record<string, any> = {};
-            let targetInvoiceId = info?.invoiceId;
-
-            if (!info) {
-                const invRef = push(ref(db, `invoices/${student.uid}`));
-                targetInvoiceId = invRef.key!;
-                updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
-                    invoiceId: targetInvoiceId,
-                    semester: targetSemester.name,
-                    semesterId: targetSemester.id,
-                    dateCreated: new Date().toISOString(),
-                    totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
-                };
-                updates[`registrations/${student.uid}/${targetSemester.id}`] = {
-                    status: 'Completed',
-                    semesterName: targetSemester.name,
-                    registrationDate: new Date().toISOString(),
-                    programmeId: student.programmeId || '',
-                    intakeId: student.intakeId,
-                    invoiceId: targetInvoiceId,
-                    courses: []
-                };
+        return rawTransactions.filter(tx => {
+            const date = parseISO(tx.paymentDate);
+            switch(timeFilter) {
+                case 'today': return isToday(date);
+                case 'week': return isWithinInterval(date, { start: startOfW, end: endOfW });
+                case 'month': return isWithinInterval(date, { start: startOfM, end: endOfM });
+                case 'period': return customRange?.from && customRange?.to ? isWithinInterval(date, { start: customRange.from, end: customRange.to }) : true;
+                default: return true;
             }
+        });
+    }, [rawTransactions, timeFilter, customRange, serverTimeOffset]);
 
-            const txRef = push(ref(db, 'transactions'));
-            const txId = `CASH-${Date.now()}-${txRef.key?.slice(-4)}`;
-            updates[`transactions/${txRef.key}`] = {
-                transactionId: txId,
-                userId: student.uid,
-                invoiceId: targetInvoiceId,
-                amount: parseFloat(paymentAmount),
-                currency: 'ZMW',
-                status: 'successful',
-                paymentDate: format(dateReceived, 'yyyy-MM-dd'),
-                recordedAt: serverTimestamp(),
-                method: paymentMethod,
-                comment: paymentComment,
-                recordedBy: userData?.name || 'Accountant',
-            };
+    const filteredData = React.useMemo(() => {
+        const uidsInPeriod = new Set(filteredTransactions.map(t => t.userId));
+        const isGroupingFilterActive = programmeFilter !== 'all' || semesterFilter !== 'all' || intakeFilter !== 'all' || minPaidFilter !== '';
+        
+        return paymentInfos.filter(p => {
+            const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
+            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
+            const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
+            const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
+            const amountMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
+            
+            const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
 
-            await update(ref(db), updates);
-            toast({ variant: 'success', title: "Payment Recorded" });
-            setIsRecordPaymentOpen(false);
-            resetDialog();
-            fetchPaymentData();
-        } catch(e: any) { 
-            toast({ variant:'destructive', title:'Error', description: e.message }); 
-        } finally { 
-            setFormLoading(false); 
-        }
-    };
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && amountMatch && timeMatch;
+        });
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, minPaidFilter, filteredTransactions, timeFilter]);
 
-    const handleRequestAccount = async () => {
-        setFormLoading(true);
-        try {
-            const registrarIds = await getRegistrarIds();
-            const newRequestRef = push(ref(db, 'studentCreationRequests'));
-            await set(newRequestRef, {
-                message: requestMessage,
-                subject: requestSubject,
-                requestedBy: userData?.name || 'Accountant',
-                requestedByUid: user?.uid,
-                timestamp: serverTimestamp(),
-                status: 'pending'
-            });
+    const currentYearCollections = React.useMemo(() => {
+        const thisYear = new Date().getFullYear();
+        return rawTransactions
+            .filter(tx => {
+                const sem = semesters.find(s => s.id === tx.semesterId);
+                if (!sem) return false;
+                return sem.name.includes(String(thisYear));
+            })
+            .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    }, [rawTransactions, semesters]);
 
-            if (registrarIds.length > 0) {
-                await createNotification(
-                    registrarIds, 
-                    `New student account request from ${userData?.name || 'Finance'}`,
-                    '/admin/admissions/add-student'
-                );
-            }
-            toast({ title: "Request Sent", description: "Admissions has been notified." });
-            setIsRequestAccountOpen(false);
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Error', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
-    };
+    const summaryStats = React.useMemo(() => {
+        const stats = filteredData.reduce((acc, p) => {
+            acc.totalDue += Number(p.totalDue) || 0;
+            acc.totalPaid += Number(p.totalPaid) || 0;
+            acc.totalBalance += Number(p.balance) || 0;
+            return acc;
+        }, { totalDue: 0, totalPaid: 0, totalBalance: 0 });
+        
+        const periodCollected = filteredTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+        return { ...stats, periodCollected };
+    }, [filteredData, filteredTransactions]);
 
-    const handleSendEditRequest = async () => {
-        if (!editReason || !newValue || !editStudentInfo) return;
-        setFormLoading(true);
-        try {
-            const newReqRef = push(ref(db, 'paymentEditRequests'));
-            await set(newReqRef, {
-                type: editRequestType,
-                targetId: editTargetId,
-                userId: editStudentInfo.userId,
-                studentName: editStudentInfo.studentName,
-                studentId: editStudentInfo.studentId,
-                oldValue,
-                newValue: parseFloat(newValue),
-                reason: editReason,
-                requestedBy: userData?.name || 'Accountant',
-                requestedByUid: user?.uid,
-                timestamp: serverTimestamp(),
-                status: 'pending'
-            });
-            toast({ title: 'Edit Request Sent', description: 'Administrator has been notified.' });
-            setIsEditOpen(false);
-            setEditReason(''); setNewValue('');
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Error', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
-    };
+    // --- Bulk Action Handling ---
 
-    const resetDialog = () => {
-        setPaymentSelectedUserId(''); setPaymentSelectedYear(''); setPaymentSelectedSemInYear('');
-        setPaymentAmount(''); setPaymentMethod('Cash'); setPaymentComment(''); setDialogSearchTerm(''); setDateReceived(new Date());
-    };
-
-    const handleAddBulkRow = () => {
-        setBulkEntries(prev => [...prev, { id: `row-${Date.now()}`, studentId: '', amount: '', method: bulkGlobalMethod, date: bulkGlobalDate, studentUid: null, studentName: '', year: bulkGlobalYear, semesterInYear: bulkGlobalSem, comment: '', intakeId: null }]);
-    };
-
-    const handleRemoveBulkRow = (index: number) => {
-        if (bulkEntries.length <= 1) return;
-        setBulkEntries(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const handleBulkRowUpdate = (rowId: string, field: string, value: any) => {
-        setBulkEntries(prev => prev.map(row => {
-            if (row.id === rowId) {
-                const updated = { ...row, [field]: value };
-                if (field === 'studentId') {
-                    const student = allStudents.find(s => s.id === value.trim().toUpperCase());
-                    updated.studentUid = student?.uid || null;
-                    updated.studentName = student?.name || '';
-                    updated.intakeId = student?.intakeId || null;
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
+        setBulkPaymentRows(prev => prev.map(row => {
+            if (row.key === key) {
+                const nextRow = { ...row, [field]: value };
+                
+                if (field === 'userId') {
+                    const studentInfo = allStudents.find(s => s.uid === value);
+                    if (studentInfo) {
+                        const studentIntakeId = studentInfo.intakeId;
+                        const validSemesters = semesters.filter(s => s.intakeId === studentIntakeId);
+                        const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
+                        nextRow.availableYears = years;
+                        nextRow.year = undefined;
+                        nextRow.semesterId = undefined;
+                        nextRow.availableSemesters = [];
+                        nextRow.totalDue = 0;
+                        nextRow.totalPaid = 0;
+                    }
+                } else if (field === 'year') {
+                    const studentInfo = allStudents.find(s => s.uid === row.userId);
+                    const validSems = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
+                    nextRow.availableSemesters = validSems;
+                    nextRow.semesterId = undefined;
+                    nextRow.totalDue = 0;
+                    nextRow.totalPaid = 0;
+                } else if (field === 'semesterId') {
+                    const studentUid = row.userId;
+                    const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
+                    nextRow.totalDue = info?.totalDue || 0;
+                    nextRow.totalPaid = info?.totalPaid || 0;
                 }
-                return updated;
+                
+                return nextRow;
             }
             return row;
         }));
     };
 
-    const handleApplyGlobalToBulk = () => {
-        setBulkEntries(prev => prev.map(row => ({ 
-            ...row, 
-            method: bulkGlobalMethod, 
-            date: bulkGlobalDate,
-            year: bulkGlobalYear,
-            semesterInYear: bulkGlobalSem
-        })));
-        toast({ title: "Globals Applied" });
-    };
-
-    const handleConfirmBulkManual = async () => {
-        const validRows = bulkEntries.filter(row => row.studentUid && row.amount > 0 && row.date && row.year && row.semesterInYear);
-        if (validRows.length === 0) {
-            toast({ variant: 'destructive', title: 'Missing required fields', description: 'Ensure Student ID (verified), Amount, Date, Year and Sem are set for at least one row.' });
-            return;
-        }
+    const handleSaveBulkPayments = async () => {
+        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.userId && p.semesterId);
+        if(paymentsToRecord.length === 0) { toast({ variant: 'destructive', title: 'No valid payments entered.' }); return; }
+        
         setFormLoading(true);
+        const updates: Record<string, any> = {};
+        const now = new Date().toISOString();
+
         try {
-            const updates: Record<string, any> = {};
-            for (const row of validRows) {
-                const student = allStudents.find(s => s.uid === row.studentUid)!;
-                const targetSemester = semesters.find(s => 
-                    s.intakeId === student.intakeId && 
-                    s.year === Number(row.year) && 
-                    s.semesterInYear === Number(row.semesterInYear)
-                );
+            for (const record of paymentsToRecord) {
+                const amountFloat = parseFloat(record.amount);
+                const studentUid = record.userId!;
+                const semId = record.semesterId!;
+                const semesterInfo = semesters.find(s => s.id === semId)!;
+                const studentStanding = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
 
-                if (!targetSemester) continue;
-
-                const info = paymentInfos.find(p => p.userId === student.uid && p.semesterId === targetSemester.id);
-                let targetInvoiceId = info?.invoiceId;
-
-                if (!info) {
-                    const invRef = push(ref(db, `invoices/${student.uid}`));
-                    targetInvoiceId = invRef.key!;
-                    updates[`invoices/${student.uid}/${targetInvoiceId}`] = {
-                        invoiceId: targetInvoiceId,
-                        semester: targetSemester.name,
-                        semesterId: targetSemester.id,
-                        dateCreated: new Date().toISOString(),
-                        totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0
+                let invoiceId = studentStanding?.invoiceId;
+                if (!invoiceId) {
+                    const newInvoiceRef = push(ref(db, `invoices/${studentUid}`));
+                    invoiceId = newInvoiceRef.key!;
+                    updates[`invoices/${studentUid}/${invoiceId}`] = {
+                        invoiceId, totalTuition: record.totalDue || 0, totalMandatoryFees: 0, totalOptionalFees: 0,
+                        dateCreated: now, semester: semesterInfo.name, semesterId: semId, courses: [], optionalFees: [],
                     };
-                    updates[`registrations/${student.uid}/${targetSemester.id}`] = {
-                        status: 'Completed',
-                        semesterName: targetSemester.name,
-                        registrationDate: new Date().toISOString(),
-                        programmeId: student.programmeId || '',
-                        intakeId: student.intakeId,
-                        invoiceId: targetInvoiceId,
-                        courses: []
-                    };
+                    updates[`registrations/${studentUid}/${semId}/invoiceId`] = invoiceId;
                 }
 
                 const txRef = push(ref(db, 'transactions'));
                 updates[`transactions/${txRef.key}`] = {
-                    transactionId: `BULK-${Date.now()}-${txRef.key?.slice(-4)}`,
-                    userId: row.studentUid,
-                    invoiceId: targetInvoiceId,
-                    amount: parseFloat(row.amount),
-                    status: 'successful',
-                    paymentDate: format(row.date, 'yyyy-MM-dd'),
-                    recordedAt: serverTimestamp(),
-                    method: row.method,
-                    comment: row.comment,
-                    recordedBy: userData?.name || 'Accountant',
+                    transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
+                    userId: studentUid, invoiceId, amount: amountFloat, currency: 'ZMW', status: 'successful',
+                    paymentDate: now, method: 'Manual', comment: record.comment || ''
                 };
+                
+                createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded for ${semesterInfo.name}.`, '/student/payments').catch(() => {});
             }
+            
             await update(ref(db), updates);
-            toast({ variant: 'success', title: 'Batch Saved', description: `Recorded ${validRows.length} payments.` });
-            setIsBulkManualOpen(false);
-            setBulkEntries([{ id: `row-${Date.now()}`, studentId: '', amount: '', method: 'Cash', date: new Date(), studentUid: null, studentName: '', year: '', semesterInYear: '', comment: '', intakeId: null }]);
-            fetchPaymentData();
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Batch failed', description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
+            toast({ variant: 'success', title: "Transactions Recorded", description: `Processed ${paymentsToRecord.length} records.` });
+            setIsBulkRecordOpen(false);
+            setBulkPaymentRows([]);
+            await fetchPaymentData();
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Save Failed', description: e.message }); }
+        finally { setFormLoading(false); }
     };
 
-    const filteredData = React.useMemo(() => {
-        return paymentInfos.filter(p => {
-            const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
-            const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
-            const amountMatch = !minAmountFilter || p.totalPaid >= parseFloat(minAmountFilter);
-            return searchMatch && intakeMatch && programmeMatch && amountMatch;
-        });
-    }, [paymentInfos, searchTerm, intakeFilter, programmeFilter, minAmountFilter]);
+    const handleRecordSinglePayment = async () => {
+        if(!selectedStudent || !paymentAmount || !singleSemId) { toast({ variant: 'destructive', title: 'Missing fields' }); return; }
+        setFormLoading(true);
+        try {
+            const amount = parseFloat(paymentAmount);
+            const sem = semesters.find(s => s.id === singleSemId)!;
+            const standing = paymentInfos.find(p => p.userId === selectedStudent.userId && p.semesterId === singleSemId);
+            
+            const updates: Record<string, any> = {};
+            let invId = standing?.invoiceId;
+            const now = new Date().toISOString();
 
-    const revenueStats = React.useMemo(() => {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const startOfW = startOfWeek(now);
-        const endOfW = endOfWeek(now);
-        
-        let daily = 0, weekly = 0, semester = 0, allTime = 0;
-        
-        rawTransactions.forEach(tx => {
-            const amt = Number(tx.amount) || 0;
-            const pDate = parseISO(tx.paymentDate);
-            
-            allTime += amt;
-            if(isToday(pDate)) daily += amt;
-            if(isWithinInterval(pDate, { start: startOfW, end: endOfW })) weekly += amt;
-            
-            const paymentInfo = paymentInfos.find(p => p.invoiceId === tx.invoiceId);
-            if (paymentInfo) {
-                const semesterData = semesters.find(s => s.id === paymentInfo.semesterId);
-                if (semesterData && semesterData.status !== 'Archived') {
-                    const semStartDate = semesterData.startDate ? parseISO(semesterData.startDate) : null;
-                    if (semStartDate && semStartDate.getFullYear() === currentYear) {
-                        semester += amt;
-                    }
-                }
+            if (!invId) {
+                const newInvRef = push(ref(db, `invoices/${selectedStudent.userId}`));
+                invId = newInvRef.key!;
+                updates[`invoices/${selectedStudent.userId}/${invId}`] = {
+                    invoiceId: invId, totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0,
+                    dateCreated: now, semester: sem.name, semesterId: sem.id
+                };
+                updates[`registrations/${selectedStudent.userId}/${sem.id}/invoiceId`] = invId;
             }
-        });
-        
-        return { daily, weekly, semester, allTime };
-    }, [rawTransactions, paymentInfos, semesters]);
 
-    const uniqueStudentsForDialog = React.useMemo(() => {
-        const lower = dialogSearchTerm.toLowerCase();
-        return allStudents.filter(s => s.name.toLowerCase().includes(lower) || s.id.toLowerCase().includes(lower));
-    }, [allStudents, dialogSearchTerm]);
+            const txRef = push(ref(db, 'transactions'));
+            const txId = transactionId.trim() || `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`;
+            
+            updates[`transactions/${txRef.key}`] = {
+                transactionId: txId, userId: selectedStudent.userId, invoiceId: invId, amount,
+                currency: 'ZMW', status: 'successful', paymentDate: now, method: paymentMethod,
+                recordedBy: userData?.name || 'Accountant',
+            };
 
-    const selectedStudentContext = React.useMemo(() => {
-        if (!paymentSelectedUserId || !calendarSettings || !allIntakes.length) return null;
-        const student = allStudents.find(s => s.uid === paymentSelectedUserId);
-        if (!student || !student.intakeId) return null;
-
-        const intake = allIntakes.find(i => i.id === student.intakeId);
-        if (!intake) return null;
-
-        const intakeStartStr = parseIntakeDate(intake.name);
-        if (!intakeStartStr) return { intakeName: intake.name, standing: 'Invalid Date' };
-
-        const state = calculateAcademicState(
-            intakeStartStr,
-            new Date(),
-            calendarSettings.standardCycles,
-            Object.values(calendarSettings.anomalies || {})
-        );
-        return { 
-            intakeName: intake.name, 
-            standing: `Year ${state.year}, Sem ${state.semester}`,
-            intakeId: student.intakeId
-        };
-    }, [paymentSelectedUserId, allStudents, allIntakes, calendarSettings]);
-
-    const selectedPeriodAudit = React.useMemo(() => {
-        if (!paymentSelectedUserId || !paymentSelectedYear || !paymentSelectedSemInYear || !selectedStudentContext) return null;
-        
-        const targetSem = semesters.find(s => 
-            s.intakeId === selectedStudentContext.intakeId && 
-            s.year === Number(paymentSelectedYear) && 
-            s.semesterInYear === Number(paymentSelectedSemInYear)
-        );
-
-        if (!targetSem) return { noRecord: true };
-
-        const info = paymentInfos.find(p => p.userId === paymentSelectedUserId && p.semesterId === targetSem.id);
-        return {
-            semesterName: targetSem.name,
-            due: info?.totalDue || 0,
-            paid: info?.totalPaid || 0,
-            balance: info?.balance || 0,
-            exists: !!info
-        };
-    }, [paymentSelectedUserId, paymentSelectedYear, paymentSelectedSemInYear, selectedStudentContext, semesters, paymentInfos]);
-
-    const getRowStanding = (intakeId: string | null) => {
-        if (!intakeId || !calendarSettings) return 'N/A';
-        const intake = allIntakes.find(i => i.id === intakeId);
-        if (!intake) return 'N/A';
-        const startStr = parseIntakeDate(intake.name);
-        if (!startStr) return 'N/A';
-        const state = calculateAcademicState(startStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-        return `Y${state.year}S${state.semester}`;
+            await update(ref(db), updates);
+            toast({ variant: 'success', title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
+            setIsRecordPaymentOpen(false);
+            setSelectedStudent(null);
+            setPaymentAmount('');
+            await fetchPaymentData();
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Recording Failed' }); }
+        finally { setFormLoading(false); }
     };
 
-    const getRowAudit = (studentUid: string | null, year: string, semInYear: string, intakeId: string | null) => {
-        if (!studentUid || !year || !semInYear || !intakeId) return null;
-        const targetSem = semesters.find(s => s.intakeId === intakeId && s.year === Number(year) && s.semesterInYear === Number(semInYear));
-        if (!targetSem) return { noRecord: true };
-        const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === targetSem.id);
-        return { due: info?.totalDue || 0, paid: info?.totalPaid || 0, balance: info?.balance || 0, exists: !!info };
+    const handleExport = () => {
+        const doc = new jsPDF();
+        const head = [["ID", "Name", "Semester", "Due", "Paid", "Balance", "Threshold"]];
+        const body = filteredData.map(p => [
+            p.studentId, p.studentName,
+            semesters.find(s => s.id === p.semesterId)?.name || 'N/A',
+            p.totalDue.toFixed(2), p.totalPaid.toFixed(2), p.balance.toFixed(2),
+            p.thresholdMet ? 'Met' : 'Below'
+        ]);
+        doc.text("Institutional Payment Audit", 14, 22);
+        autoTable(doc, { head, body, startY: 30 });
+        doc.save(`finance_report_${format(getCurrentServerDate(), 'yyyy-MM-dd')}.pdf`);
     };
+
+    const studentOptions: OptionGroup[] = React.useMemo(() => {
+        const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
+        return [{ groupName: 'Student Roster', items }];
+    }, [allStudents]);
 
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                  <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary rounded-lg shadow-md"><DollarSign className="h-6 w-6 text-white"/></div>
-                        <div><CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle><CardDescription>Global institutional revenue tracking and compliance monitoring.</CardDescription></div>
+                     <div>
+                        <CardTitle className="font-headline text-2xl">Financial Audit Center</CardTitle>
+                        <CardDescription>Consolidated institutional revenue and standing audit.</CardDescription>
                     </div>
-                    <Button variant="outline" onClick={() => { setRequestMessage(accountRequestTemplate.body); setRequestSubject(accountRequestTemplate.subject); setIsRequestAccountOpen(true); }} className="h-10 border-primary/20 text-primary hover:bg-primary/10">
-                        <UserPlus className="mr-2 h-4 w-4"/> Request New Student Account
-                    </Button>
                 </CardHeader>
+                <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collections</CardTitle>
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Semester Total</CardTitle>
+                                <CalendarDays className="h-4 w-4 text-primary" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black">ZMW {currentYearCollections.toFixed(2)}</div>
+                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Sum of all {new Date().getFullYear()} sessions</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
+                                <PiggyBank className="h-4 w-4 text-primary" />
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Period Collected</CardTitle>
+                                <Scale className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div></CardContent>
+                        </Card>
+                    </div>
+                </CardContent>
             </Card>
-
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-                <Card className="shadow-sm border-0 bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><TrendingUp className="h-3 w-3"/> Daily Collection</CardTitle></CardHeader>
-                    <CardContent><div className="text-xl font-black text-green-600">ZMW {revenueStats.daily.toFixed(2)}</div></CardContent>
-                </Card>
-                <Card className="shadow-sm border-0 bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><Clock className="h-3 w-3"/> Weekly Collection</CardTitle></CardHeader>
-                    <CardContent><div className="text-xl font-black">ZMW {revenueStats.weekly.toFixed(2)}</div></CardContent>
-                </Card>
-                <Card className="shadow-sm border-0 bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><CalendarDays className="h-3 w-3"/> Semester Total</CardTitle></CardHeader>
-                    <CardContent><div className="text-xl font-black text-primary">ZMW {revenueStats.semester.toFixed(2)}</div></CardContent>
-                    <CardFooter className="pt-0"><p className="text-[8px] text-muted-foreground uppercase font-bold">Sum of all {new Date().getFullYear()} sessions</p></CardFooter>
-                </Card>
-                <Card className="shadow-sm border-0 bg-card">
-                    <CardHeader className="pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-wider opacity-60 flex items-center gap-2"><Wallet className="h-3 w-3"/> All-Time Received</CardTitle></CardHeader>
-                    <CardContent><div className="text-xl font-black">ZMW {revenueStats.allTime.toFixed(2)}</div></CardContent>
-                </Card>
-            </div>
-
-            <div className="flex flex-wrap gap-4">
-                <Button onClick={() => setIsRecordPaymentOpen(true)} size="lg" className="shadow-lg h-12 font-bold"><PlusCircle className="mr-2 h-5 w-5"/> Record Single Payment</Button>
-                <Button variant="outline" onClick={() => setIsBulkManualOpen(true)} size="lg" className="shadow-lg h-12 font-bold"><PlusCircle className="mr-2 h-5 w-5"/> Batch Manual Entry</Button>
-            </div>
 
             <Card className="shadow-md">
                 <CardHeader className="border-b">
-                    <div className="flex flex-col gap-4">
-                        <div><CardTitle>Financial Audit List</CardTitle><CardDescription>Real-time threshold monitoring and payment compliance.</CardDescription></div>
-                        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            <div className="space-y-1">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Programme</Label>
-                                <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
-                                    <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="All Programmes"/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Programmes</SelectItem>
-                                        {allProgrammes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Cohort (Intake)</Label>
-                                <Select value={intakeFilter} onValueChange={setIntakeFilter}>
-                                    <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Intakes</SelectItem>
-                                        {allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Paid Amount &ge;</Label>
-                                <div className="relative">
-                                    <DollarSign className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground opacity-50"/>
-                                    <Input 
-                                        type="number" 
-                                        placeholder="Min ZMW Paid..." 
-                                        className="pl-8 h-10 bg-background" 
-                                        value={minAmountFilter} 
-                                        onChange={e => setMinAmountFilter(e.target.value)} 
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-1 md:col-span-1 lg:col-span-2">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Search Identity</Label>
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-                                    <Input className="pl-8 h-10 bg-background" placeholder="Student ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                </div>
-                            </div>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <CardTitle>Receivables & Audit</CardTitle>
+                            <CardDescription>Filter and audit student financial compliance.</CardDescription>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
+                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6 p-4 rounded-xl border bg-muted/10 items-end">
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Programme</Label>
+                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
+                                <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Programmes"/></SelectTrigger>
+                                <SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Intake</Label>
+                            <Select value={intakeFilter} onValueChange={setIntakeFilter}>
+                                <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="All Intakes"/></SelectTrigger>
+                                <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Amount Paid ≥</Label>
+                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-9 bg-background" />
+                        </div>
+                        <div className="space-y-1 lg:col-span-2">
+                            <Label className="text-[10px] font-black uppercase">Search Student</Label>
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input className="pl-8 h-9 bg-background" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
                     {loading ? <Skeleton className="h-64 w-full" /> : (
-                        <div className="rounded-md border overflow-hidden">
+                        <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-muted/50">
                                     <TableRow>
                                         <TableHead>System ID</TableHead>
                                         <TableHead>Student Name</TableHead>
-                                        <TableHead className="text-right">Total Due</TableHead>
-                                        <TableHead className="text-right">Amount Paid</TableHead>
-                                        <TableHead className="text-right text-destructive">Balance</TableHead>
-                                        <TableHead className="text-center">Threshold</TableHead>
+                                        <TableHead>Programme</TableHead>
+                                        <TableHead className="text-right">Balance</TableHead>
+                                        <TableHead className="text-right">Total Paid</TableHead>
+                                        <TableHead className="text-center">Standing</TableHead>
                                         <TableHead className="w-10"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredData.map((info) => (
-                                        <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/20 transition-colors">
-                                            <TableCell className="font-mono text-xs opacity-60">{info.studentId}</TableCell>
+                                        <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
+                                            <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-sm">{info.studentName}</span>
                                                     <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name}</span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-sm">ZMW {info.totalDue.toFixed(2)}</TableCell>
+                                            <TableCell className="text-xs">{programmes.find(p=>p.id===info.programmeId)?.name || 'N/A'}</TableCell>
+                                            <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
-                                                <Badge variant={info.thresholdMet ? "secondary" : "destructive"} className="uppercase text-[9px] gap-1">
-                                                    {info.thresholdMet ? <CheckCircle2 className="h-2 w-2"/> : <AlertTriangle className="h-2 w-2"/>}
-                                                    {info.thresholdMet ? "Met" : "Below"}
+                                                <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px]">
+                                                    {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good' : 'Defaulter')}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100" onClick={() => { setEditStudentInfo(info); setEditTargetId(info.invoiceId); setOldValue(info.totalDue); setEditRequestType('invoice'); setIsEditOpen(true); }}><PencilLine className="h-4 w-4"/></Button>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><History className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {filteredData.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground italic">No records match the current filter criteria.</TableCell>
-                                        </TableRow>
-                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -760,293 +679,114 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            {/* Batch Manual Dialog */}
-            <Dialog open={isBulkManualOpen} onOpenChange={setIsBulkManualOpen}>
-                <DialogContent className="max-w-5xl h-[90vh] flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle>Batch Manual Payment Entry</DialogTitle>
-                        <DialogDescription>Each entry follows the same structured auditing logic as a single record.</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-4 py-4 flex-1 overflow-hidden">
-                        <div className="flex flex-wrap items-end gap-4 p-4 border rounded-xl bg-muted/20">
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Year</Label>
-                                <Select value={bulkGlobalYear} onValueChange={setBulkGlobalYear}><SelectTrigger className="h-9"><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Sem</Label>
-                                <Select value={bulkGlobalSem} onValueChange={setBulkGlobalSem}><SelectTrigger className="h-9"><SelectValue placeholder="Sem"/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent></Select>
-                            </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Method</Label>
-                                <Select value={bulkGlobalMethod} onValueChange={setBulkGlobalMethod}><SelectTrigger className="h-9"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
-                            </div>
-                            <div className="w-40 space-y-1"><Label className="text-[10px] font-black uppercase">Global Date</Label>
-                                <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full justify-start h-9 text-xs"><CalendarIcon className="mr-2 h-4 w-4"/>{bulkGlobalDate ? format(bulkGlobalDate, 'dd MMM') : 'Pick Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={bulkGlobalDate} onSelect={setBulkGlobalDate} initialFocus/></PopoverContent></Popover>
-                            </div>
-                            <Button variant="secondary" size="sm" className="h-9 font-bold" onClick={handleApplyGlobalToBulk}><Save className="mr-2 h-4 w-4"/> Apply Globals</Button>
-                            <Separator orientation="vertical" className="h-9" />
-                            <Button variant="outline" size="sm" className="h-9 font-bold" onClick={handleAddBulkRow}><PlusCircle className="mr-2 h-4 w-4"/> Add Another Card</Button>
-                        </div>
-                        
-                        <ScrollArea className="flex-1 pr-4">
-                            <div className="space-y-6">
-                                {bulkEntries.map((row, index) => {
-                                    const audit = getRowAudit(row.studentUid, row.year, row.semesterInYear, row.intakeId);
-                                    const standing = getRowStanding(row.intakeId);
-
-                                    return (
-                                        <Card key={row.id} className="relative border-2 border-primary/10 overflow-hidden">
-                                            <div className="absolute top-0 right-0 p-2">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveBulkRow(index)} disabled={bulkEntries.length === 1}><X className="h-4 w-4"/></Button>
-                                            </div>
-                                            <CardHeader className="bg-muted/30 pb-4">
-                                                <div className="flex items-center gap-2">
-                                                    <Badge className="bg-primary text-primary-foreground font-black">ENTRY #{index + 1}</Badge>
-                                                    <Badge variant="outline" className="bg-background">ID: {row.studentId || '...'}</Badge>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="pt-6 space-y-6">
-                                                <div className="grid md:grid-cols-2 gap-8">
-                                                    {/* Card Left: Identity & standing */}
-                                                    <div className="space-y-4">
-                                                        <div className="space-y-1">
-                                                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">1. Student Selection</Label>
-                                                            <Input 
-                                                                value={row.studentId} 
-                                                                onChange={e => handleBulkRowUpdate(row.id, 'studentId', e.target.value.toUpperCase())} 
-                                                                placeholder="TYPE STUDENT ID (STU-XXX)" 
-                                                                className="uppercase font-mono font-bold"
-                                                            />
-                                                        </div>
-                                                        {row.studentUid ? (
-                                                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in slide-in-from-top-2">
-                                                                <p className="text-sm font-black">{row.studentName}</p>
-                                                                <p className="text-[10px] font-medium text-muted-foreground">Standing: {standing}</p>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="p-3 rounded-lg border border-dashed text-[10px] text-muted-foreground italic">
-                                                                Enter a valid ID to load student Standing.
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Card Right: Period & Audit */}
-                                                    <div className="space-y-4">
-                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">2. Target Period</Label>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <Select value={row.year} onValueChange={v => handleBulkRowUpdate(row.id, 'year', v)} disabled={!row.studentUid}>
-                                                                <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Year"/></SelectTrigger>
-                                                                <SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent>
-                                                            </Select>
-                                                            <Select value={row.semesterInYear} onValueChange={v => handleBulkRowUpdate(row.id, 'semesterInYear', v)} disabled={!row.year}>
-                                                                <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Sem"/></SelectTrigger>
-                                                                <SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        
-                                                        {audit && (
-                                                            <div className="p-3 rounded-lg border bg-muted/20 animate-in fade-in slide-in-from-top-2">
-                                                                {audit.noRecord ? (
-                                                                    <p className="text-[10px] italic text-muted-foreground">No record found. New invoice will be initialized.</p>
-                                                                ) : (
-                                                                    <div className="grid grid-cols-3 gap-2 text-center">
-                                                                        <div><p className="text-[8px] font-bold uppercase opacity-60">Due</p><p className="text-xs font-black">K{audit.due.toFixed(0)}</p></div>
-                                                                        <div><p className="text-[8px] font-bold uppercase text-green-600">Paid</p><p className="text-xs font-black text-green-600">K{audit.paid.toFixed(0)}</p></div>
-                                                                        <div><p className="text-[8px] font-bold uppercase text-destructive">Bal</p><p className="text-xs font-black text-destructive">K{audit.balance.toFixed(0)}</p></div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <Separator />
-
-                                                <div className="grid md:grid-cols-4 gap-4">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Amount (ZMW)</Label>
-                                                        <Input type="number" value={row.amount} onChange={e => handleBulkRowUpdate(row.id, 'amount', e.target.value)} placeholder="0.00" className="font-bold"/>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Method</Label>
-                                                        <Select value={row.method} onValueChange={v => handleBulkRowUpdate(row.id, 'method', v)}>
-                                                            <SelectTrigger className="h-10 bg-background"><SelectValue/></SelectTrigger>
-                                                            <SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Payment Date</Label>
-                                                        <Popover><PopoverTrigger asChild><Button variant="outline" className="w-full h-10 text-xs justify-start"><CalendarIcon className="mr-2 h-4 w-4"/>{row.date ? format(row.date, 'dd MMM yyyy') : 'Pick Date'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={row.date} onSelect={d => handleBulkRowUpdate(row.id, 'date', d)} initialFocus/></PopoverContent></Popover>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Comment</Label>
-                                                        <Input value={row.comment} onChange={e => handleBulkRowUpdate(row.id, 'comment', e.target.value)} placeholder="Optional note..." />
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    );
-                                })}
-                            </div>
-                        </ScrollArea>
-                    </div>
-                    <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsBulkManualOpen(false)}>Discard Batch</Button>
-                        <Button onClick={handleConfirmBulkManual} disabled={formLoading || bulkEntries.length === 0}>
-                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Check className="mr-2 h-4 w-4" />}
-                            Post Entire Batch ({bulkEntries.filter(r => r.studentUid && r.amount > 0).length})
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Request New Account Dialog */}
-            <Dialog open={isRequestAccountOpen} onOpenChange={setIsRequestAccountOpen}>
-                <DialogContent className="max-w-2xl h-[80vh] flex flex-col">
-                    <DialogHeader>
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <DialogTitle>Request Student Account</DialogTitle>
-                                <DialogDescription>Draft a message to Admissions to request a new student account.</DialogDescription>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => setIsTemplateSettingsOpen(!isTemplateSettingsOpen)}><Settings2 className="h-4 w-4"/></Button>
-                        </div>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-auto py-4 space-y-4">
-                        {isTemplateSettingsOpen ? (
-                            <div className="p-4 border rounded-lg bg-primary/5 space-y-4 animate-in fade-in slide-in-from-top-2">
-                                <div className="flex items-center gap-2 text-primary"><Settings2 className="h-4 w-4"/><span className="text-xs font-bold uppercase">Template Configuration</span></div>
-                                <div className="space-y-1"><Label className="text-xs">Default Subject</Label><Input value={accountRequestTemplate.subject} onChange={e => setAccountRequestTemplate(p=>({...p, subject: e.target.value}))}/></div>
-                                <div className="space-y-1"><Label className="text-xs">Default Body</Label><Textarea rows={6} value={accountRequestTemplate.body} onChange={e => setAccountRequestTemplate(p=>({...p, body: e.target.value}))}/></div>
-                                <Button size="sm" onClick={() => {
-                                    set(ref(db, 'settings/templates/studentAccountRequest'), accountRequestTemplate);
-                                    toast({ title: 'Template Saved' });
-                                    setIsTemplateSettingsOpen(false);
-                                }}>Save System Template</Button>
-                            </div>
-                        ) : null}
-                        <div className="space-y-4">
-                            <div className="space-y-1"><Label>Subject</Label><Input value={requestSubject} onChange={e => setRequestSubject(e.target.value)} /></div>
-                            <div className="space-y-1"><Label>Message Body</Label><Textarea value={requestMessage} onChange={e => setRequestMessage(e.target.value)} rows={12} className="font-mono text-sm" /></div>
-                        </div>
-                    </div>
-                    <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsRequestAccountOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRequestAccount} disabled={formLoading}><Send className="mr-2 h-4 w-4"/>Send to Admissions</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Edit Request Dialog */}
-            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Request Financial Adjustment</DialogTitle><DialogDescription>Propose a change to this record. All edits require administrator approval.</DialogDescription></DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
-                            <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Adjusting {editRequestType}</p>
-                            <p className="font-bold text-sm">{editStudentInfo?.studentName} ({editStudentInfo?.studentId})</p>
-                        </div>
+            {/* Record Single Payment */}
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
+                    <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label className="text-xs">Original Value</Label><div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm font-bold opacity-60">ZMW {oldValue.toFixed(2)}</div></div>
-                            <div className="space-y-1"><Label className="text-xs">Proposed Value</Label><Input type="number" value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="0.00" /></div>
+                            <div className="space-y-1"><Label>Year</Label><Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}><SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger><SelectContent>{Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label>Semester</Label><Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}><SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger><SelectContent>{semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
                         </div>
-                        <div className="space-y-1"><Label className="text-xs">Reason for Adjustment</Label><Textarea value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="e.g., Incorrect discount applied, manual error..." /></div>
+                        {singleSemId && (
+                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2">
+                                <Label className="text-[10px] font-black uppercase opacity-60">Semester Audit</Label>
+                                {(() => {
+                                    const info = paymentInfos.find(p => p.userId === selectedStudent?.userId && p.semesterId === singleSemId);
+                                    if (!info) return <p className="text-[10px] italic">No active invoice. Record will initialize on save.</p>;
+                                    return (
+                                        <div className="grid grid-cols-3 gap-2 text-center">
+                                            <div className="flex flex-col"><span className="text-[9px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
+                                            <div className="flex flex-col border-x"><span className="text-[9px] uppercase font-bold opacity-60">Paid</span><span className="font-bold text-xs text-green-600">K{info.totalPaid.toFixed(0)}</span></div>
+                                            <div className="flex flex-col"><span className="text-[9px] uppercase font-bold opacity-60">Balance</span><span className="font-black text-xs text-destructive">K{info.balance.toFixed(0)}</span></div>
+                                        </div>
+                                    )
+                                })()}
+                            </div>
+                        )}
+                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="font-bold text-lg h-12" /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><Label>Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Direct Transfer">Transfer</SelectItem></SelectContent></Select></div>
+                            <div className="space-y-1"><Label>Reference #</Label><Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF#" /></div>
+                        </div>
                     </div>
-                    <DialogFooter><Button variant="ghost" onClick={() => setIsEditOpen(false)}>Cancel</Button><Button onClick={handleSendEditRequest} disabled={formLoading || !editReason || !newValue}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : "Submit for Approval"}</Button></DialogFooter>
+                    <DialogFooter><Button onClick={handleRecordSinglePayment} disabled={formLoading || !paymentAmount}>Record Transaction</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Single Record Dialog */}
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) { resetDialog(); setIsRecordPaymentOpen(o); } }}>
-                <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Record Single Payment</DialogTitle></DialogHeader>
-                    <div className="flex-1 overflow-y-auto pr-2 py-4 space-y-6">
-                        <div className="space-y-4">
-                            <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">1. Select Student</Label>
-                            <Select value={paymentSelectedUserId} onValueChange={setPaymentSelectedUserId}>
-                                <SelectTrigger><SelectValue placeholder="Find student..." /></SelectTrigger>
-                                <SelectContent>
-                                    <div className="p-2 border-b"><div className="relative"><Search className="h-4 w-4 absolute left-2 top-2.5"/><Input placeholder="Filter..." className="pl-8 h-8" value={dialogSearchTerm} onChange={e => setDialogSearchTerm(e.target.value)} onKeyDown={e => e.stopPropagation()}/></div></div>
-                                    <ScrollArea className="h-64">{uniqueStudentsForDialog.map(s => <SelectItem key={s.uid} value={s.uid}>{s.name} ({s.id})</SelectItem>)}</ScrollArea>
-                                </SelectContent>
-                            </Select>
-                            
-                            {paymentSelectedUserId && selectedStudentContext && (
-                                <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest text-primary opacity-70">
-                                        <span>Student Standing</span>
-                                        <User className="h-3 w-3" />
-                                    </div>
-                                    <p className="text-sm font-black pt-1">{selectedStudentContext.intakeName}</p>
-                                    <p className="text-xs font-medium text-muted-foreground">{selectedStudentContext.standing}</p>
-                                </div>
-                            )}
-
-                            {paymentSelectedUserId && (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                                    <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">2. Target Period</Label>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <Select value={paymentSelectedYear} onValueChange={setPaymentSelectedYear}><SelectTrigger><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{[1,2,3,4,5].map(y => <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>)}</SelectContent></Select>
-                                        <Select value={paymentSelectedSemInYear} onValueChange={setPaymentSelectedSemInYear} disabled={!paymentSelectedYear}><SelectTrigger><SelectValue placeholder="Sem"/></SelectTrigger><SelectContent>{[1,2,3].map(s => <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>)}</SelectContent></Select>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Semester Audit Context */}
-                            {paymentSelectedUserId && paymentSelectedYear && paymentSelectedSemInYear && (
-                                <div className="p-4 rounded-xl border bg-muted/30 space-y-3 animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-[10px] font-black uppercase tracking-widest opacity-70">Semester Audit</Label>
-                                        <Badge variant="outline" className="text-[8px] h-4 uppercase">{selectedPeriodAudit?.semesterName || 'Target period'}</Badge>
-                                    </div>
-                                    
-                                    {selectedPeriodAudit?.noRecord ? (
-                                        <div className="text-xs text-muted-foreground italic py-2 flex items-center gap-2">
-                                            <Info className="h-3 w-3"/>
-                                            No existing invoice found. A new one will be created on save.
+            {/* Record Transactions (Bulk) */}
+            <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
+                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
+                    <DialogHeader><DialogTitle>Record Transaction(s)</DialogTitle><DialogDescription>Batch process multiple manual student payments.</DialogDescription></DialogHeader>
+                    <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
+                        {bulkPaymentRows.map((row, idx) => (
+                            <Card key={row.key} className="border-l-4 border-l-primary shadow-sm bg-muted/5 relative group">
+                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
+                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student & Academic Period</Label></div>
+                                        <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.userId}><SelectTrigger className="h-9"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
+                                            <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9"><SelectValue placeholder="Semester..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
                                         </div>
-                                    ) : (
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div className="space-y-1">
-                                                <p className="text-[9px] font-bold text-muted-foreground uppercase leading-none">Total Due</p>
-                                                <p className="text-sm font-black text-foreground">ZMW {selectedPeriodAudit?.due.toFixed(2)}</p>
+                                    </div>
+                                    <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
+                                        <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Semester Audit</Badge>}</div>
+                                        {row.semesterId ? (
+                                            <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Total Due</span><span className="font-black text-xs">K{(row.totalDue || 0).toFixed(0)}</span></div>
+                                                <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Balance</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
-                                            <div className="space-y-1">
-                                                <p className="text-[9px] font-bold text-green-600 uppercase leading-none">Paid To Date</p>
-                                                <p className="text-sm font-black text-green-600">ZMW {selectedPeriodAudit?.paid.toFixed(2)}</p>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-[9px] font-bold text-destructive uppercase leading-none">Remaining</p>
-                                                <p className="text-sm font-black text-destructive">ZMW {selectedPeriodAudit?.balance.toFixed(2)}</p>
-                                            </div>
+                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic">Select student & semester to audit</div>}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1"><Label className="text-[9px]">Amount to Pay</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
+                                            <div className="space-y-1"><Label className="text-[9px]">Note / Ref</Label><Input placeholder="Notes..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        <div className="space-y-4 pt-4 border-t">
-                            <Label className="text-xs font-black uppercase text-muted-foreground tracking-widest">3. Payment Details</Label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <Popover><PopoverTrigger asChild><Button variant="outline" className="h-10 text-xs justify-start"><CalendarIcon className="mr-2 h-4 w-4"/>{dateReceived ? format(dateReceived, 'PPP') : 'Date Received'}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={dateReceived} onSelect={setDateReceived} initialFocus/></PopoverContent></Popover>
-                                <Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Transfer">Transfer</SelectItem></SelectContent></Select>
-                            </div>
-                            <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
-                            
-                            <Alert className="bg-muted/50 border-0">
-                                <Clock className="h-4 w-4" />
-                                <AlertTitle className="text-[10px] font-black uppercase tracking-widest opacity-70">Audit Notice</AlertTitle>
-                                <AlertDescription className="text-[10px] italic leading-tight">
-                                    The "Date Recorded" timestamp is automatically set by the institutional server clock to maintain a secure and tamper-proof audit trail.
-                                </AlertDescription>
-                            </Alert>
-                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                        <Button variant="outline" className="w-full border-dashed" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
                     </div>
-                    <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordPaymentDialog} disabled={!paymentAmount || !paymentSelectedYear || !paymentSelectedSemInYear || formLoading}>
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : <Save className="mr-2 h-4 w-4 mr-2"/>} Record Payment
-                        </Button>
-                    </DialogFooter>
+                    <DialogFooter className="border-t pt-4"><Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : "Confirm & Save Transactions"}</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* History Statement Dialog */}
+            <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                    <DialogHeader><DialogTitle>Statement: {historyStudent?.studentName}</DialogTitle></DialogHeader>
+                    <div className="flex-1 overflow-auto border rounded-xl my-4">
+                        <Table>
+                            <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                                <TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead>Comment</TableHead><TableHead className="text-right">Amount</TableHead></TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {rawTransactions.filter(t => t.userId === historyStudent?.userId).map(tx => (
+                                    <TableRow key={tx.key} className="border-b-0">
+                                        <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                        <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method}</Badge></TableCell>
+                                        <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment}</TableCell>
+                                        <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <DialogFooter><Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Close</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
     );
+}
+
+function useToast() {
+    const [state, setState] = React.useState({ toasts: [] });
+    return {
+        toast: ({ title, variant, description }: { title: string, variant?: string, description?: string }) => {
+            console.log(title, description);
+        }
+    }
 }
