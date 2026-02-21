@@ -133,7 +133,7 @@ export default function StudentDashboardPage() {
             const allUsers = uSnap.val() || {};
             const allIntakes = iSnap.val() || {};
             const allAttendance = aSnap.val() || {};
-            const allTimetables = tSnap.val() || {};
+            const tData = tSnap.val() || {}; // Defined tData here
             const allCalendarEvents = Object.values(calSnap.val() || {}) as any[];
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
@@ -329,7 +329,7 @@ export default function StudentDashboardPage() {
             if (matchingSemesterId && enrolledIds.size > 0) {
                 const relevantNodes = ['master', matchingSemesterId];
                 relevantNodes.forEach(nodeId => {
-                    const semesterSessions = allTimetables[nodeId];
+                    const semesterSessions = tData[nodeId];
                     if (!semesterSessions) return;
 
                     for (const cid in semesterSessions) {

@@ -1,3 +1,4 @@
+
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -5,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX, Info } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { ref, get } from "firebase/database";
+import { ref, get, onValue } from "firebase/database";
 import { calculateAcademicState, parseIntakeDate } from "@/lib/semester-utils";
 import { addDays, isAfter, parseISO } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
