@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -361,6 +361,9 @@ export default function PaymentsManagementPage() {
                 if (def.programmeFilter) setProgrammeFilter(def.programmeFilter);
                 if (def.intakeFilter) setIntakeFilter(def.intakeFilter);
                 if (def.timeFilter) setTimeFilter(def.timeFilter);
+                if (def.minPaidFilter) setMinPaidFilter(def.minPaidFilter);
+                if (def.maxPaidFilter) setMaxPaidFilter(def.maxPaidFilter);
+                if (def.equalPaidFilter) setEqualPaidFilter(def.equalPaidFilter);
             }
 
         } catch (error: any) {
@@ -443,7 +446,10 @@ export default function PaymentsManagementPage() {
             await set(ref(db, `settings/paymentFilters/${user.uid}`), {
                 programmeFilter,
                 intakeFilter,
-                timeFilter
+                timeFilter,
+                minPaidFilter,
+                maxPaidFilter,
+                equalPaidFilter
             });
             toast({ title: 'Default Filters Saved' });
         } catch (e) {
