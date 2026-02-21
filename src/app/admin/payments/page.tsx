@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { 
@@ -269,7 +270,9 @@ export default function PaymentsManagementPage() {
 
     const fetchPaymentData = React.useCallback(async () => {
         if (!userData) return;
-        setLoading(true);
+        // Only show skeleton on first empty load to prevent flickering
+        if (paymentInfos.length === 0) setLoading(true);
+        
         try {
             const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap, calSnap] = await Promise.all([
                 get(ref(db, 'users')),
@@ -384,15 +387,16 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
+            // Only fetch defaults if we haven't touched the filters in this component session
             const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
             if (defaultsSnap.exists()) {
                 const def = defaultsSnap.val();
-                if (def.programmeFilter) setProgrammeFilter(def.programmeFilter);
-                if (def.intakeFilter) setIntakeFilter(def.intakeFilter);
-                if (def.timeFilter) setTimeFilter(def.timeFilter);
-                if (def.minPaidFilter) setMinPaidFilter(def.minPaidFilter);
-                if (def.maxPaidFilter) setMaxPaidFilter(def.maxPaidFilter);
-                if (def.equalPaidFilter) setEqualPaidFilter(def.equalPaidFilter);
+                setProgrammeFilter(prev => prev === 'all' ? (def.programmeFilter || 'all') : prev);
+                setIntakeFilter(prev => prev === 'all' ? (def.intakeFilter || 'all') : prev);
+                setTimeFilter(prev => prev === 'all' ? (def.timeFilter || 'all') : prev);
+                setMinPaidFilter(prev => prev === '' ? (def.minPaidFilter || '') : prev);
+                setMaxPaidFilter(prev => prev === '' ? (def.maxPaidFilter || '') : prev);
+                setEqualPaidFilter(prev => prev === '' ? (def.equalPaidFilter || '') : prev);
             }
 
         } catch (error: any) {
@@ -401,7 +405,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [userData, toast, user?.uid, serverTimeOffset]);
+    }, [userData, toast, user?.uid, serverTimeOffset, paymentInfos.length]);
 
     React.useEffect(() => {
         if (userData) fetchPaymentData();
@@ -960,7 +964,7 @@ export default function PaymentsManagementPage() {
                                 })()}
                             </div>
                         )}
-                        <div className="space-y-1"><Label>Amount Paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
+                        <div className="space-y-1"><Label>Amount being paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
                         
                         <Alert className="bg-muted/50 border-0">
                             <Clock className="h-4 w-4" />
@@ -1018,7 +1022,7 @@ export default function PaymentsManagementPage() {
                                             </div>
                                         ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic">Select student & semester to audit</div>}
                                         <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1"><Label className="text-[9px]">Amount to Pay</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
+                                            <div className="space-y-1"><Label className="text-[9px]">Amount being paid</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
                                             <div className="space-y-1"><Label className="text-[9px]">Note / Ref</Label><Input placeholder="Notes..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
                                         </div>
                                     </div>
@@ -1051,9 +1055,10 @@ export default function PaymentsManagementPage() {
                                     })
                                     .map(p => {
                                         const sem = semesters.find(s => s.id === p.semesterId);
+                                        const intake = allIntakes.find(i => i.id === sem?.intakeId);
                                         return (
                                             <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest">
-                                                {sem ? `Year ${sem.year}, Sem ${sem.semesterInYear}` : 'Unknown'}
+                                                {intake?.name} - {sem ? `Y${sem.year}S${sem.semesterInYear}` : 'Unknown'}
                                             </TabsTrigger>
                                         )
                                     })

@@ -1,8 +1,9 @@
+
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { ref, get } from "firebase/database";
@@ -20,39 +21,29 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isDefaulter, setIsDefaulter] = useState(false);
   const [isRestrictedRoute, setIsRestrictedRoute] = useState(false);
-  const [checkingStanding, setCheckingStanding] = useState(true);
+  const [checkingStanding, setCheckingStanding] = useState(false);
+  const lastCheckedUid = useRef<string | null>(null);
 
   useEffect(() => {
-    // 1. Wait for Auth to finish loading
     if (loading) return;
 
-    // 2. Redirect if not a student
     if (!userProfile || userProfile.role?.toLowerCase() !== 'student') {
-      setCheckingStanding(false);
       if (userProfile) router.replace('/dashboard');
       return;
     }
 
-    // 3. Perform Standing Check
     const checkStanding = async () => {
-        setCheckingStanding(true);
-        // Safety timeout to prevent permanent hang
+        // Only show loading state if we haven't checked for this user yet
+        if (lastCheckedUid.current !== user?.uid) {
+            setCheckingStanding(true);
+        }
+
         const safetyTimer = setTimeout(() => {
-            console.warn("[GUARD] Standing check timed out. Proceeding with caution.");
             setCheckingStanding(false);
-        }, 8000);
+        }, 5000);
 
         try {
-            if (!user) {
-                setCheckingStanding(false);
-                return;
-            }
-
-            // Check for missing intake assignment
-            if (!userProfile.intakeId) {
-                console.warn("[GUARD] No intake assigned to student profile.");
-                setIsDefaulter(false);
-                setIsRestrictedRoute(false);
+            if (!user || !userProfile.intakeId) {
                 setCheckingStanding(false);
                 return;
             }
@@ -68,7 +59,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 get(ref(db, 'settings/financialSettings'))
             ]);
 
-            // If critical data is missing, we can't accurately flag a defaulter, so we allow access
             if (!regSnap.exists() || !calSnap.exists() || !intakeSnap.exists()) {
                 setCheckingStanding(false);
                 return;
@@ -127,7 +117,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 
                 let isPathBlocked = false;
 
-                // Functional block checks
                 if (restrictedFuncs.results && (pathname.includes('/results') || pathname.includes('/transcript'))) {
                     isPathBlocked = true;
                 }
@@ -138,13 +127,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     isPathBlocked = true;
                 }
 
-                // Sidebar category checks
                 const currentCategory = studentMenuItems.find(cat => cat.items.some(item => pathname.startsWith(item.href)));
                 if (currentCategory && restrictedCategories[currentCategory.label]) {
                     isPathBlocked = true;
                 }
 
-                // Essential pages whitelist
                 const isEssential = pathname === '/student/dashboard' || pathname === '/student/payments' || pathname === '/student/notifications';
                 if (isPathBlocked && !isEssential) {
                     setIsRestrictedRoute(true);
@@ -155,6 +142,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 setIsRestrictedRoute(false);
             }
 
+            lastCheckedUid.current = user.uid;
         } catch (error) {
             console.error("Standing guard error:", error);
         } finally {
