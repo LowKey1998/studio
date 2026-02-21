@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Download, GraduationCap, FileCheck, Loader2, Settings2, Image as LucideImage, Users, Info } from 'lucide-react';
+import { Search, Download, FileCheck, Loader2, Settings2, Image as LucideImage, Users, Info } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -123,13 +123,14 @@ export default function CertificatePrintingPage() {
             const bgUrl = placeholderImages.certificates.background.url;
             
             // Using document.createElement('img') to avoid "Illegal constructor" error
+            // This happens in Next.js when the 'Image' identifier is shadowed by next/image
             const img = document.createElement('img');
             img.crossOrigin = "anonymous";
             img.src = bgUrl;
 
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
-                img.onerror = reject;
+                img.onerror = () => reject(new Error("Failed to load certificate background image."));
             });
 
             const canvas = document.createElement('canvas');
