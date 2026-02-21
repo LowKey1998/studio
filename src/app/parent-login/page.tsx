@@ -31,6 +31,26 @@ declare global {
   }
 }
 
+/**
+ * Normalizes a phone number to a standard numeric format (e.g., 260977...)
+ * for reliable database matching.
+ */
+const normalizePhone = (phone: string): string => {
+  if (!phone) return '';
+  let cleaned = phone.replace(/\D/g, ''); // Remove non-digits
+  
+  // Handle Zambia local format starting with 0
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    cleaned = '260' + cleaned.substring(1);
+  } 
+  // Handle local format without leading 0
+  else if (cleaned.length === 9) {
+    cleaned = '260' + cleaned;
+  }
+  
+  return cleaned;
+};
+
 export default function ParentLoginPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
@@ -65,12 +85,15 @@ export default function ParentLoginPage() {
     if (!snapshot.exists()) return false;
 
     const usersData = snapshot.val();
-    const formattedPhone = phone.trim();
+    const normalizedInput = normalizePhone(phone);
 
     for (const uid in usersData) {
       const user = usersData[uid];
-      if (user.role === 'Student' && user.guardian?.contact === formattedPhone) {
-        return true;
+      if (user.role === 'Student' && user.guardian?.contact) {
+        const normalizedDb = normalizePhone(user.guardian.contact);
+        if (normalizedInput === normalizedDb && normalizedInput.length >= 9) {
+          return true;
+        }
       }
     }
     return false;
@@ -90,7 +113,13 @@ export default function ParentLoginPage() {
       setupRecaptcha();
       const appVerifier = window.recaptchaVerifier!;
 
-      const result = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+      // Format for Firebase Auth E.164
+      let finalPhone = phoneNumber.trim();
+      if (!finalPhone.startsWith('+')) {
+          finalPhone = '+' + normalizePhone(finalPhone);
+      }
+
+      const result = await signInWithPhoneNumber(auth, finalPhone, appVerifier);
       setConfirmationResult(result);
       setStep('otp');
       toast({ title: "OTP Sent", description: "Please check your phone for the verification code." });

@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -12,6 +11,17 @@ import { ref, get } from 'firebase/database';
 import { sendEmail } from '@/ai/flows/send-email-flow';
 import { sendSms } from '@/ai/flows/send-sms-flow';
 import { Loader2, Send } from 'lucide-react';
+
+const normalizePhone = (phone: string): string => {
+  if (!phone) return '';
+  let cleaned = phone.replace(/\D/g, ''); 
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    cleaned = '260' + cleaned.substring(1);
+  } else if (cleaned.length === 9) {
+    cleaned = '260' + cleaned;
+  }
+  return cleaned;
+};
 
 export default function EmergencyAlertsPage() {
     const [subject, setSubject] = React.useState('URGENT: Campus Alert');
@@ -48,10 +58,11 @@ export default function EmergencyAlertsPage() {
                     if (contact.includes('@')) {
                         parentEmails.push(contact);
                     } else {
-                        // Basic phone number validation, assuming Zambian numbers
-                        let phone = contact.replace(/\s+/g, '');
-                        if(phone.startsWith('0')) phone = `+26${phone.substring(1)}`;
-                        if(phone.length === 13) parentPhones.push(phone);
+                        // Normalize phone number for international SMS (E.164)
+                        const cleaned = normalizePhone(contact);
+                        if (cleaned.length >= 9) {
+                            parentPhones.push('+' + cleaned);
+                        }
                     }
                     parentUserIds.push(uid); // Log against the student's ID
                 }

@@ -13,9 +13,20 @@ import { Progress } from '@/components/ui/progress';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 
-type UserProfile = { programmeId?: string; name?: string; intakeId?: string; };
+type UserProfile = { programmeId?: string; name?: string; intakeId?: string; programmeName?: string; };
 type Semester = { name: string; status: string; paymentPlanIds?: Record<string, boolean> };
 type CalendarEvent = { title: string; date: string; semester: string; };
+
+const normalizePhone = (phone: string): string => {
+  if (!phone) return '';
+  let cleaned = phone.replace(/\D/g, ''); 
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    cleaned = '260' + cleaned.substring(1);
+  } else if (cleaned.length === 9) {
+    cleaned = '260' + cleaned;
+  }
+  return cleaned;
+};
 
 export default function ParentDashboardPage() {
     const [loading, setLoading] = React.useState(true);
@@ -49,12 +60,14 @@ export default function ParentDashboardPage() {
 
                 if (usersSnap.exists()) {
                     const allUsers = usersSnap.val();
+                    const parentPhoneNormalized = normalizePhone(currentUser.phoneNumber || '');
+                    
                     for (const uid in allUsers) {
                         const guardian = allUsers[uid].guardian;
                         const matchesEmail = guardian?.email && guardian.email === currentUser.email;
-                        const matchesPhone = guardian?.contact && (guardian.contact === currentUser.phoneNumber || guardian.contact.replace(/\s+/g, '') === currentUser.phoneNumber);
+                        const matchesPhone = guardian?.contact && normalizePhone(guardian.contact) === parentPhoneNormalized;
                         
-                        if (matchesEmail || matchesPhone) {
+                        if (matchesEmail || (parentPhoneNormalized && matchesPhone)) {
                             studentUid = uid;
                             studentData = allUsers[uid];
                             break;
@@ -67,17 +80,23 @@ export default function ParentDashboardPage() {
                     setLoading(false);
                     return;
                 }
-                setStudentProfile(studentData);
 
-                const [registrationsSnap, invoicesSnap, transactionsSnap, attendanceSnap, calendarSnap, coursesSnap, semestersSnap] = await Promise.all([
+                const [registrationsSnap, invoicesSnap, transactionsSnap, attendanceSnap, calendarSnap, coursesSnap, semestersSnap, programmesSnap] = await Promise.all([
                     get(ref(db, `registrations/${studentUid}`)),
                     get(ref(db, `invoices/${studentUid}`)),
                     get(ref(db, 'transactions')),
                     get(ref(db, 'attendance')),
                     get(ref(db, 'calendarEvents')),
                     get(ref(db, 'courses')),
-                    get(ref(db, 'semesters'))
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'programmes'))
                 ]);
+
+                const progs = programmesSnap.val() || {};
+                setStudentProfile({
+                    ...studentData,
+                    programmeName: progs[studentData.programmeId]?.name || 'Academic Programme'
+                });
 
                 const regsData = registrationsSnap.val() || {};
                 const invoicesData = invoicesSnap.val() || {};
