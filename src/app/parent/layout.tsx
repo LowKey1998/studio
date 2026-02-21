@@ -1,26 +1,20 @@
+
 'use client';
 import * as React from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Loader2, LogOut } from 'lucide-react';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { auth, db } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
-import { update, ref, serverTimestamp } from 'firebase/database';
 
 function ParentHeader() {
-    const { user } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
 
     const handleLogout = async () => {
         try {
-          if (user) {
-            await update(ref(db, `users/${user.uid}`), { isOnline: false, lastSeen: serverTimestamp() });
-          }
-          await signOut(auth);
+          await supabase.auth.signOut();
           toast({
             title: "Logged Out",
             description: "You have been successfully logged out.",
@@ -47,16 +41,35 @@ function ParentHeader() {
 }
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
+    const [loading, setLoading] = React.useState(true);
+    const [authenticated, setAuthenticated] = React.useState(false);
     const router = useRouter();
 
     React.useEffect(() => {
-        if (!loading && !user) {
-            router.replace('/login');
-        }
-    }, [user, loading, router]);
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                router.replace('/parent-login');
+            } else {
+                setAuthenticated(true);
+            }
+            setLoading(false);
+        };
+        
+        checkSession();
 
-    if (loading || !user) {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!session) {
+                router.replace('/parent-login');
+            } else {
+                setAuthenticated(true);
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, [router]);
+
+    if (loading || !authenticated) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin" />

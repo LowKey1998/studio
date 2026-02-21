@@ -1,13 +1,10 @@
+
 'use client';
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { 
-  RecaptchaVerifier, 
-  signInWithPhoneNumber, 
-  ConfirmationResult 
-} from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/firebase";
 import { ref, get } from "firebase/database";
 
 import {
@@ -25,26 +22,17 @@ import Logo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Smartphone } from "lucide-react";
 
-declare global {
-  interface Window {
-    recaptchaVerifier: RecaptchaVerifier | undefined;
-  }
-}
-
 /**
  * Normalizes a phone number to a standard numeric format (e.g., 260977...)
  * for reliable database matching.
  */
 const normalizePhone = (phone: string): string => {
   if (!phone) return '';
-  let cleaned = phone.replace(/\D/g, ''); // Remove non-digits
+  let cleaned = phone.replace(/\D/g, ''); 
   
-  // Handle Zambia local format starting with 0
   if (cleaned.startsWith('0') && cleaned.length === 10) {
     cleaned = '260' + cleaned.substring(1);
-  } 
-  // Handle local format without leading 0
-  else if (cleaned.length === 9) {
+  } else if (cleaned.length === 9) {
     cleaned = '260' + cleaned;
   }
   
@@ -56,28 +44,8 @@ export default function ParentLoginPage() {
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const router = useRouter();
   const { toast } = useToast();
-
-  useEffect(() => {
-    return () => {
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        window.recaptchaVerifier = undefined;
-      }
-    };
-  }, []);
-
-  const setupRecaptcha = () => {
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible',
-        'callback': () => {},
-        'expired-callback': () => {}
-      });
-    }
-  };
 
   const validateParentPhone = async (phone: string) => {
     const usersRef = ref(db, 'users');
@@ -110,17 +78,18 @@ export default function ParentLoginPage() {
         throw new Error("This phone number is not registered as a guardian contact in our system.");
       }
 
-      setupRecaptcha();
-      const appVerifier = window.recaptchaVerifier!;
-
-      // Format for Firebase Auth E.164
+      // Format for E.164
       let finalPhone = phoneNumber.trim();
       if (!finalPhone.startsWith('+')) {
           finalPhone = '+' + normalizePhone(finalPhone);
       }
 
-      const result = await signInWithPhoneNumber(auth, finalPhone, appVerifier);
-      setConfirmationResult(result);
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: finalPhone,
+      });
+
+      if (error) throw error;
+
       setStep('otp');
       toast({ title: "OTP Sent", description: "Please check your phone for the verification code." });
     } catch (error: any) {
@@ -130,10 +99,6 @@ export default function ParentLoginPage() {
         title: "Failed to send OTP",
         description: error.message || "An error occurred. Please try again.",
       });
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        window.recaptchaVerifier = undefined;
-      }
     } finally {
       setLoading(false);
     }
@@ -141,11 +106,23 @@ export default function ParentLoginPage() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || !confirmationResult) return;
+    if (!otp) return;
 
     setLoading(true);
     try {
-      await confirmationResult.confirm(otp);
+      let finalPhone = phoneNumber.trim();
+      if (!finalPhone.startsWith('+')) {
+          finalPhone = '+' + normalizePhone(finalPhone);
+      }
+
+      const { error } = await supabase.auth.verifyOtp({
+        phone: finalPhone,
+        token: otp,
+        type: 'sms',
+      });
+
+      if (error) throw error;
+
       toast({ variant: 'success', title: 'Login Successful', description: 'Welcome to the Parent Portal.' });
       router.push('/parent/dashboard');
     } catch (error: any) {
@@ -171,7 +148,7 @@ export default function ParentLoginPage() {
             <CardTitle className="font-headline text-2xl">Parent Secure Login</CardTitle>
             <CardDescription>
               {step === 'phone' 
-                ? "Enter your registered mobile number to receive a secure login code." 
+                ? "Enter your registered mobile number to receive a secure login code via Supabase SMS." 
                 : "Enter the 6-digit code sent to your phone."}
             </CardDescription>
           </CardHeader>
@@ -194,10 +171,9 @@ export default function ParentLoginPage() {
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground italic leading-tight">
-                    Note: Your number must exactly match the guardian contact provided to the admissions office.
+                    Note: Your number must match the guardian contact provided to the admissions office.
                   </p>
                 </div>
-                <div id="recaptcha-container"></div>
                 <Button type="submit" className="w-full h-12 font-bold" disabled={loading}>
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'Send Verification Code'}
                 </Button>

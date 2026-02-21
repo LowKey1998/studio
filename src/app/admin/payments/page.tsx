@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { 
@@ -47,7 +48,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -176,7 +177,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                     />
                 </div>
                 <Separator />
-                <ScrollArea className="h-[200px]">
+                <ScrollArea className="h-200px">
                     <div className="p-1">
                     {filteredOptions.length > 0 ? filteredOptions.map(group => (
                         <div key={group.groupName} className="p-1">
@@ -401,7 +402,7 @@ export default function PaymentsManagementPage() {
         }));
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData?.uid, serverTimeOffset]);
+    }, [userData?.uid, serverTimeOffset, allIntakes, allStudents, semesters]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -933,7 +934,10 @@ export default function PaymentsManagementPage() {
                             <div className="space-y-1"><Label>Reference #</Label><Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF#" /></div>
                         </div>
                     </div>
-                    <DialogFooter><Button onClick={handleRecordSinglePayment} disabled={formLoading || !paymentAmount}>Record Transaction</Button></DialogFooter>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRecordSinglePayment} disabled={formLoading || !paymentAmount}>Record Transaction</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

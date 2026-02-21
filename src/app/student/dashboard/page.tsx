@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -122,7 +123,7 @@ export default function StudentDashboardPage() {
             const allUsers = uSnap.val() || {};
             const allIntakes = iSnap.val() || {};
             const allAttendance = aSnap.val() || {};
-            const allTimetables = tSnap.val() || {};
+            const allTimetables = tData || {}; // tData is likely null in prompt, using let
             const allCalendarEvents = Object.values(calSnap.val() || {}) as any[];
             const allInvoices = invSnap.val() || {};
             const allTransactions = Object.values(txSnap.val() || {}).filter((t: any) => t.userId === user.uid && t.status === 'successful');
@@ -310,11 +311,12 @@ export default function StudentDashboardPage() {
 
             const todayName = daysOfWeek[getCurrentServerDate().getDay()];
             const scheduleMap = new Map<string, TimetableEntry>();
+            const allTData = tSnap.val() || {};
 
             if (matchingSemesterId && enrolledIds.size > 0) {
                 const relevantNodes = ['master', matchingSemesterId];
                 relevantNodes.forEach(nodeId => {
-                    const semesterSessions = allTimetables[nodeId];
+                    const semesterSessions = allTData[nodeId];
                     if (!semesterSessions) return;
 
                     for (const cid in semesterSessions) {
@@ -478,8 +480,11 @@ export default function StudentDashboardPage() {
                     </Card>
                 ) : (
                     <Card className="shadow-md">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Active Balance</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
-                        <CardContent><div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div></CardContent>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Fee Summary</CardTitle><Wallet className="h-4 w-4 text-primary" /></CardHeader>
+                        <CardContent>
+                            <div className={cn("text-2xl font-black", feeBalance > 0 ? "text-destructive" : "text-green-600")}>ZMW {feeBalance.toFixed(2)}</div>
+                            <p className="text-[10px] text-muted-foreground italic mt-1 leading-tight">Fee total due will reflect once set in system</p>
+                        </CardContent>
                     </Card>
                 )}
                 {paymentDeadline && feeBalance > 0 && (

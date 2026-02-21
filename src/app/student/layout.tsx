@@ -1,3 +1,4 @@
+
 "use client";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -40,10 +41,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         hasCheckedStanding.current = true;
         setCheckingStanding(true);
         
-        const safetyTimer = setTimeout(() => {
-            setCheckingStanding(false);
-        }, 10000);
-
         try {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap, finSnap] = await Promise.all([
                 get(ref(db, `registrations/${user.uid}`)),
@@ -116,7 +113,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             console.warn("Standing guard check failed:", error);
             setIsDefaulter(false); 
         } finally {
-            clearTimeout(safetyTimer);
             setCheckingStanding(false);
         }
     };

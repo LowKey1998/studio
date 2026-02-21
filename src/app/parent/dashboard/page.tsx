@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -5,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Info, User, DollarSign, Hand, Calendar, BookOpen, Smartphone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
+import { ref, get } from 'firebase/database';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { format, parseISO } from 'date-fns';
@@ -30,7 +31,6 @@ const normalizePhone = (phone: string): string => {
 
 export default function ParentDashboardPage() {
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState<FirebaseUser | null>(null);
     const [studentProfile, setStudentProfile] = React.useState<UserProfile | null>(null);
     const [feeBalance, setFeeBalance] = React.useState(0);
     const [attendancePercentage, setAttendancePercentage] = React.useState(0);
@@ -40,19 +40,15 @@ export default function ParentDashboardPage() {
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) setCurrentUser(user);
-            else setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    React.useEffect(() => {
-        if (!currentUser) return;
-
         const fetchData = async () => {
             setLoading(true);
             try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    setLoading(false);
+                    return;
+                }
+
                 const usersRef = ref(db, 'users');
                 const usersSnap = await get(usersRef);
                 let studentUid: string | null = null;
@@ -60,11 +56,11 @@ export default function ParentDashboardPage() {
 
                 if (usersSnap.exists()) {
                     const allUsers = usersSnap.val();
-                    const parentPhoneNormalized = normalizePhone(currentUser.phoneNumber || '');
+                    const parentPhoneNormalized = normalizePhone(user.phone || '');
                     
                     for (const uid in allUsers) {
                         const guardian = allUsers[uid].guardian;
-                        const matchesEmail = guardian?.email && guardian.email === currentUser.email;
+                        const matchesEmail = guardian?.email && guardian.email === user.email;
                         const matchesPhone = guardian?.contact && normalizePhone(guardian.contact) === parentPhoneNormalized;
                         
                         if (matchesEmail || (parentPhoneNormalized && matchesPhone)) {
@@ -76,7 +72,7 @@ export default function ParentDashboardPage() {
                 }
 
                 if (!studentUid || !studentData) {
-                    toast({ variant: 'destructive', title: 'Student Not Found', description: 'Could not find a student account associated with your verified contact details.' });
+                    toast({ variant: 'destructive', title: 'Student Not Found', description: 'Could not find a student account associated with your verified Supabase phone number.' });
                     setLoading(false);
                     return;
                 }
@@ -171,7 +167,7 @@ export default function ParentDashboardPage() {
         };
 
         fetchData();
-    }, [currentUser, toast]);
+    }, [toast]);
 
     if (loading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
     
@@ -185,9 +181,9 @@ export default function ParentDashboardPage() {
                         </div>
                         <AlertTitle className="font-bold text-xl">Account Not Linked</AlertTitle>
                         <AlertDescription>
-                            We couldn't find a student account associated with your contact information. Please ensure the student has provided your phone number correctly in their profile.
+                            We couldn't find a student account associated with your Supabase verification. Please ensure the student has provided your phone number correctly in their profile.
                         </AlertDescription>
-                        <Button variant="outline" onClick={() => auth.signOut()}>Log Out</Button>
+                        <Button variant="outline" onClick={() => supabase.auth.signOut()}>Log Out</Button>
                     </CardContent>
                 </Card>
             </div>
