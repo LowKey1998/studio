@@ -2,7 +2,7 @@
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, ShieldAlert, ArrowRight, Wallet, ShieldX } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { ref, get } from "firebase/database";
@@ -21,7 +21,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isDefaulter, setIsDefaulter] = useState(false);
   const [isRestrictedRoute, setIsRestrictedRoute] = useState(false);
   const [checkingStanding, setCheckingStanding] = useState(false);
-  const lastCheckedUid = useRef<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -32,10 +31,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
 
     const checkStanding = async () => {
-        // Only show loading state if we haven't checked for this user yet
-        if (lastCheckedUid.current !== user?.uid) {
-            setCheckingStanding(true);
-        }
+        setCheckingStanding(true);
 
         const safetyTimer = setTimeout(() => {
             setCheckingStanding(false);
@@ -140,8 +136,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             } else {
                 setIsRestrictedRoute(false);
             }
-
-            lastCheckedUid.current = user.uid;
         } catch (error) {
             console.error("Standing guard error:", error);
         } finally {

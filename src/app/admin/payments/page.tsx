@@ -65,7 +65,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/use-auth';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -270,8 +269,7 @@ export default function PaymentsManagementPage() {
 
     const fetchPaymentData = React.useCallback(async () => {
         if (!userData) return;
-        // Only show skeleton on first empty load to prevent flickering
-        if (paymentInfos.length === 0) setLoading(true);
+        setLoading(true);
         
         try {
             const [uSnap, rSnap, tSnap, pSnap, sSnap, iSnap, invSnap, fSnap, eSnap, calSnap] = await Promise.all([
@@ -391,16 +389,15 @@ export default function PaymentsManagementPage() {
             }
             setPaymentInfos(Object.values(studentPaymentMap));
 
-            // Only fetch defaults if we haven't touched the filters in this component session
             const defaultsSnap = await get(ref(db, `settings/paymentFilters/${user?.uid}`));
             if (defaultsSnap.exists()) {
                 const def = defaultsSnap.val();
-                setProgrammeFilter(prev => prev === 'all' ? (def.programmeFilter || 'all') : prev);
-                setIntakeFilter(prev => prev === 'all' ? (def.intakeFilter || 'all') : prev);
-                setTimeFilter(prev => prev === 'all' ? (def.timeFilter || 'all') : prev);
-                setMinPaidFilter(prev => prev === '' ? (def.minPaidFilter || '') : prev);
-                setMaxPaidFilter(prev => prev === '' ? (def.maxPaidFilter || '') : prev);
-                setEqualPaidFilter(prev => prev === '' ? (def.equalPaidFilter || '') : prev);
+                setProgrammeFilter(def.programmeFilter || 'all');
+                setIntakeFilter(def.intakeFilter || 'all');
+                setTimeFilter(def.timeFilter || 'all');
+                setMinPaidFilter(def.minPaidFilter || '');
+                setMaxPaidFilter(def.maxPaidFilter || '');
+                setEqualPaidFilter(def.equalPaidFilter || '');
             }
 
         } catch (error: any) {
@@ -409,7 +406,7 @@ export default function PaymentsManagementPage() {
         } finally {
             setLoading(false);
         }
-    }, [userData, toast, user?.uid, serverTimeOffset, paymentInfos.length]);
+    }, [userData, toast, user?.uid, serverTimeOffset]);
 
     React.useEffect(() => {
         if (userData) fetchPaymentData();
@@ -782,26 +779,6 @@ export default function PaymentsManagementPage() {
                         </div>
                     </div>
 
-                    {timeFilter === 'period' && (
-                        <div className="p-4 border rounded-xl bg-muted/5 flex items-center gap-4 animate-in fade-in slide-in-from-top-2">
-                            <div className="space-y-1">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Custom Date Range</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className={cn("w-[280px] justify-start text-left font-normal", !customRange && "text-muted-foreground")}>
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {customRange?.from ? (customRange.to ? `${format(customRange.from, "LLL dd")} - ${format(customRange.to, "LLL dd, y")}` : format(customRange.from, "LLL dd, y")) : <span>Select Range</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar initialFocus mode="range" selected={customRange} onSelect={setCustomRange} numberOfMonths={2} />
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
-                            {customRange?.from && <Button variant="ghost" size="sm" onClick={() => setCustomRange(undefined)} className="h-10 mt-5"><X className="h-4 w-4 mr-1"/> Clear</Button>}
-                        </div>
-                    )}
-
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
@@ -911,16 +888,6 @@ export default function PaymentsManagementPage() {
                                             </TableCell>
                                         </TableRow>
                                     ))}
-                                    {filteredData.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="h-48 text-center text-muted-foreground">
-                                                <div className="flex flex-col items-center justify-center gap-2">
-                                                    <Filter className="h-8 w-8 opacity-20" />
-                                                    <p className="text-sm">No payment records found for the current filters.</p>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -936,7 +903,7 @@ export default function PaymentsManagementPage() {
                         <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-xl">
                             <UserCheck className="h-4 w-4 text-primary" />
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-black uppercase text-muted-foreground leading-none">Calculated Standing</span>
+                                <span className="text-[10px] font-black uppercase text-muted-foreground leading-none">Current Standing</span>
                                 <span className="text-sm font-bold text-primary">{selectedStudent ? calculateStandingForUser(selectedStudent.userId) : 'Select student...'}</span>
                             </div>
                         </div>
@@ -960,9 +927,9 @@ export default function PaymentsManagementPage() {
                                     );
                                     return (
                                         <div className="grid grid-cols-3 gap-2 text-center">
-                                            <div className="flex flex-col"><span className="text-[9px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
-                                            <div className="flex flex-col border-x"><span className="text-[9px] uppercase font-bold opacity-60">Paid</span><span className="font-bold text-xs text-green-600">K{info.totalPaid.toFixed(0)}</span></div>
-                                            <div className="flex flex-col"><span className="text-[9px] uppercase font-bold opacity-60">Balance</span><span className="font-black text-xs text-destructive">K{info.balance.toFixed(0)}</span></div>
+                                            <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
+                                            <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-60">Paid</span><span className="font-bold text-xs text-green-600">K{info.totalPaid.toFixed(0)}</span></div>
+                                            <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-60">Balance</span><span className="font-black text-xs text-destructive">K{info.balance.toFixed(0)}</span></div>
                                         </div>
                                     )
                                 })()}
