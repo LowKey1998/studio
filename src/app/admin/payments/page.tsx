@@ -52,6 +52,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type StudentPaymentInfo = {
     userId: string;
@@ -233,7 +234,7 @@ export default function PaymentsManagementPage() {
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                         const balance = Math.max(0, totalPayable - totalPaid);
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
 
                         let currentRequiredThreshold = 0;
                         const plan = Object.values(plansSnap.val() || {}).find((p: any) => p.name === invoice.paymentPlan) as any;
