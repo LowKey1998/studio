@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -738,9 +737,11 @@ export default function RegistrationManagementPage() {
                                                                     </div>
                                                                 </div>
                                                                 <Switch className="absolute top-6 right-4" checked={isActive} onCheckedChange={() => {
-                                                                    const next = {...activePathSemesters};
-                                                                    if(!next[path.id]) next[path.id] = {};
-                                                                    next[path.id][semId] = { active: !isActive, showReason: false };
+                                                                    const next = JSON.parse(JSON.stringify(activePathSemesters));
+                                                                    const pathId = path.id;
+                                                                    if (!next[pathId]) next[pathId] = {};
+                                                                    if (!next[pathId][semId]) next[pathId][semId] = { active: false, showReason: false };
+                                                                    next[pathId][semId].active = !isActive;
                                                                     setActivePathSemesters(next);
                                                                 }} />
                                                             </div>

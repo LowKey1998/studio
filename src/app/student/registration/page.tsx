@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -83,8 +82,13 @@ export default function StudentRegistrationPage() {
                 intakeName: iSnap.val()?.[profile.intakeId]?.name || 'Unknown' 
             });
             
-            const userPath = Object.values(cpSnap.val() || {}).find((p: any) => p.intakeId === profile.intakeId && p.programmeId === profile.programmeId) as any;
-            if (!userPath) { setSemestersForPath([]); setLoading(false); return; }
+            const coursePathsData = cpSnap.val() || {};
+            const userPathEntry = Object.entries(coursePathsData).find(([_, p]: [string, any]) => 
+                p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
+            );
+
+            if (!userPathEntry) { setSemestersForPath([]); setLoading(false); return; }
+            const [userPathId, userPath] = userPathEntry as [string, any];
             
             const intakeName = iSnap.val()?.[profile.intakeId]?.name;
             const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
@@ -116,7 +120,7 @@ export default function StudentRegistrationPage() {
                     const details = sData[semId];
                     if (!details || details.status === 'Archived' || details.intakeId !== profile.intakeId) continue;
                     
-                    const isOfferingActive = !!offerings[userPath.id]?.[semId]?.active;
+                    const isOfferingActive = !!offerings[userPathId]?.[semId]?.active;
                     const registration = regs[semId];
                     const isRegistered = !!(registration?.courses?.length > 0);
                     const hasPaymentPlan = !!registration?.paymentPlan;
