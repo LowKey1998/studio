@@ -21,7 +21,7 @@ import {
     TrendingUp,
     MapPin,
     Wallet,
-    History,
+    History as HistoryIcon,
     Calendar as CalendarIcon,
     Filter,
     Save,
@@ -34,7 +34,8 @@ import {
     UserCheck,
     Lock,
     Unlock,
-    ArrowRight
+    ArrowRight,
+    MoreVertical
 } from 'lucide-react';
 import { 
     Card, 
@@ -329,8 +330,8 @@ export default function PaymentsManagementPage() {
             const now = getCurrentServerDate();
 
             for (const userId in regsData) {
-                 const user = users[userId];
-                 if (!user || user.role?.toLowerCase() !== 'student') continue;
+                 const userProfile = users[userId];
+                 if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
 
                  for (const semesterId in regsData[userId]) {
                     const reg = regsData[userId][semesterId];
@@ -360,8 +361,8 @@ export default function PaymentsManagementPage() {
 
                         studentPaymentMap[key] = {
                             userId,
-                            studentId: user.id,
-                            studentName: user.name,
+                            studentId: userProfile.id,
+                            studentName: userProfile.name,
                             totalDue: totalPayable,
                             totalPaid,
                             balance,
@@ -401,6 +402,10 @@ export default function PaymentsManagementPage() {
             setLoading(false);
         }
     }, [userData, toast, user?.uid, serverTimeOffset]);
+
+    React.useEffect(() => {
+        if (userData) fetchPaymentData();
+    }, [userData, fetchPaymentData]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -892,7 +897,7 @@ export default function PaymentsManagementPage() {
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><History className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="h-4 w-4" /></Button>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
                                                 </div>
                                             </TableCell>
