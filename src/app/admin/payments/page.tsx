@@ -33,7 +33,8 @@ import {
     X,
     UserCheck,
     Lock,
-    Unlock
+    Unlock,
+    ArrowRight
 } from 'lucide-react';
 import { 
     Card, 
@@ -43,9 +44,10 @@ import {
     CardTitle, 
     CardFooter 
 } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
@@ -400,12 +402,6 @@ export default function PaymentsManagementPage() {
             setLoading(false);
         }
     }, [userData, toast, user?.uid, serverTimeOffset]);
-
-    React.useEffect(() => {
-        if (userData) {
-            fetchPaymentData();
-        }
-    }, [userData, fetchPaymentData]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
