@@ -126,6 +126,7 @@ export async function sendNotification(userIdOrIds: string | string[], message: 
 
 /**
  * Sends a push notification to the global 'broadcast' topic.
+ * Also records the broadcast in the database for persistence.
  */
 export async function sendBroadcastNotification(message: string, link: string) {
   console.log("[SERVER] Initiating broadcast notification send...");
@@ -134,17 +135,27 @@ export async function sendBroadcastNotification(message: string, link: string) {
     console.error("[SERVER] Broadcast failed: Admin SDK not initialized.");
     return { 
       success: false, 
-      error: "Firebase Admin SDK is not fully configured. Please ensure FIREBASE_ADMIN_PRIVATE_KEY and FIREBASE_ADMIN_CLIENT_EMAIL are set in your environment variables." 
+      error: "Firebase Admin SDK is not fully configured." 
     };
   }
 
   try {
+    const db = getDatabase(adminApp);
     const messaging = getMessaging(adminApp);
     
-    console.log("[SERVER] Resolving institution logo...");
     const iconUrl = await getInstitutionLogo();
     
-    console.log("[SERVER] Sending message to global 'broadcast' topic...");
+    // 1. Record broadcast in database for history
+    const broadcastRef = db.ref('broadcasts').push();
+    await broadcastRef.set({
+      message,
+      link,
+      timestamp: Date.now(),
+      type: 'info',
+      category: 'broadcast'
+    });
+
+    // 2. Send push notification to all subscribed devices
     const response = await messaging.send({
       topic: 'broadcast',
       notification: {
@@ -162,7 +173,6 @@ export async function sendBroadcastNotification(message: string, link: string) {
       },
     });
     
-    console.log("[SERVER] Broadcast successful. Response ID:", response);
     return { success: true };
   } catch (error: any) {
     console.error("[SERVER] Broadcast failed with error:", error);

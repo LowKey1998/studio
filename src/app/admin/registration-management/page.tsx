@@ -86,7 +86,6 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { generateFullTimetable } from '@/ai/flows/generate-timetable';
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -543,7 +542,7 @@ export default function RegistrationManagementPage() {
                 case 3: setAllCoursePaths(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 4: setActivePathSemesters(data); break;
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
-                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
+                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
                 case 9: setAllUsers(data); break;

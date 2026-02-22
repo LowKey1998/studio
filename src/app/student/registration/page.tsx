@@ -141,7 +141,7 @@ export default function StudentRegistrationPage() {
                     
                     const isOfferingActive = !!offerings[userPathId]?.[semId]?.active;
                     const registration = regs[semId];
-                    const isRegistered = !!(registration?.courses?.length > 0);
+                    const isRegistered = !!(registration?.courses);
                     const hasPaymentPlan = !!registration?.paymentPlan;
                     const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
