@@ -23,7 +23,8 @@ import {
     RotateCcw,
     BookOpen,
     Tag,
-    Receipt
+    Receipt,
+    Clock
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
