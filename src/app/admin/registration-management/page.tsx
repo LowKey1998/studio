@@ -833,7 +833,7 @@ export default function RegistrationManagementPage() {
                 </Button>
             </div>
 
-            <Dialog open={isCreateDialogOpen || isEditDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>
+            <Dialog open={isCreateDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>
                 <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent 
                         editingSemester={editingSemester} 

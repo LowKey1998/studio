@@ -69,7 +69,7 @@ export default function StudentRegistrationPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, tSnap, plansSnap, calSnap, instSnap] = await Promise.all([
+            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, tSnap, plansSnap, calSnap, instSnap, invSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)), 
                 get(ref(db, 'programmes')), 
                 get(ref(db, 'intakes')),
@@ -83,7 +83,8 @@ export default function StudentRegistrationPage() {
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/paymentPlans')),
                 get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/institution'))
+                get(ref(db, 'settings/institution')),
+                get(ref(db, `invoices/${currentUser.uid}`))
             ]);
             
             if (!uSnap.exists()) return;
@@ -110,8 +111,9 @@ export default function StudentRegistrationPage() {
             const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
             const calSettings = calSnap.val();
             const globalInstSettings = instSnap.val() || { billingPolicy: 'course' };
-            let currentStanding: { year: number, semester: number } | null = null;
+            const invoicesData = invSnap.val() || {};
 
+            let currentStanding: { year: number, semester: number } | null = null;
             if (intakeStartStr && calSettings) {
                 currentStanding = calculateAcademicState(
                     intakeStartStr,
@@ -143,7 +145,12 @@ export default function StudentRegistrationPage() {
                     const hasPaymentPlan = !!registration?.paymentPlan;
                     const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
-                    const enrolledCourseIds = new Set(registration?.courses || []);
+                    const enrolledCourseIds = new Set(
+                        Array.isArray(registration?.courses) 
+                        ? registration.courses 
+                        : (registration?.courses ? Object.keys(registration.courses) : [])
+                    );
+
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
@@ -174,16 +181,21 @@ export default function StudentRegistrationPage() {
                         .map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
 
                     const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
+                    const invoice = invoicesData[registration?.invoiceId];
 
                     let totalTuition = 0;
-                    if (activePolicy === 'semester') {
-                        totalTuition = Number(details.tuitionFee || 0);
+                    if (isRegistered && invoice) {
+                        totalTuition = Number(invoice.totalTuition || 0);
                     } else {
-                        courses.forEach(c => {
-                            if (enrolledCourseIds.has(c.id) || (!isRegistered && !profile.exemptedCourses?.[c.id])) {
-                                totalTuition += c.cost;
-                            }
-                        });
+                        if (activePolicy === 'semester') {
+                            totalTuition = Number(details.tuitionFee || 0);
+                        } else {
+                            courses.forEach(c => {
+                                if (!profile.exemptedCourses?.[c.id]) {
+                                    totalTuition += c.cost;
+                                }
+                            });
+                        }
                     }
 
                     list.push({ 
