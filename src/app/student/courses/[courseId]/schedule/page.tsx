@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +10,7 @@ import { format, isToday, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileCheck, MapPin } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 type TimetableEntry = {
     day: string;
@@ -171,4 +171,3 @@ export default function CourseSchedulePage() {
         </div>
     );
 }
-

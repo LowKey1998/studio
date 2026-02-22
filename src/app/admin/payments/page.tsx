@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { 
@@ -583,8 +582,8 @@ export default function PaymentsManagementPage() {
                         const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
-                        nextRow.year = undefined;
-                        nextRow.semesterId = undefined;
+                        nextRow.year = undefined; // CLEAR PREVIOUS SELECTION
+                        nextRow.semesterId = undefined; // CLEAR PREVIOUS SELECTION
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
@@ -1366,4 +1365,3 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
-
