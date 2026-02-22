@@ -54,10 +54,13 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   // 1. Calculate Base Tuition
   let baseTuition = 0;
   if (policy === 'semester') {
-    baseTuition = Number(semesterTuition);
+    baseTuition = Number(semesterTuition) || 0;
   } else {
-    // Sum course costs. Default to 0 if course object or cost is missing.
-    baseTuition = (courses || []).reduce((sum, course) => sum + (Number(course?.cost) || 0), 0);
+    // Sum course costs. Force number conversion to ensure accurate summation.
+    baseTuition = (courses || []).reduce((sum, course) => {
+        const cost = Number(course?.cost);
+        return sum + (isNaN(cost) ? 0 : cost);
+    }, 0);
   }
 
   // 2. Apply Scholarship (only to tuition)

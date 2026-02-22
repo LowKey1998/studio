@@ -216,7 +216,7 @@ export default function StudentRegistrationPage() {
         } finally { 
             setLoading(false); 
         }
-    }, [currentUser, toast, semesters]);
+    }, [currentUser, toast]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
 
