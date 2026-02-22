@@ -250,11 +250,15 @@ export default function ApproveRegistrationsPage() {
             }
 
             const optionalFeesData = new Map<string, Fee>();
-            if (optionalFeesSnap.exists()) Object.entries(optionalFeesSnap.val()).forEach(([id, data]) => optionalFeesData.set(id, { id, ...(data as Omit<Fee, 'id'>) }));
+            if (optionalFeesSnap.exists()) {
+                Object.entries(optionalFeesSnap.val()).forEach(([id, data]) => optionalFeesData.set(id, { id, ...(data as Omit<Fee, 'id'>) }));
+            }
             setAllOptionalFees(optionalFeesData);
 
             const mandatoryFeesData = new Map<string, Fee>();
-            if (mandatoryFeesSnap.exists()) Object.entries(mandatoryFeesSnap.val()).forEach(([id, data]) => mandatoryFeesData.set(id, { id, ...(data as Omit<Fee, 'id'>) }));
+            if (mandatoryFeesSnap.exists()) {
+                Object.entries(mandatoryFeesSnap.val()).forEach(([id, data]) => mandatoryFeesData.set(id, { id, ...(data as Omit<Fee, 'id'>) }));
+            }
             setAllMandatoryFees(mandatoryFeesData);
             
             const assessmentsData = assessmentsSnap.exists() ? assessmentsSnap.val() : {};
@@ -758,7 +762,7 @@ export default function ApproveRegistrationsPage() {
                                                                 {!isStudentSelected && activeCourses.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
                                                             </div>
                                                             <div className='flex gap-2 items-center'>
-                                                                {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><HistoryIcon className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
+                                                                {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><History className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
                                                             </div>
                                                         </div>
                                                         {request.billingPolicy === 'course' && (

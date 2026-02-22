@@ -297,7 +297,7 @@ export default function RegisterForSemesterPage() {
                 mandatoryFees: Object.values(semesterDetails.mandatoryFees || {}),
                 optionalFees: selectedOptionalFees.map(id => ({ name: semesterDetails.optionalFees?.[id]?.name || 'Fee', amount: semesterDetails.optionalFees?.[id]?.amount || 0 })),
                 applyScholarship: applyScholarship,
-                scholarshipPercentage: existingRegistration?.scholarshipPercentage || 0, // In standard flow, percentage is applied by registrar later
+                scholarshipPercentage: existingRegistration?.scholarshipPercentage || 0,
                 lateFee: isLateRegistration ? lateFee : 0
             });
 

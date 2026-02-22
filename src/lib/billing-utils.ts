@@ -43,9 +43,9 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   const {
     policy,
     semesterTuition = 0,
-    courses,
-    mandatoryFees,
-    optionalFees,
+    courses = [],
+    mandatoryFees = [],
+    optionalFees = [],
     scholarshipPercentage = 0,
     applyScholarship = false,
     lateFee = 0,
