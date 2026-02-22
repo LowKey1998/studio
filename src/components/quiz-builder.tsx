@@ -146,7 +146,6 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
                     const quizSnap = await get(ref(db, `quizzes/${quizId}`));
                     if (quizSnap.exists()) setQuiz(quizSnap.val());
                 } else {
-                    // Initialize from search params for new quiz
                     const cId = searchParams.get('courseId');
                     const iIds = searchParams.get('intakeIds')?.split(',') || [];
                     const pIds = searchParams.get('programmeIds')?.split(',') || [];

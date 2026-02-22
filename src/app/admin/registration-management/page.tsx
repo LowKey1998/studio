@@ -200,7 +200,7 @@ function CreateOrEditDialogContent({
             const intake = allIntakes.find(i => i.id === intakeId);
             if (!intake) return;
             const intakeDateStr = parseIntakeDate(intake.name);
-            if (!intakeStartStr) return;
+            if (!intakeDateStr) return;
 
             if (!editingSemester || (!editingSemester.startDate && !editingSemester.endDate)) {
                 const predictedRange = calculateSemesterDateRange(

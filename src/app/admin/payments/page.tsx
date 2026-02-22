@@ -77,8 +77,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 
-// --- TYPE DEFINITIONS ---
-
 type StudentPaymentInfo = {
     userId: string;
     studentId: string;
@@ -144,8 +142,6 @@ type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; p
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
-// --- COMPONENTS ---
-
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
     value: string | undefined;
@@ -188,7 +184,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                     />
                 </div>
                 <Separator />
@@ -849,7 +845,7 @@ export default function PaymentsManagementPage() {
                             <CardDescription>Filter and audit student financial compliance.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Default Filters</Button>
+                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Defaults</Button>
                             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
                             <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                         </div>
@@ -1092,50 +1088,46 @@ export default function PaymentsManagementPage() {
                                             <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student Identity</Label></div>
                                             <div className="flex items-center gap-2">
                                                 <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
-                                                <span className="text-[10px] font-bold uppercase text-primary">New Student? (Request Creation)</span>
+                                                <span className="text-[10px] font-bold uppercase text-primary">New Student?</span>
                                             </div>
                                         </div>
                                         {row.isNewStudent ? (
-                                            <div className="space-y-3 animate-in slide-in-from-top-2 border p-3 rounded-lg bg-background/50 shadow-inner">
+                                            <div className="space-y-3 animate-in fade-in border p-3 rounded-lg bg-background/50 shadow-inner">
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <div className="space-y-1">
                                                         <Label className="text-[9px] uppercase">Full Name</Label>
                                                         <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs" />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <Label className="text-[9px] uppercase">Proposed Student ID</Label>
-                                                        <Input placeholder="e.g. T-2024-001" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs" />
+                                                        <Label className="text-[9px] uppercase">Proposed ID</Label>
+                                                        <Input placeholder="e.g. STU-NEW" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs" />
                                                     </div>
                                                 </div>
-                                                <Alert className="bg-blue-50/50 border-blue-200 py-2">
-                                                    <Info className="h-3 w-3 text-blue-600" />
-                                                    <AlertDescription className="text-[10px] text-blue-700 leading-tight">Saving this will log an unlinked deposit and notify Admissions to provision the account.</AlertDescription>
-                                                </Alert>
                                             </div>
                                         ) : (
                                             <>
                                                 <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
                                                 {row.userId && (
-                                                    <div className="text-[10px] font-bold text-primary animate-in fade-in flex items-center gap-1.5 px-1">
+                                                    <div className="text-[10px] font-bold text-primary flex items-center gap-1.5 px-1">
                                                         <UserCheck className="h-3 w-3" />
-                                                        Active phase: {calculateStandingForUser(row.userId)}
+                                                        Current Stand: {calculateStandingForUser(row.userId)}
                                                     </div>
                                                 )}
                                             </>
                                         )}
                                         
                                         <div className="pt-2 border-t">
-                                            <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground mb-2 block">Allocated Period (Payment For)</Label>
+                                            <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground mb-2 block">Target Allocation (Payment For)</Label>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase">Target Academic Year</Label>
+                                                    <Label className="text-[9px] uppercase">Year</Label>
                                                     <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
                                                         <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year..."/></SelectTrigger>
                                                         <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
                                                     </Select>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase">Target Semester</Label>
+                                                    <Label className="text-[9px] uppercase">Semester</Label>
                                                     <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
                                                         <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester..."/></SelectTrigger>
                                                         <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
@@ -1145,29 +1137,29 @@ export default function PaymentsManagementPage() {
                                         </div>
                                     </div>
                                     <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
-                                        <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Live Audit</Badge>}</div>
+                                        <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Audit</Badge>}</div>
                                         {row.semesterId && !row.isNewStudent ? (
                                             <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Due</span><span className="font-black text-xs">K{(row.totalDue || (parseFloat(row.setTotalDue || '0'))).toFixed(0)}</span></div>
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Due</span><span className="font-black text-xs">K{(row.totalDue || 0).toFixed(0)}</span></div>
                                                 <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">After Pay</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || parseFloat(row.setTotalDue || '0')) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
+                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">After Pay</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
-                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic px-4 text-center">{row.isNewStudent ? "New registration deposit allocation" : "Complete selection to view audit"}</div>}
+                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic px-4 text-center">{row.isNewStudent ? "New registration deposit" : "Complete selection to view audit"}</div>}
                                         <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1"><Label className="text-[9px]">Amount being paid</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
-                                            <div className="space-y-1"><Label className="text-[9px]">Note / Reference</Label><Input placeholder="Internal ref..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
+                                            <div className="space-y-1"><Label className="text-[9px]">Amount (ZMW)</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
+                                            <div className="space-y-1"><Label className="text-[9px]">Comment</Label><Input placeholder="Ref..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                         ))}
-                        <Button variant="outline" className="w-full border-dashed h-12" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Another Transaction Row</Button>
+                        <Button variant="outline" className="w-full border-dashed h-12" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
                     </div>
                     <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button>
                         <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0}>
                             {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Confirm & Save Transactions
+                            Confirm Transactions
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1178,12 +1170,8 @@ export default function PaymentsManagementPage() {
                     <DialogHeader>
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <DialogTitle>Financial Statement: {historyStudent?.studentName}</DialogTitle>
-                                <DialogDescription>Viewing full institutional ledger for {historyStudent?.studentId}</DialogDescription>
-                            </div>
-                            <div className="flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-lg border border-primary/10">
-                                <UserCheck className="h-4 w-4 text-primary" />
-                                <span className="text-xs font-bold text-primary uppercase tracking-tighter">Stand: {historyStudent ? calculateStandingForUser(historyStudent.userId) : ''}</span>
+                                <DialogTitle>Account Statement: {historyStudent?.studentName}</DialogTitle>
+                                <DialogDescription>Viewing ledger for {historyStudent?.studentId}</DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
@@ -1192,21 +1180,9 @@ export default function PaymentsManagementPage() {
                             <TabsList className="justify-start h-10 w-full overflow-x-auto bg-muted/50 p-1 shrink-0 scrollbar-hide">
                                 {paymentInfos
                                     .filter(p => p.userId === historyStudent.userId)
-                                    .sort((a,b) => {
-                                        const semA = semesters.find(s => s.id === a.semesterId);
-                                        const semB = semesters.find(s => s.id === b.semesterId);
-                                        if (!semA || !semB) return 0;
-                                        return (semB.year * 10 + semB.semesterInYear) - (semA.year * 10 + semA.semesterInYear);
-                                    })
                                     .map(p => {
                                         const sem = semesters.find(s => s.id === p.semesterId);
-                                        const intake = allIntakes.find(i => i.id === sem?.intakeId);
-                                        const standing = sem ? `Y${sem.year}S${sem.semesterInYear}` : 'N/A';
-                                        return (
-                                            <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4 tracking-widest whitespace-nowrap">
-                                                {intake?.name} - {standing}
-                                            </TabsTrigger>
-                                        )
+                                        return <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4">{sem?.name || 'General'}</TabsTrigger>
                                     })
                                 }
                             </TabsList>
@@ -1224,7 +1200,7 @@ export default function PaymentsManagementPage() {
                                                     setAdjustmentTarget({ type: 'invoice', id: p.invoiceId, oldValue: p.totalDue, userId: p.userId, studentName: p.studentName, studentId: p.studentId });
                                                     setAdjNewValue(String(p.totalDue));
                                                     setIsAdjustmentOpen(true);
-                                                }}><Pencil className="h-2.5 w-2.5 mr-1"/> Request Adjustment</Button>
+                                                }}><Pencil className="h-2.5 w-2.5 mr-1"/> Request Adjust</Button>
                                             </div>
                                             <div className="p-3 rounded-lg border bg-green-50/50">
                                                 <p className="text-[9px] font-black uppercase text-green-700 tracking-widest">Amount Paid</p>
@@ -1241,7 +1217,7 @@ export default function PaymentsManagementPage() {
                                                     <TableRow>
                                                         <TableHead>Date</TableHead>
                                                         <TableHead>Method</TableHead>
-                                                        <TableHead>Reference / Comment</TableHead>
+                                                        <TableHead>Comment</TableHead>
                                                         <TableHead className="text-right">Amount</TableHead>
                                                         <TableHead className="w-10"></TableHead>
                                                     </TableRow>
@@ -1250,10 +1226,10 @@ export default function PaymentsManagementPage() {
                                                     {rawTransactions
                                                         .filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId)
                                                         .map(tx => (
-                                                            <TableRow key={tx.key} className="group hover:bg-muted/30">
+                                                            <TableRow key={tx.key} className="group hover:bg-muted/20">
                                                                 <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                                <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black tracking-tighter">{tx.method}</Badge></TableCell>
-                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment || tx.transactionId}</TableCell>
+                                                                <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method}</Badge></TableCell>
+                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment || '-'}</TableCell>
                                                                 <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
                                                                 <TableCell>
                                                                     <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => {
@@ -1265,9 +1241,6 @@ export default function PaymentsManagementPage() {
                                                             </TableRow>
                                                         ))
                                                     }
-                                                    {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (
-                                                        <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions found for this academic phase.</TableCell></TableRow>
-                                                    )}
                                                 </TableBody>
                                             </Table>
                                         </div>
@@ -1277,7 +1250,7 @@ export default function PaymentsManagementPage() {
                         </Tabs>
                     )}
                     <DialogFooter className="border-t pt-4">
-                        <DialogClose asChild><Button variant="outline">Close Statement</Button></DialogClose>
+                        <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -1285,40 +1258,36 @@ export default function PaymentsManagementPage() {
             <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Request Financial Correction</DialogTitle>
-                        <DialogDescription>Submit a formal adjustment request for administrative review.</DialogDescription>
+                        <DialogTitle>Request Adjustment</DialogTitle>
+                        <DialogDescription>Propose a financial correction for administrative review.</DialogDescription>
                     </DialogHeader>
                     {adjustmentTarget && (
                         <div className="space-y-4 py-4">
                             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                                <Label className="text-[10px] font-black uppercase tracking-widest opacity-60">Audit Target</Label>
+                                <Label className="text-[10px] font-black uppercase tracking-widest opacity-60">Target</Label>
                                 <p className="text-sm font-bold capitalize">{adjustmentTarget.type}: {adjustmentTarget.studentName}</p>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Original Record</Label>
+                                    <Label className="text-xs">Original Value</Label>
                                     <div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm line-through opacity-50 font-mono">ZMW {adjustmentTarget.oldValue.toFixed(2)}</div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs font-bold text-primary">New Proposed Value</Label>
+                                    <Label className="text-xs font-bold text-primary">New Value</Label>
                                     <Input type="number" value={adjNewValue} onChange={e => setAdjNewValue(e.target.value)} placeholder="0.00" className="border-primary/40 font-mono font-bold" />
                                 </div>
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-xs font-bold">Reason for Change (Audit Comment)</Label>
-                                <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Explain the error or adjustment context..." rows={4} />
+                                <Label className="text-xs font-bold">Reason for Change</Label>
+                                <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Explain the correction..." rows={4} />
                             </div>
-                            <Alert variant="default" className="bg-blue-50 border-blue-200 py-2">
-                                <Info className="h-4 w-4 text-primary" />
-                                <AlertDescription className="text-[10px] text-blue-800 leading-tight">Requests are logged and verified before the student's actual balance is modified.</AlertDescription>
-                            </Alert>
                         </div>
                     )}
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsAdjustmentOpen(false)}>Cancel</Button>
                         <Button onClick={handleRequestAdjustment} disabled={formLoading || !adjNewValue || !adjReason.trim()}>
                             {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Submit for Approval
+                            Submit Request
                         </Button>
                     </DialogFooter>
                 </DialogContent>

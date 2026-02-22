@@ -9,7 +9,7 @@ import { ref, onValue, get, remove } from 'firebase/database';
 import Link from 'next/link';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
@@ -67,6 +67,7 @@ export default function StaffQuizzesPage() {
 
     const { toast } = useToast();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     React.useEffect(() => {
         onAuthStateChanged(auth, user => setCurrentUser(user));
@@ -84,6 +85,13 @@ export default function StaffQuizzesPage() {
             if(pSnap.exists()) setProgrammes(Object.entries(pSnap.val()).map(([id, d]:[string, any]) => ({ id, name: d.name })));
             if(cSnap.exists()) setAllCourses(Object.entries(cSnap.val()).map(([id, d]:[string, any]) => ({ id, ...d })));
             if(tSnap.exists()) setTemplates(tSnap.val());
+
+            // Handle incoming courseId from "My Courses" page
+            const incomingCourseId = searchParams.get('courseId');
+            if (incomingCourseId) {
+                setSelectedCourseId(incomingCourseId);
+                setIsCreateDialogOpen(true);
+            }
         };
         fetchMeta();
 
@@ -109,7 +117,7 @@ export default function StaffQuizzesPage() {
         });
 
         return () => { unsubQuizzes(); unsubSubs(); };
-    }, []);
+    }, [searchParams]);
 
     const handleCreateQuiz = () => {
         if (!selectedCourseId) {

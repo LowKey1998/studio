@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Users, Layers, Clock, MapPin } from "lucide-react";
+import { ChevronRight, Info, Users, Layers, Clock, MapPin, FileQuestion } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -15,25 +15,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
-type CourseInstance = {
-    id: string; // courseId
-    name: string;
-    code: string;
-    studentCount: number;
-    semester: string;
-    semesterId: string;
-    day: string;
-    startTime: string;
-    endTime: string;
-    venue: string;
-    scheduleKey: string;
-    separateInstance: boolean;
-};
-
 type MergedCourse = {
     key: string; 
     courseId: string;
-    semesterId: string; // First matched semester for linking
+    semesterId: string; 
     name: string;
     code: string;
     totalStudentCount: number;
@@ -213,7 +198,7 @@ export default function StaffCoursesPage() {
                         <div>
                             <CardTitle className="font-headline text-2xl">My Classes</CardTitle>
                             <CardDescription>
-                                Your assigned courses and student groupings. Multiple weekly sessions are grouped per card.
+                                Your assigned courses and student groupings.
                             </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
@@ -268,10 +253,15 @@ export default function StaffCoursesPage() {
                                 <span>{course.totalStudentCount} Students Enrolled</span>
                             </div>
                         </CardContent>
-                        <CardFooter>
+                        <CardFooter className="flex flex-col gap-2">
                             <Button asChild className="w-full shadow-md group">
                                 <Link href={`/staff/courses/${course.courseId}/assignments?semesterId=${course.semesterId}`}>
                                     Manage Class <ChevronRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                </Link>
+                            </Button>
+                            <Button asChild variant="outline" className="w-full">
+                                <Link href={`/staff/quizzes?courseId=${course.courseId}`}>
+                                    <FileQuestion className="mr-2 h-4 w-4" /> Create Online Quiz
                                 </Link>
                             </Button>
                         </CardFooter>
