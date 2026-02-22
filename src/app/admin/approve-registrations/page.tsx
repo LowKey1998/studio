@@ -44,7 +44,8 @@ import {
     AlertDialogDescription, 
     AlertDialogFooter, 
     AlertDialogHeader, 
-    AlertDialogTitle 
+    AlertDialogTitle,
+    AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { 
     Dialog, 
@@ -853,7 +854,7 @@ export default function ApproveRegistrationsPage() {
                                 )}
                             </div>
                         </TabsContent>
-                    </Tabs>
+                     </Tabs>
                 </CardContent>
             </Card>
 
