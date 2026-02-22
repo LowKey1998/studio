@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { 
@@ -51,7 +52,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, update, push, set, onValue, off } from 'firebase/database';
+import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +105,7 @@ type PaymentRecord = {
     key: number;
     userId?: string;
     isNewStudent?: boolean;
+    tempStudentId?: string;
     tempStudentName?: string;
     year?: string;
     semesterId?: string;
@@ -126,6 +128,7 @@ type Transaction = {
     status: 'successful' | 'failed';
     method?: string;
     comment?: string;
+    senderName?: string;
     semesterName?: string;
     semesterId?: string;
     academicStanding?: string;
@@ -184,11 +187,11 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                     />
                 </div>
                 <Separator />
-                <ScrollArea className="h-200px">
+                <ScrollArea className="h-[200px]">
                     <div className="p-1">
                     {filteredOptions.length > 0 ? filteredOptions.map(group => (
                         <div key={group.groupName} className="p-1">
@@ -230,6 +233,8 @@ export default function PaymentsManagementPage() {
     
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    
+    // Filters
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
@@ -266,7 +271,6 @@ export default function PaymentsManagementPage() {
 
     const { toast } = useToast();
 
-    // Setup stable refs for compute logic to avoid re-creation
     const dataRefs = React.useMemo(() => ({
         users: ref(db, 'users'),
         registrations: ref(db, 'registrations'),
@@ -298,7 +302,6 @@ export default function PaymentsManagementPage() {
         return `Year ${state.year}, Sem ${state.semester}`;
     };
 
-    // Consolidated Effect to manage all real-time data nodes
     React.useEffect(() => {
         if (!userData?.uid) return;
         
@@ -317,7 +320,6 @@ export default function PaymentsManagementPage() {
             const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
             const finData = store.financialSettings || { paymentThreshold: 75 };
 
-            // Process Transactions
             const transactionsList: Transaction[] = [];
             for (const txId in txsData) {
                 const tx = txsData[txId];
@@ -339,10 +341,9 @@ export default function PaymentsManagementPage() {
             }
             setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
-            // Process Student Payment Summaries
             const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
             const globalThreshold = finData.paymentThreshold || 75;
-            const now = new Date(Date.now() + serverTimeOffset);
+            const now = getCurrentServerDate();
 
             for (const userId in regsData) {
                 const profile = users[userId];
@@ -391,13 +392,12 @@ export default function PaymentsManagementPage() {
                 }
             }
 
-            // Handle Unlinked Transactions (Requests)
             transactionsList.filter(t => t.isUnlinked).forEach(t => {
                 const key = `unlinked-${t.key}`;
                 studentPaymentMap[key] = {
-                    userId: t.userId, studentId: 'NEW-REQ', studentName: t.senderName || 'Unknown Prospect',
+                    userId: t.userId || 'NEW', studentId: 'NEW-REQ', studentName: t.senderName || 'Unknown Prospect',
                     totalDue: 0, totalPaid: t.amount, balance: 0,
-                    programmeId: null, intakeId: null, semesterId: null,
+                    programmeId: null, intakeId: null, semesterId: t.semesterId || null,
                     invoiceId: 'none', enrolledCourses: [],
                     thresholdMet: true, penaltiesActive: false, isScholarship: false,
                     paidPercentage: 100, targetThreshold: 0, gracePeriod: 0,
@@ -409,7 +409,6 @@ export default function PaymentsManagementPage() {
             setLoading(false);
         };
 
-        // Attach individual listeners
         unsubs.push(onValue(dataRefs.users, (snapshot) => {
             const data = snapshot.val() || {};
             const studentList: StudentInfo[] = [];
@@ -455,6 +454,20 @@ export default function PaymentsManagementPage() {
             store.academicCalendar = s.val(); 
             computeDerived(); 
         }));
+
+        // Load saved filters
+        const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
+        get(savedFiltersRef).then(snap => {
+            if (snap.exists()) {
+                const f = snap.val();
+                if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
+                if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
+                if(f.timeFilter) setTimeFilter(f.timeFilter);
+                if(f.minPaidFilter) setMinPaidFilter(f.minPaidFilter);
+                if(f.maxPaidFilter) setMaxPaidFilter(f.maxPaidFilter);
+                if(f.equalPaidFilter) setEqualPaidFilter(f.equalPaidFilter);
+            }
+        });
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, serverTimeOffset, dataRefs]);
@@ -542,7 +555,7 @@ export default function PaymentsManagementPage() {
             if (row.key === key) {
                 const nextRow = { ...row, [field]: value };
                 
-                if (field === 'userId' && !value.includes('PROSPECT')) {
+                if (field === 'userId' && !row.isNewStudent) {
                     const studentInfo = allStudents.find(s => s.uid === value);
                     if (studentInfo) {
                         const studentIntakeId = studentInfo.intakeId;
@@ -554,16 +567,26 @@ export default function PaymentsManagementPage() {
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
-                        nextRow.isNewStudent = false;
+                    }
+                } else if (field === 'isNewStudent') {
+                    if (value) {
+                        nextRow.userId = undefined;
+                        nextRow.availableYears = Array.from(new Set(semesters.map(s => String(s.year)))).sort();
+                    } else {
+                        nextRow.tempStudentId = undefined;
+                        nextRow.tempStudentName = undefined;
                     }
                 } else if (field === 'year') {
-                    const studentInfo = allStudents.find(s => s.uid === row.userId);
-                    const validSems = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
-                    nextRow.availableSemesters = validSems;
+                    if (row.isNewStudent) {
+                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value);
+                    } else {
+                        const studentInfo = allStudents.find(s => s.uid === row.userId);
+                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
+                    }
                     nextRow.semesterId = undefined;
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
-                } else if (field === 'semesterId') {
+                } else if (field === 'semesterId' && !row.isNewStudent) {
                     const studentUid = row.userId;
                     const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
                     nextRow.totalDue = info?.totalDue || 0;
@@ -581,7 +604,7 @@ export default function PaymentsManagementPage() {
     };
 
     const handleSaveAllBulk = async () => {
-        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && (p.userId || p.isNewStudent));
+        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && (p.userId || (p.isNewStudent && p.tempStudentName && p.semesterId)));
         if(paymentsToRecord.length === 0) { toast({ variant: 'destructive', title: 'No valid payments entered.' }); return; }
         
         setFormLoading(true);
@@ -593,18 +616,18 @@ export default function PaymentsManagementPage() {
                 const amountFloat = parseFloat(record.amount);
                 
                 if (record.isNewStudent) {
-                    // 1. Create a student creation request
                     const requestRef = push(ref(db, 'studentCreationRequests'));
                     const requestId = requestRef.key!;
                     updates[`studentCreationRequests/${requestId}`] = {
-                        tempName: record.tempStudentName || 'Walk-in Prospect',
+                        tempId: record.tempStudentId || 'TBA',
+                        tempName: record.tempStudentName,
+                        targetSemesterId: record.semesterId,
                         timestamp: serverTimestamp(),
                         amountPaid: amountFloat,
                         comment: record.comment || '',
                         status: 'pending'
                     };
 
-                    // 2. Create unlinked transaction
                     const txRef = push(ref(db, 'transactions'));
                     updates[`transactions/${txRef.key}`] = {
                         transactionId: `NEW-REQ-${Date.now()}-${txRef.key?.slice(-4)}`,
@@ -614,7 +637,8 @@ export default function PaymentsManagementPage() {
                         method: 'Manual/Deposit',
                         isUnlinked: true,
                         requestId: requestId,
-                        senderName: record.tempStudentName || 'Unknown Prospect',
+                        senderName: record.tempStudentName,
+                        semesterId: record.semesterId,
                         comment: record.comment || 'Payment for new student registration'
                     };
                 } else {
@@ -847,17 +871,11 @@ export default function PaymentsManagementPage() {
                             </Select>
                         </div>
                         <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Time Range</Label>
-                            <Select value={timeFilter} onValueChange={(val:any) => setTimeFilter(val)}>
-                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Time</SelectItem>
-                                    <SelectItem value="today">Today</SelectItem>
-                                    <SelectItem value="week">This Week</SelectItem>
-                                    <SelectItem value="month">This Month</SelectItem>
-                                    <SelectItem value="period">Custom Period</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <Label className="text-[10px] font-black uppercase">Paid Range (ZMW)</Label>
+                            <div className="flex items-center gap-2">
+                                <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Min" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} />
+                                <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Max" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} />
+                            </div>
                         </div>
                         <div className="space-y-1 lg:col-span-2">
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
@@ -898,7 +916,7 @@ export default function PaymentsManagementPage() {
                                                             </Badge>
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name || 'General Record'}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-xs">{programmes.find(p=>p.id===info.programmeId)?.name || 'N/A'}</TableCell>
@@ -1070,15 +1088,36 @@ export default function PaymentsManagementPage() {
                                             </div>
                                         </div>
                                         {row.isNewStudent ? (
-                                            <div className="space-y-2 animate-in slide-in-from-top-2">
-                                                <Label className="text-[9px] uppercase">Prospective Student Name</Label>
-                                                <div className="flex gap-2">
-                                                    <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-10" />
-                                                    <Button variant="secondary" className="h-10 shrink-0 gap-2"><UserPlus className="h-4 w-4"/> Request Student Creation</Button>
+                                            <div className="space-y-3 animate-in slide-in-from-top-2 border p-3 rounded-lg bg-background/50 shadow-inner">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[9px] uppercase">Full Name</Label>
+                                                        <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[9px] uppercase">ID (Internal Ref)</Label>
+                                                        <Input placeholder="Assign Temp ID..." value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs" />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[9px] uppercase">Year</Label>
+                                                        <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
+                                                            <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year..."/></SelectTrigger>
+                                                            <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[9px] uppercase">Semester</Label>
+                                                        <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
+                                                            <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester..."/></SelectTrigger>
+                                                            <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
+                                                        </Select>
+                                                    </div>
                                                 </div>
                                                 <Alert className="bg-blue-50/50 border-blue-200 py-2">
                                                     <Info className="h-3 w-3 text-blue-600" />
-                                                    <AlertDescription className="text-[10px] text-blue-700">A creation request will be sent to Admissions once this payment is saved.</AlertDescription>
+                                                    <AlertDescription className="text-[10px] text-blue-700 leading-tight">An unlinked payment will be recorded and sent to Admissions for account provisioning.</AlertDescription>
                                                 </Alert>
                                             </div>
                                         ) : (

@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -79,6 +80,15 @@ const getOrdinalSuffix = (i: number) => {
     if (i === 2) return '2nd';
     if (i === 3) return '3rd';
     return `${i}th`;
+};
+
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter((id: any) => typeof id === 'string');
+    if (typeof raw === 'object') {
+        return Object.keys(raw).filter(k => raw[k] === true);
+    }
+    return [];
 };
 
 export default function RegisterForSemesterPage() {
