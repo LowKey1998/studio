@@ -48,7 +48,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -219,7 +219,6 @@ export default function PaymentsManagementPage() {
     const [serverTimeOffset, setServerTimeOffset] = React.useState(0);
     
     const [loading, setLoading] = React.useState(true);
-    const isFirstLoad = React.useRef(true);
     const [saving, setSaving] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState('');
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
@@ -251,6 +250,20 @@ export default function PaymentsManagementPage() {
 
     const { toast } = useToast();
 
+    // Setup stable refs for compute logic to avoid re-creation
+    const dataRefs = React.useMemo(() => ({
+        users: ref(db, 'users'),
+        registrations: ref(db, 'registrations'),
+        transactions: ref(db, 'transactions'),
+        programmes: ref(db, 'programmes'),
+        semesters: ref(db, 'semesters'),
+        intakes: ref(db, 'intakes'),
+        invoices: ref(db, 'invoices'),
+        financialSettings: ref(db, 'settings/financialSettings'),
+        calendarEvents: ref(db, 'calendarEvents'),
+        academicCalendar: ref(db, 'settings/academicCalendar')
+    }), []);
+
     React.useEffect(() => {
         const offsetRef = ref(db, '.info/serverTimeOffset');
         onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
@@ -269,141 +282,151 @@ export default function PaymentsManagementPage() {
         return `Year ${state.year}, Sem ${state.semester}`;
     };
 
+    // Consolidated Effect to manage all real-time data nodes without infinite update loops
     React.useEffect(() => {
         if (!userData?.uid) return;
         
-        const refs = [
-            ref(db, 'users'),
-            ref(db, 'registrations'),
-            ref(db, 'transactions'),
-            ref(db, 'programmes'),
-            ref(db, 'semesters'),
-            ref(db, 'intakes'),
-            ref(db, 'invoices'),
-            ref(db, 'settings/financialSettings'),
-            ref(db, 'calendarEvents'),
-            ref(db, 'settings/academicCalendar')
-        ];
+        const unsubs: (() => void)[] = [];
+        const store: any = {};
 
-        const unsubs = refs.map((r, index) => onValue(r, (snapshot) => {
-            const data = snapshot.val() || {};
-            switch(index) {
-                case 0: {
-                    const users = data;
-                    const studentList: StudentInfo[] = [];
-                    for (const uid in users) {
-                        if (users[uid].role?.toLowerCase() === 'student') {
-                            studentList.push({ uid, id: users[uid].id, name: users[uid].name, intakeId: users[uid].intakeId, programmeId: users[uid].programmeId });
-                        }
-                    }
-                    setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
-                } break;
-                case 3: setProgrammes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
-                case 4: setSemesters(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
-                case 5: setAllIntakes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d}))); break;
-                case 7: setFinancialSettings(data); break;
-                case 9: setCalendarSettings(data); break;
+        const computeDerived = () => {
+            if (!store.users || !store.registrations || !store.semesters) return;
+
+            const users = store.users;
+            const regsData = store.registrations;
+            const txsData = store.transactions || {};
+            const semsData = store.semesters;
+            const intsData = store.intakes || {};
+            const invsData = store.invoices || {};
+            const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
+            const finData = store.financialSettings || { paymentThreshold: 75 };
+
+            // Process Transactions
+            const transactionsList: Transaction[] = [];
+            for (const txId in txsData) {
+                const tx = txsData[txId];
+                if(tx.status !== 'successful') continue;
+                const userId = tx.userId;
+                const userRegs = regsData[userId] || {};
+                const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
+                const sInfo = semesterId ? semsData[semesterId] : null;
+                const iInfo = sInfo ? intsData[sInfo.intakeId] : null;
+
+                transactionsList.push({
+                    key: txId,
+                    ...tx,
+                    semesterId,
+                    semesterName: semesterId ? semsData[semesterId]?.name : undefined,
+                    intakeName: iInfo?.name,
+                    academicStanding: semesterId ? `Year ${semsData[semesterId].year}, Sem ${semsData[semesterId].semesterInYear}` : undefined
+                });
             }
-            
-            const refreshDerived = async () => {
-                if(isFirstLoad.current) setLoading(true);
-                
-                const [u, r, t, p, s, i, inv, f, ev] = await Promise.all(refs.slice(0, 9).map(ref => get(ref)));
-                
-                const users = u.val() || {};
-                const regsData = r.val() || {};
-                const txsData = t.val() || {};
-                const semsData = s.val() || {};
-                const intsData = i.val() || {};
-                const invsData = inv.val() || {};
-                const calendarEvents = Object.values(ev.val() || {}) as any[];
-                const finData = f.val() || { paymentThreshold: 75 };
+            setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
-                const transactionsList: Transaction[] = [];
-                for (const txId in txsData) {
-                    const tx = txsData[txId];
-                    if(tx.status !== 'successful') continue;
-                    const userId = tx.userId;
-                    const userRegs = regsData[userId] || {};
-                    const semesterId = Object.keys(userRegs).find(sid => userRegs[sid].invoiceId === tx.invoiceId);
-                    const sInfo = semesterId ? semsData[semesterId] : null;
-                    const iInfo = sInfo ? intsData[sInfo.intakeId] : null;
+            // Process Student Payment Summaries
+            const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
+            const globalThreshold = finData.paymentThreshold || 75;
+            const now = new Date(Date.now() + serverTimeOffset);
 
-                    transactionsList.push({
-                        key: txId,
-                        ...tx,
-                        semesterId,
-                        semesterName: semesterId ? semsData[semesterId]?.name : undefined,
-                        intakeName: iInfo?.name,
-                        academicStanding: semesterId ? `Year ${semsData[semesterId].year}, Sem ${semsData[semesterId].semesterInYear}` : undefined
-                    });
-                }
-                setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
+            for (const userId in regsData) {
+                const profile = users[userId];
+                if (!profile || profile.role?.toLowerCase() !== 'student') continue;
 
-                const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
-                const globalThreshold = finData.paymentThreshold || 75;
-                const now = getCurrentServerDate();
+                for (const semesterId in regsData[userId]) {
+                    const reg = regsData[userId][semesterId];
+                    const semesterInfo = semsData[semesterId];
+                    if (!semesterInfo) continue;
 
-                for (const userId in regsData) {
-                    const userProfile = users[userId];
-                    if (!userProfile || userProfile.role?.toLowerCase() !== 'student') continue;
+                    const invoice = invsData[userId]?.[reg.invoiceId];
+                    if (invoice) {
+                        const tuition = Number(invoice.totalTuition || 0);
+                        const mandatory = Number(invoice.totalMandatoryFees || 0);
+                        const optional = Number(invoice.totalOptionalFees || 0);
+                        const late = Number(invoice.lateFee || 0);
+                        const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
-                    for (const semesterId in regsData[userId]) {
-                        const reg = regsData[userId][semesterId];
-                        const semesterInfo = semsData[semesterId];
-                        if (!semesterInfo) continue;
+                        const totalPayable = invoice.applyScholarship 
+                            ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
+                            : (tuition + mandatory + optional + late);
 
-                        const invoice = invsData[userId]?.[reg.invoiceId];
-                        if (invoice) {
-                            let tuition = Number(invoice.totalTuition || 0);
-                            if (tuition === 0 && semesterInfo.billingPolicy === 'semester') {
-                                tuition = Number(semesterInfo.tuitionFee || 0);
-                            }
-                            
-                            let mandatory = Number(invoice.totalMandatoryFees || 0);
-                            if (mandatory === 0 && semesterInfo.mandatoryFees) {
-                                mandatory = Object.values(semesterInfo.mandatoryFees as Record<string, any>).reduce((acc, f) => acc + (f.amount || 0), 0);
-                            }
+                        const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
+                        const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                        const balance = Math.max(0, totalPayable - totalPaid);
+                        
+                        const threshold = semesterInfo.paymentThreshold || globalThreshold;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const thresholdMet = paidPercentage >= threshold;
 
-                            const scholarPerc = Number(invoice.scholarshipPercentage || 100);
-                            const totalPayable = invoice.applyScholarship 
-                                ? (tuition * (1 - (scholarPerc / 100))) + mandatory + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0)
-                                : (tuition + mandatory + Number(invoice.totalOptionalFees || 0) + (invoice.lateFee || 0));
+                        const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
+                        const grace = semesterInfo.gracePeriodDays ?? 7;
+                        const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
+                        const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
 
-                            const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
-                            const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                            const balance = Math.max(0, totalPayable - totalPaid);
-                            
-                            const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                            const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
-                            const thresholdMet = paidPercentage >= threshold;
-
-                            const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
-                            const grace = semesterInfo.gracePeriodDays ?? 7;
-                            const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
-                            const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
-
-                            studentPaymentMap[`${userId}-${semesterId}`] = {
-                                userId, studentId: userProfile.id, studentName: userProfile.name,
-                                totalDue: totalPayable, totalPaid, balance,
-                                programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
-                                invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
-                                thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
-                                paidPercentage, targetThreshold: threshold, gracePeriod: grace,
-                                status: balance <= 0.01 ? 'Paid' : 'Pending'
-                            };
-                        }
+                        studentPaymentMap[`${userId}-${semesterId}`] = {
+                            userId, studentId: profile.id, studentName: profile.name,
+                            totalDue: totalPayable, totalPaid, balance,
+                            programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
+                            invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
+                            thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
+                            paidPercentage, targetThreshold: threshold, gracePeriod: grace,
+                            status: balance <= 0.01 ? 'Paid' : 'Pending'
+                        };
                     }
                 }
-                setPaymentInfos(Object.values(studentPaymentMap));
-                setLoading(false);
-                isFirstLoad.current = false;
-            };
-            refreshDerived();
+            }
+            setPaymentInfos(Object.values(studentPaymentMap));
+            setLoading(false);
+        };
+
+        // Attach individual listeners
+        unsubs.push(onValue(dataRefs.users, (snapshot) => {
+            const data = snapshot.val() || {};
+            const studentList: StudentInfo[] = [];
+            for (const uid in data) {
+                if (data[uid].role?.toLowerCase() === 'student') {
+                    studentList.push({ uid, id: data[uid].id, name: data[uid].name, intakeId: data[uid].intakeId, programmeId: data[uid].programmeId });
+                }
+            }
+            setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
+            store.users = data;
+            computeDerived();
+        }));
+
+        unsubs.push(onValue(dataRefs.registrations, (s) => { store.registrations = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.transactions, (s) => { store.transactions = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.programmes, (s) => {
+            const data = s.val() || {};
+            setProgrammes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
+            store.programmes = data;
+            computeDerived();
+        }));
+        unsubs.push(onValue(dataRefs.semesters, (s) => {
+            const data = s.val() || {};
+            setSemesters(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
+            store.semesters = data;
+            computeDerived();
+        }));
+        unsubs.push(onValue(dataRefs.intakes, (s) => {
+            const data = s.val() || {};
+            setAllIntakes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
+            store.intakes = data;
+            computeDerived();
+        }));
+        unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.financialSettings, (s) => { 
+            setFinancialSettings(s.val()); 
+            store.financialSettings = s.val(); 
+            computeDerived(); 
+        }));
+        unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.academicCalendar, (s) => { 
+            setCalendarSettings(s.val()); 
+            store.academicCalendar = s.val(); 
+            computeDerived(); 
         }));
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData?.uid, serverTimeOffset, allIntakes, allStudents, semesters]);
+    }, [userData?.uid, serverTimeOffset, dataRefs]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();

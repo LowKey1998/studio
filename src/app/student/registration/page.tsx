@@ -1,8 +1,28 @@
 'use client';
 import * as React from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag, Trash2, Pencil, X, Wallet, GraduationCap } from 'lucide-react';
+import { 
+    Loader2, 
+    Info, 
+    ChevronRight, 
+    BookCopy, 
+    CheckCircle2, 
+    Clock, 
+    UserCheck, 
+    Calendar as CalendarIcon, 
+    AlertCircle, 
+    Route, 
+    Receipt, 
+    DollarSign, 
+    CalendarDays, 
+    Tag, 
+    Trash2, 
+    Pencil, 
+    X, 
+    Wallet, 
+    GraduationCap 
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -208,7 +228,6 @@ export default function StudentRegistrationPage() {
                         isCurrentStanding,
                         selectedPaymentPlan: registration?.paymentPlan,
                         billingBreakdown: breakdown,
-                        totalTuition: breakdown.baseTuition,
                         billingPolicy: activePolicy,
                         source: registration?.source || 'manual',
                         statusInDb: registration?.status,
@@ -217,13 +236,13 @@ export default function StudentRegistrationPage() {
                 }
             }
             setSemestersForPath(list.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
+            setLoading(false);
         } catch (error: any) { 
             logError(error.message, 'Registration Fetch', error);
             toast({ variant: 'destructive', title: 'Error loading semesters' }); 
-        } finally { 
-            setLoading(false); 
+            setLoading(false);
         }
-    }, [currentUser, toast]);
+    }, [currentUser, toast, allPaymentPlans]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
 
@@ -376,7 +395,7 @@ export default function StudentRegistrationPage() {
                                                             <span className="opacity-70 italic">Tuition Additions {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${billingBreakdown.courses?.length || 0} Courses)`}:</span>
                                                             <span>ZMW {billingBreakdown.baseTuition.toFixed(2)}</span>
                                                         </div>
-                                                        {sem.billingPolicy === 'course' && billingBreakdown.courses?.length > 0 && (
+                                                        {sem.billingPolicy === 'course' && billingBreakdown.courses && billingBreakdown.courses.length > 0 && (
                                                             <div className="pl-4 space-y-1 mt-1 border-l-2 border-primary/10 ml-1">
                                                                 {billingBreakdown.courses.map(c => {
                                                                     const courseMeta = sem.courses.find(cm => cm.id === c.id);
@@ -468,7 +487,7 @@ export default function StudentRegistrationPage() {
                         <div className="py-24 text-center border-2 border-dashed rounded-3xl bg-muted/5">
                             <Route className="h-12 w-12 mx-auto opacity-10 mb-4" />
                             <h3 className="text-lg font-bold">No Active Pathways</h3>
-                            <p className="text-sm text-muted-foreground max-w-xs mx-auto">There are currently no active registration windows open for your specific intake and programme path.</p>
+                            <p className="text-sm text-muted-foreground max-xs mx-auto">There are currently no active registration windows open for your specific intake and programme path.</p>
                         </div>
                     )}
                 </CardContent>
