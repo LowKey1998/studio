@@ -6,21 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, Loader2, Save, X, GripVertical, Link as LinkIcon } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, Save, X, GripVertical, Link as LinkIcon, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
 import { ref, get, set, push, serverTimestamp, update, onValue } from 'firebase/database';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from './ui/checkbox';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from "@/components/ui/separator";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Skeleton } from './ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { Info } from 'lucide-react';
-import { ScrollArea } from './ui/scroll-area';
-import { Badge } from './ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 
 
 type Question = {
@@ -79,7 +79,7 @@ const SortableQuestionItem = ({ sectionId, question, index, updateQuestion, remo
                 <button {...attributes} {...listeners} className="cursor-grab p-1"><GripVertical className="h-5 w-5 text-muted-foreground"/></button>
                 <div className="flex-grow space-y-2">
                     <Textarea placeholder="Question Text" value={question.text} onChange={(e) => updateQuestion(sectionId, question.id, 'text', e.target.value)} />
-                    <Select value={question.type} onValueChange={(value) => updateQuestion(sectionId, question.id, 'type', value)}>
+                    <Select value={question.type} onValueChange={(value) => updateQuestion(sectionId, question.id, 'type', value as any)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="multiple-choice">Multiple Choice</SelectItem>

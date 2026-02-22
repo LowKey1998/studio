@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { 
@@ -38,7 +37,8 @@ import {
     MoreVertical,
     Pencil,
     UserPlus,
-    Tag
+    Tag,
+    Equal
 } from 'lucide-react';
 import { 
     Card, 
@@ -856,7 +856,7 @@ export default function PaymentsManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Programme</Label>
                             <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
@@ -876,6 +876,13 @@ export default function PaymentsManagementPage() {
                             <div className="flex items-center gap-2">
                                 <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Min" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} />
                                 <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Max" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Equal To (ZMW)</Label>
+                            <div className="relative">
+                                <Equal className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground opacity-50" />
+                                <Input className="h-9 pl-8 bg-background border-primary/20 text-xs" placeholder="Exact..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} />
                             </div>
                         </div>
                         <div className="space-y-1 lg:col-span-2">
@@ -1122,7 +1129,7 @@ export default function PaymentsManagementPage() {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
                                                     <Label className="text-[9px] uppercase">Target Academic Year</Label>
-                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.isNewStudent && !row.userId}>
+                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
                                                         <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year..."/></SelectTrigger>
                                                         <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
                                                     </Select>
