@@ -35,8 +35,8 @@ type SemesterWithStatus = Semester & {
     totalTuition: number;
     billingPolicy: 'course' | 'semester';
     source: 'auto' | 'manual';
-    statusInDb: 'Pending Approval' | 'Pending Payment' | 'Completed';
-    invoiceId: string;
+    statusInDb?: 'Pending Approval' | 'Pending Payment' | 'Completed';
+    invoiceId?: string;
 };
 
 const getOrdinalSuffix = (i: number) => {
@@ -55,7 +55,9 @@ export default function StudentRegistrationPage() {
     const { toast } = useToast();
 
     React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, user => setCurrentUser(user));
+        const unsubscribe = onAuthStateChanged(auth, user => { 
+            setCurrentUser(user);
+        });
         return () => unsubscribe();
     }, []);
 
@@ -161,11 +163,13 @@ export default function StudentRegistrationPage() {
                     });
 
                     const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
-                    const optionalFeesSource = isRegistered 
-                        ? Object.entries(details.optionalFees || {}).filter(([id]) => (registration?.optionalFees || []).includes(id))
-                        : []; 
+                    
+                    // Filter optional fees by student's selection if they are registered
+                    const selectedOptIds = new Set(registration?.optionalFees || []);
+                    const optionalFeesList = Object.entries(details.optionalFees || {})
+                        .filter(([id]) => !isRegistered || selectedOptIds.has(id))
+                        .map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
 
-                    const optionalFeesList = optionalFeesSource.map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
                     const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
                     let totalTuition = 0;
@@ -173,6 +177,7 @@ export default function StudentRegistrationPage() {
                         totalTuition = Number(details.tuitionFee || 0);
                     } else {
                         courses.forEach(c => {
+                            // If registered, count selected. If not registered, count all non-exempted as "projected"
                             if (enrolledCourseIds.has(c.id) || (!isRegistered && !profile.exemptedCourses?.[c.id])) {
                                 totalTuition += c.cost;
                             }
@@ -242,7 +247,7 @@ export default function StudentRegistrationPage() {
                 </CardHeader>
             </Card>
 
-            <Card className="shadow-lg">
+            <Card className="shadow-lg border-0 bg-muted/10">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Route className="h-5 w-5 text-primary"/> My Academic Path</CardTitle>
                     <CardDescription>View available semesters and complete your enrollment requirements.</CardDescription>
@@ -259,19 +264,21 @@ export default function StudentRegistrationPage() {
                         const isCompleted = sem.statusInDb === 'Completed';
 
                         return (
-                        <Card key={sem.id} className={cn("overflow-hidden border-l-4", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
-                            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <Card key={sem.id} className={cn("overflow-hidden border-l-4 transition-all", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
+                            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-muted/30">
                                 <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <CardTitle className="text-xl">{sem.name}</CardTitle>
-                                        {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
-                                        <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 opacity-60">{sem.isRegistered ? `${sem.source} Registration` : ''}</Badge>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <CardTitle className="text-xl leading-tight">{sem.name}</CardTitle>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
+                                            {sem.isRegistered && <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 opacity-60">{sem.source} registration</Badge>}
+                                        </div>
                                     </div>
-                                    <CardDescription>Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
+                                    <CardDescription className="font-medium">Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 flex-wrap md:justify-end">
                                     {sem.isRegistered ? (
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             {isManual && !isCompleted && (
                                                 <Button variant="ghost" size="sm" className="text-destructive h-8 text-[10px] font-bold" onClick={() => handleCancelRegistration(sem)} disabled={!!actionLoading}>
                                                     {actionLoading === sem.id ? <Loader2 className="h-3 w-3 animate-spin"/> : <X className="h-3 w-3 mr-1"/>}
@@ -286,65 +293,66 @@ export default function StudentRegistrationPage() {
                                                     </Link>
                                                 </Button>
                                             ) : sem.hasPaymentPlan ? (
-                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
+                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1 font-bold">
                                                     <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                                 </Badge>
                                             ) : (
                                                 sem.isCurrentStanding ? (
-                                                    <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm">
+                                                    <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm h-8">
                                                         <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                             <AlertCircle className="mr-2 h-4 w-4"/>
                                                             Complete Setup
                                                         </Link>
                                                     </Button>
                                                 ) : (
-                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60">
+                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60 h-8">
                                                         <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
                                                     </Badge>
                                                 )
                                             )}
                                         </div>
                                     ) : sem.isOpen ? (
-                                        <Button asChild>
+                                        <Button asChild className="h-8 shadow-md">
                                             <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                 Register Now <ChevronRight className="ml-2 h-4 w-4"/>
                                             </Link>
                                         </Button>
                                     ) : (
-                                        <Button disabled variant="secondary" className="opacity-50 cursor-not-allowed">
-                                            Registration Closed <ChevronRight className="ml-2 h-4 w-4"/>
+                                        <Button disabled variant="secondary" className="h-8 opacity-50 cursor-not-allowed">
+                                            Registration Closed
                                         </Button>
                                     )}
                                 </div>
                             </CardHeader>
-                            <CardContent className="space-y-6 pb-6">
+                            <CardContent className="space-y-6 pt-6 pb-6">
                                 {!sem.hasPaymentPlan && sem.isRegistered && sem.isCurrentStanding && (
-                                    <Alert className="bg-orange-50 border-orange-200">
+                                    <Alert className="bg-orange-50 border-orange-200 border-2">
                                         <AlertCircle className="h-4 w-4 text-orange-600" />
                                         <AlertTitle className="text-orange-800 font-bold">Action Required</AlertTitle>
-                                        <AlertDescription className="text-orange-700 text-sm">You are enrolled in classes but have not yet selected a payment plan. Click "Complete Setup" to finalize your financial requirements.</AlertDescription>
+                                        <AlertDescription className="text-orange-700 text-sm">Your course selection is recorded, but you must select a payment plan to generate your invoice. Click "Complete Setup" above.</AlertDescription>
                                     </Alert>
                                 )}
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="space-y-6">
                                         <div className="space-y-3">
-                                            <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                                <BookCopy className="h-3 w-3" /> Curriculum
+                                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2">
+                                                <BookCopy className="h-3 w-3" /> Active Curriculum
                                             </Label>
                                             <div className="grid gap-2">
                                                 {sem.courses.map(course => (
-                                                    <div key={course.id} className="p-2 border rounded bg-muted/20 flex items-center justify-between gap-4">
+                                                    <div key={course.id} className="p-3 border rounded-xl bg-card hover:bg-muted/30 transition-colors flex items-center justify-between gap-4 shadow-sm">
                                                         <div className="min-w-0 flex-1">
-                                                            <div className="flex justify-between items-start text-sm font-semibold">
-                                                                <span className="truncate">{course.code} - {course.name}</span>
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="font-bold text-sm leading-tight">{course.name}</span>
+                                                                <span className="text-[10px] font-mono text-primary/70">{course.code}</span>
                                                             </div>
-                                                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1">
+                                                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5">
                                                                 <UserCheck className="h-3 w-3" /> {course.lecturerNames}
                                                             </div>
                                                         </div>
                                                         {sem.billingPolicy === 'course' && (
                                                             <Badge variant="outline" className="h-6 font-mono text-[10px] bg-background border-primary/20 shrink-0">
-                                                                K{course.cost.toFixed(2)}
+                                                                ZMW {course.cost.toFixed(2)}
                                                             </Badge>
                                                         )}
                                                     </div>
@@ -353,11 +361,11 @@ export default function StudentRegistrationPage() {
                                         </div>
                                         
                                         {isActionable && (
-                                            <div className="space-y-3 p-4 border rounded-xl bg-primary/5 shadow-inner">
-                                                <Label className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                                            <div className="space-y-3 p-5 border rounded-2xl bg-primary/5 shadow-inner">
+                                                <Label className="text-[10px] font-black uppercase text-primary tracking-[0.2em] flex items-center gap-2">
                                                     <Receipt className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
                                                 </Label>
-                                                <div className="space-y-2 text-xs">
+                                                <div className="space-y-2.5 text-xs font-medium">
                                                     <div className="flex justify-between">
                                                         <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
                                                         <span className="font-bold">ZMW {sem.totalTuition.toFixed(2)}</span>
@@ -374,15 +382,15 @@ export default function StudentRegistrationPage() {
                                                             <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
                                                         </div>
                                                     ))}
-                                                    <Separator className="my-1 bg-primary/10"/>
-                                                    <div className="flex justify-between text-sm font-black">
-                                                        <span className="text-primary">Total Amount:</span>
-                                                        <span className="text-primary text-base">ZMW {grandTotal.toFixed(2)}</span>
+                                                    <Separator className="my-2 bg-primary/10"/>
+                                                    <div className="flex justify-between items-baseline pt-1">
+                                                        <span className="text-[10px] font-black uppercase text-primary tracking-widest">Total Invoiced</span>
+                                                        <span className="text-lg font-black text-primary">ZMW {grandTotal.toFixed(2)}</span>
                                                     </div>
                                                     {sem.hasPaymentPlan && (
-                                                        <div className="flex justify-between pt-2 border-t border-dashed border-primary/20 mt-1">
-                                                            <span className="opacity-70 font-medium">Selected Plan:</span>
-                                                            <Badge variant="outline" className="h-5 text-[9px] font-black uppercase bg-primary text-white border-primary">{sem.selectedPaymentPlan}</Badge>
+                                                        <div className="flex justify-between pt-3 border-t border-dashed border-primary/20 mt-2">
+                                                            <span className="opacity-70 flex items-center gap-1.5"><Wallet className="h-3 w-3"/> Payment Plan:</span>
+                                                            <Badge variant="outline" className="h-5 text-[9px] font-black uppercase bg-primary text-white border-primary px-3 shadow-sm">{sem.selectedPaymentPlan}</Badge>
                                                         </div>
                                                     )}
                                                 </div>
@@ -390,31 +398,31 @@ export default function StudentRegistrationPage() {
                                         )}
                                     </div>
 
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-                                            <CalendarIcon className="h-3 w-3" /> Important Deadlines
+                                    <div className="space-y-4">
+                                        <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2">
+                                            <CalendarIcon className="h-3 w-3" /> Institutional Deadlines
                                         </Label>
-                                        <div className="space-y-2">
+                                        <div className="space-y-2.5">
                                             {sem.deadlines.length > 0 ? sem.deadlines.map((d, i) => (
-                                                <div key={i} className="flex justify-between items-center text-xs p-2 rounded border border-dashed hover:bg-muted/30 transition-colors">
-                                                    <span className="font-medium">{d.title}</span>
+                                                <div key={i} className="flex justify-between items-center text-xs p-3 rounded-xl border border-dashed hover:bg-muted/30 transition-colors bg-card shadow-sm">
+                                                    <span className="font-bold opacity-80">{d.title}</span>
                                                     {d.date ? (
-                                                        <span className="font-bold">{format(parseISO(d.date), 'PPP')}</span>
+                                                        <span className="font-black text-primary">{format(parseISO(d.date), 'dd MMM yyyy')}</span>
                                                     ) : (
-                                                        <span className="text-destructive font-bold italic">Not Set</span>
+                                                        <span className="text-destructive font-black italic text-[10px]">Pending Publication</span>
                                                     )}
                                                 </div>
                                             )) : (
-                                                <div className="py-8 text-center border rounded-lg border-dashed bg-muted/10">
-                                                    <Clock className="h-6 w-6 mx-auto opacity-20 mb-2"/>
-                                                    <p className="text-xs text-muted-foreground italic">No deadlines published for this period.</p>
+                                                <div className="py-12 text-center border-2 border-dashed rounded-2xl bg-muted/5 flex flex-col items-center gap-3">
+                                                    <Clock className="h-8 w-8 opacity-10"/>
+                                                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest leading-relaxed">Schedule currently being<br/>finalized by academics</p>
                                                 </div>
                                             )}
-                                            {sem.isMissingDeadlines && (
-                                                <Alert variant="default" className="py-2 bg-yellow-50 border-yellow-200 shadow-sm mt-4">
+                                            {sem.isMissingDeadlines && sem.deadlines.length > 0 && (
+                                                <Alert variant="default" className="py-2.5 bg-yellow-50 border-yellow-200 shadow-sm mt-4">
                                                     <Info className="h-4 w-4 text-yellow-600" />
-                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight">
-                                                        Note: Some payment deadlines are still being finalized by the administration.
+                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight font-medium">
+                                                        Note: Some installment deadlines are still being published. Please check back regularly.
                                                     </AlertDescription>
                                                 </Alert>
                                             )}
@@ -425,10 +433,11 @@ export default function StudentRegistrationPage() {
                         </Card>
                         );
                     }) : (
-                        <Alert>
-                            <Info className="h-4 w-4"/><AlertTitle>No Active Paths</AlertTitle>
-                            <AlertDescription>There are currently no active registration paths for your intake and programme.</AlertDescription>
-                        </Alert>
+                        <div className="py-24 text-center border-2 border-dashed rounded-3xl bg-muted/5">
+                            <Route className="h-12 w-12 mx-auto opacity-10 mb-4" />
+                            <h3 className="text-lg font-bold">No Active Pathways</h3>
+                            <p className="text-sm text-muted-foreground max-w-xs mx-auto">There are currently no active registration windows open for your specific intake and programme path.</p>
+                        </div>
                     )}
                 </CardContent>
             </Card>
