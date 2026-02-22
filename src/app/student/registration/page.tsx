@@ -237,7 +237,7 @@ export default function StudentRegistrationPage() {
             updates[`registrations/${currentUser.uid}/${sem.id}`] = null;
             if (sem.invoiceId) updates[`invoices/${currentUser.uid}/${sem.invoiceId}`] = null;
             
-            await update(ref(db, updates));
+            await update(ref(db), updates);
             toast({ title: 'Registration Canceled' });
             fetchData();
         } catch (e: any) {
@@ -266,7 +266,8 @@ export default function StudentRegistrationPage() {
                 <CardContent className="space-y-6">
                     {semestersForPath.length > 0 ? semestersForPath.map(sem => {
                         const isActionable = sem.isRegistered || sem.isOpen;
-                        const grandTotal = sem.billingBreakdown.grandTotal;
+                        const billingBreakdown = sem.billingBreakdown;
+                        const grandTotal = billingBreakdown?.grandTotal || 0;
 
                         const isManual = sem.source === 'manual';
                         const isApproved = sem.statusInDb === 'Pending Payment' || sem.statusInDb === 'Completed';
@@ -274,63 +275,65 @@ export default function StudentRegistrationPage() {
 
                         return (
                         <Card key={sem.id} className={cn("overflow-hidden border-l-4 transition-all", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
-                            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-muted/30">
-                                <div className="space-y-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <CardTitle className="text-xl leading-tight">{sem.name}</CardTitle>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
-                                            {sem.isRegistered && <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 opacity-60">{sem.source} registration</Badge>}
+                            <CardHeader className="bg-muted/30 py-4 px-6">
+                                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <CardTitle className="text-xl leading-tight">{sem.name}</CardTitle>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
+                                                {sem.isRegistered && <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 opacity-60">{sem.source} registration</Badge>}
+                                            </div>
                                         </div>
+                                        <CardDescription className="font-medium">Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
                                     </div>
-                                    <CardDescription className="font-medium">Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
-                                </div>
-                                <div className="flex gap-2 flex-wrap md:justify-end">
-                                    {sem.isRegistered ? (
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            {isManual && !isCompleted && (
-                                                <Button variant="ghost" size="sm" className="text-destructive h-8 text-[10px] font-bold" onClick={() => handleCancelRegistration(sem)} disabled={!!actionLoading}>
-                                                    {actionLoading === sem.id ? <Loader2 className="h-3 w-3 animate-spin"/> : <X className="h-3 w-3 mr-1"/>}
-                                                    Cancel Registration
-                                                </Button>
-                                            )}
-                                            
-                                            {isManual && !isApproved ? (
-                                                <Button asChild size="sm" variant="outline" className="h-8 shadow-sm">
-                                                    <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                        <Pencil className="h-3 w-3 mr-1.5"/> Edit Selection
-                                                    </Link>
-                                                </Button>
-                                            ) : sem.hasPaymentPlan ? (
-                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1 font-bold">
-                                                    <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
-                                                </Badge>
-                                            ) : (
-                                                sem.isCurrentStanding ? (
-                                                    <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm h-8">
+                                    <div className="flex gap-2 flex-wrap md:justify-end">
+                                        {sem.isRegistered ? (
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {isManual && !isCompleted && (
+                                                    <Button variant="ghost" size="sm" className="text-destructive h-8 text-[10px] font-bold" onClick={() => handleCancelRegistration(sem)} disabled={!!actionLoading}>
+                                                        {actionLoading === sem.id ? <Loader2 className="h-3 w-3 animate-spin"/> : <X className="h-3 w-3 mr-1"/>}
+                                                        Cancel Registration
+                                                    </Button>
+                                                )}
+                                                
+                                                {isManual && !isApproved ? (
+                                                    <Button asChild size="sm" variant="outline" className="h-8 shadow-sm">
                                                         <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                            <AlertCircle className="mr-2 h-4 w-4"/>
-                                                            Complete Setup
+                                                            <Pencil className="h-3 w-3 mr-1.5"/> Edit Selection
                                                         </Link>
                                                     </Button>
-                                                ) : (
-                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60 h-8">
-                                                        <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
+                                                ) : sem.hasPaymentPlan ? (
+                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1 font-bold">
+                                                        <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                                     </Badge>
-                                                )
-                                            )}
-                                        </div>
-                                    ) : sem.isOpen ? (
-                                        <Button asChild className="h-8 shadow-md">
-                                            <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                Register Now <ChevronRight className="ml-2 h-4 w-4"/>
-                                            </Link>
-                                        </Button>
-                                    ) : (
-                                        <Button disabled variant="secondary" className="h-8 opacity-50 cursor-not-allowed">
-                                            Registration Closed
-                                        </Button>
-                                    )}
+                                                ) : (
+                                                    sem.isCurrentStanding ? (
+                                                        <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm h-8">
+                                                            <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                                <AlertCircle className="mr-2 h-4 w-4"/>
+                                                                Complete Setup
+                                                            </Link>
+                                                        </Button>
+                                                    ) : (
+                                                        <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60 h-8">
+                                                            <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
+                                                        </Badge>
+                                                    )
+                                                )}
+                                            </div>
+                                        ) : sem.isOpen ? (
+                                            <Button asChild className="h-8 shadow-md">
+                                                <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                    Register Now <ChevronRight className="ml-2 h-4 w-4"/>
+                                                </Link>
+                                            </Button>
+                                        ) : (
+                                            <Button disabled variant="secondary" className="h-8 opacity-50 cursor-not-allowed">
+                                                Registration Closed
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6 pt-6 pb-6">
@@ -362,7 +365,7 @@ export default function StudentRegistrationPage() {
                                             </div>
                                         </div>
                                         
-                                        {isActionable && (
+                                        {isActionable && billingBreakdown && (
                                             <div className="space-y-3 p-5 border rounded-2xl bg-primary/5 shadow-inner">
                                                 <Label className="text-[10px] font-black uppercase text-primary tracking-[0.2em] flex items-center gap-2">
                                                     <Wallet className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
@@ -370,12 +373,12 @@ export default function StudentRegistrationPage() {
                                                 <div className="space-y-2.5 text-xs font-medium">
                                                     <div className="flex flex-col gap-1.5">
                                                         <div className="flex justify-between font-bold border-b border-primary/10 pb-1">
-                                                            <span className="opacity-70 italic">Tuition Additions {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.billingBreakdown.courses.length} Courses)`}:</span>
-                                                            <span>ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
+                                                            <span className="opacity-70 italic">Tuition Additions {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${billingBreakdown.courses?.length || 0} Courses)`}:</span>
+                                                            <span>ZMW {billingBreakdown.baseTuition.toFixed(2)}</span>
                                                         </div>
-                                                        {sem.billingPolicy === 'course' && sem.billingBreakdown.courses.length > 0 && (
+                                                        {sem.billingPolicy === 'course' && billingBreakdown.courses?.length > 0 && (
                                                             <div className="pl-4 space-y-1 mt-1 border-l-2 border-primary/10 ml-1">
-                                                                {sem.billingBreakdown.courses.map(c => {
+                                                                {billingBreakdown.courses.map(c => {
                                                                     const courseMeta = sem.courses.find(cm => cm.id === c.id);
                                                                     return (
                                                                         <div key={c.id} className="flex justify-between text-[10px] opacity-60 italic">
@@ -387,28 +390,28 @@ export default function StudentRegistrationPage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    {sem.billingBreakdown.scholarshipAmount > 0 && (
+                                                    {billingBreakdown.scholarshipAmount > 0 && (
                                                         <div className="flex justify-between text-blue-600 font-bold">
                                                             <span className="opacity-70 flex items-center gap-1.5"><GraduationCap className="h-3 w-3"/> Scholarship Credit:</span>
-                                                            <span>- ZMW {sem.billingBreakdown.scholarshipAmount.toFixed(2)}</span>
+                                                            <span>- ZMW {billingBreakdown.scholarshipAmount.toFixed(2)}</span>
                                                         </div>
                                                     )}
-                                                    {sem.billingBreakdown.totalMandatoryFees > 0 && (
+                                                    {billingBreakdown.totalMandatoryFees > 0 && (
                                                         <div className="flex justify-between">
                                                             <span className="opacity-70">Mandatory Fees:</span>
-                                                            <span className="font-bold">ZMW {sem.billingBreakdown.totalMandatoryFees.toFixed(2)}</span>
+                                                            <span className="font-bold">ZMW {billingBreakdown.totalMandatoryFees.toFixed(2)}</span>
                                                         </div>
                                                     )}
-                                                    {sem.billingBreakdown.totalOptionalFees > 0 && (
+                                                    {billingBreakdown.totalOptionalFees > 0 && (
                                                         <div className="flex justify-between">
                                                             <span className="opacity-70">Optional Fees:</span>
-                                                            <span className="font-bold">ZMW {sem.billingBreakdown.totalOptionalFees.toFixed(2)}</span>
+                                                            <span className="font-bold">ZMW {billingBreakdown.totalOptionalFees.toFixed(2)}</span>
                                                         </div>
                                                     )}
-                                                    {sem.billingBreakdown.lateFee > 0 && (
+                                                    {billingBreakdown.lateFee > 0 && (
                                                         <div className="flex justify-between text-destructive font-bold">
                                                             <span className="opacity-70">Late Registration Fee:</span>
-                                                            <span>ZMW {sem.billingBreakdown.lateFee.toFixed(2)}</span>
+                                                            <span>ZMW {billingBreakdown.lateFee.toFixed(2)}</span>
                                                         </div>
                                                     )}
                                                     <Separator className="my-2 bg-primary/10"/>

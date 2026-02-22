@@ -896,7 +896,7 @@ export default function ApproveRegistrationsPage() {
                     <DialogHeader>
                         <div className="flex items-center gap-2 text-primary mb-2">
                             <GraduationCap className="h-6 w-6" />
-                            <DialogTitle className="text-xl">Scholarship & Semester Registration</DialogTitle>
+                            <DialogTitle>Scholarship & Semester Registration</DialogTitle>
                         </div>
                         <DialogDescription className="text-base">
                             Reviewing both the **Semester Registration** and **Tuition Waiver** application for <span className="font-black text-foreground">{scholarshipReviewRequest?.studentName}</span>. 

@@ -34,6 +34,7 @@ export type BillingOutput = {
   totalFees: number;
   lateFee: number;
   grandTotal: number;
+  courses: CourseItem[]; // Include input courses in output for itemized display
 };
 
 /**
@@ -88,5 +89,6 @@ export function calculateBilling(input: BillingInput): BillingOutput {
     totalFees,
     lateFee: Number(lateFee) || 0,
     grandTotal,
+    courses: courses || [],
   };
 }
