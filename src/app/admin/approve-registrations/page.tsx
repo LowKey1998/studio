@@ -279,7 +279,8 @@ export default function ApproveRegistrationsPage() {
                                 if(prevSemesterId === semesterId) continue;
                                 const prevReg = userRegistrations[prevSemesterId];
                                 if(prevReg.status === 'Completed') {
-                                    (prevReg.courses || []).forEach((courseId: string) => {
+                                    const coursesArr = Array.isArray(prevReg.courses) ? prevReg.courses : Object.keys(prevReg.courses || {});
+                                    coursesArr.forEach((courseId: string) => {
                                         const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
                                         academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
                                     });
@@ -411,7 +412,6 @@ export default function ApproveRegistrationsPage() {
                     notificationMessage += ' Please proceed to payments to finalize your enrollment.';
                 }
 
-                // Final tuition cost based on policy
                 const tuitionCost = request.billingPolicy === 'semester'
                     ? request.semesterTuitionFee
                     : finalCourses.reduce((acc, id) => acc + (allCourses.get(id)?.cost || 0), 0);
@@ -635,7 +635,7 @@ export default function ApproveRegistrationsPage() {
     };
 
     const renderRequestList = (groupedRequests: GroupedRequests, type: 'pending' | 'approved' | 'completed') => {
-        if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}</div>);
+        if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton className="h-48 w-full rounded-lg" />)}</div>);
         if (Object.keys(groupedRequests).length === 0) return (<div className="py-16 text-center text-muted-foreground"><UserCheck className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">All Clear!</h3><p className="mt-2 text-sm">There are no {type} registrations to show.</p></div>);
 
         return (

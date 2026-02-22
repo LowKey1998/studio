@@ -185,12 +185,11 @@ export default function StudentRegistrationPage() {
                     const invoice = invoicesData[registration?.invoiceId];
 
                     let totalTuition = 0;
-                    if (invoice) {
-                        totalTuition = Number(invoice.totalTuition || 0);
+                    if (invoice && Number(invoice.totalTuition) > 0) {
+                        totalTuition = Number(invoice.totalTuition);
                     } else if (activePolicy === 'semester') {
                         totalTuition = Number(details.tuitionFee || 0);
                     } else {
-                        // Pay per course logic: use enrolled courses if registered, else use roadmap
                         const enrolledIdsList = Array.from(enrolledCourseIds);
                         const courseListToCharge = isRegistered && enrolledIdsList.length > 0
                             ? enrolledIdsList.map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
