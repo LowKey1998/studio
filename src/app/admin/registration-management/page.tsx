@@ -86,6 +86,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -833,7 +834,7 @@ export default function RegistrationManagementPage() {
                 </Button>
             </div>
 
-            <Dialog open={isCreateDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>
+            <Dialog open={isCreateDialogOpen || isEditDialogOpen} onOpenChange={(o) => { if(!o) { setIsCreateDialogOpen(false); setIsEditDialogOpen(false); setEditingSemester(null); } }}>
                 <DialogContent className="sm:max-w-xl">
                     <CreateOrEditDialogContent 
                         editingSemester={editingSemester} 
