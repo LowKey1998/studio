@@ -84,6 +84,7 @@ type FeeBreakdown = {
     optional: number;
     scholarship: number;
     late: number;
+    courses?: {id: string, cost: number}[];
 };
 
 type StudentPaymentInfo = {
@@ -1062,7 +1063,7 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) setSelectedStudent(null); setIsRecordPaymentOpen(o); }}>
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
                     <div className="grid gap-4 py-4">
