@@ -34,7 +34,8 @@ import {
     Lock,
     Unlock,
     ArrowRight,
-    MoreVertical
+    MoreVertical,
+    Pencil
 } from 'lucide-react';
 import { 
     Card, 
@@ -70,6 +71,7 @@ import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 
 // --- TYPE DEFINITIONS ---
 
@@ -244,8 +246,14 @@ export default function PaymentsManagementPage() {
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
     const [bulkPaymentRows, setBulkPaymentRows] = React.useState<PaymentRecord[]>([]);
     
+    // History & Adjustment State
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
+    const [isAdjustmentOpen, setIsAdjustmentOpen] = React.useState(false);
+    const [adjustmentTarget, setAdjustmentTarget] = React.useState<{ type: 'transaction' | 'invoice', id: string, oldValue: number, userId: string, studentName: string, studentId: string } | null>(null);
+    const [adjNewValue, setAdjNewValue] = React.useState('');
+    const [adjReason, setAdjReason] = React.useState('');
+
     const [formLoading, setFormLoading] = React.useState(false);
 
     const { toast } = useToast();
@@ -526,7 +534,7 @@ export default function PaymentsManagementPage() {
                     }
                 } else if (field === 'year') {
                     const studentInfo = allStudents.find(s => s.uid === row.userId);
-                    const validSems = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
+                    const validSems = semesters.filter(s => s.intakeId === studentIntakeId && String(s.year) === value);
                     nextRow.availableSemesters = validSems;
                     nextRow.semesterId = undefined;
                     nextRow.totalDue = 0;
@@ -642,6 +650,35 @@ export default function PaymentsManagementPage() {
             resetDialog();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Recording Failed' }); }
         finally { setFormLoading(false); }
+    };
+
+    const handleRequestAdjustment = async () => {
+        if (!adjustmentTarget || !adjNewValue || !adjReason.trim()) return;
+        setFormLoading(true);
+        try {
+            const requestRef = push(ref(db, 'paymentEditRequests'));
+            await set(requestRef, {
+                type: adjustmentTarget.type,
+                targetId: adjustmentTarget.id,
+                userId: adjustmentTarget.userId,
+                studentName: adjustmentTarget.studentName,
+                studentId: adjustmentTarget.studentId,
+                oldValue: adjustmentTarget.oldValue,
+                newValue: parseFloat(adjNewValue),
+                reason: adjReason,
+                requestedBy: userData?.name || 'Staff',
+                requestedByUid: userData?.uid,
+                timestamp: Date.now(),
+                status: 'pending'
+            });
+            toast({ title: "Adjustment Requested", description: "The request has been sent to administrators for approval." });
+            setIsAdjustmentOpen(false);
+            setAdjNewValue(''); setAdjReason('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Request Failed", description: e.message });
+        } finally {
+            setFormLoading(false);
+        }
     };
 
     const handleExport = () => {
@@ -768,7 +805,7 @@ export default function PaymentsManagementPage() {
                             <Label className="text-[10px] font-black uppercase">Search Student</Label>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input className="pl-8 h-9 bg-background shadow-sm h-10 border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <Input className="pl-8 h-9 bg-background shadow-sm border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -1064,9 +1101,16 @@ export default function PaymentsManagementPage() {
                                 .map(p => (
                                     <TabsContent key={p.semesterId} value={p.semesterId || ''} className="flex-1 flex flex-col min-h-0 pt-4 data-[state=active]:flex">
                                         <div className="grid grid-cols-3 gap-4 mb-4">
-                                            <div className="p-3 rounded-lg border bg-muted/20">
-                                                <p className="text-[9px] font-black uppercase opacity-60 tracking-widest">Total Due</p>
-                                                <p className="text-lg font-black">ZMW {p.totalDue.toFixed(2)}</p>
+                                            <div className="p-3 rounded-lg border bg-muted/20 flex flex-col justify-between items-start">
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase opacity-60 tracking-widest">Total Due</p>
+                                                    <p className="text-lg font-black">ZMW {p.totalDue.toFixed(2)}</p>
+                                                </div>
+                                                <Button variant="link" size="sm" className="h-auto p-0 text-[10px] font-bold text-primary" onClick={() => {
+                                                    setAdjustmentTarget({ type: 'invoice', id: p.invoiceId, oldValue: p.totalDue, userId: p.userId, studentName: p.studentName, studentId: p.studentId });
+                                                    setAdjNewValue(String(p.totalDue));
+                                                    setIsAdjustmentOpen(true);
+                                                }}><Pencil className="h-2 w-2 mr-1"/> Adjust Total</Button>
                                             </div>
                                             <div className="p-3 rounded-lg border bg-green-50/50">
                                                 <p className="text-[9px] font-black uppercase text-green-700 tracking-widest">Paid</p>
@@ -1085,6 +1129,7 @@ export default function PaymentsManagementPage() {
                                                         <TableHead>Method</TableHead>
                                                         <TableHead>Comment / Ref</TableHead>
                                                         <TableHead className="text-right">Amount</TableHead>
+                                                        <TableHead className="w-10"></TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
@@ -1096,11 +1141,18 @@ export default function PaymentsManagementPage() {
                                                                 <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black tracking-tighter">{tx.method}</Badge></TableCell>
                                                                 <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment || '-'}</TableCell>
                                                                 <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
+                                                                <TableCell>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => {
+                                                                        setAdjustmentTarget({ type: 'transaction', id: tx.key, oldValue: tx.amount, userId: p.userId, studentName: p.studentName, studentId: p.studentId });
+                                                                        setAdjNewValue(String(tx.amount));
+                                                                        setIsAdjustmentOpen(true);
+                                                                    }}><Pencil className="h-3 w-3"/></Button>
+                                                                </TableCell>
                                                             </TableRow>
                                                         ))
                                                     }
                                                     {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (
-                                                        <TableRow><TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">No transactions found for this semester.</TableCell></TableRow>
+                                                        <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions found for this semester.</TableCell></TableRow>
                                                     )}
                                                 </TableBody>
                                             </Table>
@@ -1112,6 +1164,48 @@ export default function PaymentsManagementPage() {
                     )}
                     <DialogFooter className="border-t pt-4">
                         <DialogClose asChild><Button variant="outline">Close Statement</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Request Financial Adjustment</DialogTitle>
+                        <DialogDescription>Submit a formal request to change an existing financial record.</DialogDescription>
+                    </DialogHeader>
+                    {adjustmentTarget && (
+                        <div className="space-y-4 py-4">
+                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+                                <Label className="text-[10px] font-black uppercase tracking-widest opacity-60">Adjustment Scope</Label>
+                                <p className="text-sm font-bold capitalize">{adjustmentTarget.type}: {adjustmentTarget.studentName}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label className="text-xs">Original Value</Label>
+                                    <div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm line-through opacity-50">ZMW {adjustmentTarget.oldValue.toFixed(2)}</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs">New Proposed Value</Label>
+                                    <Input type="number" value={adjNewValue} onChange={e => setAdjNewValue(e.target.value)} placeholder="0.00" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Reason for Adjustment</Label>
+                                <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g., Erroneous manual entry, refund, or credit note..." rows={4} />
+                            </div>
+                            <Alert variant="default" className="bg-blue-50 border-blue-200">
+                                <Info className="h-4 w-4 text-primary" />
+                                <AlertDescription className="text-[10px] text-blue-800 leading-tight">Your request will be routed to the System Administrator for final approval before the account balance is modified.</AlertDescription>
+                            </Alert>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsAdjustmentOpen(false)}>Cancel</Button>
+                        <Button onClick={handleRequestAdjustment} disabled={formLoading || !adjNewValue || !adjReason.trim()}>
+                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
+                            Submit Request
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

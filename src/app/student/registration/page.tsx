@@ -75,6 +75,9 @@ export default function StudentRegistrationPage() {
     const [semestersForPath, setSemestersForPath] = React.useState<SemesterWithStatus[]>([]);
     const { toast } = useToast();
 
+    // Use a Ref to ensure we only load once and avoid flicker
+    const hasInitialized = React.useRef(false);
+
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, user => { 
             if(user) { 
@@ -88,7 +91,10 @@ export default function StudentRegistrationPage() {
 
     const fetchData = React.useCallback(async () => {
         if (!currentUser) return;
-        setLoading(true);
+        
+        // Only set primary loading state on first hit to prevent flicker
+        if (!hasInitialized.current) setLoading(true);
+
         try {
             const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, tSnap, plansSnap, calSnap, instSnap, invSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)), 
@@ -236,13 +242,14 @@ export default function StudentRegistrationPage() {
                 }
             }
             setSemestersForPath(list.sort((a,b) => a.year - b.year || a.semesterInYear - b.semesterInYear));
+            hasInitialized.current = true;
             setLoading(false);
         } catch (error: any) { 
             logError(error.message, 'Registration Fetch', error);
             toast({ variant: 'destructive', title: 'Error loading semesters' }); 
             setLoading(false);
         }
-    }, [currentUser, toast, allPaymentPlans]);
+    }, [currentUser, toast]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
 
