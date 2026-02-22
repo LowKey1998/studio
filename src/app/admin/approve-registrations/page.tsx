@@ -650,17 +650,27 @@ export default function ApproveRegistrationsPage() {
         }
     };
 
-    const renderRequestList = (groupedRequests: GroupedRequests, type: 'pending' | 'approved' | 'completed') => {
-        if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton className="h-48 w-full rounded-lg" />)}</div>);
-        if (Object.keys(groupedRequests).length === 0) return (<div className="py-16 text-center text-muted-foreground"><UserCheck className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">All Clear!</h3><p className="mt-2 text-sm">There are no {type} registrations to show.</p></div>);
+    const renderRequestList = (requests: RegistrationRequest[], type: 'pending' | 'approved' | 'completed') => {
+        if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}</div>);
+        
+        const groupRequests = (reqList: RegistrationRequest[]): GroupedRequests => reqList.reduce((acc, req) => {
+            const key = req.semesterName;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(req);
+            return acc;
+        }, {} as GroupedRequests);
+
+        const grouped = groupRequests(requests);
+
+        if (Object.keys(grouped).length === 0) return (<div className="py-16 text-center text-muted-foreground"><UserCheck className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">All Clear!</h3><p className="mt-2 text-sm">There are no {type} registrations to show.</p></div>);
 
         return (
-             <Accordion type="multiple" defaultValue={Object.keys(groupedRequests)} className="w-full space-y-4">
-                 {Object.entries(groupedRequests).map(([semesterName, requests]) => (
+             <Accordion type="multiple" defaultValue={Object.keys(grouped)} className="w-full space-y-4">
+                 {Object.entries(grouped).map(([semesterName, reqs]) => (
                      <AccordionItem value={semesterName} key={semesterName} className="border-none">
-                        <AccordionTrigger className="bg-muted px-4 py-2 rounded-md font-bold text-lg hover:no-underline">{semesterName} ({requests.length})</AccordionTrigger>
+                        <AccordionTrigger className="bg-muted px-4 py-2 rounded-md font-bold text-lg hover:no-underline">{semesterName} ({reqs.length})</AccordionTrigger>
                         <AccordionContent className="pt-4 space-y-4">
-                             {requests.map((request) => {
+                             {reqs.map((request) => {
                                 const reqId = `${request.userId}-${request.semesterId}`;
                                 const currentSelection = editingSelections[reqId] || [];
                                 const activeCourses = type === 'pending' ? currentSelection : request.courseIds;
@@ -688,7 +698,7 @@ export default function ApproveRegistrationsPage() {
                                                     <Badge variant="outline" className="text-[9px] uppercase font-black tracking-widest opacity-70">
                                                         {request.billingPolicy === 'semester' ? 'Flat Fee' : 'Per Course'}
                                                     </Badge>
-                                                    <Badge variant="secondary" className="text-[9px] uppercase font-black tracking-tighter opacity-60">
+                                                    <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-tighter opacity-60">
                                                         Source: {request.source || 'Manual'}
                                                     </Badge>
                                                 </div>
@@ -748,7 +758,7 @@ export default function ApproveRegistrationsPage() {
                                                                 {!isStudentSelected && activeCourses.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
                                                             </div>
                                                             <div className='flex gap-2 items-center'>
-                                                                {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><History className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
+                                                                {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><HistoryIcon className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
                                                             </div>
                                                         </div>
                                                         {request.billingPolicy === 'course' && (
@@ -811,9 +821,9 @@ export default function ApproveRegistrationsPage() {
                             <TabsTrigger value="completed" className="py-3 rounded-lg font-bold">Enrolled ({loading ? '...' : Object.values(completedRequests).flat().length})</TabsTrigger>
                             <TabsTrigger value="requests" className="py-3 rounded-lg font-bold">Class Requests ({loading ? '...' : classRequests.length})</TabsTrigger>
                         </TabsList>
-                        <TabsContent value="pending" className="mt-6">{renderRequestList(pendingRequests, 'pending')}</TabsContent>
-                        <TabsContent value="approved" className="mt-6">{renderRequestList(approvedRequests, 'approved')}</TabsContent>
-                        <TabsContent value="completed" className="mt-6">{renderRequestList(completedRequests, 'completed')}</TabsContent>
+                        <TabsContent value="pending" className="mt-6">{renderRequestList(Object.values(pendingRequests).flat(), 'pending')}</TabsContent>
+                        <TabsContent value="approved" className="mt-6">{renderRequestList(Object.values(approvedRequests).flat(), 'approved')}</TabsContent>
+                        <TabsContent value="completed" className="mt-6">{renderRequestList(Object.values(completedRequests).flat(), 'completed')}</TabsContent>
                         <TabsContent value="requests" className="mt-6">
                             <div className="grid gap-4">
                                 {classRequests.map(req => (

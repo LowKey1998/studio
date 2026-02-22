@@ -56,7 +56,8 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   if (policy === 'semester') {
     baseTuition = Number(semesterTuition);
   } else {
-    baseTuition = courses.reduce((sum, course) => sum + (Number(course.cost) || 0), 0);
+    // Sum course costs. Default to 0 if course object or cost is missing.
+    baseTuition = (courses || []).reduce((sum, course) => sum + (Number(course?.cost) || 0), 0);
   }
 
   // 2. Apply Scholarship (only to tuition)
@@ -67,8 +68,8 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   const netTuition = Math.max(0, baseTuition - scholarshipAmount);
 
   // 3. Sum Fees
-  const totalMandatoryFees = mandatoryFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
-  const totalOptionalFees = optionalFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
+  const totalMandatoryFees = (mandatoryFees || []).reduce((sum, fee) => sum + (Number(fee?.amount) || 0), 0);
+  const totalOptionalFees = (optionalFees || []).reduce((sum, fee) => sum + (Number(fee?.amount) || 0), 0);
   const totalFees = totalMandatoryFees + totalOptionalFees;
 
   // 4. Calculate Grand Total

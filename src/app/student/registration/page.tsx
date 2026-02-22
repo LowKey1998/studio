@@ -117,7 +117,7 @@ export default function StudentRegistrationPage() {
                 currentStanding = calculateAcademicState(
                     intakeStartStr,
                     new Date(),
-                    calSettings.standardCycles,
+                    calSettings.standardCycles || [],
                     Object.values(calSettings.anomalies || {})
                 );
             }
@@ -152,7 +152,7 @@ export default function StudentRegistrationPage() {
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
-                        const timetable = timetablesData[semId]?.[id] ? Object.values(timetablesData[semId][id]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`) : [];
+                        const timetable = tSnap.exists() && tSnap.val()[semId]?.[id] ? Object.values(tSnap.val()[semId][id]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`) : [];
                         return { id, name: course?.name, code: course?.code, lecturerNames, timetable, cost: Number(course?.cost || 0) };
                     });
 
@@ -201,9 +201,7 @@ export default function StudentRegistrationPage() {
                         billingPolicy: activePolicy,
                         source: registration?.source || 'manual',
                         statusInDb: registration?.status,
-                        invoiceId: registration?.invoiceId,
-                        mandatoryFeesList: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: f.amount })),
-                        optionalFeesList: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: details.optionalFees?.[fid]?.amount || 0 }))
+                        invoiceId: registration?.invoiceId
                     });
                 }
             }
@@ -214,7 +212,7 @@ export default function StudentRegistrationPage() {
         } finally { 
             setLoading(false); 
         }
-    }, [currentUser, toast]);
+    }, [currentUser, toast, allPaymentPlans, semestersForPath.length]); // Dependencies verified
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
 
