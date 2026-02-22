@@ -2,11 +2,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag, Trash2, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, get, onValue, remove, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -34,6 +34,9 @@ type SemesterWithStatus = Semester & {
     optionalFeesList: { name: string; amount: number }[];
     totalTuition: number;
     billingPolicy: 'course' | 'semester';
+    source: 'auto' | 'manual';
+    statusInDb: 'Pending Approval' | 'Pending Payment' | 'Completed';
+    invoiceId: string;
 };
 
 const getOrdinalSuffix = (i: number) => {
@@ -45,6 +48,7 @@ const getOrdinalSuffix = (i: number) => {
 
 export default function StudentRegistrationPage() {
     const [loading, setLoading] = React.useState(true);
+    const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
     const [semestersForPath, setSemestersForPath] = React.useState<SemesterWithStatus[]>([]);
@@ -189,7 +193,10 @@ export default function StudentRegistrationPage() {
                         mandatoryFeesList,
                         optionalFeesList,
                         totalTuition,
-                        billingPolicy: activePolicy
+                        billingPolicy: activePolicy,
+                        source: registration?.source || 'manual',
+                        statusInDb: registration?.status,
+                        invoiceId: registration?.invoiceId
                     });
                 }
             }
@@ -203,6 +210,26 @@ export default function StudentRegistrationPage() {
     }, [currentUser, toast]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
+
+    const handleCancelRegistration = async (sem: SemesterWithStatus) => {
+        if (!currentUser) return;
+        if (!window.confirm("Are you sure you want to cancel this registration? All selected courses and pending invoices will be removed.")) return;
+        
+        setActionLoading(sem.id);
+        try {
+            const updates: Record<string, any> = {};
+            updates[`registrations/${currentUser.uid}/${sem.id}`] = null;
+            if (sem.invoiceId) updates[`invoices/${currentUser.uid}/${sem.invoiceId}`] = null;
+            
+            await update(ref(db), updates);
+            toast({ title: 'Registration Canceled' });
+            fetchData();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Cancellation Failed' });
+        } finally {
+            setActionLoading(null);
+        }
+    }
     
     if (loading) return <div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
     
@@ -227,6 +254,10 @@ export default function StudentRegistrationPage() {
                         const totalOptional = sem.optionalFeesList.reduce((acc, f) => acc + f.amount, 0);
                         const grandTotal = sem.totalTuition + totalMandatory + totalOptional;
 
+                        const isManual = sem.source === 'manual';
+                        const isApproved = sem.statusInDb === 'Pending Payment' || sem.statusInDb === 'Completed';
+                        const isCompleted = sem.statusInDb === 'Completed';
+
                         return (
                         <Card key={sem.id} className={cn("overflow-hidden border-l-4", (sem.isRegistered && sem.hasPaymentPlan) ? "border-l-green-500" : (sem.isRegistered ? "border-l-orange-500" : (sem.isOpen ? "border-l-primary" : "border-l-muted")))}>
                             <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -234,29 +265,45 @@ export default function StudentRegistrationPage() {
                                     <div className="flex items-center gap-2">
                                         <CardTitle className="text-xl">{sem.name}</CardTitle>
                                         {sem.isCurrentStanding && <Badge className="bg-primary text-white text-[10px] uppercase font-black tracking-tighter h-5">Current Standing</Badge>}
+                                        <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 opacity-60">{sem.isRegistered ? `${sem.source} Registration` : ''}</Badge>
                                     </div>
                                     <CardDescription>Year {sem.year}, Semester {sem.semesterInYear}</CardDescription>
                                 </div>
                                 <div className="flex gap-2">
                                     {sem.isRegistered ? (
-                                        sem.hasPaymentPlan ? (
-                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
-                                                <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
-                                            </Badge>
-                                        ) : (
-                                            sem.isCurrentStanding ? (
-                                                <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm">
+                                        <div className="flex items-center gap-2">
+                                            {isManual && !isCompleted && (
+                                                <Button variant="ghost" size="sm" className="text-destructive h-8 text-[10px] font-bold" onClick={() => handleCancelRegistration(sem)} disabled={!!actionLoading}>
+                                                    {actionLoading === sem.id ? <Loader2 className="h-3 w-3 animate-spin"/> : <X className="h-3 w-3 mr-1"/>}
+                                                    Cancel Registration
+                                                </Button>
+                                            )}
+                                            
+                                            {isManual && !isApproved ? (
+                                                <Button asChild size="sm" variant="outline" className="h-8 shadow-sm">
                                                     <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
-                                                        <AlertCircle className="mr-2 h-4 w-4"/>
-                                                        Complete Setup
+                                                        <Pencil className="h-3 w-3 mr-1.5"/> Edit Selection
                                                     </Link>
                                                 </Button>
-                                            ) : (
-                                                <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60">
-                                                    <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
+                                            ) : sem.hasPaymentPlan ? (
+                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-4 py-1">
+                                                    <CheckCircle2 className="mr-2 h-4 w-4"/>Registered
                                                 </Badge>
-                                            )
-                                        )
+                                            ) : (
+                                                sem.isCurrentStanding ? (
+                                                    <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm">
+                                                        <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                            <AlertCircle className="mr-2 h-4 w-4"/>
+                                                            Complete Setup
+                                                        </Link>
+                                                    </Button>
+                                                ) : (
+                                                    <Badge variant="secondary" className="bg-muted text-muted-foreground px-4 py-1 opacity-60">
+                                                        <Clock className="mr-2 h-4 w-4"/>Registered (Pending Plan)
+                                                    </Badge>
+                                                )
+                                            )}
+                                        </div>
                                     ) : sem.isOpen ? (
                                         <Button asChild>
                                             <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>

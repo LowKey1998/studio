@@ -324,6 +324,7 @@ export default function RegisterForSemesterPage() {
                 registrationDate: existingRegistration?.registrationDate || new Date().toISOString(),
                 applyScholarship: applyScholarship,
                 semesterName: semesterDetails.name,
+                source: 'manual' // Track origin
             };
 
             await set(invoiceRef, invoiceData);
@@ -373,7 +374,7 @@ export default function RegisterForSemesterPage() {
                 <Alert className="bg-orange-50 border-orange-200 shadow-md">
                     <AlertTriangle className="h-5 w-5 text-orange-600" />
                     <AlertTitle className="font-bold text-orange-800">Final Step Required</AlertTitle>
-                    <AlertDescription className="text-orange-700">You are enrolled in classes, but you must select a payment plan below to generate your invoice and complete your registration.</AlertDescription>
+                    <AlertDescription className="text-orange-700 text-sm">You are enrolled in classes, but you must select a payment plan below to generate your invoice and complete your registration.</AlertDescription>
                 </Alert>
             )}
 

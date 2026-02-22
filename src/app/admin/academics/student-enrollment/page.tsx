@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -218,7 +218,14 @@ export default function StudentEnrollmentPage() {
                 if (type === 'enroll') {
                     const currentCourses = regSnap.exists() ? regSnap.val().courses || [] : [];
                     const updatedCourses = [...new Set([...currentCourses, activeSession.courseId])];
-                    await update(regRef, { courses: updatedCourses, programmeId: student.programmeId || '', intakeId: sIntakeId, status: regSnap.exists() ? regSnap.val().status : 'Completed', semesterName: targetSemester.name });
+                    await update(regRef, { 
+                        courses: updatedCourses, 
+                        programmeId: student.programmeId || '', 
+                        intakeId: sIntakeId, 
+                        status: regSnap.exists() ? regSnap.val().status : 'Completed', 
+                        semesterName: targetSemester.name,
+                        source: 'auto' // Mark as administrator initiated
+                    });
                 } else {
                     const enrolledS = student as EnrolledStudent;
                     const specificRegRef = ref(db, `registrations/${student.uid}/${enrolledS.semesterId}`);
@@ -357,7 +364,7 @@ export default function StudentEnrollmentPage() {
                 <Alert variant="destructive" className="bg-orange-50 border-orange-200">
                     <AlertCircle className="h-4 w-4 text-orange-600" />
                     <AlertTitle className="font-bold text-orange-800">Registration Blocked</AlertTitle>
-                    <AlertDescription className="text-orange-700">
+                    <AlertDescription className="text-orange-700 text-sm">
                         No active semester record found for <strong>{intakes.find(i=>i.id===selectedIntake)?.name}</strong> at <strong>Year {intakeStanding?.year}, Sem {intakeStanding?.semester}</strong>. 
                         Please create this semester in <Link href="/admin/registration-management" className="underline font-bold">Registration Management</Link> first.
                     </AlertDescription>

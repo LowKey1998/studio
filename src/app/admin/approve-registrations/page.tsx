@@ -91,6 +91,7 @@ type RegistrationRequest = {
   amountPaid: number;
   billingPolicy: 'course' | 'semester';
   semesterTuitionFee: number;
+  source: 'auto' | 'manual';
 };
 
 type Scholarship = {
@@ -309,7 +310,8 @@ export default function ApproveRegistrationsPage() {
                                 academicHistory,
                                 amountPaid,
                                 billingPolicy: semesterInfo?.billingPolicy || 'course',
-                                semesterTuitionFee: Number(semesterInfo?.tuitionFee || 0)
+                                semesterTuitionFee: Number(semesterInfo?.tuitionFee || 0),
+                                source: registration.source || 'manual'
                             };
                             if (registration.status === 'Pending Approval') pending.push(requestData);
                             else if (registration.status === 'Pending Payment') approved.push(requestData);
@@ -667,6 +669,9 @@ export default function ApproveRegistrationsPage() {
                                                     <Badge variant="outline" className="text-[9px] uppercase font-black tracking-widest opacity-70">
                                                         {request.billingPolicy === 'semester' ? 'Flat Fee' : 'Per Course'}
                                                     </Badge>
+                                                    <Badge variant="secondary" className="text-[9px] uppercase font-black tracking-tighter opacity-60">
+                                                        Source: {request.source || 'Manual'}
+                                                    </Badge>
                                                 </div>
                                                 <CardDescription>ID: {request.studentId} | Programme: <strong>{request.programmeName}</strong> | Intake: <strong>{allIntakes.get(request.studentIntakeId)?.name || 'N/A'}</strong></CardDescription>
                                                 <CardDescription className="flex items-center gap-1">
@@ -853,16 +858,17 @@ export default function ApproveRegistrationsPage() {
                     <DialogHeader>
                         <div className="flex items-center gap-2 text-primary mb-2">
                             <GraduationCap className="h-6 w-6" />
-                            <DialogTitle className="text-xl">Scholarship Verification</DialogTitle>
+                            <DialogTitle className="text-xl">Scholarship & Semester Registration</DialogTitle>
                         </div>
                         <DialogDescription className="text-base">
-                            Reviewing tuition waiver application for <span className="font-black text-foreground">{scholarshipReviewRequest?.studentName}</span>. 
+                            Reviewing both the **Semester Registration** and **Tuition Waiver** application for <span className="font-black text-foreground">{scholarshipReviewRequest?.studentName}</span>. 
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
-                        <div className="p-4 bg-primary/5 border rounded-xl space-y-3 text-sm">
+                        <div className="p-4 bg-primary/5 border rounded-xl space-y-3 text-sm shadow-inner">
                             <div className="flex justify-between"><span>Programme:</span> <span className="font-bold">{scholarshipReviewRequest?.programmeName}</span></div>
                             <div className="flex justify-between"><span>Intake:</span> <span className="font-bold">{allIntakes.get(scholarshipReviewRequest?.studentIntakeId || '')?.name}</span></div>
+                            <div className="flex justify-between"><span>Phase:</span> <span className="font-bold">{scholarshipReviewRequest?.semesterName}</span></div>
                         </div>
                         
                         <div className="space-y-2">
@@ -888,17 +894,17 @@ export default function ApproveRegistrationsPage() {
                             </Select>
                         </div>
 
-                        <Alert variant="default" className="bg-blue-50 border-blue-200 py-2">
+                        <Alert variant="default" className="bg-blue-50 border-blue-200 py-3 shadow-sm">
                             <Info className="h-4 w-4 text-primary" />
-                            <AlertDescription className="text-[10px] leading-tight">
-                                Approving this will apply the selected <strong>Waiver Percentage</strong> to the tuition line item for this registration cycle.
+                            <AlertDescription className="text-[10px] leading-tight font-medium text-blue-800">
+                                <strong>Important:</strong> Approving this request will simultaneously **Authorize the Semester Enrollment** and apply the selected **Waiver Percentage** to the student's tuition account.
                             </AlertDescription>
                         </Alert>
                     </div>
                     <DialogFooter className="gap-2">
                         <Button variant="ghost" className="flex-1" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Application</Button>
-                        <Button className="flex-1" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading || !selectedScholarshipId}>
-                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Award Scholarship
+                        <Button className="flex-1 shadow-md font-bold" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading || !selectedScholarshipId}>
+                            {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Authorize & Award
                         </Button>
                     </DialogFooter>
                 </DialogContent>
