@@ -21,7 +21,9 @@ import {
     Info,
     CalendarDays,
     RotateCcw,
-    BookOpen
+    BookOpen,
+    Tag,
+    Receipt
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -86,6 +88,8 @@ type RegistrationRequest = {
   optionalFees: string[];
   academicHistory: Record<string, 'Passed' | 'Failed'>;
   amountPaid: number;
+  billingPolicy: 'course' | 'semester';
+  semesterTuitionFee: number;
 };
 
 type Scholarship = {
@@ -152,6 +156,7 @@ export default function ApproveRegistrationsPage() {
     const [allScholarships, setAllScholarships] = React.useState<Scholarship[]>([]);
     const [allOptionalFees, setAllOptionalFees] = React.useState<Map<string, Fee>>(new Map());
     const [allMandatoryFees, setAllMandatoryFees] = React.useState<Map<string, Fee>>(new Map());
+    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [enrollmentPolicy, setEnrollmentPolicy] = React.useState('onFullPayment');
     
     const [loading, setLoading] = React.useState(true);
@@ -187,7 +192,7 @@ export default function ApproveRegistrationsPage() {
     const fetchRequests = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap, classReqsSnap, invoicesSnap, scholarshipsSnap] = await Promise.all([
+            const [coursesSnap, programmesSnap, optionalFeesSnap, mandatoryFeesSnap, registrationsSnap, settingsSnap, semestersSnap, intakesSnap, coursePathsSnap, assessmentsSnap, transactionsSnap, classReqsSnap, invoicesSnap, scholarshipsSnap, usersSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'programmes')),
                 get(ref(db, 'optionalFees')),
@@ -201,9 +206,13 @@ export default function ApproveRegistrationsPage() {
                 get(ref(db, 'transactions')),
                 get(ref(db, 'classEnrollmentRequests')),
                 get(ref(db, 'invoices')),
-                get(ref(db, 'scholarships'))
+                get(ref(db, 'scholarships')),
+                get(ref(db, 'users'))
             ]);
             
+            const usersMap = usersSnap.val() || {};
+            setAllUsers(usersMap);
+
             if (settingsSnap.exists()) {
                 const settingsData = settingsSnap.val();
                 setEnrollmentPolicy(settingsData.enrollmentPolicy || 'onFullPayment');
@@ -251,68 +260,68 @@ export default function ApproveRegistrationsPage() {
             if (registrationsSnap.exists()) {
                 const allRegistrations = registrationsSnap.val();
                 const pending: RegistrationRequest[] = [], approved: RegistrationRequest[] = [], completed: RegistrationRequest[] = [];
-                const userPromises: Promise<any>[] = [];
 
                 for (const userId in allRegistrations) {
                     const userRegistrations = allRegistrations[userId];
+                    const userData = usersMap[userId];
+                    if (!userData) continue;
+
                     for (const semesterId in userRegistrations) {
                         const registration = userRegistrations[semesterId];
+                        const semesterInfo = semestersData.get(semesterId);
+                        
                         if (['Pending Approval', 'Pending Payment', 'Completed'].includes(registration.status)) {
-                            userPromises.push(get(ref(db, `users/${userId}`)).then(userSnapshot => {
-                                if(userSnapshot.exists()){
-                                    const userData = userSnapshot.val();
-                                    const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
-                                    
-                                    for (const prevSemesterId in userRegistrations) {
-                                        if(prevSemesterId === semesterId) continue;
-                                        const prevReg = userRegistrations[prevSemesterId];
-                                        if(prevReg.status === 'Completed') {
-                                            (prevReg.courses || []).forEach((courseId: string) => {
-                                                const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
-                                                academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
-                                            });
-                                        }
-                                    }
-
-                                    const amountPaid = allTransactions
-                                        .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
-                                        .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
-
-                                    const requestData: RegistrationRequest = {
-                                        userId,
-                                        semesterId: semesterId,
-                                        semesterName: semestersData.get(semesterId)?.name || 'Unknown Semester',
-                                        studentName: userData.name,
-                                        studentId: userData.id,
-                                        studentIntakeId: userData.intakeId,
-                                        courseIds: registration.courses || [],
-                                        invoiceId: registration.invoiceId,
-                                        registrationDate: registration.registrationDate,
-                                        status: registration.status,
-                                        applyScholarship: registration.applyScholarship || false,
-                                        scholarshipStatus: registration.scholarshipStatus,
-                                        scholarshipId: registration.scholarshipId,
-                                        programmeId: registration.programmeId,
-                                        programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
-                                        optionalFees: registration.optionalFees || [],
-                                        academicHistory,
-                                        amountPaid
-                                    };
-                                    if (registration.status === 'Pending Approval') pending.push(requestData);
-                                    else if (registration.status === 'Pending Payment') approved.push(requestData);
-                                    else completed.push(requestData);
+                            const academicHistory: Record<string, 'Passed' | 'Failed'> = {};
+                            
+                            for (const prevSemesterId in userRegistrations) {
+                                if(prevSemesterId === semesterId) continue;
+                                const prevReg = userRegistrations[prevSemesterId];
+                                if(prevReg.status === 'Completed') {
+                                    (prevReg.courses || []).forEach((courseId: string) => {
+                                        const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
+                                        academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
+                                    });
                                 }
-                            }));
+                            }
+
+                            const amountPaid = allTransactions
+                                .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
+                                .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
+
+                            const requestData: RegistrationRequest = {
+                                userId,
+                                semesterId: semesterId,
+                                semesterName: semesterInfo?.name || 'Unknown Semester',
+                                studentName: userData.name,
+                                studentId: userData.id,
+                                studentIntakeId: userData.intakeId,
+                                courseIds: registration.courses || [],
+                                invoiceId: registration.invoiceId,
+                                registrationDate: registration.registrationDate,
+                                status: registration.status,
+                                applyScholarship: registration.applyScholarship || false,
+                                scholarshipStatus: registration.scholarshipStatus,
+                                scholarshipId: registration.scholarshipId,
+                                programmeId: registration.programmeId,
+                                programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
+                                optionalFees: registration.optionalFees || [],
+                                academicHistory,
+                                amountPaid,
+                                billingPolicy: semesterInfo?.billingPolicy || 'course',
+                                semesterTuitionFee: Number(semesterInfo?.tuitionFee || 0)
+                            };
+                            if (registration.status === 'Pending Approval') pending.push(requestData);
+                            else if (registration.status === 'Pending Payment') approved.push(requestData);
+                            else completed.push(requestData);
                         }
                     }
                 }
-                await Promise.all(userPromises);
                 
                 const groupRequests = (requests: RegistrationRequest[]): GroupedRequests => requests.reduce((acc, req) => {
                     const key = req.semesterName;
                     if (!acc[key]) acc[key] = [];
                     acc[key].push(req);
-                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.registrationDate).getTime());
+                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.dateRequested).getTime());
                     return acc;
                 }, {} as GroupedRequests);
 
@@ -399,7 +408,11 @@ export default function ApproveRegistrationsPage() {
                     notificationMessage += ' Please proceed to payments to finalize your enrollment.';
                 }
 
-                const tuitionCost = finalCourses.reduce((acc, id) => acc + (allCourses.get(id)?.cost || 0), 0);
+                // Final tuition cost based on policy
+                const tuitionCost = request.billingPolicy === 'semester'
+                    ? request.semesterTuitionFee
+                    : finalCourses.reduce((acc, id) => acc + (allCourses.get(id)?.cost || 0), 0);
+
                 const optionalFeesCost = (request.optionalFees || []).reduce((acc, id) => acc + (allOptionalFees.get(id)?.amount || 0), 0);
                 const mandatoryFeesCost = Array.from(allMandatoryFees.values()).reduce((acc, fee) => acc + fee.amount, 0);
 
@@ -472,10 +485,16 @@ export default function ApproveRegistrationsPage() {
 
                 await update(regRef, { courses: updatedCourses });
 
+                const semesterInfo = allSemesters.get(request.semesterId);
+                const billingPolicy = semesterInfo?.billingPolicy || 'course';
+
                 const invoiceRef = ref(db, `invoices/${request.userId}/${currentReg.invoiceId}`);
                 const invoiceSnap = await get(invoiceRef);
                 if (invoiceSnap.exists()) {
-                    const tuitionCost = updatedCourses.reduce((sum, cid) => sum + (allCourses.get(cid)?.cost || 0), 0);
+                    const tuitionCost = billingPolicy === 'semester'
+                        ? Number(semesterInfo?.tuitionFee || 0)
+                        : updatedCourses.reduce((sum, cid) => sum + (allCourses.get(cid)?.cost || 0), 0);
+
                     await update(invoiceRef, { 
                         courses: updatedCourses,
                         totalTuition: tuitionCost 
@@ -625,7 +644,15 @@ export default function ApproveRegistrationsPage() {
                              {requests.map((request) => {
                                 const reqId = `${request.userId}-${request.semesterId}`;
                                 const currentSelection = editingSelections[reqId] || [];
-                                const totalCost = currentSelection.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
+                                
+                                const totalTuition = request.billingPolicy === 'semester'
+                                    ? request.semesterTuitionFee
+                                    : currentSelection.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
+
+                                const totalFees = (request.optionalFees || []).reduce((acc, id) => acc + (allOptionalFees.get(id)?.amount || 0), 0) +
+                                                Array.from(allMandatoryFees.values()).reduce((acc, fee) => acc + fee.amount, 0);
+                                
+                                const totalInvoiced = totalTuition + totalFees;
                                 
                                 const regDateValid = request.registrationDate && !isNaN(new Date(request.registrationDate).getTime());
 
@@ -634,9 +661,17 @@ export default function ApproveRegistrationsPage() {
                                     <CardHeader className="bg-muted/50 p-4">
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div className="space-y-1">
-                                                <CardTitle className="text-lg">{request.studentName}</CardTitle>
+                                                <div className="flex items-center gap-2">
+                                                    <CardTitle className="text-lg">{request.studentName}</CardTitle>
+                                                    <Badge variant="outline" className="text-[9px] uppercase font-black tracking-widest opacity-70">
+                                                        {request.billingPolicy === 'semester' ? 'Flat Fee' : 'Per Course'}
+                                                    </Badge>
+                                                </div>
                                                 <CardDescription>ID: {request.studentId} | Programme: <strong>{request.programmeName}</strong> | Intake: <strong>{allIntakes.get(request.studentIntakeId)?.name || 'N/A'}</strong></CardDescription>
-                                                <CardDescription>Submitted: {regDateValid ? format(new Date(request.registrationDate), 'PPP') : 'Date Pending'}</CardDescription>
+                                                <CardDescription className="flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    Submitted: {regDateValid ? format(new Date(request.registrationDate), 'PPP') : 'Date Pending'}
+                                                </CardDescription>
                                                 {request.applyScholarship && type !== 'completed' && ( 
                                                     <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
                                                         <GraduationCap className="mr-2 h-4 w-4" />
@@ -680,7 +715,7 @@ export default function ApproveRegistrationsPage() {
                                                         "flex items-center gap-4 rounded-xl border p-3 text-sm transition-all",
                                                         currentSelection.includes(course.id) ? "bg-primary/5 border-primary/20" : "opacity-50 grayscale bg-muted/20"
                                                     )}>
-                                                        <Checkbox id={`${reqId}-${course.id}`} checked={currentSelection.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending'}/>
+                                                        <Checkbox id={`${reqId}-${course.id}`} checked={currentSelection.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending' || request.billingPolicy === 'semester'}/>
                                                         <div className="flex-1 flex flex-col gap-1">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="font-bold">{course.code}</span>
@@ -691,7 +726,11 @@ export default function ApproveRegistrationsPage() {
                                                                 {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><History className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
                                                             </div>
                                                         </div>
-                                                        <span className="font-mono font-bold text-xs">ZMW {course.cost.toFixed(2)}</span>
+                                                        {request.billingPolicy === 'course' && (
+                                                            <Badge variant="outline" className="h-6 font-mono text-[10px] bg-background border-primary/20">
+                                                                ZMW {course.cost.toFixed(2)}
+                                                            </Badge>
+                                                        )}
                                                     </div>
                                                 )})}
                                             </div>
@@ -703,7 +742,7 @@ export default function ApproveRegistrationsPage() {
                                             <div className="flex items-center gap-6">
                                                 <div className="flex flex-col">
                                                     <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Total Invoiced</span>
-                                                    <span className="font-black text-lg">ZMW {totalCost.toFixed(2)}</span>
+                                                    <span className="font-black text-lg">ZMW {totalInvoiced.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex flex-col border-l pl-6">
                                                     <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Amount Paid</span>
@@ -712,7 +751,7 @@ export default function ApproveRegistrationsPage() {
                                             </div>
                                             <div className="flex flex-col items-end">
                                                 <span className="text-[9px] font-black uppercase text-primary tracking-widest leading-none">Outstanding Balance</span>
-                                                <span className={cn("text-2xl font-black", (totalCost - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalCost - request.amountPaid).toFixed(2)}</span>
+                                                <span className={cn("text-2xl font-black", (totalInvoiced - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalInvoiced - request.amountPaid).toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </CardContent>
