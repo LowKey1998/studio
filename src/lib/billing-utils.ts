@@ -38,6 +38,7 @@ export type BillingOutput = {
 
 /**
  * Calculates the full financial breakdown for a registration cycle.
+ * Force number conversion on all inputs to ensure accurate floating-point summation.
  */
 export function calculateBilling(input: BillingInput): BillingOutput {
   const {
@@ -56,23 +57,23 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   if (policy === 'semester') {
     baseTuition = Number(semesterTuition) || 0;
   } else {
-    // Sum course costs. Force number conversion to ensure accurate summation.
+    // Sum course costs.
     baseTuition = (courses || []).reduce((sum, course) => {
-        const cost = Number(course?.cost);
+        const cost = Number(course?.cost || 0);
         return sum + (isNaN(cost) ? 0 : cost);
     }, 0);
   }
 
   // 2. Apply Scholarship (only to tuition)
   const scholarshipAmount = applyScholarship 
-    ? baseTuition * (Number(scholarshipPercentage) / 100)
+    ? baseTuition * (Number(scholarshipPercentage || 0) / 100)
     : 0;
   
   const netTuition = Math.max(0, baseTuition - scholarshipAmount);
 
   // 3. Sum Fees
-  const totalMandatoryFees = (mandatoryFees || []).reduce((sum, fee) => sum + (Number(fee?.amount) || 0), 0);
-  const totalOptionalFees = (optionalFees || []).reduce((sum, fee) => sum + (Number(fee?.amount) || 0), 0);
+  const totalMandatoryFees = (mandatoryFees || []).reduce((sum, fee) => sum + (Number(fee?.amount || 0) || 0), 0);
+  const totalOptionalFees = (optionalFees || []).reduce((sum, fee) => sum + (Number(fee?.amount || 0) || 0), 0);
   const totalFees = totalMandatoryFees + totalOptionalFees;
 
   // 4. Calculate Grand Total

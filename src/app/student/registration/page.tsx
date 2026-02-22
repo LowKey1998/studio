@@ -178,15 +178,20 @@ export default function StudentRegistrationPage() {
                     const invoice = invoicesData[registration?.invoiceId];
                     const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
+                    // Force billing calculation to use individual course costs for "Pay Per Course"
+                    const activeCoursesForBilling = isRegistered 
+                        ? Array.from(enrolledCourseIds).map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
+                        : courses.map(c => ({ id: c.id, cost: Number(c.cost || 0) }));
+
                     const breakdown = calculateBilling({
                         policy: activePolicy,
-                        semesterTuition: details.tuitionFee || 0,
-                        courses: isRegistered ? Array.from(enrolledCourseIds).map(id => ({ id, cost: cData[id]?.cost || 0 })) : courses.map(c => ({ id: c.id, cost: c.cost })),
-                        mandatoryFees: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: f.amount })),
-                        optionalFees: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: details.optionalFees?.[fid]?.amount || 0 })),
+                        semesterTuition: Number(details.tuitionFee || 0),
+                        courses: activeCoursesForBilling,
+                        mandatoryFees: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
+                        optionalFees: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: Number(details.optionalFees?.[fid]?.amount || 0) })),
                         applyScholarship: !!registration?.applyScholarship,
-                        scholarshipPercentage: registration?.scholarshipPercentage || 0,
-                        lateFee: invoice?.lateFee || 0
+                        scholarshipPercentage: Number(registration?.scholarshipPercentage || 0),
+                        lateFee: Number(invoice?.lateFee || 0)
                     });
 
                     list.push({ 
