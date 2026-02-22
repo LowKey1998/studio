@@ -505,6 +505,7 @@ export default function RegistrationManagementPage() {
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+    const [editInitialTab, setEditInitialTab] = React.useState('details');
     const [editingSemester, setEditingSemester] = React.useState<Semester | null>(null);
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});

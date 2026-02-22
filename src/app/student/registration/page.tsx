@@ -6,7 +6,7 @@ import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, 
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue, remove, update } from 'firebase/database';
+import { ref, get, onValue, update } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -89,11 +89,12 @@ export default function StudentRegistrationPage() {
             
             if (!uSnap.exists()) return;
             const profile = uSnap.val();
-            setUserProfile({ 
+            const profileMeta = { 
                 ...profile, 
                 programmeName: pSnap.val()?.[profile.programmeId]?.name || 'Unknown', 
                 intakeName: iSnap.val()?.[profile.intakeId]?.name || 'Unknown' 
-            });
+            };
+            setUserProfile(profileMeta);
             
             const coursePathsData = cpSnap.val() || {};
             const userPathEntry = Object.entries(coursePathsData).find(([_, p]: [string, any]) => 
@@ -184,18 +185,22 @@ export default function StudentRegistrationPage() {
                     const invoice = invoicesData[registration?.invoiceId];
 
                     let totalTuition = 0;
-                    if (isRegistered && invoice) {
+                    if (invoice) {
                         totalTuition = Number(invoice.totalTuition || 0);
+                    } else if (activePolicy === 'semester') {
+                        totalTuition = Number(details.tuitionFee || 0);
                     } else {
-                        if (activePolicy === 'semester') {
-                            totalTuition = Number(details.tuitionFee || 0);
-                        } else {
-                            courses.forEach(c => {
-                                if (!profile.exemptedCourses?.[c.id]) {
-                                    totalTuition += c.cost;
-                                }
-                            });
-                        }
+                        // Pay per course logic: use enrolled courses if registered, else use roadmap
+                        const enrolledIdsList = Array.from(enrolledCourseIds);
+                        const courseListToCharge = isRegistered && enrolledIdsList.length > 0
+                            ? enrolledIdsList.map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
+                            : courses;
+
+                        courseListToCharge.forEach((c: any) => {
+                            if (!profile.exemptedCourses?.[c.id]) {
+                                totalTuition += (c.cost || 0);
+                            }
+                        });
                     }
 
                     list.push({ 

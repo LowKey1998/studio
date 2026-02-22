@@ -297,7 +297,7 @@ export default function ApproveRegistrationsPage() {
                                 studentName: userData.name,
                                 studentId: userData.id,
                                 studentIntakeId: userData.intakeId,
-                                courseIds: registration.courses || [],
+                                courseIds: Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {}),
                                 invoiceId: registration.invoiceId,
                                 registrationDate: registration.registrationDate,
                                 status: registration.status,
@@ -324,7 +324,7 @@ export default function ApproveRegistrationsPage() {
                     const key = req.semesterName;
                     if (!acc[key]) acc[key] = [];
                     acc[key].push(req);
-                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.dateRequested).getTime());
+                    acc[key].sort((a,b) => new Date(a.registrationDate).getTime() - new Date(b.registrationDate).getTime());
                     return acc;
                 }, {} as GroupedRequests);
 
@@ -422,8 +422,8 @@ export default function ApproveRegistrationsPage() {
                 await update(invoiceRef, {
                     courses: finalCourses,
                     totalTuition: tuitionCost,
-                    totalOptionalFees: optionalFeesCost,
                     totalMandatoryFees: mandatoryFeesCost,
+                    totalOptionalFees: optionalFeesCost,
                 });
 
                 await update(registrationRef, { 
@@ -647,10 +647,11 @@ export default function ApproveRegistrationsPage() {
                              {requests.map((request) => {
                                 const reqId = `${request.userId}-${request.semesterId}`;
                                 const currentSelection = editingSelections[reqId] || [];
+                                const activeCourses = type === 'pending' ? currentSelection : request.courseIds;
                                 
                                 const totalTuition = request.billingPolicy === 'semester'
                                     ? request.semesterTuitionFee
-                                    : currentSelection.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
+                                    : activeCourses.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
 
                                 const totalFees = (request.optionalFees || []).reduce((acc, id) => acc + (allOptionalFees.get(id)?.amount || 0), 0) +
                                                 Array.from(allMandatoryFees.values()).reduce((acc, fee) => acc + fee.amount, 0);
@@ -712,21 +713,21 @@ export default function ApproveRegistrationsPage() {
                                         <div className="flex flex-col gap-2">
                                             <Label className="text-[10px] uppercase text-muted-foreground font-black tracking-[0.2em] mb-2">Class Roster Configuration</Label>
                                             <div className="grid gap-2">
-                                                {Array.from(allCourses.values()).filter(c => c.status === 'active' && (currentSelection.includes(c.id) || request.courseIds.includes(c.id))).map(course => {
+                                                {Array.from(allCourses.values()).filter(c => c.status === 'active' && (activeCourses.includes(c.id) || request.courseIds.includes(c.id))).map(course => {
                                                     const history = request.academicHistory[course.id];
                                                     const isStudentSelected = request.courseIds.includes(course.id);
                                                     
                                                     return(
                                                     <div key={course.id} className={cn(
                                                         "flex items-center gap-4 rounded-xl border p-3 text-sm transition-all",
-                                                        currentSelection.includes(course.id) ? "bg-primary/5 border-primary/20" : "opacity-50 grayscale bg-muted/20"
+                                                        activeCourses.includes(course.id) ? "bg-primary/5 border-primary/20" : "opacity-50 grayscale bg-muted/20"
                                                     )}>
-                                                        <Checkbox id={`${reqId}-${course.id}`} checked={currentSelection.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending' || request.billingPolicy === 'semester'}/>
+                                                        <Checkbox id={`${reqId}-${course.id}`} checked={activeCourses.includes(course.id)} onCheckedChange={() => handleCourseSelectionChange(reqId, course.id)} disabled={type !== 'pending' || request.billingPolicy === 'semester'}/>
                                                         <div className="flex-1 flex flex-col gap-1">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="font-bold">{course.code}</span>
                                                                 <span className="text-muted-foreground text-xs">{course.name}</span>
-                                                                {!isStudentSelected && currentSelection.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
+                                                                {!isStudentSelected && activeCourses.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
                                                             </div>
                                                             <div className='flex gap-2 items-center'>
                                                                 {history && (<Badge variant={history === 'Passed' ? 'default' : 'destructive'} className='h-4 px-1.5 text-[9px] gap-1'><History className="h-2.5 w-2.5"/>Previously {history}</Badge>)}
