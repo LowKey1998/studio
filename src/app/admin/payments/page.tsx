@@ -77,6 +77,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 
+type FeeBreakdown = {
+    tuition: number;
+    mandatory: number;
+    optional: number;
+    scholarship: number;
+    late: number;
+};
+
 type StudentPaymentInfo = {
     userId: string;
     studentId: string;
@@ -98,6 +106,7 @@ type StudentPaymentInfo = {
     gracePeriod: number;
     isUnlinked?: boolean;
     tempStudentName?: string;
+    breakdown: FeeBreakdown;
 };
 
 type PaymentRecord = {
@@ -115,6 +124,7 @@ type PaymentRecord = {
     totalPaid?: number;
     availableYears?: string[];
     availableSemesters?: Semester[];
+    breakdown?: FeeBreakdown;
 };
 
 type Transaction = {
@@ -360,9 +370,11 @@ export default function PaymentsManagementPage() {
                         const late = Number(invoice.lateFee || 0);
                         const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
-                        const totalPayable = invoice.applyScholarship 
-                            ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
-                            : (tuition + mandatory + optional + late);
+                        const scholarshipAmount = invoice.applyScholarship 
+                            ? (tuition * (scholarPerc / 100))
+                            : 0;
+
+                        const totalPayable = tuition - scholarshipAmount + mandatory + optional + late;
 
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
@@ -384,7 +396,14 @@ export default function PaymentsManagementPage() {
                             invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
                             thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
                             paidPercentage, targetThreshold: threshold, gracePeriod: grace,
-                            status: balance <= 0.01 ? 'Paid' : 'Pending'
+                            status: balance <= 0.01 ? 'Paid' : 'Pending',
+                            breakdown: {
+                                tuition,
+                                mandatory,
+                                optional,
+                                scholarship: scholarshipAmount,
+                                late
+                            }
                         };
                     }
                 }
@@ -399,7 +418,8 @@ export default function PaymentsManagementPage() {
                     invoiceId: 'none', enrolledCourses: [],
                     thresholdMet: true, penaltiesActive: false, isScholarship: false,
                     paidPercentage: 100, targetThreshold: 0, gracePeriod: 0,
-                    status: 'Pending', isUnlinked: true, tempStudentName: t.senderName
+                    status: 'Pending', isUnlinked: true, tempStudentName: t.senderName,
+                    breakdown: { tuition: 0, mandatory: 0, optional: 0, scholarship: 0, late: 0 }
                 };
             });
 
@@ -555,8 +575,7 @@ export default function PaymentsManagementPage() {
                 if (field === 'userId' && !row.isNewStudent) {
                     const studentInfo = allStudents.find(s => s.uid === value);
                     if (studentInfo) {
-                        const studentIntakeId = studentInfo.intakeId;
-                        const validSemesters = semesters.filter(s => s.intakeId === studentIntakeId);
+                        const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
                         nextRow.year = undefined;
@@ -564,6 +583,7 @@ export default function PaymentsManagementPage() {
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
+                        nextRow.breakdown = undefined;
                     }
                 } else if (field === 'isNewStudent') {
                     if (value) {
@@ -578,39 +598,42 @@ export default function PaymentsManagementPage() {
                     nextRow.availableSemesters = [];
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
+                    nextRow.breakdown = undefined;
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
                         nextRow.availableSemesters = semesters.filter(s => String(s.year) === value);
                     } else {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
-                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentIntakeId && String(s.year) === value);
+                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
                     }
                     nextRow.semesterId = undefined;
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
+                    nextRow.breakdown = undefined;
                 } else if (field === 'semesterId') {
                     const studentUid = row.userId;
-                    // First check if a registration/invoice already exists for this specific allocation
                     const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
                     
                     if (existingInfo) {
                         nextRow.totalDue = existingInfo.totalDue;
                         nextRow.totalPaid = existingInfo.totalPaid;
+                        nextRow.breakdown = existingInfo.breakdown;
                     } else {
-                        // Fallback to semester configuration from Registration Management
                         const sem = semesters.find(s => s.id === value);
                         if (sem) {
-                            let predictedDue = 0;
-                            // 1. Tuition
-                            if (sem.billingPolicy === 'semester') {
-                                predictedDue += Number(sem.tuitionFee || 0);
-                            }
-                            // 2. Mandatory Fees
-                            if (sem.mandatoryFees) {
-                                predictedDue += Object.values(sem.mandatoryFees).reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
-                            }
-                            nextRow.totalDue = predictedDue;
+                            let tuition = 0;
+                            if (sem.billingPolicy === 'semester') tuition = Number(sem.tuitionFee || 0);
+                            const mandatory = sem.mandatoryFees ? Object.values(sem.mandatoryFees).reduce((sum, f) => sum + (Number(f.amount) || 0), 0) : 0;
+                            
+                            nextRow.totalDue = tuition + mandatory;
                             nextRow.totalPaid = 0;
+                            nextRow.breakdown = {
+                                tuition,
+                                mandatory,
+                                optional: 0,
+                                scholarship: 0,
+                                late: 0
+                            };
                         }
                     }
                 }
@@ -675,8 +698,8 @@ export default function PaymentsManagementPage() {
                         invoiceId = newInvoiceRef.key!;
                         updates[`invoices/${studentUid}/${invoiceId}`] = {
                             invoiceId, 
-                            totalTuition: record.setTotalDue ? parseFloat(record.setTotalDue) : (record.totalDue || 0), 
-                            totalMandatoryFees: 0, 
+                            totalTuition: record.breakdown?.tuition || 0,
+                            totalMandatoryFees: record.breakdown?.mandatory || 0,
                             totalOptionalFees: 0,
                             dateCreated: now, 
                             semester: semesterInfo.name, 
@@ -1167,7 +1190,28 @@ export default function PaymentsManagementPage() {
                                         <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Audit</Badge>}</div>
                                         {row.semesterId ? (
                                             <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Due</span><span className="font-black text-xs">K{(row.totalDue || 0).toFixed(0)}</span></div>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <div className="flex flex-col cursor-help group">
+                                                            <span className="text-[8px] uppercase font-bold opacity-50 group-hover:text-primary">Due</span>
+                                                            <span className="font-black text-xs border-b border-dotted">K{(row.totalDue || 0).toFixed(0)}</span>
+                                                        </div>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-64 p-3 shadow-xl">
+                                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2 mb-3">Balance Breakdown</h4>
+                                                        {row.breakdown ? (
+                                                            <div className="space-y-2 text-xs font-medium">
+                                                                <div className="flex justify-between"><span>Base Tuition:</span> <span>K{row.breakdown.tuition.toFixed(2)}</span></div>
+                                                                {row.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600 font-bold"><span>Scholarship:</span> <span>- K{row.breakdown.scholarship.toFixed(2)}</span></div>}
+                                                                <div className="flex justify-between"><span>Mandatory Fees:</span> <span>K{row.breakdown.mandatory.toFixed(2)}</span></div>
+                                                                <div className="flex justify-between"><span>Optional Fees:</span> <span>K{row.breakdown.optional.toFixed(2)}</span></div>
+                                                                {row.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fee:</span> <span>K{row.breakdown.late.toFixed(2)}</span></div>}
+                                                                <Separator className="my-1"/>
+                                                                <div className="flex justify-between font-black text-primary"><span>TOTAL PAYABLE:</span> <span>K{( (row.breakdown.tuition - row.breakdown.scholarship) + row.breakdown.mandatory + row.breakdown.optional + row.breakdown.late ).toFixed(2)}</span></div>
+                                                            </div>
+                                                        ) : <p className="text-[10px] italic opacity-60">Breakdown unavailable for manual prediction.</p>}
+                                                    </PopoverContent>
+                                                </Popover>
                                                 <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
                                                 <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">After Pay</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
