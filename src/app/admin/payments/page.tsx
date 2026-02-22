@@ -612,6 +612,7 @@ export default function PaymentsManagementPage() {
                     nextRow.breakdown = undefined;
                 } else if (field === 'semesterId') {
                     const studentUid = row.userId;
+                    // Proactive Check: If student already has an invoice for this semester in our derived audit info
                     const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
                     
                     if (existingInfo) {
@@ -619,6 +620,7 @@ export default function PaymentsManagementPage() {
                         nextRow.totalPaid = existingInfo.totalPaid;
                         nextRow.breakdown = existingInfo.breakdown;
                     } else {
+                        // Prediction fallback: Check the semester record itself for baseline tuition/fees
                         const sem = semesters.find(s => s.id === value);
                         if (sem) {
                             let tuition = 0;
