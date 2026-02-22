@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 // --- TYPE DEFINITIONS ---
 type Course = {
@@ -49,6 +50,8 @@ type Semester = {
     optionalFees?: Record<string, Fee>;
     paymentPlanIds?: Record<string, boolean>;
     lateRegistrationActive?: boolean;
+    billingPolicy?: BillingPolicy;
+    tuitionFee?: number;
 };
 
 type Fee = {
@@ -68,10 +71,6 @@ type UserProfile = {
     programmeId: string;
     intakeId: string;
     exemptedCourses?: Record<string, boolean>;
-};
-
-type InstitutionSettings = {
-    billingPolicy: 'course' | 'semester';
 };
 
 const getOrdinalSuffix = (i: number) => {
@@ -98,7 +97,7 @@ export default function RegisterForSemesterPage() {
     const [selectedOptionalFees, setSelectedOptionalFees] = React.useState<string[]>([]);
     const [selectedPaymentPlan, setSelectedPaymentPlan] = React.useState<string>('');
     const [applyScholarship, setApplyScholarship] = React.useState(false);
-    const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester'>('course');
+    const [billingPolicy, setBillingPolicy] = React.useState<BillingPolicy>('course');
 
     const [availablePaymentPlans, setAvailablePaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [paymentDeadlines, setPaymentDeadlines] = React.useState<string[]>([]);
@@ -166,9 +165,6 @@ export default function RegisterForSemesterPage() {
                 const allProgrammes = programmesSnap.val() || {};
                 const allPaymentPlansData = allSettings.paymentPlans || {};
                 
-                const instSettings: InstitutionSettings = allSettings.institution || { billingPolicy: 'course' };
-                setBillingPolicy(instSettings.billingPolicy);
-
                 const programmeData = allProgrammes[userDataVal.programmeId];
                 if (programmeData) {
                     setProgramme({ id: userDataVal.programmeId, ...programmeData });
@@ -187,7 +183,10 @@ export default function RegisterForSemesterPage() {
                     throw new Error("The selected semester is not part of your defined course path.");
                 }
                 
+                const activePolicy = semesterData.billingPolicy || allSettings.institution?.billingPolicy || 'course';
+                setBillingPolicy(activePolicy);
                 setSemesterDetails({id: semesterId, ...semesterData});
+
                 if(allSettings.registrationPolicy?.lateRegistrationFee > 0 && semesterData.lateRegistrationActive) {
                     setIsLateRegistration(true);
                     setLateFee(allSettings.registrationPolicy.lateRegistrationFee);
@@ -216,8 +215,8 @@ export default function RegisterForSemesterPage() {
                     setApplyScholarship(!!myExisting.applyScholarship);
                 } else {
                     const initialSelectedCourses = semesterCourses
-                        .map(c => c.id)
-                        .filter(id => !userDataVal.exemptedCourses?.[id]);
+                        .map((c:Course) => c.id)
+                        .filter((id:string) => !userDataVal.exemptedCourses?.[id]);
                     setSelectedCourseIds(initialSelectedCourses);
                 }
 
@@ -291,20 +290,23 @@ export default function RegisterForSemesterPage() {
                 invoiceId = invoiceRef.key!;
             }
 
-            const tuitionCost = billingPolicy === 'semester' 
-                ? (programme?.tuitionFee || 0) 
-                : selectedCourseIds.reduce((sum, id) => sum + (coursesForSemester.find(c => c.id === id)?.cost || 0), 0);
-            
-            const mandatoryFeesCost = Object.values(semesterDetails.mandatoryFees || {}).reduce((sum, fee) => sum + fee.amount, 0);
-            const optionalFeesCost = selectedOptionalFees.reduce((sum, id) => sum + (semesterDetails.optionalFees?.[id]?.amount || 0), 0);
-            const finalLateFee = isLateRegistration ? lateFee : 0;
+            const breakdown = calculateBilling({
+                policy: billingPolicy,
+                semesterTuition: semesterDetails.tuitionFee || programme?.tuitionFee || 0,
+                courses: selectedCourseIds.map(id => ({ id, cost: coursesForSemester.find(c => c.id === id)?.cost || 0 })),
+                mandatoryFees: Object.values(semesterDetails.mandatoryFees || {}),
+                optionalFees: selectedOptionalFees.map(id => ({ name: semesterDetails.optionalFees?.[id]?.name || 'Fee', amount: semesterDetails.optionalFees?.[id]?.amount || 0 })),
+                applyScholarship: applyScholarship,
+                scholarshipPercentage: existingRegistration?.scholarshipPercentage || 0, // In standard flow, percentage is applied by registrar later
+                lateFee: isLateRegistration ? lateFee : 0
+            });
 
             const invoiceData = {
                 invoiceId,
-                totalTuition: tuitionCost,
-                totalMandatoryFees: mandatoryFeesCost,
-                totalOptionalFees: optionalFeesCost,
-                lateFee: finalLateFee,
+                totalTuition: breakdown.baseTuition,
+                totalMandatoryFees: breakdown.totalMandatoryFees,
+                totalOptionalFees: breakdown.totalOptionalFees,
+                lateFee: breakdown.lateFee,
                 paymentPlan: selectedPaymentPlan,
                 dateCreated: existingRegistration?.registrationDate || new Date().toISOString(),
                 semester: semesterDetails.name,

@@ -69,6 +69,7 @@ import {
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 type RegistrationRequest = {
   userId: string;
@@ -84,14 +85,16 @@ type RegistrationRequest = {
   applyScholarship?: boolean;
   scholarshipStatus?: 'Approved' | 'Denied';
   scholarshipId?: string;
+  scholarshipPercentage?: number;
   programmeId: string;
   programmeName: string;
   optionalFees: string[];
   academicHistory: Record<string, 'Passed' | 'Failed'>;
   amountPaid: number;
-  billingPolicy: 'course' | 'semester';
+  billingPolicy: BillingPolicy;
   semesterTuitionFee: number;
   source: 'auto' | 'manual';
+  lateFee?: number;
 };
 
 type Scholarship = {
@@ -305,6 +308,7 @@ export default function ApproveRegistrationsPage() {
                                 applyScholarship: registration.applyScholarship || false,
                                 scholarshipStatus: registration.scholarshipStatus,
                                 scholarshipId: registration.scholarshipId,
+                                scholarshipPercentage: registration.scholarshipPercentage || 0,
                                 programmeId: registration.programmeId,
                                 programmeName: programmesData.get(registration.programmeId)?.name || 'Unknown Programme',
                                 optionalFees: registration.optionalFees || [],
@@ -312,7 +316,8 @@ export default function ApproveRegistrationsPage() {
                                 amountPaid,
                                 billingPolicy: semesterInfo?.billingPolicy || 'course',
                                 semesterTuitionFee: Number(semesterInfo?.tuitionFee || 0),
-                                source: registration.source || 'manual'
+                                source: registration.source || 'manual',
+                                lateFee: allInvoices[userId]?.[registration.invoiceId]?.lateFee || 0
                             };
                             if (registration.status === 'Pending Approval') pending.push(requestData);
                             else if (registration.status === 'Pending Payment') approved.push(requestData);
@@ -412,18 +417,22 @@ export default function ApproveRegistrationsPage() {
                     notificationMessage += ' Please proceed to payments to finalize your enrollment.';
                 }
 
-                const tuitionCost = request.billingPolicy === 'semester'
-                    ? request.semesterTuitionFee
-                    : finalCourses.reduce((acc, id) => acc + (allCourses.get(id)?.cost || 0), 0);
-
-                const optionalFeesCost = (request.optionalFees || []).reduce((acc, id) => acc + (allOptionalFees.get(id)?.amount || 0), 0);
-                const mandatoryFeesCost = Array.from(allMandatoryFees.values()).reduce((acc, fee) => acc + fee.amount, 0);
+                const breakdown = calculateBilling({
+                    policy: request.billingPolicy,
+                    semesterTuition: request.semesterTuitionFee,
+                    courses: finalCourses.map(id => ({ id, cost: allCourses.get(id)?.cost || 0 })),
+                    mandatoryFees: Array.from(allMandatoryFees.values()),
+                    optionalFees: (request.optionalFees || []).map(id => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
+                    applyScholarship: !!request.applyScholarship,
+                    scholarshipPercentage: request.scholarshipPercentage || 0,
+                    lateFee: request.lateFee || 0
+                });
 
                 await update(invoiceRef, {
                     courses: finalCourses,
-                    totalTuition: tuitionCost,
-                    totalMandatoryFees: mandatoryFeesCost,
-                    totalOptionalFees: optionalFeesCost,
+                    totalTuition: breakdown.baseTuition,
+                    totalMandatoryFees: breakdown.totalMandatoryFees,
+                    totalOptionalFees: breakdown.totalOptionalFees,
                 });
 
                 await update(registrationRef, { 
@@ -442,7 +451,7 @@ export default function ApproveRegistrationsPage() {
                     invoiceId: request.invoiceId,
                     studentName: request.studentName,
                     studentId: request.studentId,
-                    amount: tuitionCost + optionalFeesCost + mandatoryFeesCost,
+                    amount: breakdown.grandTotal,
                     date: new Date().toISOString().split('T')[0],
                     description: `Invoice for ${request.semesterName}`,
                 };
@@ -494,13 +503,20 @@ export default function ApproveRegistrationsPage() {
                 const invoiceRef = ref(db, `invoices/${request.userId}/${currentReg.invoiceId}`);
                 const invoiceSnap = await get(invoiceRef);
                 if (invoiceSnap.exists()) {
-                    const tuitionCost = billingPolicy === 'semester'
-                        ? Number(semesterInfo?.tuitionFee || 0)
-                        : updatedCourses.reduce((sum, cid) => sum + (allCourses.get(cid)?.cost || 0), 0);
+                    const breakdown = calculateBilling({
+                        policy: billingPolicy,
+                        semesterTuition: Number(semesterInfo?.tuitionFee || 0),
+                        courses: updatedCourses.map(id => ({ id, cost: allCourses.get(id)?.cost || 0 })),
+                        mandatoryFees: Array.from(allMandatoryFees.values()),
+                        optionalFees: (currentReg.optionalFees || []).map((id:string) => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
+                        applyScholarship: !!currentReg.applyScholarship,
+                        scholarshipPercentage: currentReg.scholarshipPercentage || 0,
+                        lateFee: invoiceSnap.val().lateFee || 0
+                    });
 
                     await update(invoiceRef, { 
                         courses: updatedCourses,
-                        totalTuition: tuitionCost 
+                        totalTuition: breakdown.baseTuition 
                     });
                 }
 
@@ -649,14 +665,16 @@ export default function ApproveRegistrationsPage() {
                                 const currentSelection = editingSelections[reqId] || [];
                                 const activeCourses = type === 'pending' ? currentSelection : request.courseIds;
                                 
-                                const totalTuition = request.billingPolicy === 'semester'
-                                    ? request.semesterTuitionFee
-                                    : activeCourses.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
-
-                                const totalFees = (request.optionalFees || []).reduce((acc, id) => acc + (allOptionalFees.get(id)?.amount || 0), 0) +
-                                                Array.from(allMandatoryFees.values()).reduce((acc, fee) => acc + fee.amount, 0);
-                                
-                                const totalInvoiced = totalTuition + totalFees;
+                                const breakdown = calculateBilling({
+                                    policy: request.billingPolicy,
+                                    semesterTuition: request.semesterTuitionFee,
+                                    courses: activeCourses.map(id => ({ id, cost: allCourses.get(id)?.cost || 0 })),
+                                    mandatoryFees: Array.from(allMandatoryFees.values()),
+                                    optionalFees: (request.optionalFees || []).map(id => ({ name: allOptionalFees.get(id)?.name || 'Fee', amount: allOptionalFees.get(id)?.amount || 0 })),
+                                    applyScholarship: !!request.applyScholarship,
+                                    scholarshipPercentage: request.scholarshipPercentage || 0,
+                                    lateFee: request.lateFee || 0
+                                });
                                 
                                 const regDateValid = request.registrationDate && !isNaN(new Date(request.registrationDate).getTime());
 
@@ -749,7 +767,7 @@ export default function ApproveRegistrationsPage() {
                                             <div className="flex items-center gap-6">
                                                 <div className="flex flex-col">
                                                     <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Total Invoiced</span>
-                                                    <span className="font-black text-lg">ZMW {totalInvoiced.toFixed(2)}</span>
+                                                    <span className="font-black text-lg">ZMW {breakdown.grandTotal.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex flex-col border-l pl-6">
                                                     <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-none">Amount Paid</span>
@@ -758,7 +776,7 @@ export default function ApproveRegistrationsPage() {
                                             </div>
                                             <div className="flex flex-col items-end">
                                                 <span className="text-[9px] font-black uppercase text-primary tracking-widest leading-none">Outstanding Balance</span>
-                                                <span className={cn("text-2xl font-black", (totalInvoiced - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, totalInvoiced - request.amountPaid).toFixed(2)}</span>
+                                                <span className={cn("text-2xl font-black", (breakdown.grandTotal - request.amountPaid) > 0.01 ? "text-destructive" : "text-green-600")}>ZMW {Math.max(0, breakdown.grandTotal - request.amountPaid).toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -897,8 +915,8 @@ export default function ApproveRegistrationsPage() {
 
                         <Alert variant="default" className="bg-blue-50 border-blue-200 py-3 shadow-sm">
                             <Info className="h-4 w-4 text-primary" />
-                            <AlertDescription className="text-[10px] leading-tight font-medium text-blue-800">
-                                <strong>Important:</strong> Approving this request will simultaneously **Authorize the Semester Enrollment** and apply the selected **Waiver Percentage** to the student's tuition account.
+                            <AlertDescription className="text-[10px] leading-relaxed font-medium text-blue-800">
+                                <strong>Important:</strong> Approving this request will simultaneously **Authorize the Semester Enrollment** and apply the selected **Waiver Percentage** to the tuition line item for this registration cycle.
                             </AlertDescription>
                         </Alert>
                     </div>

@@ -17,10 +17,11 @@ import { Label } from '@/components/ui/label';
 import { logError } from '@/lib/error-logger';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; exemptedCourses?: Record<string, boolean>; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; cost: number; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, {name: string, amount: number}>; optionalFees?: Record<string, {name: string, amount: number}>; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; billingPolicy?: BillingPolicy; tuitionFee?: number; mandatoryFees?: Record<string, {name: string, amount: number}>; optionalFees?: Record<string, {name: string, amount: number}>; };
 type SemesterWithStatus = Semester & { 
     isRegistered: boolean; 
     hasPaymentPlan: boolean; 
@@ -30,10 +31,7 @@ type SemesterWithStatus = Semester & {
     isMissingDeadlines: boolean; 
     isCurrentStanding: boolean;
     selectedPaymentPlan?: string;
-    mandatoryFeesList: { name: string; amount: number }[];
-    optionalFeesList: { name: string; amount: number }[];
-    totalTuition: number;
-    billingPolicy: 'course' | 'semester';
+    billingBreakdown: ReturnType<typeof calculateBilling>;
     source: 'auto' | 'manual';
     statusInDb?: 'Pending Approval' | 'Pending Payment' | 'Completed';
     invoiceId?: string;
@@ -130,7 +128,6 @@ export default function StudentRegistrationPage() {
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
             const eventsData = Object.values(eventsSnap.val() || {}) as any[];
-            const timetablesData = tSnap.val() || {};
             const plansData = plansSnap.val() || {};
 
             const list: SemesterWithStatus[] = [];
@@ -174,33 +171,19 @@ export default function StudentRegistrationPage() {
                         }
                     });
 
-                    const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
-                    
-                    const selectedOptIds = new Set(registration?.optionalFees || []);
-                    const optionalFeesList = Object.entries(details.optionalFees || {})
-                        .filter(([id]) => !isRegistered || selectedOptIds.has(id))
-                        .map(([_, f]: [string, any]) => ({ name: f.name, amount: Number(f.amount) }));
-
-                    const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
                     const invoice = invoicesData[registration?.invoiceId];
+                    const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
-                    let totalTuition = 0;
-                    if (invoice && Number(invoice.totalTuition) > 0) {
-                        totalTuition = Number(invoice.totalTuition);
-                    } else if (activePolicy === 'semester') {
-                        totalTuition = Number(details.tuitionFee || 0);
-                    } else {
-                        const enrolledIdsList = Array.from(enrolledCourseIds);
-                        const courseListToCharge = isRegistered && enrolledIdsList.length > 0
-                            ? enrolledIdsList.map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
-                            : courses;
-
-                        courseListToCharge.forEach((c: any) => {
-                            if (!profile.exemptedCourses?.[c.id]) {
-                                totalTuition += (c.cost || 0);
-                            }
-                        });
-                    }
+                    const breakdown = calculateBilling({
+                        policy: activePolicy,
+                        semesterTuition: invoice?.totalTuition || details.tuitionFee || 0,
+                        courses: isRegistered ? Array.from(enrolledCourseIds).map(id => ({ id, cost: cData[id]?.cost || 0 })) : courses.map(c => ({ id: c.id, cost: c.cost })),
+                        mandatoryFees: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: f.amount })),
+                        optionalFees: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: details.optionalFees?.[fid]?.amount || 0 })),
+                        applyScholarship: !!registration?.applyScholarship,
+                        scholarshipPercentage: registration?.scholarshipPercentage || 0,
+                        lateFee: invoice?.lateFee || 0
+                    });
 
                     list.push({ 
                         ...details, 
@@ -213,13 +196,14 @@ export default function StudentRegistrationPage() {
                         isMissingDeadlines,
                         isCurrentStanding,
                         selectedPaymentPlan: registration?.paymentPlan,
-                        mandatoryFeesList,
-                        optionalFeesList,
-                        totalTuition,
+                        billingBreakdown: breakdown,
+                        totalTuition: breakdown.baseTuition,
                         billingPolicy: activePolicy,
                         source: registration?.source || 'manual',
                         statusInDb: registration?.status,
-                        invoiceId: registration?.invoiceId
+                        invoiceId: registration?.invoiceId,
+                        mandatoryFeesList: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: f.amount })),
+                        optionalFeesList: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: details.optionalFees?.[fid]?.amount || 0 }))
                     });
                 }
             }
@@ -273,9 +257,7 @@ export default function StudentRegistrationPage() {
                 <CardContent className="space-y-6">
                     {semestersForPath.length > 0 ? semestersForPath.map(sem => {
                         const isActionable = sem.isRegistered || sem.isOpen;
-                        const totalMandatory = sem.mandatoryFeesList.reduce((acc, f) => acc + f.amount, 0);
-                        const totalOptional = sem.optionalFeesList.reduce((acc, f) => acc + f.amount, 0);
-                        const grandTotal = sem.totalTuition + totalMandatory + totalOptional;
+                        const grandTotal = sem.billingBreakdown.grandTotal;
 
                         const isManual = sem.source === 'manual';
                         const isApproved = sem.statusInDb === 'Pending Payment' || sem.statusInDb === 'Completed';
@@ -343,13 +325,6 @@ export default function StudentRegistrationPage() {
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6 pt-6 pb-6">
-                                {!sem.hasPaymentPlan && sem.isRegistered && sem.isCurrentStanding && (
-                                    <Alert className="bg-orange-50 border-orange-200 border-2">
-                                        <AlertCircle className="h-4 w-4 text-orange-600" />
-                                        <AlertTitle className="text-orange-800 font-bold">Action Required</AlertTitle>
-                                        <AlertDescription className="text-orange-700 text-sm">Your course selection is recorded, but you must select a payment plan to generate your invoice. Click "Complete Setup" above.</AlertDescription>
-                                    </Alert>
-                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div className="space-y-6">
                                         <div className="space-y-3">
@@ -386,20 +361,32 @@ export default function StudentRegistrationPage() {
                                                 <div className="space-y-2.5 text-xs font-medium">
                                                     <div className="flex justify-between">
                                                         <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
-                                                        <span className="font-bold">ZMW {sem.totalTuition.toFixed(2)}</span>
+                                                        <span className="font-bold">ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
                                                     </div>
-                                                    {sem.mandatoryFeesList.map((f, i) => (
-                                                        <div key={i} className="flex justify-between">
-                                                            <span className="opacity-70">{f.name}:</span>
-                                                            <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
+                                                    {sem.billingBreakdown.scholarshipAmount > 0 && (
+                                                        <div className="flex justify-between text-blue-600">
+                                                            <span className="opacity-70 flex items-center gap-1.5"><GraduationCap className="h-3 w-3"/> Scholarship Credit:</span>
+                                                            <span className="font-bold">- ZMW {sem.billingBreakdown.scholarshipAmount.toFixed(2)}</span>
                                                         </div>
-                                                    ))}
-                                                    {sem.optionalFeesList.map((f, i) => (
-                                                        <div key={i} className="flex justify-between">
-                                                            <span className="opacity-70">{f.name}:</span>
-                                                            <span className="font-bold">ZMW {f.amount.toFixed(2)}</span>
+                                                    )}
+                                                    {sem.billingBreakdown.totalMandatoryFees > 0 && (
+                                                        <div className="flex justify-between">
+                                                            <span className="opacity-70">Mandatory Fees:</span>
+                                                            <span className="font-bold">ZMW {sem.billingBreakdown.totalMandatoryFees.toFixed(2)}</span>
                                                         </div>
-                                                    ))}
+                                                    )}
+                                                    {sem.billingBreakdown.totalOptionalFees > 0 && (
+                                                        <div className="flex justify-between">
+                                                            <span className="opacity-70">Optional Fees:</span>
+                                                            <span className="font-bold">ZMW {sem.billingBreakdown.totalOptionalFees.toFixed(2)}</span>
+                                                        </div>
+                                                    )}
+                                                    {sem.billingBreakdown.lateFee > 0 && (
+                                                        <div className="flex justify-between text-destructive">
+                                                            <span className="opacity-70">Late Registration Fee:</span>
+                                                            <span className="font-bold">ZMW {sem.billingBreakdown.lateFee.toFixed(2)}</span>
+                                                        </div>
+                                                    )}
                                                     <Separator className="my-2 bg-primary/10"/>
                                                     <div className="flex justify-between items-baseline pt-1">
                                                         <span className="text-[10px] font-black uppercase text-primary tracking-widest">Total Invoiced</span>
