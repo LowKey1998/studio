@@ -34,7 +34,7 @@ export type BillingOutput = {
   totalFees: number;
   lateFee: number;
   grandTotal: number;
-  courses: CourseItem[]; // Include input courses in output for itemized display
+  courses: CourseItem[];
 };
 
 /**
@@ -58,7 +58,6 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   if (policy === 'semester') {
     baseTuition = Number(semesterTuition) || 0;
   } else {
-    // Sum course costs strictly.
     baseTuition = (courses || []).reduce((sum, course) => {
         const cost = Number(course?.cost || 0);
         return sum + (isNaN(cost) ? 0 : cost);

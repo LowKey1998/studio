@@ -26,7 +26,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get, onValue, update } from 'firebase/database';
+import { ref, get, onValue, update, remove } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { format, parseISO, differenceInCalendarDays, isBefore, startOfDay } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { logError } from '@/lib/error-logger';
-import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { calculateAcademicState, parseIntakeDate, calculateSemesterDateRange } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
@@ -71,11 +71,9 @@ export default function StudentRegistrationPage() {
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
-    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semestersForPath, setSemestersForPath] = React.useState<SemesterWithStatus[]>([]);
     const { toast } = useToast();
 
-    // Use a Ref to ensure we only load once and avoid flicker
     const hasInitialized = React.useRef(false);
 
     React.useEffect(() => {
@@ -92,7 +90,6 @@ export default function StudentRegistrationPage() {
     const fetchData = React.useCallback(async () => {
         if (!currentUser) return;
         
-        // Only set primary loading state on first hit to prevent flicker
         if (!hasInitialized.current) setLoading(true);
 
         try {
@@ -141,7 +138,6 @@ export default function StudentRegistrationPage() {
             const globalInstSettings = instSnap.val() || { billingPolicy: 'course' };
             const invoicesData = invSnap.val() || {};
             const plansData = plansSnap.val() || {};
-            setAllPaymentPlans(Object.keys(plansData).map(id => ({ id, ...plansData[id] })));
 
             let currentStanding: { year: number, semester: number } | null = null;
             if (intakeStartStr && calSettings) {
