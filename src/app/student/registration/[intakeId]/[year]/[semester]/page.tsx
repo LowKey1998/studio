@@ -209,7 +209,19 @@ export default function RegisterForSemesterPage() {
                 const myExisting = myRegsSnap.val()?.[semesterId];
                 if (myExisting) {
                     setExistingRegistration(myExisting);
-                    setSelectedCourseIds(Array.isArray(myExisting.courses) ? myExisting.courses : Object.values(myExisting.courses || {}));
+                    
+                    const enrolledCourseIds: string[] = [];
+                    const rawRegCourses = myExisting.courses;
+                    if (Array.isArray(rawRegCourses)) {
+                        rawRegCourses.forEach(id => { if(typeof id === 'string') enrolledCourseIds.push(id) });
+                    } else if (rawRegCourses && typeof rawRegCourses === 'object') {
+                        Object.keys(rawRegCourses).forEach(key => {
+                            const val = rawRegCourses[key];
+                            if (typeof val === 'string') enrolledCourseIds.push(val);
+                            else enrolledCourseIds.push(key);
+                        });
+                    }
+                    setSelectedCourseIds(enrolledCourseIds);
                     setSelectedOptionalFees(myExisting.optionalFees || []);
                     if (myExisting.paymentPlan) setSelectedPaymentPlan(myExisting.paymentPlan);
                     setApplyScholarship(!!myExisting.applyScholarship);

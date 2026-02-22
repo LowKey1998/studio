@@ -58,6 +58,7 @@ export function calculateBilling(input: BillingInput): BillingOutput {
   if (policy === 'semester') {
     baseTuition = Number(semesterTuition) || 0;
   } else {
+    // Robustly sum every individual course cost
     baseTuition = (courses || []).reduce((sum, course) => {
         const cost = Number(course?.cost || 0);
         return sum + (isNaN(cost) ? 0 : cost);

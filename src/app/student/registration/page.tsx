@@ -168,10 +168,15 @@ export default function StudentRegistrationPage() {
                     const rawRegCourses = registration?.courses;
                     const enrolledCourseIds = new Set<string>();
                     
+                    // Robust handling of course lists from Firebase
                     if (Array.isArray(rawRegCourses)) {
-                        rawRegCourses.forEach(id => enrolledCourseIds.add(id));
+                        rawRegCourses.forEach(id => { if(typeof id === 'string') enrolledCourseIds.add(id) });
                     } else if (rawRegCourses && typeof rawRegCourses === 'object') {
-                        Object.keys(rawRegCourses).forEach(id => enrolledCourseIds.add(id));
+                        Object.keys(rawRegCourses).forEach(key => {
+                            const val = rawRegCourses[key];
+                            if (typeof val === 'string') enrolledCourseIds.add(val);
+                            else enrolledCourseIds.add(key);
+                        });
                     }
 
                     const isRegistered = enrolledCourseIds.size > 0;

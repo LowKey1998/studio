@@ -702,7 +702,7 @@ export default function RegistrationManagementPage() {
                                                 if (!sem || sem.intakeId !== intake.id) return null;
                                                 
                                                 const isActive = !!activePathSemesters[path.id]?.[semId]?.active;
-                                                const courses = (path.semesters[semId].courses || []).map(cid => {
+                                                const courses = (path.semesters[semId].courses || []).map((cid: string) => {
                                                     const c = allCourses[cid];
                                                     const lNames = (c?.lecturerIds || []).map((uid: string) => allUsers[uid]?.name).filter(Boolean).join(', ') || allUsers[c?.lecturerId || '']?.name || 'Unassigned';
                                                     return { id: cid, code: c?.code, name: c?.name, lecturer: lNames, cost: Number(c?.cost || 0) };

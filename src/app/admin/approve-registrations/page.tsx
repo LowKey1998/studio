@@ -300,7 +300,16 @@ export default function ApproveRegistrationsPage() {
                                 .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
                             const rawReqCourses = registration.courses;
-                            const reqCourseIds = Array.isArray(rawReqCourses) ? rawReqCourses : (rawReqCourses ? Object.keys(rawReqCourses) : []);
+                            const reqCourseIds: string[] = [];
+                            if (Array.isArray(rawReqCourses)) {
+                                rawReqCourses.forEach(id => { if(typeof id === 'string') reqCourseIds.push(id) });
+                            } else if (rawReqCourses && typeof rawReqCourses === 'object') {
+                                Object.keys(rawReqCourses).forEach(key => {
+                                    const val = rawReqCourses[key];
+                                    if (typeof val === 'string') reqCourseIds.push(val);
+                                    else reqCourseIds.push(key);
+                                });
+                            }
 
                             const requestData: RegistrationRequest = {
                                 userId,
@@ -501,7 +510,17 @@ export default function ApproveRegistrationsPage() {
                 }
 
                 const currentCoursesRaw = currentReg.courses;
-                const currentCourses = Array.isArray(currentCoursesRaw) ? currentCoursesRaw : (currentCoursesRaw ? Object.keys(currentCoursesRaw) : []);
+                const currentCourses: string[] = [];
+                if (Array.isArray(currentCoursesRaw)) {
+                    currentCoursesRaw.forEach(id => { if(typeof id === 'string') currentCourses.push(id) });
+                } else if (currentCoursesRaw && typeof currentCoursesRaw === 'object') {
+                    Object.keys(currentCoursesRaw).forEach(key => {
+                        const val = currentCoursesRaw[key];
+                        if (typeof val === 'string') currentCourses.push(val);
+                        else currentCourses.push(key);
+                    });
+                }
+
                 const updatedCourses = [...new Set([...currentCourses, request.courseId])];
 
                 await update(regRef, { courses: updatedCourses });
