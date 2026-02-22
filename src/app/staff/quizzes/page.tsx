@@ -18,6 +18,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type Quiz = {
     id: string;
@@ -125,7 +136,6 @@ export default function StaffQuizzesPage() {
     };
 
     const handleDeleteQuiz = async (id: string) => {
-        if (!confirm("Are you sure? This will delete the quiz and all results.")) return;
         try {
             await remove(ref(db, `quizzes/${id}`));
             await remove(ref(db, `quizSubmissions/${id}`));
@@ -267,9 +277,27 @@ export default function StaffQuizzesPage() {
                                         </div>
                                         <CardDescription className="line-clamp-2 mt-1">{quiz.description}</CardDescription>
                                     </div>
-                                    <Button variant="ghost" size="icon" className="text-destructive h-8 w-8" onClick={() => handleDeleteQuiz(quiz.id)}>
-                                        <Trash2 className="h-4 w-4"/>
-                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="text-destructive h-8 w-8">
+                                                <Trash2 className="h-4 w-4"/>
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This action will permanently delete the quiz "{quiz.title}" and all associated student submissions. This cannot be undone.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleDeleteQuiz(quiz.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                    Delete Quiz
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-4">

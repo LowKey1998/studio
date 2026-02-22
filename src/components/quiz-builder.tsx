@@ -154,7 +154,7 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
 
                     setQuiz(prev => ({
                         ...prev,
-                        courseId: cId, // Keep legacy field for compatibility
+                        courseId: cId, 
                         courseIds: cId ? [cId] : [],
                         intakeIds: iIds,
                         programmeIds: pIds,

@@ -313,7 +313,7 @@ export default function StudentRegistrationPage() {
                                                 
                                                 {isManual && !isApproved ? (
                                                     <Button asChild size="sm" variant="outline" className="h-8 shadow-sm">
-                                                        <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                        <Link href={`/student/registration/${userProfile?.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                             <Pencil className="h-3 w-3 mr-1.5"/> Edit Selection
                                                         </Link>
                                                     </Button>
@@ -324,7 +324,7 @@ export default function StudentRegistrationPage() {
                                                 ) : (
                                                     sem.isCurrentStanding ? (
                                                         <Button asChild variant="secondary" className="font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 shadow-sm h-8">
-                                                            <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                            <Link href={`/student/registration/${userProfile?.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                                 <AlertCircle className="mr-2 h-4 w-4"/>
                                                                 Complete Setup
                                                             </Link>
@@ -338,7 +338,7 @@ export default function StudentRegistrationPage() {
                                             </div>
                                         ) : sem.isOpen ? (
                                             <Button asChild className="h-8 shadow-md">
-                                                <Link href={`/student/registration/${sem.intakeId}/${sem.year}/${sem.semesterInYear}`}>
+                                                <Link href={`/student/registration/${userProfile?.intakeId}/${sem.year}/${sem.semesterInYear}`}>
                                                     Register Now <ChevronRight className="ml-2 h-4 w-4"/>
                                                 </Link>
                                             </Button>
