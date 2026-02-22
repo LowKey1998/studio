@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag, Trash2, Pencil, X } from 'lucide-react';
+import { Loader2, Info, ChevronRight, BookCopy, CheckCircle2, Clock, UserCheck, Calendar as CalendarIcon, AlertCircle, Route, Receipt, DollarSign, CalendarDays, Tag, Trash2, Pencil, X, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
@@ -56,7 +56,11 @@ export default function StudentRegistrationPage() {
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, user => { 
-            setCurrentUser(user);
+            if(user) { 
+                setCurrentUser(user);
+            } else {
+                setLoading(false);
+            }
         });
         return () => unsubscribe();
     }, []);
@@ -164,7 +168,6 @@ export default function StudentRegistrationPage() {
 
                     const mandatoryFeesList = Object.values(details.mandatoryFees || {}).map((f: any) => ({ name: f.name, amount: Number(f.amount) }));
                     
-                    // Filter optional fees by student's selection if they are registered
                     const selectedOptIds = new Set(registration?.optionalFees || []);
                     const optionalFeesList = Object.entries(details.optionalFees || {})
                         .filter(([id]) => !isRegistered || selectedOptIds.has(id))
@@ -177,7 +180,6 @@ export default function StudentRegistrationPage() {
                         totalTuition = Number(details.tuitionFee || 0);
                     } else {
                         courses.forEach(c => {
-                            // If registered, count selected. If not registered, count all non-exempted as "projected"
                             if (enrolledCourseIds.has(c.id) || (!isRegistered && !profile.exemptedCourses?.[c.id])) {
                                 totalTuition += c.cost;
                             }
@@ -363,7 +365,7 @@ export default function StudentRegistrationPage() {
                                         {isActionable && (
                                             <div className="space-y-3 p-5 border rounded-2xl bg-primary/5 shadow-inner">
                                                 <Label className="text-[10px] font-black uppercase text-primary tracking-[0.2em] flex items-center gap-2">
-                                                    <Receipt className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
+                                                    <Wallet className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
                                                 </Label>
                                                 <div className="space-y-2.5 text-xs font-medium">
                                                     <div className="flex justify-between">
