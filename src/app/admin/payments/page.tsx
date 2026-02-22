@@ -119,7 +119,6 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    setTotalDue?: string; 
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -261,7 +260,6 @@ export default function PaymentsManagementPage() {
     const [paymentAmount, setPaymentAmount] = React.useState('');
     const [paymentMethod, setPaymentMethod] = React.useState('Cash');
     const [transactionId, setTransactionId] = React.useState('');
-    const [manualTotalDue, setManualTotalDue] = React.useState('');
 
     // Bulk Recording State
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
@@ -754,7 +752,7 @@ export default function PaymentsManagementPage() {
                 invId = newInvRef.key!;
                 updates[`invoices/${selectedStudent.userId}/${invId}`] = {
                     invoiceId: invId, 
-                    totalTuition: manualTotalDue ? parseFloat(manualTotalDue) : 0, 
+                    totalTuition: 0, // baseline
                     totalMandatoryFees: 0, 
                     totalOptionalFees: 0,
                     dateCreated: now, 
@@ -834,7 +832,6 @@ export default function PaymentsManagementPage() {
         setPaymentAmount('');
         setPaymentMethod('Cash');
         setTransactionId('');
-        setManualTotalDue('');
         setSingleYear('');
         setSingleSemId('');
     };
@@ -1078,8 +1075,8 @@ export default function PaymentsManagementPage() {
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Year</Label><Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}><SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger><SelectContent>{Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label>Semester</Label><Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}><SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger><SelectContent>{semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label>Target Academic Year (Payment For)</Label><Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}><SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger><SelectContent>{Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1"><Label>Target Semester (Payment For)</Label><Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}><SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger><SelectContent>{semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
                         </div>
                         {singleSemId && (
                             <div className="p-3 rounded-lg border bg-muted/20 space-y-2">
@@ -1088,11 +1085,7 @@ export default function PaymentsManagementPage() {
                                     const info = paymentInfos.find(p => p.userId === selectedStudent?.userId && p.semesterId === singleSemId);
                                     if (!info) return (
                                         <div className="space-y-2">
-                                            <p className="text-[10px] italic text-primary font-bold">No active invoice found. Setting payment will initialize registration.</p>
-                                            <div className="space-y-1">
-                                                <Label className="text-[9px] uppercase">Set Expected Total Due (Optional)</Label>
-                                                <Input type="number" value={manualTotalDue} onChange={e => setManualTotalDue(e.target.value)} placeholder="0.00" className="h-8 text-xs"/>
-                                            </div>
+                                            <p className="text-[10px] italic text-primary font-bold text-center">No active invoice found. System will cross-reference baseline semester fees.</p>
                                         </div>
                                     );
                                     return (
@@ -1151,7 +1144,7 @@ export default function PaymentsManagementPage() {
                                                         <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs" />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <Label className="text-[9px] uppercase">Proposed ID</Label>
+                                                        <Label className="text-[9px] uppercase">Proposed Student ID</Label>
                                                         <Input placeholder="e.g. STU-NEW" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs" />
                                                     </div>
                                                 </div>
@@ -1172,14 +1165,14 @@ export default function PaymentsManagementPage() {
                                             <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground mb-2 block">Target Allocation (Payment For)</Label>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase">Year</Label>
+                                                    <Label className="text-[9px] uppercase font-bold">Target Year</Label>
                                                     <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
                                                         <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year..."/></SelectTrigger>
                                                         <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
                                                     </Select>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase">Semester</Label>
+                                                    <Label className="text-[9px] uppercase font-bold">Target Semester</Label>
                                                     <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
                                                         <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester..."/></SelectTrigger>
                                                         <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
@@ -1196,10 +1189,10 @@ export default function PaymentsManagementPage() {
                                                     <PopoverTrigger asChild>
                                                         <div className="flex flex-col cursor-help group">
                                                             <span className="text-[8px] uppercase font-bold opacity-50 group-hover:text-primary">Due</span>
-                                                            <span className="font-black text-xs border-b border-dotted">K{(row.totalDue || 0).toFixed(0)}</span>
+                                                            <span className="font-black text-xs border-b border-dotted text-primary">K{(row.totalDue || 0).toFixed(0)}</span>
                                                         </div>
                                                     </PopoverTrigger>
-                                                    <PopoverContent className="w-64 p-3 shadow-xl">
+                                                    <PopoverContent className="w-64 p-3 shadow-xl border-primary/20">
                                                         <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2 mb-3">Balance Breakdown</h4>
                                                         {row.breakdown ? (
                                                             <div className="space-y-2 text-xs font-medium">
