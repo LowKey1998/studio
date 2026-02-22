@@ -324,7 +324,7 @@ export default function RegisterForSemesterPage() {
                 registrationDate: existingRegistration?.registrationDate || new Date().toISOString(),
                 applyScholarship: applyScholarship,
                 semesterName: semesterDetails.name,
-                source: 'manual' // Track origin
+                source: 'manual' 
             };
 
             await set(invoiceRef, invoiceData);
@@ -332,10 +332,13 @@ export default function RegisterForSemesterPage() {
             
             if (!existingRegistration || existingRegistration.status === 'Pending Approval') {
                 const registrarIds = await getRegistrarIds();
-                const notificationPromises = registrarIds.map(id => 
-                    createNotification(id, `${userData.name} has ${existingRegistration ? 'updated' : 'submitted'} their registration for review.`, '/admin/approve-registrations')
-                );
-                await Promise.all(notificationPromises);
+                if (registrarIds.length > 0) {
+                    await createNotification(
+                        registrarIds, 
+                        `${userData.name} has ${existingRegistration ? 'updated' : 'submitted'} their registration for review.`,
+                        '/admin/approve-registrations'
+                    );
+                }
             }
 
             toast({ variant: 'success', title: existingRegistration ? "Details Updated" : "Registration Submitted!", description: "Your requirements have been saved." });

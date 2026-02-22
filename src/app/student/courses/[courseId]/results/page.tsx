@@ -13,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -164,16 +164,14 @@ export default function StudentResultsPage() {
                 dateSubmitted: new Date().toISOString()
             });
 
-            // Fire and forget notifications to avoid UI hangs
-            getRegistrarIds().then(registrarIds => {
-                if (registrarIds.length > 0) {
-                    createNotification(
-                        registrarIds, 
-                        `${userData.name} submitted a grade appeal for ${courseData.code}.`,
-                        '/admin/exams/student-appeals'
-                    ).catch(e => console.warn("Background notification failed:", e));
-                }
-            }).catch(e => console.warn("Failed to fetch registrar IDs for notification:", e));
+            const registrarIds = await getRegistrarIds();
+            if (registrarIds.length > 0) {
+                await createNotification(
+                    registrarIds, 
+                    `${userData.name} submitted a grade appeal for ${courseData.code}.`,
+                    '/admin/exams/student-appeals'
+                );
+            }
             
             toast({ variant: 'success', title: 'Appeal Submitted', description: 'Your request has been sent for review.'});
             setIsAppealDialogOpen(false);
@@ -182,7 +180,7 @@ export default function StudentResultsPage() {
 
         } catch (error: any) {
             console.error("Appeal Submission Error:", error);
-            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message || 'An unexpected error occurred. Please try again.' });
+            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message || 'An unexpected error occurred.' });
         } finally {
             setFormLoading(false);
         }

@@ -509,7 +509,7 @@ export default function RegistrationManagementPage() {
     const [editingDeadlinesFor, setEditingDeadlinesFor] = React.useState<Semester | null>(null);
     const [selectedPlansInDialog, setSelectedPlansInDialog] = React.useState<Record<string, boolean>>({});
     const [deadlineDates, setDeadlineDates] = React.useState<Record<string, Date | null | undefined>>({});
-    const [editInitialTab, setEditInitialTab] = React.useState('details');
+    const [editingDeadlineId, setEditingDeadlineId] = React.useState<string | null>(null);
 
     const [semesterToDeleteId, setSemesterToDeleteId] = React.useState<string | null>(null);
     const [isDeleteSemesterDialogOpen, setIsDeleteSemesterDialogOpen] = React.useState(false);
