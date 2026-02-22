@@ -137,7 +137,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
@@ -185,6 +185,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         className="h-9" 
                         value={search} 
                         onChange={e => setSearch(e.target.value)} 
+                        onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
                 <Separator />
@@ -572,21 +573,46 @@ export default function PaymentsManagementPage() {
                         nextRow.tempStudentId = undefined;
                         nextRow.tempStudentName = undefined;
                     }
+                    nextRow.year = undefined;
+                    nextRow.semesterId = undefined;
+                    nextRow.availableSemesters = [];
+                    nextRow.totalDue = 0;
+                    nextRow.totalPaid = 0;
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
                         nextRow.availableSemesters = semesters.filter(s => String(s.year) === value);
                     } else {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
-                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
+                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentIntakeId && String(s.year) === value);
                     }
                     nextRow.semesterId = undefined;
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
-                } else if (field === 'semesterId' && !row.isNewStudent) {
+                } else if (field === 'semesterId') {
                     const studentUid = row.userId;
-                    const info = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
-                    nextRow.totalDue = info?.totalDue || 0;
-                    nextRow.totalPaid = info?.totalPaid || 0;
+                    // First check if a registration/invoice already exists for this specific allocation
+                    const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
+                    
+                    if (existingInfo) {
+                        nextRow.totalDue = existingInfo.totalDue;
+                        nextRow.totalPaid = existingInfo.totalPaid;
+                    } else {
+                        // Fallback to semester configuration from Registration Management
+                        const sem = semesters.find(s => s.id === value);
+                        if (sem) {
+                            let predictedDue = 0;
+                            // 1. Tuition
+                            if (sem.billingPolicy === 'semester') {
+                                predictedDue += Number(sem.tuitionFee || 0);
+                            }
+                            // 2. Mandatory Fees
+                            if (sem.mandatoryFees) {
+                                predictedDue += Object.values(sem.mandatoryFees).reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+                            }
+                            nextRow.totalDue = predictedDue;
+                            nextRow.totalPaid = 0;
+                        }
+                    }
                 }
                 
                 return nextRow;
@@ -1139,7 +1165,7 @@ export default function PaymentsManagementPage() {
                                     </div>
                                     <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
                                         <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Audit</Badge>}</div>
-                                        {row.semesterId && !row.isNewStudent ? (
+                                        {row.semesterId ? (
                                             <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
                                                 <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Due</span><span className="font-black text-xs">K{(row.totalDue || 0).toFixed(0)}</span></div>
                                                 <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
