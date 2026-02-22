@@ -66,6 +66,16 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
+// Robust helper to extract course IDs from Firebase registrations
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(id => typeof id === 'string');
+    if (typeof raw === 'object') {
+        return Object.values(raw).filter(id => typeof id === 'string');
+    }
+    return [];
+};
+
 export default function StudentRegistrationPage() {
     const [loading, setLoading] = React.useState(true);
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
@@ -165,21 +175,9 @@ export default function StudentRegistrationPage() {
                     
                     const isOfferingActive = !!offerings[userPathId]?.[semId]?.active;
                     const registration = regs[semId];
-                    const rawRegCourses = registration?.courses;
-                    const enrolledCourseIds = new Set<string>();
-                    
-                    // Robust handling of course lists from Firebase
-                    if (Array.isArray(rawRegCourses)) {
-                        rawRegCourses.forEach(id => { if(typeof id === 'string') enrolledCourseIds.add(id) });
-                    } else if (rawRegCourses && typeof rawRegCourses === 'object') {
-                        Object.keys(rawRegCourses).forEach(key => {
-                            const val = rawRegCourses[key];
-                            if (typeof val === 'string') enrolledCourseIds.add(val);
-                            else enrolledCourseIds.add(key);
-                        });
-                    }
+                    const enrolledCourseIds = getCoursesFromReg(registration?.courses);
 
-                    const isRegistered = enrolledCourseIds.size > 0;
+                    const isRegistered = enrolledCourseIds.length > 0;
                     const hasPaymentPlan = !!registration?.paymentPlan;
                     const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
@@ -209,7 +207,7 @@ export default function StudentRegistrationPage() {
                     const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
                     const activeCoursesForBilling = isRegistered 
-                        ? Array.from(enrolledCourseIds).map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
+                        ? enrolledCourseIds.map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
                         : courses.map(c => ({ id: c.id, cost: Number(c.cost || 0) }));
 
                     const breakdown = calculateBilling({
