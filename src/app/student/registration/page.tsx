@@ -178,7 +178,6 @@ export default function StudentRegistrationPage() {
                     const invoice = invoicesData[registration?.invoiceId];
                     const activePolicy = details.billingPolicy || globalInstSettings.billingPolicy || 'course';
 
-                    // Force billing calculation to use individual course costs for "Pay Per Course"
                     const activeCoursesForBilling = isRegistered 
                         ? Array.from(enrolledCourseIds).map(id => ({ id, cost: Number(cData[id]?.cost || 0) }))
                         : courses.map(c => ({ id: c.id, cost: Number(c.cost || 0) }));
@@ -366,9 +365,22 @@ export default function StudentRegistrationPage() {
                                                     <Wallet className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
                                                 </Label>
                                                 <div className="space-y-2.5 text-xs font-medium">
-                                                    <div className="flex justify-between">
-                                                        <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
-                                                        <span className="font-bold">ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex justify-between">
+                                                            <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
+                                                            <span className="font-bold">ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
+                                                        </div>
+                                                        {/* Pay Per Course Breakdown */}
+                                                        {sem.billingPolicy === 'course' && sem.courses.length > 0 && (
+                                                            <div className="pl-4 space-y-0.5 border-l-2 border-primary/10 ml-1">
+                                                                {sem.courses.map(c => (
+                                                                    <div key={c.id} className="flex justify-between text-[10px] opacity-60">
+                                                                        <span>{c.code} {c.name}</span>
+                                                                        <span>ZMW {c.cost.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     {sem.billingBreakdown.scholarshipAmount > 0 && (
                                                         <div className="flex justify-between text-blue-600">
