@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { 
@@ -52,7 +53,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -235,6 +237,7 @@ export default function PaymentsManagementPage() {
     const [programmes, setProgrammes] = React.useState<any[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
@@ -286,6 +289,7 @@ export default function PaymentsManagementPage() {
         programmes: ref(db, 'programmes'),
         semesters: ref(db, 'semesters'),
         intakes: ref(db, 'intakes'),
+        courses: ref(db, 'courses'),
         invoices: ref(db, 'invoices'),
         financialSettings: ref(db, 'settings/financialSettings'),
         calendarEvents: ref(db, 'calendarEvents'),
@@ -460,6 +464,7 @@ export default function PaymentsManagementPage() {
             store.intakes = data;
             computeDerived();
         }));
+        unsubs.push(onValue(dataRefs.courses, (s) => { setAllCourses(s.val() || {}); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.financialSettings, (s) => { 
             setFinancialSettings(s.val()); 
@@ -752,7 +757,7 @@ export default function PaymentsManagementPage() {
                 invId = newInvRef.key!;
                 updates[`invoices/${selectedStudent.userId}/${invId}`] = {
                     invoiceId: invId, 
-                    totalTuition: 0, // baseline
+                    totalTuition: 0, 
                     totalMandatoryFees: 0, 
                     totalOptionalFees: 0,
                     dateCreated: now, 
@@ -1361,3 +1366,4 @@ export default function PaymentsManagementPage() {
         </div>
     );
 }
+

@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, UserMinus } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, UserMinus, FileCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
@@ -67,6 +68,8 @@ type TimetableEntry = {
     venue: string;
     isLiveSession?: boolean;
     isLiveRequested?: boolean;
+    examDate?: string;
+    examVenue?: string;
 };
 
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
@@ -118,6 +121,12 @@ function TimetableManagementComponent() {
     
     const [courseSearch, setCourseSearch] = React.useState('');
     const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
+
+    // Exam State
+    const [isExamDialogOpen, setIsExamDialogOpen] = React.useState(false);
+    const [examCourseId, setExamCourseId] = React.useState('');
+    const [examDate, setExamDate] = React.useState<Date | undefined>();
+    const [examVenue, setExamVenue] = React.useState('');
 
     // Deletion states
     const [entryToDelete, setEntryToDelete] = React.useState<TimetableEntry | null>(null);
@@ -346,6 +355,33 @@ function TimetableManagementComponent() {
         }
     };
 
+    const handleSaveExamDate = async () => {
+        if (!examCourseId || !examDate || !resolvedSemester) return;
+        setSaving(true);
+        try {
+            const semesterRef = ref(db, `timetables/${resolvedSemester.id}/${examCourseId}`);
+            const snapshot = await get(semesterRef);
+            
+            if (snapshot.exists()) {
+                const entries = snapshot.val();
+                const updates: Record<string, any> = {};
+                Object.keys(entries).forEach(id => {
+                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examDate`] = format(examDate, 'yyyy-MM-dd');
+                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examVenue`] = examVenue || 'TBA';
+                });
+                await update(ref(db), updates);
+                toast({ title: 'Exam Date Published' });
+                setIsExamDialogOpen(false);
+            } else {
+                toast({ variant: 'destructive', title: 'No Timetable Records', description: 'At least one timetable entry must exist for this course before an exam date can be set.' });
+            }
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Save Failed' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const confirmDeleteEntry = async () => {
         if (!entryToDelete) return;
         setSaving(true);
@@ -465,6 +501,9 @@ function TimetableManagementComponent() {
                             <CardDescription>Manage academic schedules and cohort instances.</CardDescription>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={() => setIsExamDialogOpen(true)} disabled={!resolvedSemester}>
+                                <FileCheck className="mr-2 h-4 w-4"/> Set Exam Dates
+                            </Button>
                             <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
                                 {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
                             </Button>
@@ -633,6 +672,54 @@ function TimetableManagementComponent() {
                 </CardContent>
             </Card>
 
+            <Dialog open={isExamDialogOpen} onOpenChange={setIsExamDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Schedule Course Examination</DialogTitle>
+                        <DialogDescription>Set the official exam date and venue for a course in the {resolvedSemester?.name} semester.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-1">
+                            <Label>Course</Label>
+                            <Select value={examCourseId} onValueChange={setExamCourseId}>
+                                <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
+                                <SelectContent>
+                                    {allCourses.map(c => <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Exam Date</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {examDate ? format(examDate, 'PPP') : "Select date"}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate} onSelect={setExamDate} initialFocus /></PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Venue</Label>
+                            <Select value={examVenue} onValueChange={setExamVenue}>
+                                <SelectTrigger><SelectValue placeholder="Select room..." /></SelectTrigger>
+                                <SelectContent>
+                                    {rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name} (Cap: {r.capacity})</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsExamDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveExamDate} disabled={saving || !examCourseId || !examDate}>
+                            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                            Publish Exam Date
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <AlertDialog open={!!entryToDelete} onOpenChange={(o) => { if(!o) { setEntryToDelete(null); setUnenrollStudentsOnDelete(false); setConfirmUnenrollCheckbox(false); } }}>
                 <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
@@ -679,3 +766,4 @@ export default function TimetableManagementPage() {
         </React.Suspense>
     );
 }
+

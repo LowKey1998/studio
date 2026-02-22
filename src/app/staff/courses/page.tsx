@@ -1,8 +1,9 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Info, Users, Layers, Clock, MapPin, FileQuestion } from "lucide-react";
+import { ChevronRight, Info, Users, Layers, Clock, MapPin, FileQuestion, AlertCircle } from "lucide-react";
 import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -26,6 +27,7 @@ type MergedCourse = {
     sessions: { day: string; startTime: string; endTime: string; venue: string }[];
     isMerged: boolean;
     separateInstance: boolean;
+    needsQuiz: boolean;
 };
 
 export default function StaffCoursesPage() {
@@ -50,17 +52,21 @@ export default function StaffCoursesPage() {
         if (!currentUser?.uid) return;
         setLoading(true);
         try {
-            const [coursesSnap, semestersSnap, regsSnap, timetablesSnap] = await Promise.all([
+            const [coursesSnap, semestersSnap, regsSnap, timetablesSnap, templatesSnap, quizzesSnap] = await Promise.all([
                 get(ref(db, 'courses')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'registrations')),
-                get(ref(db, 'timetables'))
+                get(ref(db, 'timetables')),
+                get(ref(db, 'settings/assessmentTemplates')),
+                get(ref(db, 'quizzes'))
             ]);
 
             const allCoursesData = coursesSnap.val() || {};
             const allSemesters = semestersSnap.val() || {};
             const allRegistrations = regsSnap.val() || {};
             const allTimetables = timetablesSnap.val() || {};
+            const allTemplates = templatesSnap.val() || {};
+            const allQuizzes = Object.values(quizzesSnap.val() || {}) as any[];
 
             const studentCounts: Record<string, Record<string, number>> = {};
             for (const userId in allRegistrations) {
@@ -84,7 +90,8 @@ export default function StaffCoursesPage() {
                 semName: string, 
                 sessions: { day: string, startTime: string, endTime: string, venue: string }[],
                 studentCount: number,
-                separateInstance: boolean
+                separateInstance: boolean,
+                needsQuiz: boolean
             }>();
 
             for (const semId in allTimetables) {
@@ -102,13 +109,30 @@ export default function StaffCoursesPage() {
                         const key = `${semId}-${courseId}`;
                         const entries = Object.values(allTimetables[semId][courseId]) as any[];
                         
+                        // Check if an online quiz is required but missing
+                        let needsQuiz = false;
+                        if (courseData.assessmentTemplateId && allTemplates[courseData.assessmentTemplateId]) {
+                            const components = allTemplates[courseData.assessmentTemplateId].components || {};
+                            const onlineMcqComponents = Object.keys(components).filter(id => components[id].isOnlineQuiz);
+                            
+                            if (onlineMcqComponents.length > 0) {
+                                // Check if a quiz exists for this course linked to one of these components
+                                const existingQuiz = allQuizzes.find(q => 
+                                    q.courseIds?.includes(courseId) && 
+                                    onlineMcqComponents.includes(q.linkedComponentId)
+                                );
+                                if (!existingQuiz) needsQuiz = true;
+                            }
+                        }
+
                         courseSemesterMap.set(key, {
                             courseId,
                             semId,
                             semName: semInfo.name,
                             sessions: entries.map(e => ({ day: e.day, startTime: e.startTime, endTime: e.endTime, venue: e.venue })),
                             studentCount: studentCounts[semId]?.[courseId] || 0,
-                            separateInstance: !!courseData.separateInstance
+                            separateInstance: !!courseData.separateInstance,
+                            needsQuiz
                         });
                     }
                 }
@@ -134,6 +158,7 @@ export default function StaffCoursesPage() {
                             existing.semesterNames.push(val.semName);
                         }
                         existing.isMerged = true;
+                        existing.needsQuiz = existing.needsQuiz || val.needsQuiz;
                     } else {
                         finalMergeMap.set(mergeKey, {
                             key: mergeKey,
@@ -145,7 +170,8 @@ export default function StaffCoursesPage() {
                             semesterNames: [val.semName],
                             sessions: val.sessions,
                             isMerged: false,
-                            separateInstance: val.separateInstance
+                            separateInstance: val.separateInstance,
+                            needsQuiz: val.needsQuiz
                         });
                     }
                 });
@@ -161,7 +187,8 @@ export default function StaffCoursesPage() {
                     semesterNames: [val.semName],
                     sessions: val.sessions,
                     isMerged: false,
-                    separateInstance: val.separateInstance
+                    separateInstance: val.separateInstance,
+                    needsQuiz: val.needsQuiz
                 }));
             }
 
@@ -239,6 +266,16 @@ export default function StaffCoursesPage() {
                                 ))}
                             </div>
 
+                            {course.needsQuiz && (
+                                <Alert variant="destructive" className="bg-orange-50 border-orange-200 py-2">
+                                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                                    <AlertTitle className="text-[10px] font-black uppercase text-orange-800">Quiz Required</AlertTitle>
+                                    <AlertDescription className="text-[10px] text-orange-700 leading-tight">
+                                        Assessment structure includes an Online MCQ. Please create the quiz to enable auto-grading.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+
                             <div className="space-y-1">
                                 <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Group(s) / Semester(s)</Label>
                                 <div className="flex flex-wrap gap-1">
@@ -261,7 +298,7 @@ export default function StaffCoursesPage() {
                             </Button>
                             <Button asChild variant="outline" className="w-full">
                                 <Link href={`/staff/quizzes?courseId=${course.courseId}`}>
-                                    <FileQuestion className="mr-2 h-4 w-4" /> Create Online Quiz
+                                    <FileQuestion className="mr-2 h-4 w-4" /> {course.needsQuiz ? "Create Required Quiz" : "Create Quiz"}
                                 </Link>
                             </Button>
                         </CardFooter>
@@ -281,3 +318,4 @@ export default function StaffCoursesPage() {
         </div>
     );
 }
+

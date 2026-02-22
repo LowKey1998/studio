@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, onValue, push, update } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -39,6 +40,8 @@ type TimetableEntry = {
     studentCount: number;
     intakeName: string;
     isLiveSession?: boolean;
+    examDate?: string;
+    examVenue?: string;
 };
 
 const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -346,22 +349,36 @@ export default function StudentTimetablePage() {
                                                                     const isLiveOnThisDate = dateRequest?.status === 'Approved' || entry.isLiveSession;
 
                                                                     return (
-                                                                        <Link 
-                                                                            href={`/student/courses/${entry.courseId}`} 
-                                                                            key={eIdx} 
-                                                                            className={cn(
-                                                                                "block p-2 rounded-md border bg-background shadow-sm hover:ring-2 hover:ring-primary transition-all",
-                                                                                isLiveOnThisDate ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20"
+                                                                        <div key={eIdx} className="space-y-1.5">
+                                                                            <Link 
+                                                                                href={`/student/courses/${entry.courseId}`} 
+                                                                                className={cn(
+                                                                                    "block p-2 rounded-md border bg-background shadow-sm hover:ring-2 hover:ring-primary transition-all",
+                                                                                    isLiveOnThisDate ? "border-blue-500 bg-blue-50/20 shadow-blue-100" : "border-primary/20"
+                                                                                )}
+                                                                            >
+                                                                                <div className="flex justify-between items-start gap-1">
+                                                                                    <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
+                                                                                    {isLiveOnThisDate ? <Video className="h-3 w-3 text-blue-600" /> : <Layers className="h-3 w-3 text-primary/40" />}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {isLiveOnThisDate ? "DIGITAL ROOM" : entry.venue}</div>
+                                                                                <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}</div>
+                                                                                <div className="mt-2 text-[9px] font-medium opacity-70 italic">{entry.semesterName}</div>
+                                                                            </Link>
+                                                                            
+                                                                            {entry.examDate && (
+                                                                                <div className="p-2 rounded-md border-2 border-red-200 bg-red-50 animate-in zoom-in fade-in duration-500 shadow-sm">
+                                                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                                                        <FileCheck className="h-3 w-3 text-red-600" />
+                                                                                        <span className="text-[9px] font-black uppercase text-red-800 tracking-tighter">Final Examination</span>
+                                                                                    </div>
+                                                                                    <div className="space-y-0.5">
+                                                                                        <p className="text-[10px] font-bold text-red-700">{format(parseISO(entry.examDate), 'PPP')}</p>
+                                                                                        <p className="text-[9px] text-red-600/80 font-medium">Venue: {entry.examVenue || 'TBA'}</p>
+                                                                                    </div>
+                                                                                </div>
                                                                             )}
-                                                                        >
-                                                                            <div className="flex justify-between items-start gap-1">
-                                                                                <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2" title={entry.courseName}>{entry.courseCode}: {entry.courseName}</p>
-                                                                                {isLiveOnThisDate ? <Video className="h-3 w-3 text-blue-600" /> : <Layers className="h-3 w-3 text-primary/40" />}
-                                                                            </div>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {isLiveOnThisDate ? "DIGITAL ROOM" : entry.venue}</div>
-                                                                            <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {entry.lecturerNames}</div>
-                                                                            <div className="mt-2 text-[9px] font-medium opacity-70 italic">{entry.semesterName}</div>
-                                                                        </Link>
+                                                                        </div>
                                                                     );
                                                                 })}
                                                             </div>
@@ -418,3 +435,4 @@ export default function StudentTimetablePage() {
         </div>
     );
 }
+
