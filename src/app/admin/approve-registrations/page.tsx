@@ -65,6 +65,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type RegistrationRequest = {
   userId: string;
