@@ -11,7 +11,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from '@/components/ui/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -209,7 +209,7 @@ export default function RegisterForSemesterPage() {
                 const myExisting = myRegsSnap.val()?.[semesterId];
                 if (myExisting) {
                     setExistingRegistration(myExisting);
-                    setSelectedCourseIds(Array.isArray(myExisting.courses) ? myExisting.courses : Object.keys(myExisting.courses || {}));
+                    setSelectedCourseIds(Array.isArray(myExisting.courses) ? myExisting.courses : Object.values(myExisting.courses || {}));
                     setSelectedOptionalFees(myExisting.optionalFees || []);
                     if (myExisting.paymentPlan) setSelectedPaymentPlan(myExisting.paymentPlan);
                     setApplyScholarship(!!myExisting.applyScholarship);

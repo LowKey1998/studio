@@ -143,16 +143,19 @@ export default function StudentRegistrationPage() {
                     
                     const isOfferingActive = !!offerings[userPathId]?.[semId]?.active;
                     const registration = regs[semId];
-                    const isRegistered = !!(registration?.courses);
+                    const rawRegCourses = registration?.courses;
+                    const enrolledCourseIds = new Set<string>();
+                    
+                    if (Array.isArray(rawRegCourses)) {
+                        rawRegCourses.forEach(id => enrolledCourseIds.add(id));
+                    } else if (rawRegCourses && typeof rawRegCourses === 'object') {
+                        Object.keys(rawRegCourses).forEach(id => enrolledCourseIds.add(id));
+                    }
+
+                    const isRegistered = enrolledCourseIds.size > 0;
                     const hasPaymentPlan = !!registration?.paymentPlan;
                     const isCurrentStanding = !!(currentStanding && details.year === currentStanding.year && details.semesterInYear === currentStanding.semester);
                     
-                    const enrolledCourseIds = new Set(
-                        Array.isArray(registration?.courses) 
-                        ? registration.courses 
-                        : (registration?.courses ? Object.keys(registration.courses) : [])
-                    );
-
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
@@ -234,7 +237,7 @@ export default function StudentRegistrationPage() {
             updates[`registrations/${currentUser.uid}/${sem.id}`] = null;
             if (sem.invoiceId) updates[`invoices/${currentUser.uid}/${sem.invoiceId}`] = null;
             
-            await update(ref(db), updates);
+            await update(ref(db, updates));
             toast({ title: 'Registration Canceled' });
             fetchData();
         } catch (e: any) {
@@ -365,27 +368,29 @@ export default function StudentRegistrationPage() {
                                                     <Wallet className="h-3 w-3" /> {sem.isRegistered ? "Financial Summary" : "Projected Costs"}
                                                 </Label>
                                                 <div className="space-y-2.5 text-xs font-medium">
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex justify-between">
-                                                            <span className="opacity-70">Tuition {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.courses.length} Courses)`}:</span>
-                                                            <span className="font-bold">ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <div className="flex justify-between font-bold border-b border-primary/10 pb-1">
+                                                            <span className="opacity-70 italic">Tuition Additions {sem.billingPolicy === 'semester' ? '(Flat Rate)' : `(${sem.billingBreakdown.courses.length} Courses)`}:</span>
+                                                            <span>ZMW {sem.billingBreakdown.baseTuition.toFixed(2)}</span>
                                                         </div>
-                                                        {/* Pay Per Course Breakdown */}
-                                                        {sem.billingPolicy === 'course' && sem.courses.length > 0 && (
-                                                            <div className="pl-4 space-y-0.5 border-l-2 border-primary/10 ml-1">
-                                                                {sem.courses.map(c => (
-                                                                    <div key={c.id} className="flex justify-between text-[10px] opacity-60">
-                                                                        <span>{c.code} {c.name}</span>
-                                                                        <span>ZMW {c.cost.toFixed(2)}</span>
-                                                                    </div>
-                                                                ))}
+                                                        {sem.billingPolicy === 'course' && sem.billingBreakdown.courses.length > 0 && (
+                                                            <div className="pl-4 space-y-1 mt-1 border-l-2 border-primary/10 ml-1">
+                                                                {sem.billingBreakdown.courses.map(c => {
+                                                                    const courseMeta = sem.courses.find(cm => cm.id === c.id);
+                                                                    return (
+                                                                        <div key={c.id} className="flex justify-between text-[10px] opacity-60 italic">
+                                                                            <span className="truncate pr-2">+ {courseMeta?.code} {courseMeta?.name}</span>
+                                                                            <span className="shrink-0">ZMW {c.cost.toFixed(2)}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         )}
                                                     </div>
                                                     {sem.billingBreakdown.scholarshipAmount > 0 && (
-                                                        <div className="flex justify-between text-blue-600">
+                                                        <div className="flex justify-between text-blue-600 font-bold">
                                                             <span className="opacity-70 flex items-center gap-1.5"><GraduationCap className="h-3 w-3"/> Scholarship Credit:</span>
-                                                            <span className="font-bold">- ZMW {sem.billingBreakdown.scholarshipAmount.toFixed(2)}</span>
+                                                            <span>- ZMW {sem.billingBreakdown.scholarshipAmount.toFixed(2)}</span>
                                                         </div>
                                                     )}
                                                     {sem.billingBreakdown.totalMandatoryFees > 0 && (
@@ -401,9 +406,9 @@ export default function StudentRegistrationPage() {
                                                         </div>
                                                     )}
                                                     {sem.billingBreakdown.lateFee > 0 && (
-                                                        <div className="flex justify-between text-destructive">
+                                                        <div className="flex justify-between text-destructive font-bold">
                                                             <span className="opacity-70">Late Registration Fee:</span>
-                                                            <span className="font-bold">ZMW {sem.billingBreakdown.lateFee.toFixed(2)}</span>
+                                                            <span>ZMW {sem.billingBreakdown.lateFee.toFixed(2)}</span>
                                                         </div>
                                                     )}
                                                     <Separator className="my-2 bg-primary/10"/>
@@ -413,7 +418,7 @@ export default function StudentRegistrationPage() {
                                                     </div>
                                                     {sem.hasPaymentPlan && (
                                                         <div className="flex justify-between pt-3 border-t border-dashed border-primary/20 mt-2">
-                                                            <span className="opacity-70 flex items-center gap-1.5"><Wallet className="h-3 w-3"/> Payment Plan:</span>
+                                                            <span className="opacity-70 flex items-center gap-1.5 font-bold"><Wallet className="h-3 w-3"/> Payment Plan:</span>
                                                             <Badge variant="outline" className="h-5 text-[9px] font-black uppercase bg-primary text-white border-primary px-3 shadow-sm">{sem.selectedPaymentPlan}</Badge>
                                                         </div>
                                                     )}

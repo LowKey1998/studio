@@ -286,7 +286,8 @@ export default function ApproveRegistrationsPage() {
                                 if(prevSemesterId === semesterId) continue;
                                 const prevReg = userRegistrations[prevSemesterId];
                                 if(prevReg.status === 'Completed') {
-                                    const coursesArr = Array.isArray(prevReg.courses) ? prevReg.courses : Object.keys(prevReg.courses || {});
+                                    const rawCourses = prevReg.courses;
+                                    const coursesArr = Array.isArray(rawCourses) ? rawCourses : (rawCourses ? Object.keys(rawCourses) : []);
                                     coursesArr.forEach((courseId: string) => {
                                         const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
                                         academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
@@ -298,6 +299,9 @@ export default function ApproveRegistrationsPage() {
                                 .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
                                 .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
+                            const rawReqCourses = registration.courses;
+                            const reqCourseIds = Array.isArray(rawReqCourses) ? rawReqCourses : (rawReqCourses ? Object.keys(rawReqCourses) : []);
+
                             const requestData: RegistrationRequest = {
                                 userId,
                                 semesterId: semesterId,
@@ -305,7 +309,7 @@ export default function ApproveRegistrationsPage() {
                                 studentName: userData.name,
                                 studentId: userData.id,
                                 studentIntakeId: userData.intakeId,
-                                courseIds: Array.isArray(registration.courses) ? registration.courses : Object.keys(registration.courses || {}),
+                                courseIds: reqCourseIds,
                                 invoiceId: registration.invoiceId,
                                 registrationDate: registration.registrationDate,
                                 status: registration.status,
@@ -496,7 +500,8 @@ export default function ApproveRegistrationsPage() {
                     throw new Error("Student registration record not found for this semester.");
                 }
 
-                const currentCourses = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
+                const currentCoursesRaw = currentReg.courses;
+                const currentCourses = Array.isArray(currentCoursesRaw) ? currentCoursesRaw : (currentCoursesRaw ? Object.keys(currentCoursesRaw) : []);
                 const updatedCourses = [...new Set([...currentCourses, request.courseId])];
 
                 await update(regRef, { courses: updatedCourses });
