@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, Loader2, Save, X, GripVertical, Link as LinkIcon, Info } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, Save, X, GripVertical, Link as LinkIcon, Info, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
 import { ref, get, set, push, serverTimestamp, update, onValue } from 'firebase/database';
@@ -323,7 +323,7 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
                         <CardDescription>Configure rules and link to curriculum assessments.</CardDescription>
                     </div>
                     {linkedComponent && (
-                        <Badge className="bg-blue-600 hover:bg-blue-700 py-1.5 px-4 gap-2">
+                        <Badge className="bg-blue-600 hover:bg-blue-700 py-1.5 px-4 gap-2 text-white">
                             <LinkIcon className="h-3 w-3" />
                             Fulfills CA: {linkedComponent.name}
                         </Badge>

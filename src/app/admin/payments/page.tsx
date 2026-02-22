@@ -184,7 +184,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9" 
                         value={search} 
-                        onChange={e => setSearchTerm(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                     />
                 </div>
                 <Separator />
@@ -452,7 +452,6 @@ export default function PaymentsManagementPage() {
             computeDerived(); 
         }));
 
-        // Load saved filters
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
         get(savedFiltersRef).then(snap => {
             if (snap.exists()) {
@@ -831,7 +830,9 @@ export default function PaymentsManagementPage() {
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Period Collected</CardTitle>
                                 <Scale className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
-                            <CardContent><div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div></CardContent>
+                            <CardContent>
+                                <div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div>
+                            </CardContent>
                         </Card>
                     </div>
                 </CardContent>
