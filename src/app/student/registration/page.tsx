@@ -22,6 +22,8 @@ import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 type UserProfile = { intakeId: string; programmeId: string; programmeName: string; intakeName: string; exemptedCourses?: Record<string, boolean>; };
 type Course = { id: string; name: string; code: string; lecturerNames: string; timetable: string[]; cost: number; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; billingPolicy?: BillingPolicy; tuitionFee?: number; mandatoryFees?: Record<string, {name: string, amount: number}>; optionalFees?: Record<string, {name: string, amount: number}>; };
+type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
+
 type SemesterWithStatus = Semester & { 
     isRegistered: boolean; 
     hasPaymentPlan: boolean; 
@@ -49,6 +51,7 @@ export default function StudentRegistrationPage() {
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
     const [currentUser, setCurrentUser] = React.useState<User | null>(null);
     const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
+    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [semestersForPath, setSemestersForPath] = React.useState<SemesterWithStatus[]>([]);
     const { toast } = useToast();
 
@@ -111,6 +114,8 @@ export default function StudentRegistrationPage() {
             const calSettings = calSnap.val();
             const globalInstSettings = instSnap.val() || { billingPolicy: 'course' };
             const invoicesData = invSnap.val() || {};
+            const plansData = plansSnap.val() || {};
+            setAllPaymentPlans(Object.keys(plansData).map(id => ({ id, ...plansData[id] })));
 
             let currentStanding: { year: number, semester: number } | null = null;
             if (intakeStartStr && calSettings) {
@@ -128,7 +133,6 @@ export default function StudentRegistrationPage() {
             const cData = cSnap.val() || {};
             const allUsers = usersSnap.val() || {};
             const eventsData = Object.values(eventsSnap.val() || {}) as any[];
-            const plansData = plansSnap.val() || {};
 
             const list: SemesterWithStatus[] = [];
             
@@ -176,7 +180,7 @@ export default function StudentRegistrationPage() {
 
                     const breakdown = calculateBilling({
                         policy: activePolicy,
-                        semesterTuition: invoice?.totalTuition || details.tuitionFee || 0,
+                        semesterTuition: details.tuitionFee || 0,
                         courses: isRegistered ? Array.from(enrolledCourseIds).map(id => ({ id, cost: cData[id]?.cost || 0 })) : courses.map(c => ({ id: c.id, cost: c.cost })),
                         mandatoryFees: Object.values(details.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: f.amount })),
                         optionalFees: (registration?.optionalFees || []).map((fid:string) => ({ name: details.optionalFees?.[fid]?.name || 'Fee', amount: details.optionalFees?.[fid]?.amount || 0 })),
@@ -212,7 +216,7 @@ export default function StudentRegistrationPage() {
         } finally { 
             setLoading(false); 
         }
-    }, [currentUser, toast, semestersForPath.length]);
+    }, [currentUser, toast]);
 
     React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
 
