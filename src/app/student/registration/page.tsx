@@ -34,7 +34,6 @@ import { cn } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO, differenceInCalendarDays, isBefore, startOfDay } from 'date-fns';
 import { Label } from '@/components/ui/label';
-import { logError } from '@/lib/error-logger';
 import { calculateAcademicState, parseIntakeDate, calculateSemesterDateRange } from '@/lib/semester-utils';
 import { Separator } from '@/components/ui/separator';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
@@ -66,12 +65,13 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
-// Robust helper to extract course IDs from Firebase registrations
 const getCoursesFromReg = (raw: any): string[] => {
     if (!raw) return [];
     if (Array.isArray(raw)) return raw.filter(id => typeof id === 'string');
     if (typeof raw === 'object') {
-        return Object.values(raw).filter(id => typeof id === 'string');
+        const values = Object.values(raw);
+        if (values.every(v => typeof v === 'boolean')) return Object.keys(raw);
+        return values.filter(v => typeof v === 'string') as string[];
     }
     return [];
 };
@@ -88,11 +88,8 @@ export default function StudentRegistrationPage() {
 
     React.useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, user => { 
-            if(user) { 
-                setCurrentUser(user);
-            } else {
-                setLoading(false);
-            }
+            if(user) setCurrentUser(user);
+            else setLoading(false);
         });
         return () => unsubscribe();
     }, []);
@@ -103,36 +100,24 @@ export default function StudentRegistrationPage() {
         if (!hasInitialized.current) setLoading(true);
 
         try {
-            const [uSnap, pSnap, iSnap, cpSnap, soSnap, rSnap, cSnap, sSnap, usersSnap, eventsSnap, tSnap, plansSnap, calSnap, instSnap, invSnap] = await Promise.all([
-                get(ref(db, `users/${currentUser.uid}`)), 
-                get(ref(db, 'programmes')), 
-                get(ref(db, 'intakes')),
-                get(ref(db, 'coursePaths')), 
-                get(ref(db, 'semesterOfferings')), 
-                get(ref(db, `registrations/${currentUser.uid}`)),
-                get(ref(db, 'courses')), 
-                get(ref(db, 'semesters')),
-                get(ref(db, 'users')),
-                get(ref(db, 'calendarEvents')),
-                get(ref(db, 'timetables')),
-                get(ref(db, 'settings/paymentPlans')),
-                get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, 'settings/institution')),
-                get(ref(db, `invoices/${currentUser.uid}`))
-            ]);
-            
-            if (!uSnap.exists()) return;
-            const profile = uSnap.val();
+            const dbRef = ref(db);
+            const snapshot = await get(dbRef);
+            if (!snapshot.exists()) return;
+            const data = snapshot.val();
+
+            const userProfileData = data.users[currentUser.uid];
+            if (!userProfileData) return;
+
             const profileMeta = { 
-                ...profile, 
-                programmeName: pSnap.val()?.[profile.programmeId]?.name || 'Unknown', 
-                intakeName: iSnap.val()?.[profile.intakeId]?.name || 'Unknown' 
+                ...userProfileData, 
+                programmeName: data.programmes?.[userProfileData.programmeId]?.name || 'Unknown', 
+                intakeName: data.intakes?.[userProfileData.intakeId]?.name || 'Unknown' 
             };
             setUserProfile(profileMeta);
             
-            const coursePathsData = cpSnap.val() || {};
+            const coursePathsData = data.coursePaths || {};
             const userPathEntry = Object.entries(coursePathsData).find(([_, p]: [string, any]) => 
-                p.intakeId === profile.intakeId && p.programmeId === profile.programmeId
+                p.intakeId === userProfileData.intakeId && p.programmeId === userProfileData.programmeId
             );
 
             if (!userPathEntry) { 
@@ -142,12 +127,12 @@ export default function StudentRegistrationPage() {
             }
             const [userPathId, userPath] = userPathEntry as [string, any];
             
-            const intakeName = iSnap.val()?.[profile.intakeId]?.name;
+            const intakeName = profileMeta.intakeName;
             const intakeStartStr = intakeName ? parseIntakeDate(intakeName) : null;
-            const calSettings = calSnap.val();
-            const globalInstSettings = instSnap.val() || { billingPolicy: 'course' };
-            const invoicesData = invSnap.val() || {};
-            const plansData = plansSnap.val() || {};
+            const calSettings = data.settings?.academicCalendar || {};
+            const globalInstSettings = data.settings?.institution || { billingPolicy: 'course' };
+            const invoicesData = data.invoices?.[currentUser.uid] || {};
+            const plansData = data.settings?.paymentPlans || {};
 
             let currentStanding: { year: number, semester: number } | null = null;
             if (intakeStartStr && calSettings) {
@@ -159,19 +144,19 @@ export default function StudentRegistrationPage() {
                 );
             }
 
-            const offerings = soSnap.val() || {};
-            const regs = rSnap.val() || {};
-            const sData = sSnap.val() || {};
-            const cData = cSnap.val() || {};
-            const allUsers = usersSnap.val() || {};
-            const eventsData = Object.values(eventsSnap.val() || {}) as any[];
+            const offerings = data.semesterOfferings || {};
+            const regs = data.registrations?.[currentUser.uid] || {};
+            const sData = data.semesters || {};
+            const cData = data.courses || {};
+            const allUsers = data.users || {};
+            const eventsData = Object.values(data.calendarEvents || {}) as any[];
 
             const list: SemesterWithStatus[] = [];
             
             if (userPath.semesters) {
                 for (const semId in userPath.semesters) {
                     const details = sData[semId];
-                    if (!details || details.status === 'Archived' || details.intakeId !== profile.intakeId) continue;
+                    if (!details || details.status === 'Archived' || details.intakeId !== userProfileData.intakeId) continue;
                     
                     const isOfferingActive = !!offerings[userPathId]?.[semId]?.active;
                     const registration = regs[semId];
@@ -184,7 +169,7 @@ export default function StudentRegistrationPage() {
                     const courses = (userPath.semesters[semId].courses || []).map((id: string) => {
                         const course = cData[id];
                         const lecturerNames = (course?.lecturerIds || []).map((lid: string) => allUsers[lid]?.name).filter(Boolean).join(', ') || allUsers[course?.lecturerId || '']?.name || 'Unassigned';
-                        const timetable = tSnap.exists() && tSnap.val()[semId]?.[id] ? Object.values(tSnap.val()[semId][id]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`) : [];
+                        const timetable = data.timetables?.[semId]?.[id] ? Object.values(data.timetables[semId][id]).map((t: any) => `${t.day.substring(0,3)} ${t.startTime}`) : [];
                         return { id, name: course?.name, code: course?.code, lecturerNames, timetable, cost: Number(course?.cost || 0) };
                     });
 
@@ -244,29 +229,33 @@ export default function StudentRegistrationPage() {
             hasInitialized.current = true;
             setLoading(false);
         } catch (error: any) { 
-            logError(error.message, 'Registration Fetch', error);
             toast({ variant: 'destructive', title: 'Error loading semesters' }); 
             setLoading(false);
         }
     }, [currentUser, toast]);
 
-    React.useEffect(() => { if(currentUser) fetchData(); }, [currentUser, fetchData]);
+    React.useEffect(() => { 
+        if(currentUser) {
+            fetchData();
+            const rootRef = ref(db);
+            const unsub = onValue(rootRef, () => fetchData());
+            return () => unsub();
+        }
+    }, [currentUser, fetchData]);
 
     const handleCancelRegistration = async (sem: SemesterWithStatus) => {
         if (!currentUser) return;
-        if (!window.confirm("Are you sure you want to cancel this registration? All selected courses and pending invoices will be removed.")) return;
+        if (!window.confirm("Are you sure? All selected courses and pending invoices will be removed.")) return;
         
         setActionLoading(sem.id);
         try {
             const updates: Record<string, any> = {};
             updates[`registrations/${currentUser.uid}/${sem.id}`] = null;
             if (sem.invoiceId) updates[`invoices/${currentUser.uid}/${sem.invoiceId}`] = null;
-            
             await update(ref(db), updates);
             toast({ title: 'Registration Canceled' });
-            fetchData();
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Cancellation Failed' });
+            toast({ variant: 'destructive', title: 'Action Failed' });
         } finally {
             setActionLoading(null);
         }
@@ -474,14 +463,6 @@ export default function StudentRegistrationPage() {
                                                     <Clock className="h-8 w-8 opacity-10"/>
                                                     <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest leading-relaxed">Schedule currently being<br/>finalized by academics</p>
                                                 </div>
-                                            )}
-                                            {sem.isMissingDeadlines && sem.deadlines.length > 0 && (
-                                                <Alert variant="default" className="py-2.5 bg-yellow-50 border-yellow-200 shadow-sm mt-4">
-                                                    <Info className="h-4 w-4 text-yellow-600" />
-                                                    <AlertDescription className="text-[10px] text-yellow-700 leading-tight font-medium">
-                                                        Note: Some installment deadlines are still being published. Please check back regularly.
-                                                    </AlertDescription>
-                                                </Alert>
                                             )}
                                         </div>
                                     </div>

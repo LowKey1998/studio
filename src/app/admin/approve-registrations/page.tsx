@@ -147,6 +147,17 @@ type CoursePath = {
 
 type CurrentAdmin = { name: string; id: string; };
 
+const getCoursesFromReg = (raw: any): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(id => typeof id === 'string');
+    if (typeof raw === 'object') {
+        const values = Object.values(raw);
+        if (values.every(v => typeof v === 'boolean')) return Object.keys(raw);
+        return values.filter(v => typeof v === 'string') as string[];
+    }
+    return [];
+};
+
 export default function ApproveRegistrationsPage() {
     const [pendingRequests, setPendingRequests] = React.useState<GroupedRequests>({});
     const [approvedRequests, setApprovedRequests] = React.useState<GroupedRequests>({});
@@ -286,8 +297,7 @@ export default function ApproveRegistrationsPage() {
                                 if(prevSemesterId === semesterId) continue;
                                 const prevReg = userRegistrations[prevSemesterId];
                                 if(prevReg.status === 'Completed') {
-                                    const rawCourses = prevReg.courses;
-                                    const coursesArr = Array.isArray(rawCourses) ? rawCourses : (rawCourses ? Object.keys(rawCourses) : []);
+                                    const coursesArr = getCoursesFromReg(prevReg.courses);
                                     coursesArr.forEach((courseId: string) => {
                                         const finalExam = assessmentsData[courseId]?.[userId]?.finalExam?.score;
                                         academicHistory[courseId] = (finalExam !== undefined && finalExam >= 50) ? 'Passed' : 'Failed';
@@ -299,17 +309,7 @@ export default function ApproveRegistrationsPage() {
                                 .filter(tx => tx.userId === userId && tx.invoiceId === registration.invoiceId && tx.status === 'successful')
                                 .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0);
 
-                            const rawReqCourses = registration.courses;
-                            const reqCourseIds: string[] = [];
-                            if (Array.isArray(rawReqCourses)) {
-                                rawReqCourses.forEach(id => { if(typeof id === 'string') reqCourseIds.push(id) });
-                            } else if (rawReqCourses && typeof rawReqCourses === 'object') {
-                                Object.keys(rawReqCourses).forEach(key => {
-                                    const val = rawReqCourses[key];
-                                    if (typeof val === 'string') reqCourseIds.push(val);
-                                    else reqCourseIds.push(key);
-                                });
-                            }
+                            const reqCourseIds = getCoursesFromReg(registration.courses);
 
                             const requestData: RegistrationRequest = {
                                 userId,
@@ -509,18 +509,7 @@ export default function ApproveRegistrationsPage() {
                     throw new Error("Student registration record not found for this semester.");
                 }
 
-                const currentCoursesRaw = currentReg.courses;
-                const currentCourses: string[] = [];
-                if (Array.isArray(currentCoursesRaw)) {
-                    currentCoursesRaw.forEach(id => { if(typeof id === 'string') currentCourses.push(id) });
-                } else if (currentCoursesRaw && typeof currentCoursesRaw === 'object') {
-                    Object.keys(currentCoursesRaw).forEach(key => {
-                        const val = currentCoursesRaw[key];
-                        if (typeof val === 'string') currentCourses.push(val);
-                        else currentCourses.push(key);
-                    });
-                }
-
+                const currentCourses = getCoursesFromReg(currentReg.courses);
                 const updatedCourses = [...new Set([...currentCourses, request.courseId])];
 
                 await update(regRef, { courses: updatedCourses });

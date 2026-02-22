@@ -70,6 +70,7 @@ type UserProfile = {
     name: string;
     programmeId: string;
     intakeId: string;
+    id: string;
     exemptedCourses?: Record<string, boolean>;
 };
 
@@ -176,7 +177,7 @@ export default function RegisterForSemesterPage() {
                     sem.semesterInYear === Number(semesterInYearParam)
                 );
                 
-                if(!foundSemesterEntry) throw new Error(`Semester details for this year and semester number could not be found. Please contact administration.`);
+                if(!foundSemesterEntry) throw new Error(`Semester details could not be found.`);
                 const [semesterId, semesterData] = foundSemesterEntry;
 
                 if (!userPath.semesters || !userPath.semesters[semesterId]) {
@@ -205,22 +206,10 @@ export default function RegisterForSemesterPage() {
                     if(available.length > 0) setSelectedPaymentPlan(available[0].name);
                 }
 
-                // Check for existing registration
                 const myExisting = myRegsSnap.val()?.[semesterId];
                 if (myExisting) {
                     setExistingRegistration(myExisting);
-                    
-                    const enrolledCourseIds: string[] = [];
-                    const rawRegCourses = myExisting.courses;
-                    if (Array.isArray(rawRegCourses)) {
-                        rawRegCourses.forEach(id => { if(typeof id === 'string') enrolledCourseIds.push(id) });
-                    } else if (rawRegCourses && typeof rawRegCourses === 'object') {
-                        Object.keys(rawRegCourses).forEach(key => {
-                            const val = rawRegCourses[key];
-                            if (typeof val === 'string') enrolledCourseIds.push(val);
-                            else enrolledCourseIds.push(key);
-                        });
-                    }
+                    const enrolledCourseIds = getCoursesFromReg(myExisting.courses);
                     setSelectedCourseIds(enrolledCourseIds);
                     setSelectedOptionalFees(myExisting.optionalFees || []);
                     if (myExisting.paymentPlan) setSelectedPaymentPlan(myExisting.paymentPlan);

@@ -35,7 +35,8 @@ import {
     Unlock,
     ArrowRight,
     MoreVertical,
-    Pencil
+    Pencil,
+    UserPlus
 } from 'lucide-react';
 import { 
     Card, 
@@ -72,6 +73,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 
 // --- TYPE DEFINITIONS ---
 
@@ -94,11 +96,15 @@ type StudentPaymentInfo = {
     paidPercentage: number;
     targetThreshold: number;
     gracePeriod: number;
+    isUnlinked?: boolean;
+    tempStudentName?: string;
 };
 
 type PaymentRecord = {
     key: number;
     userId?: string;
+    isNewStudent?: boolean;
+    tempStudentName?: string;
     year?: string;
     semesterId?: string;
     amount: string;
@@ -124,6 +130,8 @@ type Transaction = {
     semesterId?: string;
     academicStanding?: string;
     intakeName?: string;
+    isUnlinked?: boolean;
+    requestId?: string;
 };
 
 type Intake = { id: string; name: string; };
@@ -290,7 +298,7 @@ export default function PaymentsManagementPage() {
         return `Year ${state.year}, Sem ${state.semester}`;
     };
 
-    // Consolidated Effect to manage all real-time data nodes without infinite update loops
+    // Consolidated Effect to manage all real-time data nodes
     React.useEffect(() => {
         if (!userData?.uid) return;
         
@@ -382,6 +390,21 @@ export default function PaymentsManagementPage() {
                     }
                 }
             }
+
+            // Handle Unlinked Transactions (Requests)
+            transactionsList.filter(t => t.isUnlinked).forEach(t => {
+                const key = `unlinked-${t.key}`;
+                studentPaymentMap[key] = {
+                    userId: t.userId, studentId: 'NEW-REQ', studentName: t.senderName || 'Unknown Prospect',
+                    totalDue: 0, totalPaid: t.amount, balance: 0,
+                    programmeId: null, intakeId: null, semesterId: null,
+                    invoiceId: 'none', enrolledCourses: [],
+                    thresholdMet: true, penaltiesActive: false, isScholarship: false,
+                    paidPercentage: 100, targetThreshold: 0, gracePeriod: 0,
+                    status: 'Pending', isUnlinked: true, tempStudentName: t.senderName
+                };
+            });
+
             setPaymentInfos(Object.values(studentPaymentMap));
             setLoading(false);
         };
@@ -519,7 +542,7 @@ export default function PaymentsManagementPage() {
             if (row.key === key) {
                 const nextRow = { ...row, [field]: value };
                 
-                if (field === 'userId') {
+                if (field === 'userId' && !value.includes('PROSPECT')) {
                     const studentInfo = allStudents.find(s => s.uid === value);
                     if (studentInfo) {
                         const studentIntakeId = studentInfo.intakeId;
@@ -531,10 +554,11 @@ export default function PaymentsManagementPage() {
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
+                        nextRow.isNewStudent = false;
                     }
                 } else if (field === 'year') {
                     const studentInfo = allStudents.find(s => s.uid === row.userId);
-                    const validSems = semesters.filter(s => s.intakeId === studentIntakeId && String(s.year) === value);
+                    const validSems = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
                     nextRow.availableSemesters = validSems;
                     nextRow.semesterId = undefined;
                     nextRow.totalDue = 0;
@@ -557,7 +581,7 @@ export default function PaymentsManagementPage() {
     };
 
     const handleSaveAllBulk = async () => {
-        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && p.userId && p.semesterId);
+        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && (p.userId || p.isNewStudent));
         if(paymentsToRecord.length === 0) { toast({ variant: 'destructive', title: 'No valid payments entered.' }); return; }
         
         setFormLoading(true);
@@ -567,37 +591,71 @@ export default function PaymentsManagementPage() {
         try {
             for (const record of paymentsToRecord) {
                 const amountFloat = parseFloat(record.amount);
-                const studentUid = record.userId!;
-                const semId = record.semesterId!;
-                const semesterInfo = semesters.find(s => s.id === semId)!;
-                const studentStanding = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
-
-                let invoiceId = studentStanding?.invoiceId;
-                if (!invoiceId) {
-                    const newInvoiceRef = push(ref(db, `invoices/${studentUid}`));
-                    invoiceId = newInvoiceRef.key!;
-                    updates[`invoices/${studentUid}/${invoiceId}`] = {
-                        invoiceId, 
-                        totalTuition: record.setTotalDue ? parseFloat(record.setTotalDue) : (record.totalDue || 0), 
-                        totalMandatoryFees: 0, 
-                        totalOptionalFees: 0,
-                        dateCreated: now, 
-                        semester: semesterInfo.name, 
-                        semesterId: semId, 
-                        courses: [], 
-                        optionalFees: [],
-                    };
-                    updates[`registrations/${studentUid}/${semId}/invoiceId`] = invoiceId;
-                }
-
-                const txRef = push(ref(db, 'transactions'));
-                updates[`transactions/${txRef.key}`] = {
-                    transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
-                    userId: studentUid, invoiceId, amount: amountFloat, currency: 'ZMW', status: 'successful',
-                    paymentDate: now, method: 'Manual', comment: record.comment || ''
-                };
                 
-                createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded for ${semesterInfo.name}.`, '/student/payments').catch(() => {});
+                if (record.isNewStudent) {
+                    // 1. Create a student creation request
+                    const requestRef = push(ref(db, 'studentCreationRequests'));
+                    const requestId = requestRef.key!;
+                    updates[`studentCreationRequests/${requestId}`] = {
+                        tempName: record.tempStudentName || 'Walk-in Prospect',
+                        timestamp: serverTimestamp(),
+                        amountPaid: amountFloat,
+                        comment: record.comment || '',
+                        status: 'pending'
+                    };
+
+                    // 2. Create unlinked transaction
+                    const txRef = push(ref(db, 'transactions'));
+                    updates[`transactions/${txRef.key}`] = {
+                        transactionId: `NEW-REQ-${Date.now()}-${txRef.key?.slice(-4)}`,
+                        amount: amountFloat,
+                        paymentDate: now,
+                        status: 'successful',
+                        method: 'Manual/Deposit',
+                        isUnlinked: true,
+                        requestId: requestId,
+                        senderName: record.tempStudentName || 'Unknown Prospect',
+                        comment: record.comment || 'Payment for new student registration'
+                    };
+                } else {
+                    const studentUid = record.userId!;
+                    const semId = record.semesterId!;
+                    const semesterInfo = semesters.find(s => s.id === semId);
+                    const studentStanding = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
+
+                    let invoiceId = studentStanding?.invoiceId;
+                    if (!invoiceId && semesterInfo) {
+                        const newInvoiceRef = push(ref(db, `invoices/${studentUid}`));
+                        invoiceId = newInvoiceRef.key!;
+                        updates[`invoices/${studentUid}/${invoiceId}`] = {
+                            invoiceId, 
+                            totalTuition: record.setTotalDue ? parseFloat(record.setTotalDue) : (record.totalDue || 0), 
+                            totalMandatoryFees: 0, 
+                            totalOptionalFees: 0,
+                            dateCreated: now, 
+                            semester: semesterInfo.name, 
+                            semesterId: semId, 
+                            courses: [], 
+                            optionalFees: [],
+                        };
+                        updates[`registrations/${studentUid}/${semId}/invoiceId`] = invoiceId;
+                    }
+
+                    const txRef = push(ref(db, 'transactions'));
+                    updates[`transactions/${txRef.key}`] = {
+                        transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
+                        userId: studentUid, 
+                        invoiceId: invoiceId || 'manual-entry', 
+                        amount: amountFloat, 
+                        currency: 'ZMW', 
+                        status: 'successful',
+                        paymentDate: now, 
+                        method: 'Manual', 
+                        comment: record.comment || ''
+                    };
+                    
+                    createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded${semesterInfo ? ` for ${semesterInfo.name}` : ''}.`, '/student/payments').catch(() => {});
+                }
             }
             
             await update(ref(db), updates);
@@ -810,21 +868,6 @@ export default function PaymentsManagementPage() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border bg-muted/5 items-end">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid ≥</Label>
-                            <Input type="number" placeholder="Min. Amount" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-9 bg-background" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid ≤</Label>
-                            <Input type="number" placeholder="Max. Amount" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-9 bg-background" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase opacity-60">Amount Paid =</Label>
-                            <Input type="number" placeholder="Exact Amount" value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="h-9 bg-background" />
-                        </div>
-                    </div>
-
                     {loading ? <Skeleton className="h-64 w-full" /> : (
                         <div className="rounded-md border shadow-sm overflow-hidden">
                             <Table>
@@ -842,7 +885,9 @@ export default function PaymentsManagementPage() {
                                 <TableBody>
                                     {filteredData.map((info) => (
                                         <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
-                                            <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
+                                            <TableCell className="font-mono text-[10px] font-black opacity-60">
+                                                {info.isUnlinked ? <Badge variant="destructive" className="h-4 text-[8px] uppercase">Unlinked</Badge> : info.studentId}
+                                            </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
@@ -860,71 +905,77 @@ export default function PaymentsManagementPage() {
                                             <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
                                             <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                             <TableCell className="text-center">
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <div className="flex flex-col items-center gap-1 cursor-pointer">
-                                                            <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px] h-5 px-2">
-                                                                {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
-                                                            </Badge>
-                                                            {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
-                                                        </div>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
-                                                        <div className="space-y-4">
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Compliance Audit</h4>
-                                                            <div className="space-y-2">
-                                                                <div className="flex justify-between text-xs">
-                                                                    <span className="text-muted-foreground">Threshold Target:</span>
-                                                                    <span className="font-bold">{info.targetThreshold}%</span>
-                                                                </div>
-                                                                <div className="flex justify-between text-xs">
-                                                                    <span className="text-muted-foreground">Current Standing:</span>
-                                                                    <span className={cn("font-bold", info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
-                                                                </div>
-                                                                <div className="flex justify-between text-xs">
-                                                                    <span className="text-muted-foreground">Grace Period:</span>
-                                                                    <span className="font-bold">{info.gracePeriod} Days</span>
-                                                                </div>
-                                                                
-                                                                <Separator className="my-3"/>
-                                                                
-                                                                <div className="space-y-2">
-                                                                    <p className="text-[9px] font-black uppercase text-muted-foreground tracking-tighter">Restriction Status</p>
-                                                                    <div className="grid gap-1.5 text-[10px]">
-                                                                        <div className="flex justify-between items-center">
-                                                                            <span className="opacity-70">Course Registration:</span>
-                                                                            <div className="flex items-center gap-1">
-                                                                                {restrictions.registration ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                <span className={cn(restrictions.registration ? "text-destructive" : "text-green-600")}>{restrictions.registration ? 'Enforced' : 'Unrestricted'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex justify-between items-center">
-                                                                            <span className="opacity-70">Exam Publication:</span>
-                                                                            <div className="flex items-center gap-1">
-                                                                                {restrictions.results ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                <span className={cn(restrictions.results ? "text-destructive" : "text-green-600")}>{restrictions.results ? 'Enforced' : 'Unrestricted'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex justify-between items-center">
-                                                                            <span className="opacity-70">Library Access:</span>
-                                                                            <div className="flex items-center gap-1">
-                                                                                {restrictions.library ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                <span className={cn(restrictions.library ? "text-destructive" : "text-green-600")}>{restrictions.library ? 'Enforced' : 'Unrestricted'}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {!info.thresholdMet && (
-                                                                    <div className="mt-4 p-2 bg-destructive/5 border border-destructive/10 rounded-md">
-                                                                        <p className="text-[10px] font-bold text-destructive uppercase">Arrears Clearing Amount</p>
-                                                                        <p className="text-xs font-black">ZMW {( (info.totalDue * (info.targetThreshold/100)) - info.totalPaid ).toFixed(2)}</p>
-                                                                    </div>
-                                                                )}
+                                                {info.isUnlinked ? (
+                                                    <Badge variant="destructive" className="uppercase text-[9px] h-5 px-2 animate-pulse gap-1">
+                                                        <ShieldAlert className="h-2.5 w-2.5"/> Needs Account Link
+                                                    </Badge>
+                                                ) : (
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <div className="flex flex-col items-center gap-1 cursor-pointer">
+                                                                <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px] h-5 px-2">
+                                                                    {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
+                                                                </Badge>
+                                                                {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
                                                             </div>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
+                                                            <div className="space-y-4">
+                                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Compliance Audit</h4>
+                                                                <div className="space-y-2">
+                                                                    <div className="flex justify-between text-xs">
+                                                                        <span className="text-muted-foreground">Threshold Target:</span>
+                                                                        <span className="font-bold">{info.targetThreshold}%</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-xs">
+                                                                        <span className="text-muted-foreground">Current Standing:</span>
+                                                                        <span className={cn("font-bold", info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-xs">
+                                                                        <span className="text-muted-foreground">Grace Period:</span>
+                                                                        <span className="font-bold">{info.gracePeriod} Days</span>
+                                                                    </div>
+                                                                    
+                                                                    <Separator className="my-3"/>
+                                                                    
+                                                                    <div className="space-y-2">
+                                                                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-tighter">Restriction Status</p>
+                                                                        <div className="grid gap-1.5 text-[10px]">
+                                                                            <div className="flex justify-between items-center">
+                                                                                <span className="opacity-70">Course Registration:</span>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {restrictions.registration ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                    <span className={cn(restrictions.registration ? "text-destructive" : "text-green-600")}>{restrictions.registration ? 'Enforced' : 'Unrestricted'}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex justify-between items-center">
+                                                                                <span className="opacity-70">Exam Publication:</span>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {restrictions.results ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                    <span className={cn(restrictions.results ? "text-destructive" : "text-green-600")}>{restrictions.results ? 'Enforced' : 'Unrestricted'}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex justify-between items-center">
+                                                                                <span className="opacity-70">Library Access:</span>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {restrictions.library ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
+                                                                                    <span className={cn(restrictions.library ? "text-destructive" : "text-green-600")}>{restrictions.library ? 'Enforced' : 'Unrestricted'}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {!info.thresholdMet && (
+                                                                        <div className="mt-4 p-2 bg-destructive/5 border border-destructive/10 rounded-md">
+                                                                            <p className="text-[10px] font-bold text-destructive uppercase">Arrears Clearing Amount</p>
+                                                                            <p className="text-xs font-black">ZMW {( (info.totalDue * (info.targetThreshold/100)) - info.totalPaid ).toFixed(2)}</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -991,7 +1042,7 @@ export default function PaymentsManagementPage() {
                         </Alert>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Direct Transfer">Transfer</SelectItem></SelectContent></Select></div>
+                            <div className="space-y-1"><Label>Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger id="payment-method"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Direct Transfer">Transfer</SelectItem></SelectContent></Select></div>
                             <div className="space-y-1"><Label>Reference #</Label><Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF#" /></div>
                         </div>
                     </div>
@@ -1011,34 +1062,50 @@ export default function PaymentsManagementPage() {
                                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
                                 <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-3">
-                                        <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student & Academic Period</Label></div>
-                                        <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
-                                        {row.userId && (
-                                            <div className="text-[10px] font-bold text-primary animate-in fade-in flex items-center gap-1.5 px-1">
-                                                <UserCheck className="h-3 w-3" />
-                                                Current standing: {calculateStandingForUser(row.userId)}
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student & Academic Period</Label></div>
+                                            <div className="flex items-center gap-2">
+                                                <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
+                                                <span className="text-[10px] font-bold uppercase text-primary">New Student?</span>
                                             </div>
-                                        )}
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.userId}><SelectTrigger className="h-9"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
-                                            <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9"><SelectValue placeholder="Semester..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
                                         </div>
-                                        {row.semesterId && !paymentInfos.find(p => p.userId === row.userId && p.semesterId === row.semesterId) && (
-                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                                                <Label className="text-[9px] uppercase font-bold text-primary">Initialize Semester Total Due</Label>
-                                                <Input type="number" placeholder="Set Expected Total" value={row.setTotalDue} onChange={e => handleBulkPaymentRowChange(row.key, 'setTotalDue', e.target.value)} className="h-8 text-xs" />
+                                        {row.isNewStudent ? (
+                                            <div className="space-y-2 animate-in slide-in-from-top-2">
+                                                <Label className="text-[9px] uppercase">Prospective Student Name</Label>
+                                                <div className="flex gap-2">
+                                                    <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-10" />
+                                                    <Button variant="secondary" className="h-10 shrink-0 gap-2"><UserPlus className="h-4 w-4"/> Request Student Creation</Button>
+                                                </div>
+                                                <Alert className="bg-blue-50/50 border-blue-200 py-2">
+                                                    <Info className="h-3 w-3 text-blue-600" />
+                                                    <AlertDescription className="text-[10px] text-blue-700">A creation request will be sent to Admissions once this payment is saved.</AlertDescription>
+                                                </Alert>
                                             </div>
+                                        ) : (
+                                            <>
+                                                <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
+                                                {row.userId && (
+                                                    <div className="text-[10px] font-bold text-primary animate-in fade-in flex items-center gap-1.5 px-1">
+                                                        <UserCheck className="h-3 w-3" />
+                                                        Current standing: {calculateStandingForUser(row.userId)}
+                                                    </div>
+                                                )}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)} disabled={!row.userId}><SelectTrigger className="h-9"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
+                                                    <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9"><SelectValue placeholder="Semester..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                     <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
                                         <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Semester Audit</Badge>}</div>
-                                        {row.semesterId ? (
+                                        {row.semesterId && !row.isNewStudent ? (
                                             <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
                                                 <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Total Due</span><span className="font-black text-xs">K{(row.totalDue || (parseFloat(row.setTotalDue || '0'))).toFixed(0)}</span></div>
                                                 <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
                                                 <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">Balance</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || parseFloat(row.setTotalDue || '0')) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
-                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic">Select student & semester to audit</div>}
+                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic">{row.isNewStudent ? "Initial Registration Deposit" : "Select student & semester to audit"}</div>}
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="space-y-1"><Label className="text-[9px]">Amount being paid</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
                                             <div className="space-y-1"><Label className="text-[9px]">Note / Ref</Label><Input placeholder="Notes..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
