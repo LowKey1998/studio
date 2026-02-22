@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, update, remove, set, serverTimestamp, push } from 'firebase/database';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isAfter, addDays } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +63,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { syncInvoiceToQuickbooks } from '@/ai/flows/sync-to-quickbooks';
 import { syncInvoiceToSage } from '@/ai/flows/sync-to-sage';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -108,7 +107,6 @@ type EnrollmentRequest = {
     semesterId: string;
     status: 'Pending' | 'Approved' | 'Declined';
     timestamp: number;
-    // Financial standing data for the registrar
     totalDue?: number;
     totalPaid?: number;
     balance?: number;
@@ -122,6 +120,7 @@ type Course = {
     code: string;
     cost: number;
     year: number;
+    status?: string;
 }
 
 type Fee = {
@@ -381,85 +380,6 @@ export default function ApproveRegistrationsPage() {
         }
     }, [currentUser, fetchRequests]);
 
-    const fetchTimetableCourses = async (semesterId: string, intakeId: string) => {
-        try {
-            const intakeSnap = await get(ref(db, `intakes/${intakeId}`));
-            const intakeName = intakeSnap.val()?.name;
-            const timetableSnap = await get(ref(db, `timetables/${semesterId}`));
-            const masterSnap = await get(ref(db, `timetables/master`));
-            
-            const courseIds = new Set<string>();
-            
-            const processTimetableNode = (node: any) => {
-                if (!node) return;
-                Object.entries(node).forEach(([cId, sessions]: [string, any]) => {
-                    const sessionArr = Object.values(sessions);
-                    const isForCohort = sessionArr.some((s: any) => s.intakeName === intakeName || s.intakeName === 'Master');
-                    if (isForCohort) courseIds.add(cId);
-                });
-            };
-
-            processTimetableNode(timetableSnap.val());
-            processTimetableNode(masterSnap.val());
-
-            return Array.from(courseIds);
-        } catch (e) {
-            console.error("Timetable fetch failed:", e);
-            return [];
-        }
-    };
-
-    const handleSyncWithTimetable = async (request: RegistrationRequest) => {
-        const timetableIds = await fetchTimetableCourses(request.semesterId, request.studentIntakeId);
-        if (timetableIds.length === 0) {
-            toast({ variant: 'destructive', title: 'No Timetable Found', description: 'Could not find a scheduled timetable for this cohort.' });
-            return;
-        }
-        
-        setEditingSelections(prev => ({
-            ...prev,
-            [`${request.userId}-${request.semesterId}`]: timetableIds
-        }));
-        toast({ title: 'Synced with Timetable', description: `Loaded ${timetableIds.length} scheduled courses.` });
-    };
-
-    const handleForceEnroll = async (request: RegistrationRequest) => {
-        if (!currentAdmin) {
-             toast({ variant: 'destructive', title: 'Action Failed', description: 'Could not identify current admin.' });
-             return;
-        }
-        setActionLoading(request.userId);
-        try {
-            const updates: Record<string, any> = {};
-            updates[`registrations/${request.userId}/${request.semesterId}/status`] = 'Completed';
-            
-            const activityRef = push(ref(db, 'recentActivities'));
-            updates[`recentActivities/${activityRef.key!}`] = {
-                user: currentAdmin.name,
-                userId: currentAdmin.id,
-                action: `manually enrolled ${request.studentName} (**${request.studentId}**) for the ${request.semesterName} semester.`,
-                timestamp: serverTimestamp()
-            };
-
-            await update(ref(db), updates);
-
-             await createNotification(
-                request.userId,
-                `Your registration for ${request.semesterName} has been manually approved and completed by an admin. You are now enrolled.`,
-                '/student/classes'
-            );
-            toast({
-                title: 'Student Enrolled',
-                description: `${request.studentName} has been manually enrolled for ${request.semesterName}.`,
-            });
-            fetchRequests();
-        } catch(e: any) {
-            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
-        } finally {
-            setActionLoading(null);
-        }
-    };
-    
     const handleApproval = async (request: RegistrationRequest, decision: 'approve' | 'decline') => {
         if (!currentUser) return;
         setActionLoading(request.userId);
@@ -550,10 +470,8 @@ export default function ApproveRegistrationsPage() {
                 const currentCourses = Array.isArray(currentReg.courses) ? currentReg.courses : Object.keys(currentReg.courses || {});
                 const updatedCourses = [...new Set([...currentCourses, request.courseId])];
 
-                // 1. Add course to registration
                 await update(regRef, { courses: updatedCourses });
 
-                // 2. Recalculate invoice
                 const invoiceRef = ref(db, `invoices/${request.userId}/${currentReg.invoiceId}`);
                 const invoiceSnap = await get(invoiceRef);
                 if (invoiceSnap.exists()) {
@@ -577,7 +495,6 @@ export default function ApproveRegistrationsPage() {
                 );
             }
 
-            // Update request status
             await update(ref(db, `classEnrollmentRequests/${request.id}`), { status: decision });
             toast({ title: `Request ${decision}` });
             fetchRequests();
@@ -623,11 +540,9 @@ export default function ApproveRegistrationsPage() {
                 invoiceUpdates.scholarshipId = scholarship.id;
                 invoiceUpdates.scholarshipPercentage = scholarship.percentage;
             } else if (!isApproved) {
-                // If denied, ensure we clear any existing scholarship markings
                 updates.scholarshipId = null;
                 updates.scholarshipName = null;
                 updates.scholarshipPercentage = null;
-                
                 invoiceUpdates.scholarshipId = null;
                 invoiceUpdates.scholarshipPercentage = null;
             }
@@ -660,6 +575,43 @@ export default function ApproveRegistrationsPage() {
         });
     };
 
+    const handleForceEnroll = async (request: RegistrationRequest) => {
+        if (!currentAdmin) {
+             toast({ variant: 'destructive', title: 'Action Failed', description: 'Could not identify current admin.' });
+             return;
+        }
+        setActionLoading(request.userId);
+        try {
+            const updates: Record<string, any> = {};
+            updates[`registrations/${request.userId}/${request.semesterId}/status`] = 'Completed';
+            
+            const activityRef = push(ref(db, 'recentActivities'));
+            updates[`recentActivities/${activityRef.key!}`] = {
+                user: currentAdmin.name,
+                userId: currentAdmin.id,
+                action: `manually enrolled ${request.studentName} (**${request.studentId}**) for the ${request.semesterName} semester.`,
+                timestamp: serverTimestamp()
+            };
+
+            await update(ref(db), updates);
+
+             await createNotification(
+                request.userId,
+                `Your registration for ${request.semesterName} has been manually approved and completed by an admin. You are now enrolled.`,
+                '/student/classes'
+            );
+            toast({
+                title: 'Student Enrolled',
+                description: `${request.studentName} has been manually enrolled for ${request.semesterName}.`,
+            });
+            fetchRequests();
+        } catch(e: any) {
+            toast({ variant: 'destructive', title: 'Action Failed', description: e.message });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const renderRequestList = (groupedRequests: GroupedRequests, type: 'pending' | 'approved' | 'completed') => {
         if (loading) return (<div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-lg" />)}</div>);
         if (Object.keys(groupedRequests).length === 0) return (<div className="py-16 text-center text-muted-foreground"><UserCheck className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">All Clear!</h3><p className="mt-2 text-sm">There are no {type} registrations to show.</p></div>);
@@ -674,7 +626,8 @@ export default function ApproveRegistrationsPage() {
                                 const reqId = `${request.userId}-${request.semesterId}`;
                                 const currentSelection = editingSelections[reqId] || [];
                                 const totalCost = currentSelection.reduce((sum, id) => sum + (allCourses.get(id)?.cost || 0), 0);
-                                const coursePath = allCoursePaths.find(p => p.intakeId === request.studentIntakeId && p.programmeId === request.programmeId);
+                                
+                                const regDateValid = request.registrationDate && !isNaN(new Date(request.registrationDate).getTime());
 
                                 return (
                                 <Card key={reqId} className="overflow-hidden shadow-md border-l-4 border-l-primary">
@@ -683,7 +636,7 @@ export default function ApproveRegistrationsPage() {
                                             <div className="space-y-1">
                                                 <CardTitle className="text-lg">{request.studentName}</CardTitle>
                                                 <CardDescription>ID: {request.studentId} | Programme: <strong>{request.programmeName}</strong> | Intake: <strong>{allIntakes.get(request.studentIntakeId)?.name || 'N/A'}</strong></CardDescription>
-                                                <CardDescription>Submitted: {format(new Date(request.registrationDate), 'PPP')}</CardDescription>
+                                                <CardDescription>Submitted: {regDateValid ? format(new Date(request.registrationDate), 'PPP') : 'Date Pending'}</CardDescription>
                                                 {request.applyScholarship && type !== 'completed' && ( 
                                                     <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
                                                         <GraduationCap className="mr-2 h-4 w-4" />
@@ -700,7 +653,6 @@ export default function ApproveRegistrationsPage() {
                                                             <Button size="sm" onClick={() => handleApproval(request, 'approve')} disabled={!!actionLoading}>{actionLoading === request.userId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Approve</Button>
                                                         )}
                                                     </div>
-                                                    <Button variant="outline" size="sm" onClick={() => handleSyncWithTimetable(request)} className="h-8 text-[10px] uppercase font-black tracking-widest"><RotateCcw className="h-3 w-3 mr-1"/> Sync with Timetable</Button>
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col items-end gap-2">
@@ -721,7 +673,6 @@ export default function ApproveRegistrationsPage() {
                                             <div className="grid gap-2">
                                                 {Array.from(allCourses.values()).filter(c => c.status === 'active' && (currentSelection.includes(c.id) || request.courseIds.includes(c.id))).map(course => {
                                                     const history = request.academicHistory[course.id];
-                                                    const isPathCourse = coursePath?.semesters?.[request.semesterId]?.courses?.includes(course.id);
                                                     const isStudentSelected = request.courseIds.includes(course.id);
                                                     
                                                     return(
@@ -734,7 +685,6 @@ export default function ApproveRegistrationsPage() {
                                                             <div className="flex items-center gap-2">
                                                                 <span className="font-bold">{course.code}</span>
                                                                 <span className="text-muted-foreground text-xs">{course.name}</span>
-                                                                {!isPathCourse && <Badge variant="destructive" className="h-4 text-[8px] uppercase">Path Deviation</Badge>}
                                                                 {!isStudentSelected && currentSelection.includes(course.id) && <Badge variant="secondary" className="h-4 text-[8px] uppercase bg-blue-100 text-blue-700">Added by Registrar</Badge>}
                                                             </div>
                                                             <div className='flex gap-2 items-center'>
