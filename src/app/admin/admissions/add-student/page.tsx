@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update, onValue, remove } from 'firebase/database';
 import { db } from '@/lib/firebase';
@@ -29,7 +30,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
+import { format } from 'date-fns';
 
 type User = {
     uid: string;
@@ -107,11 +108,6 @@ export default function AddStudentPage() {
     const [students, setStudents] = React.useState<User[]>([]);
     const [listSearchTerm, setListSearchTerm] = React.useState('');
     
-    const [isCredentialsOpen, setIsCredentialsOpen] = React.useState(false);
-    const [selectedUserForCreds, setSelectedUserForCreds] = React.useState<User | null>(null);
-    const [credSubject, setCredSubject] = React.useState('Your Portal Login Details');
-    const [credBody, setCredBody] = React.useState('');
-
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
@@ -288,6 +284,32 @@ export default function AddStudentPage() {
         toast({ title: 'Request Loaded', description: `Processing application for ${req.tempName}.` });
     };
 
+    const handleOpenEdit = (student: User) => {
+        setEditingUid(student.uid);
+        setName(student.name);
+        setEmail(student.email);
+        setPhoneNumber(student.phoneNumber || '');
+        setProgramme(student.programmeId || '');
+        setSelectedIntake(student.intakeId || '');
+        setSelectedYear(student.year ? Number(student.year) : '');
+        setSelectedSemester(student.semesterId || '');
+        setDob(student.dob || '');
+        setGender(student.gender || '');
+        setNationalId(student.nationalId || '');
+        setPassport(student.passport || '');
+        setAddress(student.address || '');
+        setPreviousSchool(student.educationBackground?.school || '');
+        setQualifications(student.educationBackground?.qualifications || '');
+        setMedicalHistory(student.medicalHistory || '');
+        setGuardianName(student.guardian?.name || '');
+        setGuardianEmail(student.guardian?.email || '');
+        setGuardianContact(student.guardian?.contact || '');
+        setGuardianRelationship(student.guardian?.relationship || '');
+        setIsEditOpen(true);
+    };
+
+    const [isEditOpen, setIsEditOpen] = React.useState(false);
+
     const filteredStudents = students.filter(s => !listSearchTerm || s.name.toLowerCase().includes(listSearchTerm.toLowerCase()) || s.id.toLowerCase().includes(listSearchTerm.toLowerCase()));
 
     return (
@@ -295,7 +317,10 @@ export default function AddStudentPage() {
             <Tabs defaultValue="add">
                 <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
                     <TabsTrigger value="add">Add Student</TabsTrigger>
-                    <TabsTrigger value="pending">Pending Requests ({pendingRequests.length})</TabsTrigger>
+                    <TabsTrigger value="pending" className="relative">
+                        Pending Requests 
+                        {pendingRequests.length > 0 && <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-primary text-white border-2 border-background animate-pulse">{pendingRequests.length}</Badge>}
+                    </TabsTrigger>
                     <TabsTrigger value="list">Student List</TabsTrigger>
                 </TabsList>
 
@@ -326,7 +351,7 @@ export default function AddStudentPage() {
                                                 <div className="space-y-1"><Label>Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required/></div>
                                                 <div className="space-y-1"><Label>Phone</Label><Input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}/></div>
                                                 {!editingUid && <div className="space-y-1"><Label>Password</Label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} required/></div>}
-                                                <div className="space-y-1"><Label>DOB</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)}/></div>
+                                                <div className="space-y-1"><Label>Date of Birth</Label><Input type="date" value={dob} onChange={e => setDob(e.target.value)}/></div>
                                                 <div className="space-y-1"><Label>Gender</Label><Select onValueChange={setGender} value={gender}><SelectTrigger><SelectValue placeholder="Select"/></SelectTrigger><SelectContent><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></div>
                                             </div>
                                             <div className="space-y-1"><Label>Address</Label><Textarea value={address} onChange={e => setAddress(e.target.value)}/></div>
@@ -351,39 +376,59 @@ export default function AddStudentPage() {
                 </TabsContent>
 
                 <TabsContent value="pending" className="pt-6">
-                    <Card className="max-w-4xl mx-auto shadow-md border-l-4 border-l-primary">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary"/> Pending Finance Requests</CardTitle>
-                            <CardDescription>New student profiles requested by the Finance department after receiving a deposit.</CardDescription>
+                    <Card className="max-w-4xl mx-auto shadow-md border-l-4 border-l-primary overflow-hidden">
+                        <CardHeader className="bg-primary/5 border-b pb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary rounded-lg shadow-md">
+                                    <ClipboardList className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                    <CardTitle className="font-headline text-2xl">Pending Finance Requests</CardTitle>
+                                    <CardDescription>Accounts requested by the Finance department after receiving initial deposits.</CardDescription>
+                                </div>
+                            </div>
                         </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Applicant Name</TableHead>
-                                        <TableHead>Proposed ID</TableHead>
-                                        <TableHead>Deposit Paid</TableHead>
-                                        <TableHead>Submitted On</TableHead>
-                                        <TableHead className="text-right">Action</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {pendingRequests.map(req => (
-                                        <TableRow key={req.id}>
-                                            <TableCell className="font-bold">{req.tempName}</TableCell>
-                                            <TableCell className="font-mono text-xs opacity-70">{req.tempId}</TableCell>
-                                            <TableCell className="font-bold text-green-600">ZMW {req.amountPaid.toFixed(2)}</TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">{format(new Date(req.timestamp), 'PPP')}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button size="sm" variant="outline" onClick={() => handleProcessRequest(req)}>Process Application</Button>
-                                            </TableCell>
+                        <CardContent className="pt-6">
+                            {pendingRequests.length > 0 ? (
+                                <Table>
+                                    <TableHeader className="bg-muted/50">
+                                        <TableRow>
+                                            <TableHead>Applicant Name</TableHead>
+                                            <TableHead>Proposed ID</TableHead>
+                                            <TableHead>Deposit Paid</TableHead>
+                                            <TableHead>Submitted On</TableHead>
+                                            <TableHead className="text-right">Action</TableHead>
                                         </TableRow>
-                                    ))}
-                                    {pendingRequests.length === 0 && (
-                                        <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">No pending student creation requests.</TableCell></TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {pendingRequests.map(req => (
+                                            <TableRow key={req.id} className="group hover:bg-muted/30 transition-colors">
+                                                <TableCell className="font-bold">{req.tempName}</TableCell>
+                                                <TableCell className="font-mono text-xs opacity-70 tracking-widest">{req.tempId}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-black">
+                                                        <Banknote className="h-3 w-3" />
+                                                        ZMW {req.amountPaid.toFixed(2)}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-muted-foreground">{format(new Date(req.timestamp), 'PPP')}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button size="sm" onClick={() => handleProcessRequest(req)} className="shadow-sm">
+                                                        <UserPlus className="mr-2 h-4 w-4" />
+                                                        Process Application
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                                    <CheckCircle2 className="h-12 w-12 mx-auto opacity-10 mb-4" />
+                                    <h3 className="text-lg font-bold">No Pending Requests</h3>
+                                    <p className="text-sm">When Finance records a payment for a new student, it will appear here for processing.</p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -392,7 +437,7 @@ export default function AddStudentPage() {
                     <Card className="max-w-4xl mx-auto shadow-md">
                         <CardHeader>
                             <CardTitle>Registered Students</CardTitle>
-                            <div className="relative pt-2"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." className="pl-8" value={listSearchTerm} onChange={(e) => setListSearchTerm(e.target.value)} /></div>
+                            <div className="relative pt-2"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search name or ID..." className="pl-8" value={listSearchTerm} onChange={(e) => setListSearchTerm(e.target.value)} /></div>
                         </CardHeader>
                         <CardContent>
                             <Table>

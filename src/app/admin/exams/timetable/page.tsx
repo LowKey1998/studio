@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -275,7 +276,7 @@ export default function AdminExamTimetablePage() {
                 : push(ref(db, `examTimetables/${selectedSemesterId}`));
             
             await set(etRef, data);
-            toast({ title: editingEntry ? "Exam Updated" : "Exam Scheduled" });
+            toast({ title: "Exam Updated" });
             setIsAddOpen(false);
             setEditingEntry(null);
         } catch (e: any) {
