@@ -46,7 +46,8 @@ import {
     Save,
     BookOpen,
     Tag,
-    Receipt
+    Receipt,
+    ReceiptText
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -279,10 +280,10 @@ function CreateOrEditDialogContent({
         const feeId = push(ref(db, 'temp')).key!;
         
         if (isMandatory) {
-            setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
+            setMandatoryFees(prev => ({ ...prev, [id]: newFee }));
             setIsMandatoryFeeDialogOpen(false);
         } else {
-            setOptionalFees(prev => ({ ...prev, [feeId]: newFee }));
+            setOptionalFees(prev => ({ ...prev, [id]: newFee }));
             setIsOptionalFeeDialogOpen(false);
         }
         setSelectedFeeTemplate(''); setFeeAmount('');
@@ -900,8 +901,10 @@ export default function RegistrationManagementPage() {
                 <AlertDialogContent>
                     <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the semester record and its associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setSemesterToDeleteId(null)}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground">Delete Semester</AlertDialogAction>
+                        <AlertDialogCancel onClick={() => { setSemesterToDeleteId(null); setIsDeleteSemesterDialogOpen(false); }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteSemester} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete Semester
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
