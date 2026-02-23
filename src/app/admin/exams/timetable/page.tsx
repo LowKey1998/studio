@@ -24,7 +24,9 @@ import {
     FileCheck, 
     Calendar as CalendarIcon,
     Link as LinkIcon,
-    CheckCircle2
+    CheckCircle2,
+    ChevronsUpDown,
+    Trash2
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -52,7 +54,7 @@ import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 
 type TimeSlot = { id: string; startTime: string; endTime: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Intake = { id: string; name: string; };
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
 
@@ -142,13 +144,16 @@ export default function AdminExamTimetablePage() {
         fetchInitial();
     }, []);
 
+    // Active semesters based on selected intake
     const activeSemesters = React.useMemo(() => {
         if (!selectedIntakeId) return [];
         return semesters.filter(s => s.intakeId === selectedIntakeId && s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name));
     }, [semesters, selectedIntakeId]);
 
+    // Courses belonging to the selected intake's roadmap for this semester
     const availableCourses = React.useMemo(() => {
         if (!selectedSemesterId) return [];
+        // In a real scenario, you'd filter by the coursePath for the intake
         return allCourses.filter(c => c.id); 
     }, [allCourses, selectedSemesterId]);
 
@@ -264,32 +269,34 @@ export default function AdminExamTimetablePage() {
                 <div className="w-64">
                     <Label className="text-[10px] font-black uppercase opacity-60 mb-1.5 block">1. Select Intake</Label>
                     <Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); setSelectedSemesterId(''); }}>
-                        <SelectTrigger className="bg-background"><SelectValue placeholder="Cohort Group..."/></SelectTrigger>
+                        <SelectTrigger className="bg-background border-primary/20 shadow-sm"><SelectValue placeholder="Cohort Group..."/></SelectTrigger>
                         <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
                 <div className="w-64">
                     <Label className="text-[10px] font-black uppercase opacity-60 mb-1.5 block">2. Target Semester</Label>
                     <Select value={selectedSemesterId} onValueChange={setSelectedSemesterId} disabled={!selectedIntakeId}>
-                        <SelectTrigger className="bg-background"><SelectValue placeholder="Academic Period..."/></SelectTrigger>
+                        <SelectTrigger className="bg-background border-primary/20 shadow-sm"><SelectValue placeholder="Academic Period..."/></SelectTrigger>
                         <SelectContent>{activeSemesters.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
-                <Separator orientation="vertical" className="h-10 hidden lg:block" />
+                <Separator orientation="vertical" className="h-10 hidden lg:block mx-2" />
                 <div className="flex items-center gap-4 py-2">
-                    <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev</Button>
-                    <div className="font-bold text-sm uppercase tracking-widest text-primary">
+                    <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))} className="shadow-sm"><ChevronLeft className="h-4 w-4 mr-1"/> Prev</Button>
+                    <div className="font-bold text-xs uppercase tracking-widest text-primary bg-background px-4 py-2 rounded-full border border-primary/10 shadow-inner">
                         {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next <ChevronRight className="h-4 w-4 ml-1"/></Button>
+                    <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))} className="shadow-sm">Next <ChevronRight className="h-4 w-4 ml-1"/></Button>
                 </div>
             </div>
 
             {loading ? <Skeleton className="h-96 w-full" /> : !selectedSemesterId ? (
-                <div className="py-24 text-center border-2 border-dashed rounded-3xl bg-muted/5">
-                    <CalendarDays className="h-12 w-12 mx-auto opacity-10 mb-4" />
-                    <h3 className="text-lg font-bold">Awaiting Phase Selection</h3>
-                    <p className="text-sm text-muted-foreground">Please select an intake and semester above to manage the exam schedule.</p>
+                <div className="py-24 text-center border-2 border-dashed rounded-3xl bg-muted/5 flex flex-col items-center gap-4">
+                    <CalendarDays className="h-12 w-12 mx-auto opacity-10" />
+                    <div className="space-y-1">
+                        <h3 className="text-lg font-bold">Awaiting Phase Selection</h3>
+                        <p className="text-sm text-muted-foreground">Please select an intake and semester above to manage the exam schedule.</p>
+                    </div>
                 </div>
             ) : (
                 <div className="border rounded-xl overflow-hidden bg-muted/10 shadow-inner">
@@ -390,7 +397,7 @@ export default function AdminExamTimetablePage() {
                             <Label>Course</Label>
                             <Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-between font-normal">
+                                    <Button variant="outline" className="w-full justify-between font-normal h-10 border-primary/30">
                                         {selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
@@ -398,15 +405,15 @@ export default function AdminExamTimetablePage() {
                                 <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
                                     <div className="flex flex-col">
                                         <div className="p-2 border-b">
-                                            <Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/>
+                                            <Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)} onKeyDown={(e) => e.stopPropagation()}/>
                                         </div>
                                         <ScrollArea className="h-64">
                                             <div className="p-1">
                                                 {searchedCourses.map((c) => (
-                                                    <Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}>
-                                                        <div className="text-left">
-                                                            <div className="font-bold">{c.code}</div>
-                                                            <div className="text-muted-foreground">{c.name}</div>
+                                                    <Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2 px-3 text-left" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}>
+                                                        <div>
+                                                            <div className="font-bold text-primary">{c.code}</div>
+                                                            <div className="text-muted-foreground leading-tight mt-0.5">{c.name}</div>
                                                         </div>
                                                     </Button>
                                                 ))}
@@ -432,34 +439,50 @@ export default function AdminExamTimetablePage() {
                                 <Label>Date</Label>
                                 <Popover>
                                     <PopoverTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                        <Button variant="outline" className="w-full justify-start text-left font-normal border-primary/20">
+                                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
                                             {examDate ? format(parseISO(examDate), 'PPP') : "Select date"}
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate ? parseISO(examDate) : undefined} onSelect={(d) => setExamDate(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus /></PopoverContent>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar mode="single" selected={examDate ? parseISO(examDate) : undefined} onSelect={(d) => setExamDate(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus />
+                                    </PopoverContent>
                                 </Popover>
                             </div>
                             <div className="space-y-1">
                                 <Label>Venue</Label>
                                 {isOnline ? (
-                                    <div className="h-10 flex items-center px-3 border rounded-md bg-muted/50 text-xs font-bold text-blue-700 italic">PORTAL ACCESS</div>
+                                    <div className="h-10 flex items-center px-3 border rounded-md bg-muted/50 text-xs font-bold text-blue-700 italic border-blue-200/50 shadow-inner">
+                                        <Monitor className="h-3 w-3 mr-2" /> PORTAL ACCESS
+                                    </div>
                                 ) : (
                                     <Select value={venue} onValueChange={setVenue}>
-                                        <SelectTrigger><SelectValue placeholder="Room..."/></SelectTrigger>
-                                        <SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name} (Cap: {r.capacity})</SelectItem>)}</SelectContent>
+                                        <SelectTrigger className="border-primary/20"><SelectValue placeholder="Room..."/></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="TBA">None / TBA</SelectItem>
+                                            {rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name} (Cap: {r.capacity})</SelectItem>)}
+                                        </SelectContent>
                                     </Select>
                                 )}
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Start Time</Label><Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
-                            <div className="space-y-1"><Label>End Time</Label><Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
+                            <div className="space-y-1">
+                                <Label>Start Time</Label>
+                                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="border-primary/20" />
+                            </div>
+                            <div className="space-y-1">
+                                <Label>End Time</Label>
+                                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="border-primary/20" />
+                            </div>
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSaveEntry} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Schedule Slot</Button>
+                        <Button onClick={handleSaveEntry} disabled={saving || !selectedCourseId}>
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}
+                            Schedule Slot
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

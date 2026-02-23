@@ -40,8 +40,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
 import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, startOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -174,8 +173,8 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between h-10 px-3 bg-background border-primary/20" disabled={disabled}>
-                    <span className="truncate">{selectedLabel}</span>
+                <Button variant="outline" className="w-full justify-between h-10 px-3 bg-background border-primary/20 shadow-sm" disabled={disabled}>
+                    <span className="truncate text-xs">{selectedLabel}</span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
@@ -183,7 +182,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                 <div className="p-2">
                     <Input 
                         placeholder="Search roster..." 
-                        className="h-9" 
+                        className="h-9 text-xs" 
                         value={search} 
                         onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
@@ -194,12 +193,12 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                     <div className="p-1">
                     {filteredOptions.length > 0 ? filteredOptions.map(group => (
                         <div key={group.groupName} className="p-1">
-                            <div className="px-2 py-1.5 text-[10px] font-black uppercase text-muted-foreground tracking-widest">{group.groupName}</div>
+                            <div className="px-2 py-1.5 text-[9px] font-black uppercase text-muted-foreground tracking-widest bg-muted/30 rounded-sm mb-1">{group.groupName}</div>
                             {group.items.map(option => (
                                 <Button
                                     key={option.value}
                                     variant="ghost"
-                                    className="w-full justify-start h-auto py-2 px-2 text-left text-sm"
+                                    className="w-full justify-start h-auto py-2 px-2 text-left text-xs"
                                     onClick={() => {
                                         onValueChange(option.value);
                                         setOpen(false);
@@ -244,15 +243,6 @@ export default function PaymentsManagementPage() {
     const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
     const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('all');
     const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
-
-    // Single Recording State
-    const [isRecordPaymentOpen, setIsRecordPaymentOpen] = React.useState(false);
-    const [selectedStudent, setSelectedStudent] = React.useState<StudentPaymentInfo | null>(null);
-    const [singleYear, setSingleYear] = React.useState('');
-    const [singleSemId, setSingleSemId] = React.useState('');
-    const [paymentAmount, setPaymentAmount] = React.useState('');
-    const [paymentMethod, setPaymentMethod] = React.useState('Cash');
-    const [transactionId, setTransactionId] = React.useState('');
 
     // Bulk Recording State
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
