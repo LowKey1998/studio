@@ -1,4 +1,3 @@
-
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -8,7 +7,32 @@ import { ref, get, set, push, onValue, remove, update, serverTimestamp } from 'f
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Loader2, Clock, RotateCcw, X, Pencil, PlusCircle, Bot, ChevronsUpDown, Monitor, Search, AlertCircle, GraduationCap, UserMinus, FileCheck, Calendar as CalendarIcon } from 'lucide-react';
+import { 
+    Info, 
+    MapPin, 
+    UserCheck, 
+    Users, 
+    CalendarDays, 
+    Layers, 
+    ChevronLeft, 
+    ChevronRight, 
+    Video, 
+    Loader2, 
+    Clock, 
+    RotateCcw, 
+    X, 
+    Pencil, 
+    PlusCircle, 
+    Bot, 
+    ChevronsUpDown, 
+    Monitor, 
+    Search, 
+    AlertCircle, 
+    GraduationCap, 
+    UserMinus, 
+    FileCheck, 
+    Calendar as CalendarIcon 
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
@@ -389,7 +413,6 @@ function TimetableManagementComponent() {
                     const entries = snapshot.val();
                     Object.keys(entries).forEach(id => {
                         const entry = entries[id];
-                        // Filter for the specific intake if it's a separate instance or master node
                         const intake = allIntakes.find(i => i.id === resolvedSemester.intakeId);
                         if (nodeId === 'master' && entry.intakeName !== intake?.name && entry.intakeName !== 'Master') {
                             return;
@@ -751,10 +774,10 @@ function TimetableManagementComponent() {
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                                             <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {examDate ? format(examDate, 'PPP') : "Select date"}
+                                            {examDate ? format(new Date(examDate), 'PPP') : "Select date"}
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate} onSelect={setExamDate} initialFocus /></PopoverContent>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate ? new Date(examDate) : undefined} onSelect={(d) => setExamDate(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus /></PopoverContent>
                                 </Popover>
                             </div>
                             <div className="space-y-1">

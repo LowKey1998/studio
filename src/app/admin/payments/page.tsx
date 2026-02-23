@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -25,21 +24,15 @@ import {
     Wallet,
     History as HistoryIcon,
     Calendar as CalendarIcon,
-    Filter,
     Save,
-    CheckCircle,
-    XCircle,
     ShieldAlert,
-    GraduationCap,
     Info,
     X,
     UserCheck,
     Lock,
     Unlock,
     ArrowRight,
-    MoreVertical,
     Pencil,
-    UserPlus,
     Tag,
     Equal
 } from 'lucide-react';
@@ -1066,7 +1059,7 @@ export default function PaymentsManagementPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) resetDialog(); setIsRecordPaymentOpen(o); }}>
+            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) { resetDialog(); } setIsRecordPaymentOpen(o); }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
                     <div className="grid gap-4 py-4">
