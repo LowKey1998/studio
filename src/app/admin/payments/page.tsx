@@ -383,7 +383,7 @@ export default function PaymentsManagementPage() {
                         const balance = Math.max(0, totalPayable - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
                         const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
@@ -478,8 +478,8 @@ export default function PaymentsManagementPage() {
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
         get(savedFiltersRef).then(snap => {
-            if (snapshot.exists()) {
-                const f = snapshot.val();
+            if (snap.exists()) {
+                const f = snap.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);
