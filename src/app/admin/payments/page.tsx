@@ -563,7 +563,7 @@ export default function PaymentsManagementPage() {
                         const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
-                        nextRow.year = ''; // Trigger reset of target selection
+                        nextRow.year = '';
                         nextRow.semesterId = ''; 
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
@@ -720,6 +720,36 @@ export default function PaymentsManagementPage() {
             setBulkPaymentRows([]);
         } catch (e: any) { toast({ variant: 'destructive', title: 'Save Failed', description: e.message }); }
         finally { setFormLoading(false); }
+    };
+
+    const handleRequestAdjustment = async () => {
+        if (!adjustmentTarget || !adjNewValue || !adjReason.trim() || !user || !userData) return;
+        setFormLoading(true);
+        try {
+            const requestRef = push(ref(db, 'paymentEditRequests'));
+            await set(requestRef, {
+                type: adjustmentTarget.type,
+                targetId: adjustmentTarget.id,
+                userId: adjustmentTarget.userId,
+                studentName: adjustmentTarget.studentName,
+                studentId: adjustmentTarget.studentId,
+                oldValue: adjustmentTarget.oldValue,
+                newValue: parseFloat(adjNewValue),
+                reason: adjReason,
+                requestedBy: userData.name,
+                requestedByUid: user.uid,
+                timestamp: serverTimestamp(),
+                status: 'pending'
+            });
+            toast({ title: 'Request Submitted', description: 'Your proposed adjustment is now awaiting approval.' });
+            setIsAdjustmentOpen(false);
+            setAdjReason('');
+            setAdjNewValue('');
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Submission Failed' });
+        } finally {
+            setFormLoading(false);
+        }
     };
 
     const handleExport = () => {

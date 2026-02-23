@@ -28,7 +28,8 @@ import {
     ChevronsUpDown,
     Trash2,
     Settings2,
-    Plus
+    Plus,
+    Save
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -156,7 +157,6 @@ export default function AdminExamTimetablePage() {
                     slots: (data.slots || []).sort((a: ExamTimeSlot, b: ExamTimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                 });
             } else {
-                // Initialize default sessions if none exist
                 setExamTimes({
                     slots: [
                         { id: 'session-1', startTime: '09:00', endTime: '12:00' },
@@ -169,17 +169,14 @@ export default function AdminExamTimetablePage() {
         fetchInitial();
     }, []);
 
-    // Active semesters based on selected intake
     const activeSemesters = React.useMemo(() => {
         if (!selectedIntakeId) return [];
         return semesters.filter(s => s.intakeId === selectedIntakeId && s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name));
     }, [semesters, selectedIntakeId]);
 
-    // Courses belonging to the selected intake's roadmap for this semester (Filtering by Master Timetable)
     const availableCourses = React.useMemo(() => {
         if (!selectedSemesterId) return [];
         const intake = intakes.find(i => i.id === selectedIntakeId);
-        
         const courseIdsInTimetable = new Set(
             masterTimetable
                 .filter(e => e.semesterId === selectedSemesterId || e.semesterId === 'master')
