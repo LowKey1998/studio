@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -289,6 +290,23 @@ function TimetableManagementComponent() {
         );
     }, [allCourses, courseSearch]);
 
+    const examEligibleCourses = React.useMemo(() => {
+        if (!resolvedSemester) return [];
+        const courseIdsInTimetable = new Set(
+            masterTimetable
+                .filter(e => e.semesterId === resolvedSemester.id || e.semesterId === 'master')
+                .filter(e => {
+                    if (e.semesterId === 'master' && resolvedSemester) {
+                        const intake = allIntakes.find(i => i.id === resolvedSemester.intakeId);
+                        return e.intakeName === intake?.name || e.intakeName === 'Master';
+                    }
+                    return true;
+                })
+                .map(e => e.courseId)
+        );
+        return allCourses.filter(c => courseIdsInTimetable.has(c.id));
+    }, [resolvedSemester, masterTimetable, allCourses, allIntakes]);
+
     const getActualCount = React.useCallback((courseId: string, semId: string, intakeName: string) => {
         const course = allCourses.find(c => c.id === courseId);
         if (!course) return 0;
@@ -361,22 +379,35 @@ function TimetableManagementComponent() {
         if (!examCourseId || !examDate || !resolvedSemester) return;
         setSaving(true);
         try {
-            const semesterRef = ref(db, `timetables/${resolvedSemester.id}/${examCourseId}`);
-            const snapshot = await get(semesterRef);
+            const updates: Record<string, any> = {};
+            const nodesToUpdate = ['master', resolvedSemester.id];
             
-            if (snapshot.exists()) {
-                const entries = snapshot.val();
-                const updates: Record<string, any> = {};
-                Object.keys(entries).forEach(id => {
-                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examDate`] = format(examDate, 'yyyy-MM-dd');
-                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examTime`] = examTime;
-                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examVenue`] = examVenue || 'TBA';
-                });
+            for (const nodeId of nodesToUpdate) {
+                const semesterRef = ref(db, `timetables/${nodeId}/${examCourseId}`);
+                const snapshot = await get(semesterRef);
+                if (snapshot.exists()) {
+                    const entries = snapshot.val();
+                    Object.keys(entries).forEach(id => {
+                        const entry = entries[id];
+                        // Filter for the specific intake if it's a separate instance or master node
+                        const intake = allIntakes.find(i => i.id === resolvedSemester.intakeId);
+                        if (nodeId === 'master' && entry.intakeName !== intake?.name && entry.intakeName !== 'Master') {
+                            return;
+                        }
+                        
+                        updates[`timetables/${nodeId}/${examCourseId}/${id}/examDate`] = format(examDate, 'yyyy-MM-dd');
+                        updates[`timetables/${nodeId}/${examCourseId}/${id}/examTime`] = examTime;
+                        updates[`timetables/${nodeId}/${examCourseId}/${id}/examVenue`] = examVenue || 'TBA';
+                    });
+                }
+            }
+
+            if (Object.keys(updates).length === 0) {
+                toast({ variant: 'destructive', title: 'No Timetable Records', description: 'At least one timetable entry must exist for this course before an exam schedule can be set.' });
+            } else {
                 await update(ref(db), updates);
                 toast({ title: 'Exam Schedule Published' });
                 setIsExamDialogOpen(false);
-            } else {
-                toast({ variant: 'destructive', title: 'No Timetable Records', description: 'At least one timetable entry must exist for this course before an exam schedule can be set.' });
             }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed' });
@@ -704,11 +735,12 @@ function TimetableManagementComponent() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1">
-                            <Label>Course</Label>
+                            <Label>Course (Filtering by active timetable)</Label>
                             <Select value={examCourseId} onValueChange={setExamCourseId}>
                                 <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
                                 <SelectContent>
-                                    {allCourses.map(c => <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>)}
+                                    {examEligibleCourses.map(c => <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>)}
+                                    {examEligibleCourses.length === 0 && <div className="p-4 text-xs italic text-center">No courses scheduled for this cohort yet.</div>}
                                 </SelectContent>
                             </Select>
                         </div>

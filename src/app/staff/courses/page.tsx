@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -115,11 +116,14 @@ export default function StaffCoursesPage() {
                             const onlineMcqComponents = Object.keys(components).filter(id => components[id].isOnlineQuiz);
                             
                             if (onlineMcqComponents.length > 0) {
-                                const existingQuiz = allQuizzes.find(q => 
-                                    (q.courseId === courseId || q.courseIds?.includes(courseId)) && 
-                                    onlineMcqComponents.includes(q.linkedComponentId)
-                                );
-                                if (!existingQuiz) needsQuiz = true;
+                                // For each online MCQ component, check if a quiz exists that is linked to it
+                                onlineMcqComponents.forEach(compId => {
+                                    const existingQuiz = allQuizzes.find(q => 
+                                        (q.courseId === courseId || q.courseIds?.includes(courseId)) && 
+                                        q.linkedComponentId === compId
+                                    );
+                                    if (!existingQuiz) needsQuiz = true;
+                                });
                             }
                         }
 
