@@ -106,7 +106,6 @@ export default function AdminExamTimetablePage() {
     const [isTimeSetupOpen, setIsTimeSetupOpen] = React.useState(false);
     const [editingEntry, setEditingEntry] = React.useState<ExamEntry | null>(null);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
-    const [selectedIntakeIdForForm, setSelectedIntakeIdForForm] = React.useState('');
     const [examDate, setExamDate] = React.useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
@@ -300,10 +299,7 @@ export default function AdminExamTimetablePage() {
     };
 
     const handleTogglePublish = async (semesterId: string, examId: string, currentStatus: boolean) => {
-        if (!examId) {
-            console.warn("Attempted to toggle publish on exam without ID");
-            return;
-        }
+        if (!examId) return;
         try {
             await update(ref(db, `examTimetables/${semesterId}/${examId}`), { isPublished: !currentStatus });
             toast({ title: !currentStatus ? "Schedule Published" : "Schedule Hidden" });

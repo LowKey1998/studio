@@ -70,7 +70,7 @@ export default function StudentExamTimetablePage() {
                     return;
                 }
 
-                // 1. Resolve active semester via confirmed registration
+                // Resolve active semester via confirmed registration
                 const userRegs = registrationsSnap.val() || {};
                 const intakeStartStr = parseIntakeDate(intake.name);
                 let targetSemesterId: string | null = null;
@@ -131,7 +131,7 @@ export default function StudentExamTimetablePage() {
         autoTable(doc, {
             head: [['Date', 'Time', 'Course', 'Venue', 'Format']],
             body: exams.map(e => [
-                format(parseISO(e.date), 'PPP'),
+                e.date ? format(parseISO(e.date), 'PPP') : 'TBA',
                 `${e.startTime} - ${e.endTime}`,
                 `${e.courseCode}: ${e.courseName}`,
                 e.venue,
@@ -177,8 +177,9 @@ export default function StudentExamTimetablePage() {
             {exams.length > 0 ? (
                 <div className="grid gap-4">
                     {exams.map((exam) => {
-                        const isExamToday = isToday(parseISO(exam.date));
-                        const isPassed = isBefore(startOfDay(parseISO(exam.date)), startOfDay(new Date())) && !isExamToday;
+                        const isValidDate = exam.date && !isNaN(parseISO(exam.date).getTime());
+                        const isExamToday = isValidDate && isToday(parseISO(exam.date));
+                        const isPassed = isValidDate && isBefore(startOfDay(parseISO(exam.date)), startOfDay(new Date())) && !isExamToday;
                         const quiz = getQuizForCourse(exam.courseId);
 
                         return (
@@ -193,9 +194,9 @@ export default function StudentExamTimetablePage() {
                                             "md:w-48 p-6 flex flex-col items-center justify-center text-center gap-1",
                                             isExamToday ? "bg-primary text-white" : "bg-muted/30 border-r"
                                         )}>
-                                            <span className="text-[10px] font-black uppercase tracking-widest opacity-70">{format(parseISO(exam.date), 'EEEE')}</span>
-                                            <span className="text-2xl font-black">{format(parseISO(exam.date), 'dd MMM')}</span>
-                                            <span className="text-[10px] font-bold opacity-60">{format(parseISO(exam.date), 'yyyy')}</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest opacity-70">{isValidDate ? format(parseISO(exam.date), 'EEEE') : 'TBA'}</span>
+                                            <span className="text-2xl font-black">{isValidDate ? format(parseISO(exam.date), 'dd MMM') : 'TBA'}</span>
+                                            <span className="text-[10px] font-bold opacity-60">{isValidDate ? format(parseISO(exam.date), 'yyyy') : ''}</span>
                                         </div>
                                         <div className="flex-1 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
                                             <div className="space-y-2">

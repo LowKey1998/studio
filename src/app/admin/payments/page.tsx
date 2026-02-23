@@ -64,6 +64,16 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { calculateBilling, type BillingPolicy, type FeeItem } from '@/lib/billing-utils';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter,
+    DialogClose,
+} from '@/components/ui/dialog';
 
 type FeeBreakdown = {
     tuition: number;
