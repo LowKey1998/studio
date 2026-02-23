@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -136,7 +135,7 @@ export default function AdminExamTimetablePage() {
             if (sSnap.exists()) setSemesters(Object.entries(sSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (cSnap.exists()) setAllCourses(Object.entries(cSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (tSnap.exists()) setTemplates(tSnap.val());
-            if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
+            if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]:[string, any]) => ({ id, ...d })));
             if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (calSnap.exists()) setCalendarSettings(calSnap.val());
             
@@ -385,7 +384,7 @@ export default function AdminExamTimetablePage() {
                 <Separator orientation="vertical" className="h-10 hidden lg:block mx-2" />
                 <div className="flex items-center gap-4 py-2">
                     <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))} className="shadow-sm"><ChevronLeft className="h-4 w-4 mr-1"/> Prev</Button>
-                    <div className="font-bold text-xs uppercase tracking-widest text-primary bg-background px-4 py-2 rounded-full border border-primary/10 shadow-inner">
+                    <div className="font-bold text-sm uppercase tracking-widest text-primary bg-background px-4 py-2 rounded-full border border-primary/10 shadow-inner">
                         {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))} className="shadow-sm">Next <ChevronRight className="h-4 w-4 ml-1"/></Button>

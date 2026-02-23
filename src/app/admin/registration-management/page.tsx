@@ -280,10 +280,10 @@ function CreateOrEditDialogContent({
         const feeId = push(ref(db, 'temp')).key!;
         
         if (isMandatory) {
-            setMandatoryFees(prev => ({ ...prev, [id]: newFee }));
+            setMandatoryFees(prev => ({ ...prev, [feeId]: newFee }));
             setIsMandatoryFeeDialogOpen(false);
         } else {
-            setOptionalFees(prev => ({ ...prev, [id]: newFee }));
+            setOptionalFees(prev => ({ ...prev, [feeId]: newFee }));
             setIsOptionalFeeDialogOpen(false);
         }
         setSelectedFeeTemplate(''); setFeeAmount('');
