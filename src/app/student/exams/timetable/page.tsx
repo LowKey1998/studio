@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth } from '@/lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, onValue } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -49,11 +49,10 @@ export default function StudentExamTimetablePage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [intakesSnap, calendarSnap, semestersSnap, etSnap] = await Promise.all([
+                const [intakesSnap, calendarSnap, semestersSnap] = await Promise.all([
                     get(ref(db, 'intakes')),
                     get(ref(db, 'settings/academicCalendar')),
-                    get(ref(db, 'semesters')),
-                    get(ref(db, 'examTimetables'))
+                    get(ref(db, 'semesters'))
                 ]);
 
                 const allIntakes = intakesSnap.val() || {};
@@ -83,17 +82,25 @@ export default function StudentExamTimetablePage() {
 
                     if (matchingSemesterEntry) {
                         const semId = matchingSemesterEntry[0];
-                        const semesterExams = etSnap.val()?.[semId] || {};
-                        const publishedExams = Object.entries(semesterExams)
-                            .map(([id, data]: [string, any]) => ({ id, ...data }))
-                            .filter(e => e.isPublished);
-                        
-                        setExams(publishedExams.sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
+                        // Real-time listener for current semester exams
+                        const etRef = ref(db, `examTimetables/${semId}`);
+                        onValue(etRef, (snapshot) => {
+                            if (snapshot.exists()) {
+                                const publishedExams = Object.entries(snapshot.val())
+                                    .map(([id, data]: [string, any]) => ({ id, ...data }))
+                                    .filter(e => e.isPublished);
+                                setExams(publishedExams.sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
+                            } else {
+                                setExams([]);
+                            }
+                            setLoading(false);
+                        });
+                    } else {
+                        setLoading(false);
                     }
                 }
             } catch (error) {
                 console.error(error);
-            } finally {
                 setLoading(false);
             }
         };
@@ -193,7 +200,7 @@ export default function StudentExamTimetablePage() {
                                                 {isExamToday && <Badge className="bg-red-600 animate-pulse text-white font-black uppercase text-[10px] tracking-widest px-4 h-8">Today</Badge>}
                                                 {exam.isOnline && !isPassed && (
                                                     <Button asChild size="sm" variant={isExamToday ? "default" : "outline"}>
-                                                        <Link href={`/student/quizzes`}>Go to Online Exam</Link>
+                                                        <Link href={`/student/quizzes/${getQuizForCourse(exam.id)?.id}`}>Go to Online Exam</Link>
                                                     </Button>
                                                 )}
                                             </div>

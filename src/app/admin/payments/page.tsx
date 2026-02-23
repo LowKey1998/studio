@@ -363,7 +363,7 @@ export default function PaymentsManagementPage() {
                         const balance = Math.max(0, totalPayable - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
                         const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
@@ -748,7 +748,7 @@ export default function PaymentsManagementPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Submission Failed' });
         } finally {
-            setLoading(false);
+            setFormLoading(false);
         }
     };
 

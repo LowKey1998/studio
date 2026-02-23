@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, set, push, onValue, update, remove } from 'firebase/database';
+import { ref, get, set, push, onValue, update, remove, serverTimestamp } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -120,7 +120,7 @@ export default function AdminExamTimetablePage() {
 
     React.useEffect(() => {
         const fetchInitial = async () => {
-            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, etSnap, masterTSnap, calSnap] = await Promise.all([
+            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, ttSnap, calSnap] = await Promise.all([
                 get(ref(db, 'intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -128,7 +128,6 @@ export default function AdminExamTimetablePage() {
                 get(ref(db, 'quizzes')),
                 get(ref(db, 'settings/rooms')),
                 get(ref(db, 'settings/examTimes')),
-                get(ref(db, 'examTimetables')),
                 get(ref(db, 'timetables')),
                 get(ref(db, 'settings/academicCalendar'))
             ]);
@@ -139,11 +138,10 @@ export default function AdminExamTimetablePage() {
             if (tSnap.exists()) setTemplates(tSnap.val());
             if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
-            if (etSnap.exists()) setExamTimetable(etSnap.val());
             if (calSnap.exists()) setCalendarSettings(calSnap.val());
             
-            if (masterTSnap.exists()) {
-                const data = masterTSnap.val();
+            if (ttSnap.exists()) {
+                const data = ttSnap.val();
                 const list: any[] = [];
                 Object.keys(data).forEach(sId => {
                     Object.keys(data[sId]).forEach(cId => {
@@ -171,6 +169,15 @@ export default function AdminExamTimetablePage() {
             setLoading(false);
         };
         fetchInitial();
+
+        // Real-time listener for the exam timetable grid
+        const etRef = ref(db, 'examTimetables');
+        const unsubET = onValue(etRef, (snapshot) => {
+            if (snapshot.exists()) setExamTimetable(snapshot.val());
+            else setExamTimetable({});
+        });
+
+        return () => unsubET();
     }, []);
 
     // AUTO-RESOLVE SEMESTER FOR INTAKE
