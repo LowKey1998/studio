@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -461,9 +461,9 @@ export default function PaymentsManagementPage() {
         }));
         unsubs.push(onValue(dataRefs.courses, (s) => { setAllCourses(s.val() || {}); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(); }));
-        unsubs.push(onValue(dataRefs.financialSettings, (s) => { 
-            setFinancialSettings(s.val()); 
-            store.financialSettings = s.val(); 
+        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { 
+            setFinancialSettings(snapshot.val()); 
+            store.financialSettings = snapshot.val(); 
             computeDerived(); 
         }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(); }));

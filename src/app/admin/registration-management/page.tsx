@@ -742,7 +742,7 @@ export default function RegistrationManagementPage() {
                                                                     const next = JSON.parse(JSON.stringify(activePathSemesters));
                                                                     const pathId = path.id;
                                                                     if (!next[pathId]) next[pathId] = {};
-                                                                    if (!next[pathId][semId]) next[pathId][semId] = { active: false, showReason: false };
+                                                                    if (!next[pathId][semId]) next[pathId][semId] = { active: false, someReason: false };
                                                                     next[pathId][semId].active = !isActive;
                                                                     setActivePathSemesters(next);
                                                                 }} />
