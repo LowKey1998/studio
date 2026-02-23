@@ -70,12 +70,11 @@ export default function StudentExamTimetablePage() {
                     return;
                 }
 
-                // 1. Determine the "Active" Semester from registrations
+                // 1. Resolve active semester via confirmed registration
                 const userRegs = registrationsSnap.val() || {};
+                const intakeStartStr = parseIntakeDate(intake.name);
                 let targetSemesterId: string | null = null;
 
-                // Priority: Use the semester the student is currently registered for that matches their Standing
-                const intakeStartStr = parseIntakeDate(intake.name);
                 if (intakeStartStr) {
                     const state = calculateAcademicState(
                         intakeStartStr,
@@ -85,7 +84,6 @@ export default function StudentExamTimetablePage() {
                     );
                     setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
 
-                    // Find registered semester matching this standing
                     targetSemesterId = Object.keys(userRegs).find(semId => {
                         const s = semestersSnap.val()?.[semId];
                         return s && s.intakeId === userProfile.intakeId && s.year === state.year && s.semesterInYear === state.semester;
@@ -93,13 +91,12 @@ export default function StudentExamTimetablePage() {
                 }
 
                 if (targetSemesterId) {
-                    // Real-time listener for current semester exams
                     const etRef = ref(db, `examTimetables/${targetSemesterId}`);
                     onValue(etRef, (snapshot) => {
                         if (snapshot.exists()) {
                             const publishedExams = Object.entries(snapshot.val())
                                 .map(([id, data]: [string, any]) => ({ id, ...data }))
-                                .filter(e => e.isPublished && e.date); // Only show published exams with a valid date
+                                .filter(e => e.isPublished && e.date);
                             setExams(publishedExams.sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
                         } else {
                             setExams([]);

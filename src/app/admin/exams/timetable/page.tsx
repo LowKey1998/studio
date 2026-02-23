@@ -106,6 +106,7 @@ export default function AdminExamTimetablePage() {
     const [isTimeSetupOpen, setIsTimeSetupOpen] = React.useState(false);
     const [editingEntry, setEditingEntry] = React.useState<ExamEntry | null>(null);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
+    const [selectedIntakeIdForForm, setSelectedIntakeIdForForm] = React.useState('');
     const [examDate, setExamDate] = React.useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [startTime, setStartTime] = React.useState('');
     const [endTime, setEndTime] = React.useState('');
@@ -169,17 +170,22 @@ export default function AdminExamTimetablePage() {
         };
         fetchInitial();
 
-        // Real-time listener for the exam timetable grid
         const etRef = ref(db, 'examTimetables');
         const unsubET = onValue(etRef, (snapshot) => {
-            if (snapshot.exists()) setExamTimetable(snapshot.val());
-            else setExamTimetable({});
+            const data = snapshot.val() || {};
+            const formatted: Record<string, Record<string, ExamEntry>> = {};
+            Object.keys(data).forEach(semId => {
+                formatted[semId] = {};
+                Object.keys(data[semId]).forEach(examId => {
+                    formatted[semId][examId] = { id: examId, ...data[semId][examId] };
+                });
+            });
+            setExamTimetable(formatted);
         });
 
         return () => unsubET();
     }, []);
 
-    // AUTO-RESOLVE SEMESTER FOR INTAKE
     React.useEffect(() => {
         if (!selectedIntakeId || !calendarSettings || semesters.length === 0) {
             setSelectedSemesterId('');
@@ -294,6 +300,10 @@ export default function AdminExamTimetablePage() {
     };
 
     const handleTogglePublish = async (semesterId: string, examId: string, currentStatus: boolean) => {
+        if (!examId) {
+            console.warn("Attempted to toggle publish on exam without ID");
+            return;
+        }
         try {
             await update(ref(db, `examTimetables/${semesterId}/${examId}`), { isPublished: !currentStatus });
             toast({ title: !currentStatus ? "Schedule Published" : "Schedule Hidden" });
