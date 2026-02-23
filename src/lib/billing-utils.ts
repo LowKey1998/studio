@@ -35,6 +35,8 @@ export type BillingOutput = {
   lateFee: number;
   grandTotal: number;
   courses: CourseItem[];
+  mandatoryItems: FeeItem[];
+  optionalItems: FeeItem[];
 };
 
 /**
@@ -90,5 +92,7 @@ export function calculateBilling(input: BillingInput): BillingOutput {
     lateFee: Number(lateFee) || 0,
     grandTotal,
     courses: courses || [],
+    mandatoryItems: mandatoryFees || [],
+    optionalItems: optionalFees || [],
   };
 }

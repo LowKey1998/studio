@@ -77,6 +77,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { calculateBilling, type BillingPolicy, type FeeItem } from '@/lib/billing-utils';
 
 type FeeBreakdown = {
     tuition: number;
@@ -84,6 +85,8 @@ type FeeBreakdown = {
     optional: number;
     scholarship: number;
     late: number;
+    mandatoryItems?: FeeItem[];
+    optionalItems?: FeeItem[];
     courses?: {id: string, cost: number}[];
 };
 
@@ -404,7 +407,9 @@ export default function PaymentsManagementPage() {
                                 mandatory,
                                 optional,
                                 scholarship: scholarshipAmount,
-                                late
+                                late,
+                                mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
+                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
                             }
                         };
                     }
@@ -635,7 +640,9 @@ export default function PaymentsManagementPage() {
                                 mandatory,
                                 optional: 0,
                                 scholarship: 0,
-                                late: 0
+                                late: 0,
+                                mandatoryItems: Object.values(sem.mandatoryFees || {}) as FeeItem[],
+                                optionalItems: []
                             };
                         }
                     }
@@ -1213,11 +1220,24 @@ export default function PaymentsManagementPage() {
                                                             <div className="space-y-2 text-xs font-medium">
                                                                 <div className="flex justify-between"><span>Base Tuition:</span> <span>K{row.breakdown.tuition.toFixed(2)}</span></div>
                                                                 {row.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600 font-bold"><span>Scholarship:</span> <span>- K{row.breakdown.scholarship.toFixed(2)}</span></div>}
-                                                                <div className="flex justify-between"><span>Mandatory Fees:</span> <span>K{row.breakdown.mandatory.toFixed(2)}</span></div>
-                                                                <div className="flex justify-between"><span>Optional Fees:</span> <span>K{row.breakdown.optional.toFixed(2)}</span></div>
+                                                                
+                                                                {row.breakdown.mandatoryItems?.map((item, i) => (
+                                                                    <div key={`m-${i}`} className="flex justify-between text-[10px] opacity-60">
+                                                                        <span>+ {item.name}:</span>
+                                                                        <span>K{item.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                                
+                                                                {row.breakdown.optionalItems?.map((item, i) => (
+                                                                    <div key={`o-${i}`} className="flex justify-between text-[10px] opacity-60">
+                                                                        <span>+ {item.name}:</span>
+                                                                        <span>K{item.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+
                                                                 {row.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fee:</span> <span>K{row.breakdown.late.toFixed(2)}</span></div>}
                                                                 <Separator className="my-1"/>
-                                                                <div className="flex justify-between font-black text-primary"><span>TOTAL PAYABLE:</span> <span>K{( (row.breakdown.tuition - row.breakdown.scholarship) + row.breakdown.mandatory + row.breakdown.optional + row.breakdown.late ).toFixed(2)}</span></div>
+                                                                <div className="flex justify-between font-black text-primary"><span>TOTAL PAYABLE:</span> <span>K{row.totalDue?.toFixed(2)}</span></div>
                                                             </div>
                                                         ) : <p className="text-[10px] italic opacity-60">Breakdown unavailable for manual prediction.</p>}
                                                     </PopoverContent>
