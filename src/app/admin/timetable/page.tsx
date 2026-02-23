@@ -572,9 +572,7 @@ function TimetableManagementComponent() {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={() => setIsExamDialogOpen(true)} disabled={!resolvedSemester}>
-                                <FileCheck className="mr-2 h-4 w-4"/> Set Exam Dates
-                            </Button>
+                            
                             <Button variant="outline" onClick={async () => { setGenerating(true); try { await generateFullTimetable(); toast({ title: "Success" }); } catch(e:any) { toast({ variant:'destructive', title: "Failed", description: e.message }); } finally { setGenerating(false); } }} disabled={generating}>
                                 {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bot className="mr-2 h-4 w-4"/>} Auto-Generate
                             </Button>
