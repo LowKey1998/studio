@@ -89,6 +89,7 @@ export default function AdminExamTimetablePage() {
     const [rooms, setRooms] = React.useState<{id: string, name: string, capacity: number}[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
     const [examTimetable, setExamTimetable] = React.useState<Record<string, Record<string, ExamEntry>>>({}); 
+    const [masterTimetable, setMasterTimetable] = React.useState<any[]>([]);
 
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
@@ -113,7 +114,7 @@ export default function AdminExamTimetablePage() {
 
     React.useEffect(() => {
         const fetchInitial = async () => {
-            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, etSnap] = await Promise.all([
+            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, etSnap, masterTSnap] = await Promise.all([
                 get(ref(db, 'intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -121,7 +122,8 @@ export default function AdminExamTimetablePage() {
                 get(ref(db, 'quizzes')),
                 get(ref(db, 'settings/rooms')),
                 get(ref(db, 'settings/teachingTimes')),
-                get(ref(db, 'examTimetables'))
+                get(ref(db, 'examTimetables')),
+                get(ref(db, 'timetables'))
             ]);
 
             if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
@@ -131,6 +133,18 @@ export default function AdminExamTimetablePage() {
             if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (etSnap.exists()) setExamTimetable(etSnap.val());
+            if (masterTSnap.exists()) {
+                const data = masterTSnap.val();
+                const list: any[] = [];
+                Object.keys(data).forEach(sId => {
+                    Object.keys(data[sId]).forEach(cId => {
+                        Object.values(data[sId][cId]).forEach((e: any) => {
+                            list.push({ ...e, courseId: cId, semesterId: sId });
+                        });
+                    });
+                });
+                setMasterTimetable(list);
+            }
 
             if (timesSnap.exists()) {
                 const data = timesSnap.val();
@@ -150,12 +164,24 @@ export default function AdminExamTimetablePage() {
         return semesters.filter(s => s.intakeId === selectedIntakeId && s.status !== 'Archived').sort((a,b) => b.name.localeCompare(a.name));
     }, [semesters, selectedIntakeId]);
 
-    // Courses belonging to the selected intake's roadmap for this semester
+    // Courses belonging to the selected intake's roadmap for this semester (Filtering by Master Timetable)
     const availableCourses = React.useMemo(() => {
         if (!selectedSemesterId) return [];
-        // In a real scenario, you'd filter by the coursePath for the intake
-        return allCourses.filter(c => c.id); 
-    }, [allCourses, selectedSemesterId]);
+        const intake = intakes.find(i => i.id === selectedIntakeId);
+        
+        const courseIdsInTimetable = new Set(
+            masterTimetable
+                .filter(e => e.semesterId === selectedSemesterId || e.semesterId === 'master')
+                .filter(e => {
+                    if (e.semesterId === 'master') {
+                        return e.intakeName === intake?.name || e.intakeName === 'Master';
+                    }
+                    return true;
+                })
+                .map(e => e.courseId)
+        );
+        return allCourses.filter(c => courseIdsInTimetable.has(c.id));
+    }, [allCourses, selectedSemesterId, selectedIntakeId, masterTimetable, intakes]);
 
     const resetForm = () => {
         setEditingEntry(null); 

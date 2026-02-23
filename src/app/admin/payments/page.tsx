@@ -459,9 +459,9 @@ export default function PaymentsManagementPage() {
         }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
-        get(savedFiltersRef).then(snap => {
-            if (snap.exists()) {
-                const f = snap.val();
+        get(savedFiltersRef).then(snapshot => {
+            if (snapshot.exists()) {
+                const f = snapshot.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);
@@ -563,8 +563,8 @@ export default function PaymentsManagementPage() {
                         const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
-                        nextRow.year = undefined; 
-                        nextRow.semesterId = undefined; 
+                        nextRow.year = ''; // Trigger reset of target selection
+                        nextRow.semesterId = ''; 
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
@@ -578,8 +578,8 @@ export default function PaymentsManagementPage() {
                         nextRow.tempStudentId = undefined;
                         nextRow.tempStudentName = undefined;
                     }
-                    nextRow.year = undefined;
-                    nextRow.semesterId = undefined;
+                    nextRow.year = '';
+                    nextRow.semesterId = '';
                     nextRow.availableSemesters = [];
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
@@ -591,7 +591,7 @@ export default function PaymentsManagementPage() {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
                         nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
                     }
-                    nextRow.semesterId = undefined;
+                    nextRow.semesterId = '';
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
                     nextRow.breakdown = undefined;
@@ -722,79 +722,6 @@ export default function PaymentsManagementPage() {
         finally { setFormLoading(false); }
     };
 
-    const handleRecordSinglePayment = async () => {
-        if(!selectedStudent || !paymentAmount || !singleSemId) { toast({ variant: 'destructive', title: 'Missing fields' }); return; }
-        setFormLoading(true);
-        try {
-            const amount = parseFloat(paymentAmount);
-            const sem = semesters.find(s => s.id === singleSemId)!;
-            const standing = paymentInfos.find(p => p.userId === selectedStudent.userId && p.semesterId === singleSemId);
-            
-            const updates: Record<string, any> = {};
-            let invId = standing?.invoiceId;
-            const now = new Date().toISOString();
-
-            if (!invId) {
-                const newInvRef = push(ref(db, `invoices/${selectedStudent.userId}`));
-                invId = newInvRef.key!;
-                updates[`invoices/${selectedStudent.userId}/${invId}`] = {
-                    invoiceId: invId, 
-                    totalTuition: 0, 
-                    totalMandatoryFees: 0, 
-                    totalOptionalFees: 0,
-                    dateCreated: now, 
-                    semester: sem.name, 
-                    semesterId: sem.id
-                };
-                updates[`registrations/${selectedStudent.userId}/${sem.id}/invoiceId`] = invId;
-            }
-
-            const txRef = push(ref(db, 'transactions'));
-            const txId = transactionId.trim() || `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`;
-            
-            updates[`transactions/${txRef.key}`] = {
-                transactionId: txId, userId: selectedStudent.userId, invoiceId: invId, amount,
-                currency: 'ZMW', status: 'successful', paymentDate: now, method: paymentMethod,
-                recordedBy: userData?.name || 'Accountant',
-            };
-
-            await update(ref(db), updates);
-            toast({ title: "Transaction Recorded", description: `ZMW ${amount.toFixed(2)} credited.` });
-            setIsRecordPaymentOpen(false);
-            resetDialog();
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Recording Failed' }); }
-        finally { setFormLoading(false); }
-    };
-
-    const handleRequestAdjustment = async () => {
-        if (!adjustmentTarget || !adjNewValue || !adjReason.trim()) return;
-        setFormLoading(true);
-        try {
-            const requestRef = push(ref(db, 'paymentEditRequests'));
-            await set(requestRef, {
-                type: adjustmentTarget.type,
-                targetId: adjustmentTarget.id,
-                userId: adjustmentTarget.userId,
-                studentName: adjustmentTarget.studentName,
-                studentId: adjustmentTarget.studentId,
-                oldValue: adjustmentTarget.oldValue,
-                newValue: parseFloat(adjNewValue),
-                reason: adjReason,
-                requestedBy: userData?.name || 'Staff',
-                requestedByUid: userData?.uid,
-                timestamp: Date.now(),
-                status: 'pending'
-            });
-            toast({ title: "Adjustment Requested", description: "The request has been sent to administrators for approval." });
-            setIsAdjustmentOpen(false);
-            setAdjNewValue(''); setAdjReason('');
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: "Request Failed", description: e.message });
-        } finally {
-            setFormLoading(false);
-        }
-    };
-
     const handleExport = () => {
         const doc = new jsPDF();
         const head = [["ID", "Name", "Semester", "Due", "Paid", "Balance", "Threshold"]];
@@ -813,15 +740,6 @@ export default function PaymentsManagementPage() {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
-
-    const resetDialog = () => {
-        setSelectedStudent(null);
-        setPaymentAmount('');
-        setPaymentMethod('Cash');
-        setTransactionId('');
-        setSingleYear('');
-        setSingleSemId('');
-    };
 
     const restrictions = financialSettings?.defaulterRestrictions || {};
 
@@ -1038,7 +956,7 @@ export default function PaymentsManagementPage() {
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="h-4 w-4" /></Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setSelectedStudent(info); setIsRecordPaymentOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setBulkPaymentRows([{ key: Date.now(), userId: info.userId, year: String(semesters.find(s=>s.id===info.semesterId)?.year || ''), semesterId: info.semesterId || '', amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -1049,75 +967,6 @@ export default function PaymentsManagementPage() {
                     )}
                 </CardContent>
             </Card>
-
-            <Dialog open={isRecordPaymentOpen} onOpenChange={(o) => { if(!o) { resetDialog(); } setIsRecordPaymentOpen(o); }}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader><DialogTitle>Record Payment: {selectedStudent?.studentName}</DialogTitle><DialogDescription>Direct account credit for {selectedStudent?.studentId}.</DialogDescription></DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-xl">
-                            <UserCheck className="h-4 w-4 text-primary" />
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-black uppercase text-muted-foreground leading-none">Current Standing</span>
-                                <span className="text-sm font-bold text-primary">{selectedStudent ? calculateStandingForUser(selectedStudent.userId) : 'Select student...'}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <Label>Target Year (Payment For)</Label>
-                                <Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}>
-                                    <SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger>
-                                    <SelectContent>
-                                        {Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1">
-                                <Label>Target Semester (Payment For)</Label>
-                                <Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}>
-                                    <SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger>
-                                    <SelectContent>
-                                        {semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        {singleSemId && (
-                            <div className="p-3 rounded-lg border bg-muted/20 space-y-2">
-                                <Label className="text-[10px] font-black uppercase opacity-60">Semester Audit</Label>
-                                {(() => {
-                                    const info = paymentInfos.find(p => p.userId === selectedStudent?.userId && p.semesterId === singleSemId);
-                                    if (!info) return <p className="text-[10px] italic text-primary font-bold text-center">No active invoice found. System will cross-reference baseline semester fees.</p>;
-                                    return (
-                                        <div className="grid grid-cols-3 gap-2 text-center">
-                                            <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
-                                            <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-60">Paid</span><span className="font-bold text-xs text-green-600">K{info.totalPaid.toFixed(0)}</span></div>
-                                            <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-60">Balance</span><span className="font-black text-xs text-destructive">K{info.balance.toFixed(0)}</span></div>
-                                        </div>
-                                    )
-                                })()}
-                            </div>
-                        )}
-                        <div className="space-y-1"><Label>Amount being paid (ZMW)</Label><Input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="0.00" className="h-12 text-lg font-bold" /></div>
-                        
-                        <Alert className="bg-muted/50 border-0">
-                            <Clock className="h-4 w-4" />
-                            <AlertTitle className="text-[10px] font-black uppercase tracking-widest opacity-70">Audit Notice</AlertTitle>
-                            <AlertDescription className="text-[10px] italic leading-tight">
-                                Manual entries are timestamped and logged against your staff profile for financial audit.
-                            </AlertDescription>
-                        </Alert>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Method</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger id="payment-method"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank Deposit">Bank Deposit</SelectItem><SelectItem value="Direct Transfer">Transfer</SelectItem></SelectContent></Select></div>
-                            <div className="space-y-1"><Label>Reference #</Label><Input value={transactionId} onChange={e => setTransactionId(e.target.value.toUpperCase())} placeholder="REF#" /></div>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsRecordPaymentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRecordSinglePayment} disabled={formLoading || !paymentAmount}>Record Transaction</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
