@@ -459,9 +459,9 @@ export default function PaymentsManagementPage() {
         }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
-        get(savedFiltersRef).then(snapshot => {
-            if (snapshot.exists()) {
-                const f = snapshot.val();
+        get(savedFiltersRef).then(snap => {
+            if (snap.exists()) {
+                const f = snap.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);

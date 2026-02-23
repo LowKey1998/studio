@@ -26,7 +26,9 @@ import {
     Link as LinkIcon,
     CheckCircle2,
     ChevronsUpDown,
-    Trash2
+    Trash2,
+    Settings2,
+    Plus
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -53,7 +55,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 
-type TimeSlot = { id: string; startTime: string; endTime: string; };
+type ExamTimeSlot = { id: string; startTime: string; endTime: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Intake = { id: string; name: string; };
 type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
@@ -87,7 +89,7 @@ export default function AdminExamTimetablePage() {
     const [templates, setTemplates] = React.useState<Record<string, any>>({});
     const [quizzes, setQuizzes] = React.useState<any[]>([]);
     const [rooms, setRooms] = React.useState<{id: string, name: string, capacity: number}[]>([]);
-    const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
+    const [examTimes, setExamTimes] = React.useState<{ slots: ExamTimeSlot[] }>({ slots: [] });
     const [examTimetable, setExamTimetable] = React.useState<Record<string, Record<string, ExamEntry>>>({}); 
     const [masterTimetable, setMasterTimetable] = React.useState<any[]>([]);
 
@@ -99,6 +101,7 @@ export default function AdminExamTimetablePage() {
 
     // Form state
     const [isAddOpen, setIsAddOpen] = React.useState(false);
+    const [isTimeSetupOpen, setIsTimeSetupOpen] = React.useState(false);
     const [editingEntry, setEditingEntry] = React.useState<ExamEntry | null>(null);
     const [selectedCourseId, setSelectedCourseId] = React.useState('');
     const [examDate, setExamDate] = React.useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -121,7 +124,7 @@ export default function AdminExamTimetablePage() {
                 get(ref(db, 'settings/assessmentTemplates')),
                 get(ref(db, 'quizzes')),
                 get(ref(db, 'settings/rooms')),
-                get(ref(db, 'settings/teachingTimes')),
+                get(ref(db, 'settings/examTimes')),
                 get(ref(db, 'examTimetables')),
                 get(ref(db, 'timetables'))
             ]);
@@ -133,6 +136,7 @@ export default function AdminExamTimetablePage() {
             if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (etSnap.exists()) setExamTimetable(etSnap.val());
+            
             if (masterTSnap.exists()) {
                 const data = masterTSnap.val();
                 const list: any[] = [];
@@ -148,9 +152,16 @@ export default function AdminExamTimetablePage() {
 
             if (timesSnap.exists()) {
                 const data = timesSnap.val();
-                setTeachingTimes({
-                    days: data.days || calendarDays.slice(1, 6),
-                    slots: (data.slots || []).sort((a: TimeSlot, b: TimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                setExamTimes({
+                    slots: (data.slots || []).sort((a: ExamTimeSlot, b: ExamTimeSlot) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+                });
+            } else {
+                // Initialize default sessions if none exist
+                setExamTimes({
+                    slots: [
+                        { id: 'session-1', startTime: '09:00', endTime: '12:00' },
+                        { id: 'session-2', startTime: '14:00', endTime: '17:00' }
+                    ]
                 });
             }
             setLoading(false);
@@ -229,6 +240,19 @@ export default function AdminExamTimetablePage() {
         }
     };
 
+    const handleSaveSessionTimes = async () => {
+        setSaving(true);
+        try {
+            await set(ref(db, 'settings/examTimes'), examTimes);
+            toast({ title: "Session Times Saved" });
+            setIsTimeSetupOpen(false);
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Save Failed" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleTogglePublish = async (semesterId: string, examId: string, currentStatus: boolean) => {
         try {
             await update(ref(db, `examTimetables/${semesterId}/${examId}`), { isPublished: !currentStatus });
@@ -284,9 +308,14 @@ export default function AdminExamTimetablePage() {
                                 <CardDescription>Draft and publish official exam schedules for cohort groups.</CardDescription>
                             </div>
                         </div>
-                        <Button onClick={() => { resetForm(); setIsAddOpen(true); }} disabled={!selectedSemesterId}>
-                            <PlusCircle className="mr-2 h-4 w-4"/> Schedule Exam
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsTimeSetupOpen(true)}>
+                                <Settings2 className="mr-2 h-4 w-4" /> Session Times
+                            </Button>
+                            <Button onClick={() => { resetForm(); setIsAddOpen(true); }} disabled={!selectedSemesterId}>
+                                <PlusCircle className="mr-2 h-4 w-4"/> Schedule Exam
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
@@ -325,12 +354,12 @@ export default function AdminExamTimetablePage() {
                     </div>
                 </div>
             ) : (
-                <div className="border rounded-xl overflow-hidden bg-muted/10 shadow-inner">
+                <div className="border rounded-xl overflow-hidden bg-muted/10 shadow-inner overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-muted/50 border-b">
                                 <TableHead className="w-32 border-r font-bold text-center">DATE & DAY</TableHead>
-                                {teachingTimes.slots.map((slot, index) => (<TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>))}
+                                {examTimes.slots.map((slot, index) => (<TableHead key={index} className="text-center font-bold border-r text-xs">{slot.startTime} - {slot.endTime}</TableHead>))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -347,7 +376,7 @@ export default function AdminExamTimetablePage() {
                                                 <span className="text-sm font-black">{format(date, 'MMM dd')}</span>
                                             </div>
                                         </TableCell>
-                                        {teachingTimes.slots.map((slot, sIdx) => {
+                                        {examTimes.slots.map((slot, sIdx) => {
                                             const slotStart = timeToMinutes(slot.startTime);
                                             const slotEnd = timeToMinutes(slot.endTime);
                                             
@@ -508,6 +537,56 @@ export default function AdminExamTimetablePage() {
                         <Button onClick={handleSaveEntry} disabled={saving || !selectedCourseId}>
                             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}
                             Schedule Slot
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isTimeSetupOpen} onOpenChange={setIsTimeSetupOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Configure Exam Sessions</DialogTitle>
+                        <DialogDescription>Define the standard time slots for examinations.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
+                        {examTimes.slots.map((slot, index) => (
+                            <div key={slot.id} className="flex items-center gap-3 p-3 border rounded-lg bg-card">
+                                <div className="flex-1 grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] uppercase opacity-60">Start (24h)</Label>
+                                        <Input value={slot.startTime} onChange={e => {
+                                            const next = [...examTimes.slots];
+                                            next[index].startTime = e.target.value;
+                                            setExamTimes({ slots: next });
+                                        }} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] uppercase opacity-60">End (24h)</Label>
+                                        <Input value={slot.endTime} onChange={e => {
+                                            const next = [...examTimes.slots];
+                                            next[index].endTime = e.target.value;
+                                            setExamTimes({ slots: next });
+                                        }} />
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="mt-4 text-destructive" onClick={() => {
+                                    setExamTimes({ slots: examTimes.slots.filter(s => s.id !== slot.id) });
+                                }}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        ))}
+                        <Button variant="outline" className="w-full border-dashed" onClick={() => {
+                            setExamTimes({ slots: [...examTimes.slots, { id: `session-${Date.now()}`, startTime: '09:00', endTime: '12:00' }] });
+                        }}>
+                            <Plus className="mr-2 h-4 w-4" /> Add New Session
+                        </Button>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                        <Button onClick={handleSaveSessionTimes} disabled={saving}>
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                            Save Sessions
                         </Button>
                     </DialogFooter>
                 </DialogContent>
