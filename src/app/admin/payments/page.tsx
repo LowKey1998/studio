@@ -748,7 +748,7 @@ export default function PaymentsManagementPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Submission Failed' });
         } finally {
-            setFormLoading(false);
+            setLoading(false);
         }
     };
 

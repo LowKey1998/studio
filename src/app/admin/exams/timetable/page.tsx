@@ -55,6 +55,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
+import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 
 type ExamTimeSlot = { id: string; startTime: string; endTime: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
@@ -93,6 +94,7 @@ export default function AdminExamTimetablePage() {
     const [examTimes, setExamTimes] = React.useState<{ slots: ExamTimeSlot[] }>({ slots: [] });
     const [examTimetable, setExamTimetable] = React.useState<Record<string, Record<string, ExamEntry>>>({}); 
     const [masterTimetable, setMasterTimetable] = React.useState<any[]>([]);
+    const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
@@ -118,7 +120,7 @@ export default function AdminExamTimetablePage() {
 
     React.useEffect(() => {
         const fetchInitial = async () => {
-            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, etSnap, masterTSnap] = await Promise.all([
+            const [iSnap, sSnap, cSnap, tSnap, qSnap, rSnap, timesSnap, etSnap, masterTSnap, calSnap] = await Promise.all([
                 get(ref(db, 'intakes')),
                 get(ref(db, 'semesters')),
                 get(ref(db, 'courses')),
@@ -127,7 +129,8 @@ export default function AdminExamTimetablePage() {
                 get(ref(db, 'settings/rooms')),
                 get(ref(db, 'settings/examTimes')),
                 get(ref(db, 'examTimetables')),
-                get(ref(db, 'timetables'))
+                get(ref(db, 'timetables')),
+                get(ref(db, 'settings/academicCalendar'))
             ]);
 
             if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
@@ -137,6 +140,7 @@ export default function AdminExamTimetablePage() {
             if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (etSnap.exists()) setExamTimetable(etSnap.val());
+            if (calSnap.exists()) setCalendarSettings(calSnap.val());
             
             if (masterTSnap.exists()) {
                 const data = masterTSnap.val();
@@ -168,6 +172,39 @@ export default function AdminExamTimetablePage() {
         };
         fetchInitial();
     }, []);
+
+    // AUTO-RESOLVE SEMESTER FOR INTAKE
+    React.useEffect(() => {
+        if (!selectedIntakeId || !calendarSettings || semesters.length === 0) {
+            setSelectedSemesterId('');
+            return;
+        }
+
+        const intake = intakes.find(i => i.id === selectedIntakeId);
+        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+
+        if (intakeStartStr) {
+            const state = calculateAcademicState(
+                intakeStartStr,
+                new Date(),
+                calendarSettings.standardCycles,
+                Object.values(calendarSettings.anomalies || {})
+            );
+            
+            const matchingSemester = semesters.find(s => 
+                s.intakeId === selectedIntakeId && 
+                s.year === state.year && 
+                s.semesterInYear === state.semester &&
+                s.status !== 'Archived'
+            );
+
+            if (matchingSemester) {
+                setSelectedSemesterId(matchingSemester.id);
+            } else {
+                setSelectedSemesterId('');
+            }
+        }
+    }, [selectedIntakeId, intakes, semesters, calendarSettings]);
 
     const activeSemesters = React.useMemo(() => {
         if (!selectedIntakeId) return [];
@@ -320,7 +357,7 @@ export default function AdminExamTimetablePage() {
             <div className="flex flex-wrap gap-4 items-end bg-muted/30 p-4 rounded-xl border shadow-sm">
                 <div className="w-64">
                     <Label className="text-[10px] font-black uppercase opacity-60 mb-1.5 block">1. Select Intake</Label>
-                    <Select value={selectedIntakeId} onValueChange={(val) => { setSelectedIntakeId(val); setSelectedSemesterId(''); }}>
+                    <Select value={selectedIntakeId} onValueChange={(val) => setSelectedIntakeId(val)}>
                         <SelectTrigger className="bg-background border-primary/20 shadow-sm"><SelectValue placeholder="Cohort Group..."/></SelectTrigger>
                         <SelectContent>{intakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                     </Select>
@@ -347,7 +384,7 @@ export default function AdminExamTimetablePage() {
                     <CalendarDays className="h-12 w-12 mx-auto opacity-10" />
                     <div className="space-y-1">
                         <h3 className="text-lg font-bold">Awaiting Phase Selection</h3>
-                        <p className="text-sm text-muted-foreground">Please select an intake and semester above to manage the exam schedule.</p>
+                        <p className="text-sm text-muted-foreground">Please select an intake above. The system will automatically resolve the active semester.</p>
                     </div>
                 </div>
             ) : (
@@ -404,7 +441,7 @@ export default function AdminExamTimetablePage() {
                                                                         </div>
                                                                         <div className="flex flex-col gap-1">
                                                                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleTogglePublish(selectedSemesterId, exam.id, !!exam.isPublished)} title={exam.isPublished ? "Hide" : "Publish"}>
-                                                                                {exam.isPublished ? <Monitor className="h-3 w-3 text-green-600"/> : <CheckCircle2 className="h-3 w-3 text-orange-600"/>}
+                                                                                {exam.isPublished ? <CheckCircle2 className="h-3 w-3 text-green-600"/> : <Clock className="h-3 w-3 text-orange-600"/>}
                                                                             </Button>
                                                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(selectedSemesterId, exam.id)}><Trash2 className="h-3 w-3"/></Button>
                                                                         </div>
