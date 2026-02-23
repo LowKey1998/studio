@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -14,10 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote } from 'lucide-react';
+import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote, Link as LinkIcon } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update, onValue, remove } from 'firebase/database';
-import { db } from '@/lib/firebase';
+import { db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { Textarea } from '@/components/ui/textarea';
@@ -31,6 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type User = {
     uid: string;
@@ -111,6 +111,11 @@ export default function AddStudentPage() {
     const [loading, setLoading] = React.useState(false);
     const [tableLoading, setTableLoading] = React.useState(true);
     const { toast } = useToast();
+
+    // Linking logic
+    const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
+    const [linkingRequest, setLinkingRequest] = React.useState<CreationRequest | null>(null);
+    const [linkSearchTerm, setLinkSearchTerm] = React.useState('');
 
     const fetchInitialData = React.useCallback(async () => {
         setTableLoading(true);
@@ -284,6 +289,44 @@ export default function AddStudentPage() {
         toast({ title: 'Request Loaded', description: `Processing application for ${req.tempName}.` });
     };
 
+    const handleLinkToExisting = async (existingStudentUid: string) => {
+        if (!linkingRequest) return;
+        setLoading(true);
+        try {
+            const txsSnap = await get(ref(db, 'transactions'));
+            const updates: Record<string, any> = {};
+            
+            if (txsSnap.exists()) {
+                const txs = txsSnap.val();
+                const targetTxId = Object.keys(txs).find(k => txs[k].requestId === linkingRequest.id);
+                if (targetTxId) {
+                    updates[`transactions/${targetTxId}/userId`] = existingStudentUid;
+                    updates[`transactions/${targetTxId}/isUnlinked`] = null;
+                    updates[`transactions/${targetTxId}/requestId`] = null;
+                    updates[`transactions/${targetTxId}/senderName`] = null;
+                }
+            }
+            
+            updates[`studentCreationRequests/${linkingRequest.id}`] = null;
+            await update(ref(db), updates);
+            
+            await createNotification(
+                existingStudentUid,
+                `A payment of ZMW ${linkingRequest.amountPaid.toFixed(2)} from Finance has been linked to your account.`,
+                '/student/payments'
+            );
+
+            toast({ title: 'Request Linked Successfully', description: 'The transaction has been assigned to the existing student.' });
+            setIsLinkDialogOpen(false);
+            setLinkingRequest(null);
+            fetchInitialData();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Linking Failed', description: e.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleOpenEdit = (student: User) => {
         setEditingUid(student.uid);
         setName(student.name);
@@ -311,6 +354,12 @@ export default function AddStudentPage() {
     const [isEditOpen, setIsEditOpen] = React.useState(false);
 
     const filteredStudents = students.filter(s => !listSearchTerm || s.name.toLowerCase().includes(listSearchTerm.toLowerCase()) || s.id.toLowerCase().includes(listSearchTerm.toLowerCase()));
+    
+    const linkingStudentsFiltered = students.filter(s => 
+        !linkSearchTerm || 
+        s.name.toLowerCase().includes(linkSearchTerm.toLowerCase()) || 
+        s.id.toLowerCase().includes(linkSearchTerm.toLowerCase())
+    );
 
     return (
         <div className="space-y-8">
@@ -391,7 +440,7 @@ export default function AddStudentPage() {
                         <CardContent className="pt-6">
                             {pendingRequests.length > 0 ? (
                                 <Table>
-                                    <TableHeader className="bg-muted/50">
+                                    <TableHeader>
                                         <TableRow>
                                             <TableHead>Applicant Name</TableHead>
                                             <TableHead>Proposed ID</TableHead>
@@ -413,10 +462,16 @@ export default function AddStudentPage() {
                                                 </TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">{format(new Date(req.timestamp), 'PPP')}</TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button size="sm" onClick={() => handleProcessRequest(req)} className="shadow-sm">
-                                                        <UserPlus className="mr-2 h-4 w-4" />
-                                                        Process Application
-                                                    </Button>
+                                                    <div className="flex gap-2 justify-end">
+                                                        <Button variant="outline" size="sm" onClick={() => { setLinkingRequest(req); setIsLinkDialogOpen(true); }}>
+                                                            <LinkIcon className="mr-2 h-4 w-4" />
+                                                            Link Existing
+                                                        </Button>
+                                                        <Button size="sm" onClick={() => handleProcessRequest(req)} className="shadow-sm">
+                                                            <UserPlus className="mr-2 h-4 w-4" />
+                                                            Process New
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -460,6 +515,42 @@ export default function AddStudentPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+                <DialogContent className="max-w-md flex flex-col h-[80vh]">
+                    <DialogHeader>
+                        <DialogTitle>Link Deposit to Existing Student</DialogTitle>
+                        <DialogDescription>
+                            Finance requested a new student account for <strong>{linkingRequest?.tempName}</strong>, but if they already have an account, you can link the deposit (ZMW {linkingRequest?.amountPaid.toFixed(2)}) here.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4 flex-1 flex flex-col min-h-0">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input placeholder="Search existing students..." className="pl-8" value={linkSearchTerm} onChange={e => setLinkSearchTerm(e.target.value)} />
+                        </div>
+                        <ScrollArea className="flex-1 border rounded-md">
+                            <div className="p-2 space-y-1">
+                                {linkingStudentsFiltered.map(student => (
+                                    <div key={student.uid} className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors border group">
+                                        <div>
+                                            <p className="text-sm font-bold">{student.name}</p>
+                                            <p className="text-[10px] text-muted-foreground uppercase">{student.id}</p>
+                                        </div>
+                                        <Button size="sm" variant="ghost" onClick={() => handleLinkToExisting(student.uid)} disabled={loading}>
+                                            {loading ? <Loader2 className="h-3 w-3 animate-spin"/> : <CheckCircle2 className="h-4 w-4 text-primary" />}
+                                        </Button>
+                                    </div>
+                                ))}
+                                {linkingStudentsFiltered.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No students match your search.</p>}
+                            </div>
+                        </ScrollArea>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

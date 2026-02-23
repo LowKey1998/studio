@@ -45,7 +45,8 @@ import {
     BookCopy,
     Save,
     BookOpen,
-    Tag
+    Tag,
+    Receipt
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -658,14 +659,13 @@ export default function RegistrationManagementPage() {
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary rounded-lg shadow-md">
+                            <ReceiptText className="h-6 w-6 text-white" />
+                        </div>
                         <div>
                             <CardTitle className="font-headline text-2xl">Registration Management</CardTitle>
                             <CardDescription>Activate semesters and manage curriculum-aware enrollment paths.</CardDescription>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" asChild><Link href="/admin/calendar">Global Calendar</Link></Button>
-                            <Button onClick={() => setIsCreateDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4"/> New Semester</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -718,6 +718,10 @@ export default function RegistrationManagementPage() {
                                                 const isFlatFee = currentPolicy === 'semester';
                                                 const feeMissing = isFlatFee && (!sem.tuitionFee || Number(sem.tuitionFee) <= 0);
 
+                                                const mandatoryTotal = Object.values(sem.mandatoryFees || {}).reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+                                                const semesterTuitionValue = isFlatFee ? (Number(sem.tuitionFee) || 0) : 0;
+                                                const baselineTotal = mandatoryTotal + semesterTuitionValue;
+
                                                 return (
                                                     <Card key={semId} className={cn("shadow-sm relative border-t-4", isActive ? "border-t-primary" : "border-t-muted opacity-80", isCurrentStanding && "ring-2 ring-primary ring-offset-2")}>
                                                         <CardHeader className="pb-3">
@@ -744,23 +748,30 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="space-y-4">
-                                                            {isFlatFee && (
-                                                                <div className="p-2 rounded-lg border bg-primary/5 flex items-center justify-between">
-                                                                    <div className="flex flex-col">
-                                                                        <span className="text-[9px] font-black uppercase text-muted-foreground leading-none">Semester Tuition</span>
-                                                                        {feeMissing ? (
-                                                                            <span className="text-xs font-black text-destructive animate-pulse uppercase mt-1">Fees Not Set</span>
-                                                                        ) : (
-                                                                            <span className="text-sm font-black text-primary">ZMW {sem.tuitionFee?.toLocaleString()}</span>
-                                                                        )}
+                                                            <div className="p-3 rounded-xl border bg-primary/5 shadow-sm space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <Label className="text-[10px] font-black uppercase text-primary tracking-widest leading-none">Financial Baseline</Label>
+                                                                    <div className="flex flex-col items-end">
+                                                                        <span className="text-[10px] opacity-60 font-bold uppercase tracking-tighter">Total Fixed Due</span>
+                                                                        <span className="text-lg font-black text-primary leading-none">ZMW {baselineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                                     </div>
-                                                                    {feeMissing && (
-                                                                        <Button variant="outline" size="sm" className="h-7 text-[9px] font-black uppercase tracking-widest border-destructive/20 text-destructive hover:bg-destructive/10" onClick={() => { setEditingSemester(sem); setEditInitialTab('fees'); setIsEditDialogOpen(true); }}>Set Fee</Button>
-                                                                    )}
                                                                 </div>
-                                                            )}
+                                                                <Separator className="bg-primary/10" />
+                                                                <div className="grid grid-cols-2 gap-4 text-[10px]">
+                                                                    <div className="space-y-0.5">
+                                                                        <span className="font-bold opacity-60 uppercase">Mandatory Fees</span>
+                                                                        <p className="font-black">ZMW {mandatoryTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                    </div>
+                                                                    <div className="space-y-0.5">
+                                                                        <span className="font-bold opacity-60 uppercase">Tuition Additions</span>
+                                                                        <p className={cn("font-black", feeMissing ? "text-destructive animate-pulse" : "")}>
+                                                                            {isFlatFee ? `ZMW ${semesterTuitionValue.toLocaleString()}` : "Dynamic (by selection)"}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
 
-                                                            <div className="space-y-1">
+                                                            <div className="space-y-1 pt-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active window</Label>
                                                                 {hasNoManualDates ? (
                                                                     <div className="flex flex-col gap-1">
