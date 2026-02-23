@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
 import { ref, get, set, push, onValue, update, remove, serverTimestamp } from 'firebase/database';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -60,7 +59,7 @@ import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 type ExamTimeSlot = { id: string; startTime: string; endTime: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; };
 type Intake = { id: string; name: string; };
-type Course = { id: string; name: string; code: string; assessmentTemplateId?: string; };
+type Course = { id: string; name: string; code: string; status: string; lecturerId: string; lecturerIds?: string[]; separateInstance?: boolean; assessmentTemplateId?: string; };
 
 type ExamEntry = {
     id: string;

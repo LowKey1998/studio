@@ -42,7 +42,6 @@ export default function StudentExamTimetablePage() {
     const { user, userProfile, loading: authLoading } = useAuth();
     const [exams, setExams] = React.useState<ExamEntry[]>([]);
     const [quizzes, setQuizzes] = React.useState<any[]>([]);
-    const [templates, setTemplates] = React.useState<Record<string, any>>({});
     const [loading, setLoading] = React.useState(true);
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
 
@@ -52,16 +51,15 @@ export default function StudentExamTimetablePage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [intakesSnap, calendarSnap, semestersSnap, quizzesSnap, templatesSnap] = await Promise.all([
+                const [intakesSnap, calendarSnap, semestersSnap, quizzesSnap, registrationsSnap] = await Promise.all([
                     get(ref(db, 'intakes')),
                     get(ref(db, 'settings/academicCalendar')),
                     get(ref(db, 'semesters')),
                     get(ref(db, 'quizzes')),
-                    get(ref(db, 'settings/assessmentTemplates'))
+                    get(ref(db, `registrations/${user.uid}`))
                 ]);
 
                 if (quizzesSnap.exists()) setQuizzes(Object.entries(quizzesSnap.val()).map(([id, d]:[string, any]) => ({ id, ...d })));
-                if (templatesSnap.exists()) setTemplates(templatesSnap.val());
 
                 const allIntakes = intakesSnap.val() || {};
                 const intake = userProfile.intakeId ? allIntakes[userProfile.intakeId] : null;
@@ -72,6 +70,11 @@ export default function StudentExamTimetablePage() {
                     return;
                 }
 
+                // 1. Determine the "Active" Semester from registrations
+                const userRegs = registrationsSnap.val() || {};
+                let targetSemesterId: string | null = null;
+
+                // Priority: Use the semester the student is currently registered for that matches their Standing
                 const intakeStartStr = parseIntakeDate(intake.name);
                 if (intakeStartStr) {
                     const state = calculateAcademicState(
@@ -82,30 +85,29 @@ export default function StudentExamTimetablePage() {
                     );
                     setAcademicStanding(`Year ${state.year}, Sem ${state.semester}`);
 
-                    const matchingSemesterEntry = Object.entries(semestersSnap.val() || {}).find(([_, s]: [string, any]) => 
-                        s.intakeId === userProfile.intakeId && 
-                        s.year === state.year && 
-                        s.semesterInYear === state.semester
-                    );
+                    // Find registered semester matching this standing
+                    targetSemesterId = Object.keys(userRegs).find(semId => {
+                        const s = semestersSnap.val()?.[semId];
+                        return s && s.intakeId === userProfile.intakeId && s.year === state.year && s.semesterInYear === state.semester;
+                    }) || null;
+                }
 
-                    if (matchingSemesterEntry) {
-                        const semId = matchingSemesterEntry[0];
-                        // Real-time listener for current semester exams
-                        const etRef = ref(db, `examTimetables/${semId}`);
-                        onValue(etRef, (snapshot) => {
-                            if (snapshot.exists()) {
-                                const publishedExams = Object.entries(snapshot.val())
-                                    .map(([id, data]: [string, any]) => ({ id, ...data }))
-                                    .filter(e => e.isPublished);
-                                setExams(publishedExams.sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
-                            } else {
-                                setExams([]);
-                            }
-                            setLoading(false);
-                        });
-                    } else {
+                if (targetSemesterId) {
+                    // Real-time listener for current semester exams
+                    const etRef = ref(db, `examTimetables/${targetSemesterId}`);
+                    onValue(etRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            const publishedExams = Object.entries(snapshot.val())
+                                .map(([id, data]: [string, any]) => ({ id, ...data }))
+                                .filter(e => e.isPublished && e.date); // Only show published exams with a valid date
+                            setExams(publishedExams.sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)));
+                        } else {
+                            setExams([]);
+                        }
                         setLoading(false);
-                    }
+                    });
+                } else {
+                    setLoading(false);
                 }
             } catch (error) {
                 console.error(error);
@@ -131,7 +133,7 @@ export default function StudentExamTimetablePage() {
 
         autoTable(doc, {
             head: [['Date', 'Time', 'Course', 'Venue', 'Format']],
-            body: exams.filter(e => e.date).map(e => [
+            body: exams.map(e => [
                 format(parseISO(e.date), 'PPP'),
                 `${e.startTime} - ${e.endTime}`,
                 `${e.courseCode}: ${e.courseName}`,
@@ -177,7 +179,7 @@ export default function StudentExamTimetablePage() {
 
             {exams.length > 0 ? (
                 <div className="grid gap-4">
-                    {exams.filter(e => e.date).map((exam) => {
+                    {exams.map((exam) => {
                         const isExamToday = isToday(parseISO(exam.date));
                         const isPassed = isBefore(startOfDay(parseISO(exam.date)), startOfDay(new Date())) && !isExamToday;
                         const quiz = getQuizForCourse(exam.courseId);
