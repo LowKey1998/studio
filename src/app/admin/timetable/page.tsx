@@ -102,6 +102,7 @@ function TimetableManagementComponent() {
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
 
     const [viewTarget, setViewTarget] = React.useState(searchParams.get('intakeId') || 'master');
+    const [viewWeek, setViewWeek] = React.useState(new Date());
     const [roomFilter, setRoomFilter] = React.useState('all');
     const [searchTerm, setSearchTerm] = React.useState('');
 
@@ -448,6 +449,15 @@ function TimetableManagementComponent() {
         setIsAddOpen(true);
     };
 
+    const currentWeekInterval = React.useMemo(() => {
+        const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
+        return [0, 1, 2, 3, 4, 5, 6].map(i => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    }, [viewWeek]);
+
     const mergedSessions = React.useMemo(() => {
         const sessions: Record<string, { entry: TimetableEntry; lecturerNames: string; totalStudents: number; participants: { semesterId: string; name: string; standing: string; count: number }[] }> = {};
         
@@ -594,6 +604,13 @@ function TimetableManagementComponent() {
                             </Select>
                         </div>
                         {academicStanding && <Badge variant="secondary" className="h-10 px-4 gap-2 font-black uppercase tracking-widest text-[10px] border-primary/20 bg-primary/5 text-primary shadow-sm"><GraduationCap className="h-4 w-4" />Standing: {academicStanding}</Badge>}
+                        <div className="flex items-center gap-4 py-2">
+                            <Button variant="outline" size="sm" onClick={() => setViewWeek(subWeeks(viewWeek, 1))}><ChevronLeft className="h-4 w-4 mr-1"/> Prev Week</Button>
+                            <div className="font-bold text-sm uppercase tracking-widest text-primary">
+                                {format(currentWeekInterval[0], 'MMM dd')} - {format(currentWeekInterval[6], 'MMM dd, yyyy')}
+                            </div>
+                            <Button variant="outline" size="sm" onClick={() => setViewWeek(addWeeks(viewWeek, 1))}>Next Week <ChevronRight className="h-4 w-4 ml-1"/></Button>
+                        </div>
                         <div className="flex-1 min-w-[200px]"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Search Course</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"/><Input placeholder="Filter code or name..." className="pl-8 bg-background shadow-sm h-10 border-primary/20" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div></div>
                         <div className="w-48"><Label className="text-xs font-black uppercase tracking-wider mb-1.5 block opacity-70">Filter Room</Label><Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="bg-background shadow-sm h-10 border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Rooms</SelectItem>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent></Select></div>
                     </div>
@@ -616,14 +633,18 @@ function TimetableManagementComponent() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {calendarDays.slice(1, 6).map(dayName => {
-                                        const isDayToday = format(new Date(), 'EEEE') === dayName;
+                                    {currentWeekInterval.map(date => {
+                                        const dayName = calendarDays[getDay(date)];
+                                        const isDayToday = isToday(date);
                                         if (!displayDays.includes(dayName)) return null;
 
                                         return (
-                                            <TableRow key={dayName} className={cn(isDayToday && "bg-primary/5")}>
+                                            <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
                                                 <TableCell className={cn("font-bold text-xs border-r text-center", isDayToday ? "text-primary bg-primary/10" : "bg-muted/20")}>
-                                                    <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                    <div className="flex flex-col">
+                                                        <span className="uppercase text-[10px] opacity-70">{dayName}</span>
+                                                        <span className="text-sm font-black">{format(date, 'MMM dd')}</span>
+                                                    </div>
                                                 </TableCell>
                                                 {teachingTimes.slots.map((slot, sIdx) => {
                                                     const slotStart = timeToMinutes(slot.startTime);

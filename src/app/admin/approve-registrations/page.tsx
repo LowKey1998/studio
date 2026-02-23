@@ -948,8 +948,8 @@ export default function ApproveRegistrationsPage() {
                         </Alert>
                     </div>
                     <DialogFooter className="gap-2">
-                        <Button variant="ghost" className="flex-1" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Application</Button>
-                        <Button className="flex-1 shadow-md font-bold" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading || !selectedScholarshipId}>
+                        <Button variant="ghost" className="w-full" onClick={() => handleScholarshipDecision('deny')} disabled={!!actionLoading}>Deny Application</Button>
+                        <Button className="w-full shadow-md font-bold" onClick={() => handleScholarshipDecision('approve')} disabled={!!actionLoading || !selectedScholarshipId}>
                             {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Authorize & Award
                         </Button>
                     </DialogFooter>

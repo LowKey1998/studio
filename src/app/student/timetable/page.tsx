@@ -6,7 +6,7 @@ import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
 import { ref, get, set, onValue, push, update, serverTimestamp } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck, Download } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -18,6 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type TimeSlot = {
     id: string;
@@ -257,6 +259,34 @@ export default function StudentTimetablePage() {
         }
     };
 
+    const handleDownloadPdf = () => {
+        const doc = new jsPDF({ orientation: 'landscape' });
+        doc.setFontSize(18);
+        doc.text(`My Weekly Timetable - ${academicStanding}`, 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Intake: ${userProfile?.intakeName || 'N/A'}`, 14, 30);
+        
+        const head = [["Time", ...displayDays]];
+        const body = teachingTimes.slots.map(slot => {
+            const row = [ `${slot.startTime} - ${slot.endTime}` ];
+            displayDays.forEach(day => {
+                const sessions = timetable.filter(e => e.day === day && timeToMinutes(e.startTime) >= timeToMinutes(slot.startTime) && timeToMinutes(e.startTime) < timeToMinutes(slot.endTime));
+                row.push(sessions.map(s => `${s.courseCode}: ${s.venue}`).join('\n'));
+            });
+            return row;
+        });
+
+        autoTable(doc, {
+            head,
+            body,
+            startY: 40,
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [44, 62, 80] },
+        });
+
+        doc.save('My_Timetable.pdf');
+    };
+
     const currentWeekInterval = React.useMemo(() => {
         const start = startOfWeek(viewWeek, { weekStartsOn: 1 });
         return [0, 1, 2, 3, 4, 5, 6].map(i => {
@@ -267,6 +297,7 @@ export default function StudentTimetablePage() {
     }, [viewWeek]);
 
     const hasSlots = teachingTimes.slots.length > 0;
+    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
 
     return (
         <div className="space-y-6">
@@ -277,9 +308,14 @@ export default function StudentTimetablePage() {
                             <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> My Active Timetable</CardTitle>
                             <CardDescription>Your personalized schedule for the current session.</CardDescription>
                         </div>
-                        <Button onClick={() => setIsRequestOpen(true)} disabled={loading || availablePathCourses.length === 0} className="shadow-md">
-                            <PlusCircle className="mr-2 h-4 w-4"/> Request Class Enrollment
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={handleDownloadPdf} disabled={loading || timetable.length === 0}>
+                                <Download className="mr-2 h-4 w-4"/> Download PDF
+                            </Button>
+                            <Button onClick={() => setIsRequestOpen(true)} disabled={loading || availablePathCourses.length === 0} className="shadow-md">
+                                <PlusCircle className="mr-2 h-4 w-4"/> Request Class Enrollment
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>

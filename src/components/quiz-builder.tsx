@@ -188,7 +188,7 @@ export default function QuizBuilder({ quizId }: { quizId?: string }) {
     };
     
     const removeSection = (sectionId: string) => {
-        if(quiz.sections.length <= 1) { toast({variant: 'destructive', title: "Cannot remove the last section."}); return;}
+        if(quiz.sections.length <= 1) { toast({variant: 'destructive', title: "Cannot remove the last section."}); return; }
         setQuiz(prev => ({
             ...prev,
             sections: prev.sections.filter(s => s.id !== sectionId)

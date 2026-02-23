@@ -77,7 +77,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 type FeeBreakdown = {
     tuition: number;
@@ -582,8 +581,8 @@ export default function PaymentsManagementPage() {
                         const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
-                        nextRow.year = undefined; // CLEAR PREVIOUS SELECTION
-                        nextRow.semesterId = undefined; // CLEAR PREVIOUS SELECTION
+                        nextRow.year = undefined; 
+                        nextRow.semesterId = undefined; 
                         nextRow.availableSemesters = [];
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
@@ -1079,19 +1078,31 @@ export default function PaymentsManagementPage() {
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><Label>Target Academic Year (Payment For)</Label><Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}><SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger><SelectContent>{Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
-                            <div className="space-y-1"><Label>Target Semester (Payment For)</Label><Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}><SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger><SelectContent>{semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
+                            <div className="space-y-1">
+                                <Label>Target Year (Payment For)</Label>
+                                <Select value={singleYear} onValueChange={(val) => { setSingleYear(val); setSingleSemId(''); }}>
+                                    <SelectTrigger><SelectValue placeholder="Select Year..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from(new Set(semesters.filter(s => s.intakeId === selectedStudent?.intakeId).map(s => String(s.year)))).sort().map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Target Semester (Payment For)</Label>
+                                <Select value={singleSemId} onValueChange={setSingleSemId} disabled={!singleYear}>
+                                    <SelectTrigger><SelectValue placeholder="Select Sem..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {semesters.filter(s => s.intakeId === selectedStudent?.intakeId && String(s.year) === singleYear).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         {singleSemId && (
                             <div className="p-3 rounded-lg border bg-muted/20 space-y-2">
                                 <Label className="text-[10px] font-black uppercase opacity-60">Semester Audit</Label>
                                 {(() => {
                                     const info = paymentInfos.find(p => p.userId === selectedStudent?.userId && p.semesterId === singleSemId);
-                                    if (!info) return (
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] italic text-primary font-bold text-center">No active invoice found. System will cross-reference baseline semester fees.</p>
-                                        </div>
-                                    );
+                                    if (!info) return <p className="text-[10px] italic text-primary font-bold text-center">No active invoice found. System will cross-reference baseline semester fees.</p>;
                                     return (
                                         <div className="grid grid-cols-3 gap-2 text-center">
                                             <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-60">Due</span><span className="font-bold text-xs">K{info.totalDue.toFixed(0)}</span></div>
