@@ -27,6 +27,7 @@ import Link from 'next/link';
 
 type ExamEntry = {
     id: string;
+    courseId: string;
     courseCode: string;
     courseName: string;
     date: string;
@@ -40,6 +41,8 @@ type ExamEntry = {
 export default function StudentExamTimetablePage() {
     const { user, userProfile, loading: authLoading } = useAuth();
     const [exams, setExams] = React.useState<ExamEntry[]>([]);
+    const [quizzes, setQuizzes] = React.useState<any[]>([]);
+    const [templates, setTemplates] = React.useState<Record<string, any>>({});
     const [loading, setLoading] = React.useState(true);
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
 
@@ -49,11 +52,16 @@ export default function StudentExamTimetablePage() {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [intakesSnap, calendarSnap, semestersSnap] = await Promise.all([
+                const [intakesSnap, calendarSnap, semestersSnap, quizzesSnap, templatesSnap] = await Promise.all([
                     get(ref(db, 'intakes')),
                     get(ref(db, 'settings/academicCalendar')),
-                    get(ref(db, 'semesters'))
+                    get(ref(db, 'semesters')),
+                    get(ref(db, 'quizzes')),
+                    get(ref(db, 'settings/assessmentTemplates'))
                 ]);
+
+                if (quizzesSnap.exists()) setQuizzes(Object.entries(quizzesSnap.val()).map(([id, d]:[string, any]) => ({ id, ...d })));
+                if (templatesSnap.exists()) setTemplates(templatesSnap.val());
 
                 const allIntakes = intakesSnap.val() || {};
                 const intake = userProfile.intakeId ? allIntakes[userProfile.intakeId] : null;
@@ -108,6 +116,10 @@ export default function StudentExamTimetablePage() {
         fetchData();
     }, [user, userProfile]);
 
+    const getQuizForCourse = (courseId: string) => {
+        return quizzes.find(q => q.courseId === courseId || q.courseIds?.includes(courseId));
+    };
+
     const handleDownloadPdf = () => {
         const doc = new jsPDF();
         doc.setFontSize(18);
@@ -119,7 +131,7 @@ export default function StudentExamTimetablePage() {
 
         autoTable(doc, {
             head: [['Date', 'Time', 'Course', 'Venue', 'Format']],
-            body: exams.map(e => [
+            body: exams.filter(e => e.date).map(e => [
                 format(parseISO(e.date), 'PPP'),
                 `${e.startTime} - ${e.endTime}`,
                 `${e.courseCode}: ${e.courseName}`,
@@ -165,9 +177,10 @@ export default function StudentExamTimetablePage() {
 
             {exams.length > 0 ? (
                 <div className="grid gap-4">
-                    {exams.map((exam) => {
+                    {exams.filter(e => e.date).map((exam) => {
                         const isExamToday = isToday(parseISO(exam.date));
                         const isPassed = isBefore(startOfDay(parseISO(exam.date)), startOfDay(new Date())) && !isExamToday;
+                        const quiz = getQuizForCourse(exam.courseId);
 
                         return (
                             <Card key={exam.id} className={cn(
@@ -200,7 +213,7 @@ export default function StudentExamTimetablePage() {
                                                 {isExamToday && <Badge className="bg-red-600 animate-pulse text-white font-black uppercase text-[10px] tracking-widest px-4 h-8">Today</Badge>}
                                                 {exam.isOnline && !isPassed && (
                                                     <Button asChild size="sm" variant={isExamToday ? "default" : "outline"}>
-                                                        <Link href={`/student/quizzes/${getQuizForCourse(exam.id)?.id}`}>Go to Online Exam</Link>
+                                                        <Link href={quiz ? `/student/quizzes/${quiz.id}` : '#'}>Go to Online Exam</Link>
                                                     </Button>
                                                 )}
                                             </div>
