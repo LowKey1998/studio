@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { format, isToday, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FileCheck, MapPin } from 'lucide-react';
+import { FileCheck, MapPin, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 type TimetableEntry = {
@@ -19,6 +19,7 @@ type TimetableEntry = {
     venue: string;
     intakeName?: string;
     examDate?: string;
+    examTime?: string;
     examVenue?: string;
 };
 
@@ -122,18 +123,26 @@ export default function CourseSchedulePage() {
     return (
         <div className="space-y-6">
             {examInfo && (
-                <Alert className="bg-red-50 border-2 border-red-200 shadow-lg">
+                <Alert className="bg-red-50 border-2 border-red-200 shadow-lg animate-in fade-in zoom-in duration-500">
                     <FileCheck className="h-5 w-5 text-red-600" />
-                    <AlertTitle className="font-black uppercase tracking-widest text-red-800">Final Examination Date Published</AlertTitle>
+                    <AlertTitle className="font-black uppercase tracking-widest text-red-800">Official Examination Schedule</AlertTitle>
                     <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-                        <div className="space-y-1">
-                            <p className="text-base font-bold text-red-700">{format(parseISO(examInfo.examDate!), 'PPPP')}</p>
-                            <div className="flex items-center gap-2 text-sm text-red-600/80">
-                                <MapPin className="h-4 w-4" />
-                                <span>Venue: <strong>{examInfo.examVenue || 'TBA'}</strong></span>
+                        <div className="space-y-2">
+                            <p className="text-lg font-black text-red-700">{format(parseISO(examInfo.examDate!), 'PPPP')}</p>
+                            <div className="flex flex-wrap gap-4 text-sm font-bold text-red-600/80">
+                                {examInfo.examTime && (
+                                    <div className="flex items-center gap-1.5">
+                                        <Clock className="h-4 w-4" />
+                                        <span>Start Time: {examInfo.examTime}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                    <MapPin className="h-4 w-4" />
+                                    <span>Venue: {examInfo.examVenue || 'TBA'}</span>
+                                </div>
                             </div>
                         </div>
-                        <Badge variant="destructive" className="w-fit h-8 px-4 font-black uppercase tracking-tighter">Attendance Mandatory</Badge>
+                        <Badge variant="destructive" className="w-fit h-10 px-6 font-black uppercase tracking-widest shadow-md">Examination</Badge>
                     </AlertDescription>
                 </Alert>
             )}
@@ -141,7 +150,7 @@ export default function CourseSchedulePage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-2xl">Weekly Schedule</CardTitle>
-                    <CardDescription>Your weekly class schedule for this course.</CardDescription>
+                    <CardDescription>Your regular weekly class rotation.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-px border bg-border overflow-hidden rounded-lg">
@@ -157,8 +166,8 @@ export default function CourseSchedulePage() {
                                             .sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
                                             .map((entry, index) => (
                                                 <div key={index} className="p-2 rounded-md bg-primary/10 text-primary-foreground border border-primary/20">
-                                                    <p className="text-sm text-primary/80">{entry.startTime} - {entry.endTime}</p>
-                                                    <p className="text-sm font-semibold text-primary">{entry.venue}</p>
+                                                    <p className="text-sm text-primary/80 font-bold">{entry.startTime} - {entry.endTime}</p>
+                                                    <p className="text-xs font-semibold text-primary/70 mt-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> {entry.venue}</p>
                                                 </div>
                                             ))
                                     )}

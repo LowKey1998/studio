@@ -68,6 +68,7 @@ type TimetableEntry = {
     isLiveSession?: boolean;
     isLiveRequested?: boolean;
     examDate?: string;
+    examTime?: string;
     examVenue?: string;
 };
 
@@ -126,6 +127,7 @@ function TimetableManagementComponent() {
     const [isExamDialogOpen, setIsExamDialogOpen] = React.useState(false);
     const [examCourseId, setExamCourseId] = React.useState('');
     const [examDate, setExamDate] = React.useState<Date | undefined>();
+    const [examTime, setExamTime] = React.useState('');
     const [examVenue, setExamVenue] = React.useState('');
 
     // Deletion states
@@ -367,13 +369,14 @@ function TimetableManagementComponent() {
                 const updates: Record<string, any> = {};
                 Object.keys(entries).forEach(id => {
                     updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examDate`] = format(examDate, 'yyyy-MM-dd');
+                    updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examTime`] = examTime;
                     updates[`timetables/${resolvedSemester.id}/${examCourseId}/${id}/examVenue`] = examVenue || 'TBA';
                 });
                 await update(ref(db), updates);
-                toast({ title: 'Exam Date Published' });
+                toast({ title: 'Exam Schedule Published' });
                 setIsExamDialogOpen(false);
             } else {
-                toast({ variant: 'destructive', title: 'No Timetable Records', description: 'At least one timetable entry must exist for this course before an exam date can be set.' });
+                toast({ variant: 'destructive', title: 'No Timetable Records', description: 'At least one timetable entry must exist for this course before an exam schedule can be set.' });
             }
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Save Failed' });
@@ -697,7 +700,7 @@ function TimetableManagementComponent() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Schedule Course Examination</DialogTitle>
-                        <DialogDescription>Set the official exam date and venue for a course in the {resolvedSemester?.name} semester.</DialogDescription>
+                        <DialogDescription>Set the official exam schedule for a course in the {resolvedSemester?.name} semester.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1">
@@ -709,17 +712,23 @@ function TimetableManagementComponent() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label>Exam Date</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {examDate ? format(examDate, 'PPP') : "Select date"}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate} onSelect={setExamDate} initialFocus /></PopoverContent>
-                            </Popover>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label>Exam Date</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {examDate ? format(examDate, 'PPP') : "Select date"}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate} onSelect={setExamDate} initialFocus /></PopoverContent>
+                                </Popover>
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Exam Start Time</Label>
+                                <Input type="time" value={examTime} onChange={e => setExamTime(e.target.value)} />
+                            </div>
                         </div>
                         <div className="space-y-1">
                             <Label>Venue</Label>
@@ -735,7 +744,7 @@ function TimetableManagementComponent() {
                         <Button variant="outline" onClick={() => setIsExamDialogOpen(false)}>Cancel</Button>
                         <Button onClick={handleSaveExamDate} disabled={saving || !examCourseId || !examDate}>
                             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            Publish Exam Date
+                            Publish Exam Schedule
                         </Button>
                     </DialogFooter>
                 </DialogContent>

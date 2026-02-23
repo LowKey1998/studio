@@ -115,9 +115,8 @@ export default function StaffCoursesPage() {
                             const onlineMcqComponents = Object.keys(components).filter(id => components[id].isOnlineQuiz);
                             
                             if (onlineMcqComponents.length > 0) {
-                                // Check if a quiz exists for this course linked to one of these components
                                 const existingQuiz = allQuizzes.find(q => 
-                                    q.courseIds?.includes(courseId) && 
+                                    (q.courseId === courseId || q.courseIds?.includes(courseId)) && 
                                     onlineMcqComponents.includes(q.linkedComponentId)
                                 );
                                 if (!existingQuiz) needsQuiz = true;
@@ -266,11 +265,11 @@ export default function StaffCoursesPage() {
                             </div>
 
                             {course.needsQuiz && (
-                                <Alert variant="destructive" className="bg-orange-50 border-orange-200 py-2">
+                                <Alert variant="destructive" className="bg-orange-50 border-orange-200 py-2 animate-pulse">
                                     <AlertCircle className="h-4 w-4 text-orange-600" />
                                     <AlertTitle className="text-[10px] font-black uppercase text-orange-800">Quiz Required</AlertTitle>
                                     <AlertDescription className="text-[10px] text-orange-700 leading-tight">
-                                        Assessment structure includes an Online MCQ. Please create the quiz to enable auto-grading.
+                                        Course structure mandates an Online MCQ. Please create the quiz to enable auto-grading.
                                     </AlertDescription>
                                 </Alert>
                             )}

@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
-import { ref, get, set, onValue, push, serverTimestamp } from 'firebase/database';
+import { ref, get, onValue, push, serverTimestamp } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck, Download, Calendar as CalendarIcon } from 'lucide-react';
@@ -42,6 +42,7 @@ type TimetableEntry = {
     intakeName: string;
     isLiveSession?: boolean;
     examDate?: string;
+    examTime?: string;
     examVenue?: string;
 };
 
@@ -410,7 +411,9 @@ export default function StudentTimetablePage() {
                                                                                     </div>
                                                                                     <div className="space-y-0.5">
                                                                                         <p className="text-[10px] font-bold text-red-700">{format(parseISO(entry.examDate), 'PPP')}</p>
-                                                                                        <p className="text-[9px] text-red-600/80 font-medium">Venue: {entry.examVenue || 'TBA'}</p>
+                                                                                        <p className="text-[9px] text-red-600/80 font-medium">
+                                                                                            {entry.examTime ? `${entry.examTime} @ ` : ''}{entry.examVenue || 'TBA'}
+                                                                                        </p>
                                                                                     </div>
                                                                                 </div>
                                                                             )}
