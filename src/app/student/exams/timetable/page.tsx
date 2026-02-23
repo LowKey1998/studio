@@ -17,12 +17,13 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { format, parseISO, startOfDay, isBefore } from 'date-fns';
+import { format, parseISO, startOfDay, isBefore, isToday } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Link from 'next/link';
 
 type ExamEntry = {
     id: string;

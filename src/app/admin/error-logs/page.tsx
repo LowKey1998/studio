@@ -8,10 +8,11 @@ import { ref, onValue, remove } from 'firebase/database';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, Eye, Terminal, User as UserIcon, Clock, Filter, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Trash2, Eye, Terminal, User as UserIcon, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 type ErrorLog = {
     id: string;
@@ -195,13 +196,4 @@ export default function ErrorLogsPage() {
             </Dialog>
         </div>
     );
-}
-
-function useToast() {
-    const [state, setState] = React.useState({ toasts: [] });
-    return {
-        toast: ({ title, variant }: { title: string, variant?: string }) => {
-            console.log(title);
-        }
-    }
 }

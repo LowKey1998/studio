@@ -562,9 +562,14 @@ function TimetableManagementComponent() {
             <Card className="shadow-lg border-0 bg-primary/5">
                 <CardHeader>
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div>
-                            <CardTitle className="font-headline text-2xl flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary"/> Timetable Management</CardTitle>
-                            <CardDescription>Manage academic schedules and cohort instances.</CardDescription>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary rounded-lg shadow-md">
+                                <CalendarDays className="h-6 w-6 text-white" />
+                            </div>
+                            <div>
+                                <CardTitle className="font-headline text-2xl flex items-center gap-2">Timetable Management</CardTitle>
+                                <CardDescription>Manage academic schedules and cohort instances.</CardDescription>
+                            </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" onClick={() => setIsExamDialogOpen(true)} disabled={!resolvedSemester}>
@@ -718,7 +723,7 @@ function TimetableManagementComponent() {
                                                                             <div className="flex-1">
                                                                                 <div className="flex items-center gap-1">
                                                                                     <p className="font-bold text-[10px] text-primary leading-tight line-clamp-2">{s.entry.courseCode}: {s.entry.courseName}</p>
-                                                                                    {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600 shrink-0"/>}
+                                                                                    {s.entry.isLiveSession && <Video className="h-3 w-3 text-blue-600" />}
                                                                                 </div>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-1"><MapPin className="h-2.5 w-2.5" /> {s.entry.isLiveSession ? "DIGITAL" : s.entry.venue}</div>
                                                                                 <div className="flex items-center gap-1 text-[9px] text-muted-foreground mt-0.5"><UserCheck className="h-2.5 w-2.5" /> {s.lecturerNames}</div>

@@ -2,37 +2,52 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, set, push, onValue, update, serverTimestamp } from 'firebase/database';
+import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
+import { ref, get, set, push, onValue, update, remove } from 'firebase/database';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { 
     Info, 
     MapPin, 
-    Clock, 
-    Pencil, 
-    PlusCircle, 
-    Calendar as CalendarIcon, 
-    Trash2, 
+    CalendarDays, 
     ChevronLeft, 
     ChevronRight, 
-    CheckCircle2, 
+    Loader2, 
+    Clock, 
+    X, 
+    Pencil, 
+    PlusCircle, 
     Monitor, 
-    Link as LinkIcon, 
-    FileQuestion,
-    Search
+    Search, 
+    AlertCircle, 
+    FileCheck, 
+    Calendar as CalendarIcon,
+    Link as LinkIcon,
+    CheckCircle2
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, getDay, isToday } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogFooter,
+    DialogClose,
+} from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 
@@ -52,6 +67,7 @@ type ExamEntry = {
     venue: string;
     isOnline?: boolean;
     isPublished?: boolean;
+    semesterId: string;
 };
 
 const calendarDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -65,12 +81,12 @@ const timeToMinutes = (time: string) => {
 export default function AdminExamTimetablePage() {
     const [intakes, setIntakes] = React.useState<Intake[]>([]);
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
-    const [courses, setCourses] = React.useState<Course[]>([]);
+    const [allCourses, setAllCourses] = React.useState<Course[]>([]);
     const [templates, setTemplates] = React.useState<Record<string, any>>({});
     const [quizzes, setQuizzes] = React.useState<any[]>([]);
-    const [rooms, setRooms] = React.useState<{id: string, name: string}[]>([]);
+    const [rooms, setRooms] = React.useState<{id: string, name: string, capacity: number}[]>([]);
     const [teachingTimes, setTeachingTimes] = React.useState<{ days: string[], slots: TimeSlot[] }>({ days: calendarDays.slice(1, 6), slots: [] });
-    const [examTimetable, setExamTimetable] = React.useState<Record<string, Record<string, ExamEntry>>>({}); // semesterId -> examId -> Entry
+    const [examTimetable, setExamTimetable] = React.useState<Record<string, Record<string, ExamEntry>>>({}); 
 
     const [selectedIntakeId, setSelectedIntakeId] = React.useState('');
     const [selectedSemesterId, setSelectedSemesterId] = React.useState('');
@@ -89,6 +105,7 @@ export default function AdminExamTimetablePage() {
     const [isOnline, setIsOnline] = React.useState(false);
     
     const [courseSearch, setCourseSearch] = React.useState('');
+    const [isCoursePopoverOpen, setIsCoursePopoverOpen] = React.useState(false);
 
     const { toast } = useToast();
 
@@ -107,10 +124,10 @@ export default function AdminExamTimetablePage() {
 
             if (iSnap.exists()) setIntakes(Object.entries(iSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })).sort((a,b) => b.name.localeCompare(a.name)));
             if (sSnap.exists()) setSemesters(Object.entries(sSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
-            if (cSnap.exists()) setCourses(Object.entries(cSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
+            if (cSnap.exists()) setAllCourses(Object.entries(cSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (tSnap.exists()) setTemplates(tSnap.val());
             if (qSnap.exists()) setQuizzes(Object.entries(qSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
-            if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, name: d.name })));
+            if (rSnap.exists()) setRooms(Object.entries(rSnap.val()).map(([id, d]: [string, any]) => ({ id, ...d })));
             if (etSnap.exists()) setExamTimetable(etSnap.val());
 
             if (timesSnap.exists()) {
@@ -132,9 +149,18 @@ export default function AdminExamTimetablePage() {
 
     const availableCourses = React.useMemo(() => {
         if (!selectedSemesterId) return [];
-        // Ideally filter by course path, for now show all active
-        return courses.filter(c => c.id); 
-    }, [courses, selectedSemesterId]);
+        return allCourses.filter(c => c.id); 
+    }, [allCourses, selectedSemesterId]);
+
+    const resetForm = () => {
+        setEditingEntry(null); 
+        setSelectedCourseId(''); 
+        setStartTime(''); 
+        setEndTime(''); 
+        setVenue(''); 
+        setCourseSearch(''); 
+        setIsOnline(false);
+    };
 
     const handleSaveEntry = async () => {
         if (!selectedCourseId || !examDate || !startTime || !endTime || !selectedSemesterId) {
@@ -143,7 +169,7 @@ export default function AdminExamTimetablePage() {
         }
         setSaving(true);
         try {
-            const course = courses.find(c => c.id === selectedCourseId);
+            const course = allCourses.find(c => c.id === selectedCourseId);
             const data: Omit<ExamEntry, 'id'> = {
                 courseId: selectedCourseId,
                 courseCode: course?.code || 'N/A',
@@ -153,7 +179,8 @@ export default function AdminExamTimetablePage() {
                 endTime,
                 venue: isOnline ? 'Digital Portal' : (venue || 'TBA'),
                 isOnline,
-                isPublished: editingEntry?.isPublished || false
+                isPublished: editingEntry?.isPublished || false,
+                semesterId: selectedSemesterId
             };
 
             const etRef = editingEntry 
@@ -196,7 +223,7 @@ export default function AdminExamTimetablePage() {
     }, [viewWeek]);
 
     const getQuizForCourse = (courseId: string) => {
-        const course = courses.find(c => c.id === courseId);
+        const course = allCourses.find(c => c.id === courseId);
         if (!course?.assessmentTemplateId) return null;
         const template = templates[course.assessmentTemplateId];
         const mcqComponent = Object.keys(template?.components || {}).find(id => template.components[id].isOnlineQuiz);
@@ -205,7 +232,12 @@ export default function AdminExamTimetablePage() {
         return quizzes.find(q => (q.courseId === courseId || q.courseIds?.includes(courseId)) && q.linkedComponentId === mcqComponent);
     };
 
-    const displayDays = teachingTimes.days.length > 0 ? teachingTimes.days : calendarDays.slice(1, 6);
+    const searchedCourses = React.useMemo(() => {
+        return availableCourses.filter(c => 
+            c.name.toLowerCase().includes(courseSearch.toLowerCase()) || 
+            c.code.toLowerCase().includes(courseSearch.toLowerCase())
+        );
+    }, [availableCourses, courseSearch]);
 
     return (
         <div className="space-y-6">
@@ -218,10 +250,10 @@ export default function AdminExamTimetablePage() {
                             </div>
                             <div>
                                 <CardTitle className="font-headline text-2xl">Final Examination Timetabling</CardTitle>
-                                <CardDescription>Draft and publish official exam schedules for cohort cohorts.</CardDescription>
+                                <CardDescription>Draft and publish official exam schedules for cohort groups.</CardDescription>
                             </div>
                         </div>
-                        <Button onClick={() => { setEditingEntry(null); setIsAddOpen(true); }} disabled={!selectedSemesterId}>
+                        <Button onClick={() => { resetForm(); setIsAddOpen(true); }} disabled={!selectedSemesterId}>
                             <PlusCircle className="mr-2 h-4 w-4"/> Schedule Exam
                         </Button>
                     </div>
@@ -327,7 +359,7 @@ export default function AdminExamTimetablePage() {
                                                                                 </Button>
                                                                             ) : (
                                                                                 <Button variant="secondary" size="sm" className="w-full h-6 text-[8px] font-black uppercase shadow-sm" asChild>
-                                                                                    <Link href={`/admin/quizzes/builder?courseId=${exam.courseId}&linkedComponentId=${courses.find(c=>c.id===exam.courseId)?.assessmentTemplateId && Object.keys(templates[courses.find(c=>c.id===exam.courseId)!.assessmentTemplateId]?.components || {}).find(id => templates[courses.find(c=>c.id===exam.courseId)!.assessmentTemplateId].components[id].isOnlineQuiz)}`}><PlusCircle className="h-2 w-2 mr-1"/>Create Exam Quiz</Link>
+                                                                                    <Link href={`/admin/quizzes/builder?courseId=${exam.courseId}&linkedComponentId=${allCourses.find(c=>c.id===exam.courseId)?.assessmentTemplateId && Object.keys(templates[allCourses.find(c=>c.id===exam.courseId)!.assessmentTemplateId]?.components || {}).find(id => templates[allCourses.find(c=>c.id===exam.courseId)!.assessmentTemplateId].components[id].isOnlineQuiz)}`}><PlusCircle className="h-2 w-2 mr-1"/>Create Exam Quiz</Link>
                                                                                 </Button>
                                                                             )}
                                                                         </div>
@@ -347,24 +379,42 @@ export default function AdminExamTimetablePage() {
                 </div>
             )}
 
-            <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) setEditingEntry(null); }}>
-                <DialogContent className="max-w-lg">
+            <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if(!o) resetForm(); }}>
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Schedule Cohort Exam</DialogTitle>
-                        <DialogDescription>Assign a final exam slot for {activeSemesters.find(s=>s.id===selectedSemesterId)?.name}.</DialogDescription>
+                        <DialogTitle>{editingEntry ? 'Edit Exam' : 'Schedule Exam'}</DialogTitle>
+                        <DialogDescription>Assign a final exam slot for the selected semester.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-1">
                             <Label>Course</Label>
-                            <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                                <SelectTrigger><SelectValue placeholder="Choose exam subject..."/></SelectTrigger>
-                                <SelectContent>
-                                    <div className="p-2"><Input placeholder="Filter..." value={courseSearch} onChange={e => setCourseSearch(e.target.value)}/></div>
-                                    <ScrollArea className="h-48">
-                                        {availableCourses.filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase())).map(c => <SelectItem key={c.id} value={c.id}>{c.code}: {c.name}</SelectItem>)}
-                                    </ScrollArea>
-                                </SelectContent>
-                            </Select>
+                            <Popover open={isCoursePopoverOpen} onOpenChange={setIsCoursePopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between font-normal">
+                                        {selectedCourseId ? allCourses.find(c => c.id === selectedCourseId)?.name : "Find a course..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                                    <div className="flex flex-col">
+                                        <div className="p-2 border-b">
+                                            <Input placeholder="Search..." value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)}/>
+                                        </div>
+                                        <ScrollArea className="h-64">
+                                            <div className="p-1">
+                                                {searchedCourses.map((c) => (
+                                                    <Button key={c.id} variant="ghost" className="w-full justify-start text-xs h-auto py-2" onClick={() => { setSelectedCourseId(c.id); setIsCoursePopoverOpen(false); }}>
+                                                        <div className="text-left">
+                                                            <div className="font-bold">{c.code}</div>
+                                                            <div className="text-muted-foreground">{c.name}</div>
+                                                        </div>
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </ScrollArea>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         
                         <div className="flex items-center space-x-2 py-2 p-4 border rounded-md bg-blue-50/50">
@@ -380,7 +430,15 @@ export default function AdminExamTimetablePage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <Label>Date</Label>
-                                <Input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} />
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {examDate ? format(parseISO(examDate), 'PPP') : "Select date"}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={examDate ? parseISO(examDate) : undefined} onSelect={(d) => setExamDate(d ? format(d, 'yyyy-MM-dd') : '')} initialFocus /></PopoverContent>
+                                </Popover>
                             </div>
                             <div className="space-y-1">
                                 <Label>Venue</Label>
@@ -389,7 +447,7 @@ export default function AdminExamTimetablePage() {
                                 ) : (
                                     <Select value={venue} onValueChange={setVenue}>
                                         <SelectTrigger><SelectValue placeholder="Room..."/></SelectTrigger>
-                                        <SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}</SelectContent>
+                                        <SelectContent>{rooms.map(r => <SelectItem key={r.id} value={r.name}>{r.name} (Cap: {r.capacity})</SelectItem>)}</SelectContent>
                                     </Select>
                                 )}
                             </div>
@@ -407,12 +465,4 @@ export default function AdminExamTimetablePage() {
             </Dialog>
         </div>
     );
-}
-
-function useToast() {
-    return {
-        toast: ({ title, variant }: { title: string, variant?: string }) => {
-            console.log(title);
-        }
-    }
 }
