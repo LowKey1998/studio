@@ -2,11 +2,11 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { db, auth, createNotification, getRegistrarIds } from '@/lib/firebase';
-import { ref, get, set, onValue, push, update, serverTimestamp } from 'firebase/database';
+import { db, auth, getRegistrarIds, createNotification } from '@/lib/firebase';
+import { ref, get, set, onValue, push, serverTimestamp } from 'firebase/database';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck, Download } from 'lucide-react';
+import { Info, MapPin, UserCheck, Users, CalendarDays, Layers, ChevronLeft, ChevronRight, Video, Clock, PlusCircle, CheckCircle2, Loader2, BookCopy, FileCheck, Download, Calendar as CalendarIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -362,6 +362,7 @@ export default function StudentTimetablePage() {
                                         const dayName = calendarDays[getDay(date)];
                                         const isDayToday = isToday(date);
                                         const dateStr = format(date, 'yyyy-MM-dd');
+                                        if (!displayDays.includes(dayName)) return null;
 
                                         return (
                                             <TableRow key={date.toString()} className={cn(isDayToday && "bg-primary/5")}>
