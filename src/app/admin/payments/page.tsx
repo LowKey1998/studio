@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
@@ -35,7 +36,8 @@ import {
     Pencil,
     Tag,
     Equal,
-    GraduationCap
+    GraduationCap,
+    ListChecks
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -120,6 +122,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
+    purpose?: string;
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -137,6 +140,7 @@ type Transaction = {
     status: 'successful' | 'failed';
     method?: string;
     comment?: string;
+    purpose?: string;
     senderName?: string;
     semesterName?: string;
     semesterId?: string;
@@ -286,7 +290,7 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => {
         const offsetRef = ref(db, '.info/serverTimeOffset');
-        onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
+        onValue(offsetRef, (snapshot) => setServerTimeOffset(snapshot.val() || 0));
         return () => off(offsetRef);
     }, []);
 
@@ -469,9 +473,9 @@ export default function PaymentsManagementPage() {
         }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
-        get(savedFiltersRef).then(snap => {
-            if (snap.exists()) {
-                const f = snap.val();
+        get(savedFiltersRef).then(snapshot => {
+            if (snapshot.exists()) {
+                const f = snapshot.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);
@@ -579,6 +583,7 @@ export default function PaymentsManagementPage() {
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
                         nextRow.breakdown = undefined;
+                        nextRow.purpose = undefined;
                     }
                 } else if (field === 'isNewStudent') {
                     if (value) {
@@ -594,6 +599,7 @@ export default function PaymentsManagementPage() {
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
                     nextRow.breakdown = undefined;
+                    nextRow.purpose = undefined;
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
                         nextRow.availableSemesters = semesters.filter(s => String(s.year) === value);
@@ -605,6 +611,7 @@ export default function PaymentsManagementPage() {
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
                     nextRow.breakdown = undefined;
+                    nextRow.purpose = undefined;
                 } else if (field === 'semesterId') {
                     const studentUid = row.userId;
                     const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
@@ -633,6 +640,7 @@ export default function PaymentsManagementPage() {
                             };
                         }
                     }
+                    nextRow.purpose = 'General Balance';
                 }
                 
                 return nextRow;
@@ -656,6 +664,8 @@ export default function PaymentsManagementPage() {
         try {
             for (const record of paymentsToRecord) {
                 const amountFloat = parseFloat(record.amount);
+                const paymentPurpose = record.purpose || 'General Balance';
+                const finalComment = record.comment ? `[For: ${paymentPurpose}] ${record.comment}` : `Payment for ${paymentPurpose}`;
                 
                 if (record.isNewStudent) {
                     const requestRef = push(ref(db, 'studentCreationRequests'));
@@ -666,7 +676,7 @@ export default function PaymentsManagementPage() {
                         targetSemesterId: record.semesterId,
                         timestamp: serverTimestamp(),
                         amountPaid: amountFloat,
-                        comment: record.comment || '',
+                        comment: finalComment,
                         status: 'pending'
                     };
 
@@ -681,7 +691,8 @@ export default function PaymentsManagementPage() {
                         requestId: requestId,
                         senderName: record.tempStudentName,
                         semesterId: record.semesterId,
-                        comment: record.comment || 'Payment for new student registration'
+                        purpose: paymentPurpose,
+                        comment: finalComment
                     };
                 } else {
                     const studentUid = record.userId!;
@@ -717,10 +728,11 @@ export default function PaymentsManagementPage() {
                         status: 'successful',
                         paymentDate: now, 
                         method: 'Manual', 
-                        comment: record.comment || ''
+                        purpose: paymentPurpose,
+                        comment: finalComment
                     };
                     
-                    createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded${semesterInfo ? ` for ${semesterInfo.name}` : ''}.`, '/student/payments').catch(() => {});
+                    createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded for ${paymentPurpose}${semesterInfo ? ` (${semesterInfo.name})` : ''}.`, '/student/payments').catch(() => {});
                 }
             }
             
@@ -1112,6 +1124,27 @@ export default function PaymentsManagementPage() {
                                                 <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">After Pay</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
                                             </div>
                                         ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic px-4 text-center">{row.isNewStudent ? "New registration deposit" : "Complete selection to view audit"}</div>}
+                                        
+                                        {row.semesterId && (
+                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                                <Label className="text-[9px] font-bold uppercase flex items-center gap-1.5"><ListChecks className="h-3 w-3" /> Allocation (Optional)</Label>
+                                                <Select value={row.purpose} onValueChange={v => handleBulkPaymentRowChange(row.key, 'purpose', v)}>
+                                                    <SelectTrigger className="h-9 text-xs bg-white border-primary/20"><SelectValue placeholder="General Balance"/></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="General Balance">General Balance</SelectItem>
+                                                        <Separator className="my-1"/>
+                                                        <SelectItem value="Tuition Fees">Tuition Fees</SelectItem>
+                                                        {row.breakdown?.mandatoryItems?.map((item, i) => (
+                                                            <SelectItem key={`m-opt-${i}`} value={item.name}>{item.name}</SelectItem>
+                                                        ))}
+                                                        {row.breakdown?.optionalItems?.map((item, i) => (
+                                                            <SelectItem key={`o-opt-${i}`} value={item.name}>{item.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="space-y-1"><Label className="text-[9px]">Amount (ZMW)</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
                                             <div className="space-y-1"><Label className="text-[9px]">Comment</Label><Input placeholder="Ref..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
@@ -1183,7 +1216,7 @@ export default function PaymentsManagementPage() {
                                                 <TableHeader className="sticky top-0 bg-background z-10 border-b">
                                                     <TableRow>
                                                         <TableHead>Date</TableHead>
-                                                        <TableHead>Method</TableHead>
+                                                        <TableHead>Allocation</TableHead>
                                                         <TableHead>Comment</TableHead>
                                                         <TableHead className="text-right">Amount</TableHead>
                                                         <TableHead className="w-10"></TableHead>
@@ -1195,8 +1228,12 @@ export default function PaymentsManagementPage() {
                                                         .map(tx => (
                                                             <TableRow key={tx.key} className="group hover:bg-muted/20">
                                                                 <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                                <TableCell><Badge variant="outline" className="text-[9px] uppercase font-black">{tx.method}</Badge></TableCell>
-                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment || '-'}</TableCell>
+                                                                <TableCell>
+                                                                    <Badge variant="outline" className="text-[9px] uppercase font-black px-2 py-0.5">
+                                                                        {tx.purpose || 'General Balance'}
+                                                                    </Badge>
+                                                                </TableCell>
+                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment?.replace(/\[For: [^\]]+\]\s*/, '') || '-'}</TableCell>
                                                                 <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
                                                                 <TableCell>
                                                                     <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => {
