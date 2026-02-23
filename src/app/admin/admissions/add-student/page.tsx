@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Loader2, Search, Pencil, Save, X, KeyRound, Mail, Send, ClipboardList, UserPlus, CheckCircle2, Banknote, Link as LinkIcon } from 'lucide-react';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update, onValue, remove } from 'firebase/database';
+import { ref, set, runTransaction, get, push, query, orderByChild, equalTo, update, onValue, remove, serverTimestamp } from 'firebase/database';
 import { db, createNotification } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { initializeApp, deleteApp } from 'firebase/app';
@@ -244,26 +244,61 @@ export default function AddStudentPage() {
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
                 const newUid = userCredential.user.uid;
                 userDataPayload.id = newId;
-                await set(ref(db, `users/${newUid}`), userDataPayload);
-                await set(ref(db, `userRoles/${newUid}`), { role: 'student' });
                 
+                const updates: Record<string, any> = {};
+                updates[`users/${newUid}`] = userDataPayload;
+                updates[`userRoles/${newUid}`] = { role: 'student' };
+
                 // If this came from a request, link the transaction and remove request
-                if (currentRequestId) {
+                if (currentRequestId && selectedSemester) {
+                    const semester = allSemesters.find(s => s.id === selectedSemester);
+                    const semesterName = semester?.name || 'Current Semester';
+                    
+                    // 1. Generate Invoice first so we have an ID to link the payment to
+                    const invRef = push(ref(db, `invoices/${newUid}`));
+                    const newInvoiceId = invRef.key!;
+                    
+                    updates[`invoices/${newUid}/${newInvoiceId}`] = {
+                        invoiceId: newInvoiceId,
+                        semester: semesterName,
+                        semesterId: selectedSemester,
+                        dateCreated: new Date().toISOString(),
+                        totalTuition: 0,
+                        totalMandatoryFees: 0,
+                        totalOptionalFees: 0,
+                        courses: [],
+                        optionalFees: []
+                    };
+
+                    // 2. Initialize Registration
+                    updates[`registrations/${newUid}/${selectedSemester}`] = {
+                        courses: [],
+                        status: 'Pending Approval',
+                        semesterName: semesterName,
+                        registrationDate: new Date().toISOString(),
+                        programmeId: programme,
+                        intakeId: selectedIntake,
+                        invoiceId: newInvoiceId,
+                        source: 'manual'
+                    };
+
+                    // 3. Find and update the floating transaction
                     const txsSnap = await get(ref(db, 'transactions'));
                     if (txsSnap.exists()) {
                         const txs = txsSnap.val();
                         const targetTxId = Object.keys(txs).find(k => txs[k].requestId === currentRequestId);
                         if (targetTxId) {
-                            await update(ref(db, `transactions/${targetTxId}`), {
-                                userId: newUid,
-                                isUnlinked: null,
-                                requestId: null,
-                                senderName: null
-                            });
+                            updates[`transactions/${targetTxId}/userId`] = newUid;
+                            updates[`transactions/${targetTxId}/invoiceId`] = newInvoiceId;
+                            updates[`transactions/${targetTxId}/isUnlinked`] = null;
+                            updates[`transactions/${targetTxId}/requestId`] = null;
+                            updates[`transactions/${targetTxId}/senderName`] = null;
                         }
                     }
-                    await remove(ref(db, `studentCreationRequests/${currentRequestId}`));
+                    updates[`studentCreationRequests/${currentRequestId}`] = null;
                 }
+
+                await update(ref(db), updates);
 
                 await sendEmail({
                     to: [email],
@@ -295,12 +330,55 @@ export default function AddStudentPage() {
         try {
             const txsSnap = await get(ref(db, 'transactions'));
             const updates: Record<string, any> = {};
+            const now = new Date().toISOString();
             
+            // 1. Identify Target Semester and Invoice for the Existing Student
+            const targetSemId = linkingRequest.targetSemesterId;
+            const semester = allSemesters.find(s => s.id === targetSemId);
+            const semesterName = semester?.name || 'Current Semester';
+
+            const studentRegSnap = await get(ref(db, `registrations/${existingStudentUid}/${targetSemId}`));
+            let invoiceId = '';
+
+            if (studentRegSnap.exists()) {
+                invoiceId = studentRegSnap.val().invoiceId;
+            } else {
+                // If student isn't registered for this semester yet, create minimal registration and invoice
+                const newInvoiceRef = push(ref(db, `invoices/${existingStudentUid}`));
+                invoiceId = newInvoiceRef.key!;
+                
+                updates[`invoices/${existingStudentUid}/${invoiceId}`] = {
+                    invoiceId,
+                    semester: semesterName,
+                    semesterId: targetSemId,
+                    dateCreated: now,
+                    totalTuition: 0,
+                    totalMandatoryFees: 0,
+                    totalOptionalFees: 0,
+                    courses: [],
+                    optionalFees: []
+                };
+
+                const studentInfo = students.find(s => s.uid === existingStudentUid);
+                updates[`registrations/${existingStudentUid}/${targetSemId}`] = {
+                    courses: [],
+                    status: 'Pending Approval',
+                    semesterName: semesterName,
+                    registrationDate: now,
+                    programmeId: studentInfo?.programmeId || '',
+                    intakeId: studentInfo?.intakeId || '',
+                    invoiceId: invoiceId,
+                    source: 'manual'
+                };
+            }
+            
+            // 2. Link the transaction to the existing student and their specific invoice
             if (txsSnap.exists()) {
                 const txs = txsSnap.val();
                 const targetTxId = Object.keys(txs).find(k => txs[k].requestId === linkingRequest.id);
                 if (targetTxId) {
                     updates[`transactions/${targetTxId}/userId`] = existingStudentUid;
+                    updates[`transactions/${targetTxId}/invoiceId`] = invoiceId;
                     updates[`transactions/${targetTxId}/isUnlinked`] = null;
                     updates[`transactions/${targetTxId}/requestId`] = null;
                     updates[`transactions/${targetTxId}/senderName`] = null;
@@ -312,11 +390,11 @@ export default function AddStudentPage() {
             
             await createNotification(
                 existingStudentUid,
-                `A payment of ZMW ${linkingRequest.amountPaid.toFixed(2)} from Finance has been linked to your account.`,
+                `A deposit of ZMW ${linkingRequest.amountPaid.toFixed(2)} has been successfully linked to your ${semesterName} account.`,
                 '/student/payments'
             );
 
-            toast({ title: 'Request Linked Successfully', description: 'The transaction has been assigned to the existing student.' });
+            toast({ title: 'Request Linked Successfully', description: 'The deposit has been correctly assigned to the existing student.' });
             setIsLinkDialogOpen(false);
             setLinkingRequest(null);
             fetchInitialData();
