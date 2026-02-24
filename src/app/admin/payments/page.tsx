@@ -39,14 +39,16 @@ import {
     GraduationCap,
     ListChecks,
     ReceiptText,
-    FileCheck
+    FileCheck,
+    Plus,
+    MoreVertical
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, isBefore } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, isBefore, differenceInCalendarDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -78,6 +80,14 @@ import {
     DialogFooter,
     DialogClose,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type FeeBreakdown = {
     tuition: number;
@@ -101,6 +111,7 @@ type StudentPaymentInfo = {
     programmeId: string | null;
     intakeId: string | null;
     semesterId: string | null;
+    semesterName?: string;
     invoiceId: string;
     enrolledCourses: string[];
     thresholdMet: boolean;
@@ -202,7 +213,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearchTermLocal(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -233,10 +244,6 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
             </PopoverContent>
         </Popover>
     );
-
-    function setSearchTermLocal(val: string) {
-        setSearch(val);
-    }
 }
 
 export default function PaymentsManagementPage() {
@@ -265,8 +272,6 @@ export default function PaymentsManagementPage() {
     const [minPaidFilter, setMinPaidFilter] = React.useState('');
     const [maxPaidFilter, setMaxPaidFilter] = React.useState('');
     const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
-    const [timeFilter, setTimeFilter] = React.useState<'today' | 'week' | 'month' | 'period' | 'all'>('all');
-    const [customRange, setCustomRange] = React.useState<DateRange | undefined>();
 
     // Bulk Recording State
     const [isBulkRecordOpen, setIsBulkRecordOpen] = React.useState(false);
@@ -295,7 +300,8 @@ export default function PaymentsManagementPage() {
         invoices: ref(db, 'invoices'),
         financialSettings: ref(db, 'settings/financialSettings'),
         calendarEvents: ref(db, 'calendarEvents'),
-        academicCalendar: ref(db, 'settings/academicCalendar')
+        academicCalendar: ref(db, 'settings/academicCalendar'),
+        paymentPlans: ref(db, 'settings/paymentPlans')
     }), []);
 
     React.useEffect(() => {
@@ -306,14 +312,11 @@ export default function PaymentsManagementPage() {
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
 
-    const calculateStandingForUser = (userId: string) => {
-        const studentInfo = allStudents.find(s => s.uid === userId);
-        if (!studentInfo || !studentInfo.intakeId || !calendarSettings) return 'N/A';
-        const intake = allIntakes.find(i => i.id === studentInfo.intakeId);
-        const intakeStart = parseIntakeDate(intake?.name || '');
-        if (!intakeStart) return 'N/A';
-        const state = calculateAcademicState(intakeStart, getCurrentServerDate(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {}));
-        return `Year ${state.year}, Sem ${state.semester}`;
+    const getOrdinalSuffix = (i: number) => {
+        if (i === 1) return '1st';
+        if (i === 2) return '2nd';
+        if (i === 3) return '3rd';
+        return `${i}th`;
     };
 
     React.useEffect(() => {
@@ -323,13 +326,13 @@ export default function PaymentsManagementPage() {
         const store: any = {};
 
         const computeDerived = () => {
-            if (!store.users || !store.registrations || !store.semesters) return;
+            if (!store.users || !store.registrations || !store.semesters || !store.intakes) return;
 
             const users = store.users;
             const regsData = store.registrations;
             const txsData = store.transactions || {};
             const semsData = store.semesters;
-            const intsData = store.intakes || {};
+            const intsData = store.intakes;
             const invsData = store.invoices || {};
             const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
             const finData = store.financialSettings || { paymentThreshold: 75 };
@@ -381,14 +384,14 @@ export default function PaymentsManagementPage() {
                             ? (tuition * (scholarPerc / 100))
                             : 0;
 
-                        const totalPayable = tuition - scholarshipAmount + mandatory + optional + late;
+                        const totalDue = tuition - scholarshipAmount + mandatory + optional + late;
 
                         const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
                         const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                        const balance = Math.max(0, totalPayable - totalPaid);
+                        const balance = Math.max(0, totalDue - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
+                        const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
                         const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
@@ -396,7 +399,6 @@ export default function PaymentsManagementPage() {
                         const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
                         const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
 
-                        // Next Installment Due logic
                         let nextInstallmentDue = null;
                         if (reg.paymentPlan) {
                             const plan = Object.values(plansData).find((p:any) => p.name === reg.paymentPlan) as any;
@@ -414,8 +416,9 @@ export default function PaymentsManagementPage() {
 
                         studentPaymentMap[`${userId}-${semesterId}`] = {
                             userId, studentId: profile.id, studentName: profile.name,
-                            totalDue: totalPayable, totalPaid, balance,
+                            totalDue, totalPaid, balance,
                             programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
+                            semesterName: semesterInfo.name,
                             invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
                             thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
                             paidPercentage, targetThreshold: threshold, gracePeriod: grace,
@@ -482,18 +485,17 @@ export default function PaymentsManagementPage() {
             store.academicCalendar = s.val(); 
             computeDerived(); 
         }));
-        unsubs.push(onValue(ref(db, 'settings/paymentPlans'), (s) => {
+        unsubs.push(onValue(dataRefs.paymentPlans, (s) => {
             store.paymentPlans = s.val() || {};
             computeDerived();
         }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
-        get(savedFiltersRef).then(snap => {
-            if (snap.exists()) {
-                const f = snap.val();
+        get(savedFiltersRef).then(snapshot => {
+            if (snapshot.exists()) {
+                const f = snapshot.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
-                if(f.timeFilter) setTimeFilter(f.timeFilter);
             }
         });
 
@@ -508,7 +510,6 @@ export default function PaymentsManagementPage() {
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            
             const planMatch = planStatusFilter === 'all' ? true : (planStatusFilter === 'none' ? !p.paymentPlanName : !!p.paymentPlanName);
             
             let dueMatch = true;
@@ -543,6 +544,130 @@ export default function PaymentsManagementPage() {
         }, { today: 0, month: 0 });
     }, [rawTransactions, serverTimeOffset]);
 
+    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
+        setBulkPaymentRows(prev => prev.map(row => {
+            if (row.key === key) {
+                const updatedRow = { ...row, [field]: value };
+                
+                if (field === 'year') {
+                    updatedRow.semesterId = '';
+                    updatedRow.availableSemesters = semesters.filter(s => 
+                        String(s.year) === value && 
+                        (updatedRow.isNewStudent ? s.status === 'Open' : true)
+                    );
+                }
+
+                if (field === 'userId' && !updatedRow.isNewStudent) {
+                    const latest = paymentInfos.filter(p => p.userId === value).sort((a,b) => b.semesterName!.localeCompare(a.semesterName!))[0];
+                    if (latest) {
+                        updatedRow.totalDue = latest.totalDue;
+                        updatedRow.totalPaid = latest.totalPaid;
+                        updatedRow.breakdown = latest.breakdown;
+                        updatedRow.semesterId = latest.semesterId || '';
+                        updatedRow.year = String(semesters.find(s=>s.id===latest.semesterId)?.year || '');
+                        updatedRow.availableYears = Array.from(new Set(semesters.filter(s=>s.intakeId === latest.intakeId).map(s=>String(s.year)))).sort();
+                        updatedRow.availableSemesters = semesters.filter(s=>s.intakeId === latest.intakeId && String(s.year) === updatedRow.year);
+                    }
+                }
+
+                if (field === 'isNewStudent') {
+                    updatedRow.userId = undefined;
+                    updatedRow.tempStudentId = '';
+                    updatedRow.tempStudentName = '';
+                    updatedRow.year = '';
+                    updatedRow.semesterId = '';
+                    const maxYear = Math.max(...semesters.map(s => s.year), 1);
+                    updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
+                }
+
+                return updatedRow;
+            }
+            return row;
+        }));
+    };
+
+    const handleRemovePaymentRow = (key: number) => {
+        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
+    };
+
+    const handleSaveAllBulk = async () => {
+        if (!user || !userData) return;
+        setFormLoading(true);
+        try {
+            const updates: Record<string, any> = {};
+            const now = new Date().toISOString();
+
+            for (const row of bulkPaymentRows) {
+                const amount = parseFloat(row.amount);
+                if (isNaN(amount) || amount <= 0) continue;
+
+                if (row.isNewStudent) {
+                    const reqRef = push(ref(db, 'studentCreationRequests'));
+                    const txRef = push(ref(db, 'transactions'));
+                    const requestId = reqRef.key!;
+                    
+                    updates[`studentCreationRequests/${requestId}`] = {
+                        tempId: row.tempStudentId,
+                        tempName: row.tempStudentName,
+                        targetSemesterId: row.semesterId,
+                        amountPaid: amount,
+                        comment: row.comment,
+                        status: 'pending',
+                        timestamp: Date.now()
+                    };
+
+                    updates[`transactions/${txRef.key}`] = {
+                        transactionId: `DEP-${Date.now()}`,
+                        userId: 'unlinked',
+                        amount,
+                        paymentDate: now,
+                        status: 'successful',
+                        method: 'Cash/Direct',
+                        purpose: row.allocations.join(', ') || 'Initial Deposit',
+                        comment: row.comment,
+                        recordedBy: userData.name,
+                        isUnlinked: true,
+                        requestId,
+                        senderName: row.tempStudentName,
+                        tempId: row.tempStudentId
+                    };
+                } else if (row.userId) {
+                    const student = paymentInfos.find(p => p.userId === row.userId && p.semesterId === row.semesterId);
+                    if (!student) continue;
+
+                    const txRef = push(ref(db, 'transactions'));
+                    updates[`transactions/${txRef.key}`] = {
+                        transactionId: `CASH-${Date.now()}`,
+                        userId: row.userId,
+                        invoiceId: student.invoiceId,
+                        amount,
+                        paymentDate: now,
+                        status: 'successful',
+                        method: 'Cash/Direct',
+                        purpose: row.allocations.join(', ') || 'Fees Payment',
+                        comment: row.comment,
+                        recordedBy: userData.name
+                    };
+
+                    await createNotification(
+                        row.userId,
+                        `A payment of ZMW ${amount.toFixed(2)} was recorded for your ${student.semesterName} invoice.`,
+                        '/student/payments'
+                    );
+                }
+            }
+
+            await update(ref(db), updates);
+            toast({ variant: 'success', title: 'Transactions Recorded', description: `${bulkPaymentRows.length} payment(s) processed.` });
+            setIsBulkRecordOpen(false);
+            setBulkPaymentRows([]);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Save Failed', description: e.message });
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
     const handleSaveAdjustment = async () => {
         if (!adjustmentTarget || !adjAmount || !adjReason.trim() || !user || !userData) return;
         setFormLoading(true);
@@ -551,12 +676,11 @@ export default function PaymentsManagementPage() {
             const txRef = push(ref(db, 'transactions'));
             const now = new Date().toISOString();
             
-            // For adjustments, we create a special transaction record
             await set(txRef, {
                 transactionId: `${adjustmentTarget.type.toUpperCase()}-${Date.now()}`,
                 userId: adjustmentTarget.userId,
                 invoiceId: adjustmentTarget.invoiceId,
-                amount: adjustmentTarget.type === 'credit' ? amountFloat : -amountFloat, // Credit reduces balance, Debit increases it
+                amount: adjustmentTarget.type === 'credit' ? amountFloat : -amountFloat,
                 status: 'successful',
                 paymentDate: now,
                 method: 'Adjustment',
@@ -565,7 +689,6 @@ export default function PaymentsManagementPage() {
                 recordedBy: userData.name
             });
 
-            // If it's a debit note (increasing student debt), we add it to the invoice total or late fees
             if (adjustmentTarget.type === 'debit') {
                 const invRef = ref(db, `invoices/${adjustmentTarget.userId}/${adjustmentTarget.invoiceId}`);
                 const invSnap = await get(invRef);
@@ -575,7 +698,7 @@ export default function PaymentsManagementPage() {
                 }
             }
 
-            toast({ title: 'Adjustment Recorded', description: `${adjustmentTarget.type === 'credit' ? 'Credit' : 'Debit'} note processed.` });
+            toast({ title: 'Adjustment Recorded' });
             setIsAdjustmentOpen(false);
             setAdjAmount('');
             setAdjReason('');
@@ -597,7 +720,7 @@ export default function PaymentsManagementPage() {
         
         doc.text(`Student: ${student.studentName}`, 14, 60);
         doc.text(`Student ID: ${student.studentId}`, 14, 65);
-        doc.text(`Semester: ${student.semesterName}`, 14, 70);
+        doc.text(`Semester: ${student.semesterName || 'N/A'}`, 14, 70);
 
         autoTable(doc, {
             startY: 80,
@@ -612,6 +735,22 @@ export default function PaymentsManagementPage() {
 
         doc.text("Thank you for your payment.", 14, (doc as any).lastAutoTable.finalY + 20);
         doc.save(`Receipt_${tx.transactionId}.pdf`);
+    };
+
+    const handleSaveAsDefault = async () => {
+        if (!user || !userData) return;
+        setSaving(true);
+        try {
+            await set(ref(db, `settings/paymentFilters/${userData.uid}`), {
+                programmeFilter,
+                intakeFilter
+            });
+            toast({ title: 'Filters Saved' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Save Failed' });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const studentOptions: OptionGroup[] = React.useMemo(() => {
@@ -710,7 +849,32 @@ export default function PaymentsManagementPage() {
                                                 {info.paymentPlanName ? <Badge variant="outline" className="w-fit h-4 text-[8px] uppercase border-primary/20">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="w-fit h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end">
+                                                        <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
+                                                        <span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span>
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-80 p-4">
+                                                    <div className="space-y-3">
+                                                        <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Balance Breakdown</h4>
+                                                        <div className="space-y-1.5 text-xs">
+                                                            <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
+                                                            {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship credit:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
+                                                            {info.breakdown.mandatoryItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
+                                                            {info.breakdown.optionalItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
+                                                            {info.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fees:</span> <span className="font-bold">ZMW {info.breakdown.late.toFixed(2)}</span></div>}
+                                                            <Separator className="my-2" />
+                                                            <div className="flex justify-between font-black"><span>Net Semester Total:</span> <span>ZMW {info.totalDue.toFixed(2)}</span></div>
+                                                            <div className="flex justify-between text-green-600"><span>Cleared to date:</span> <span>- ZMW {info.totalPaid.toFixed(2)}</span></div>
+                                                            <div className="flex justify-between font-black text-destructive text-lg pt-1 border-t"><span>Still Due:</span> <span>ZMW {info.balance.toFixed(2)}</span></div>
+                                                        </div>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
+                                        </TableCell>
                                         <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                         <TableCell className="text-center">
                                             {info.nextInstallmentDue ? (
@@ -852,10 +1016,4 @@ export default function PaymentsManagementPage() {
             </Dialog>
         </div>
     );
-
-    function handleSaveAsDefault() {}
-    function handleRemovePaymentRow(key: number) {
-        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
-    }
-    function handleExport() {}
 }

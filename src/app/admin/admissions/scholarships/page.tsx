@@ -6,16 +6,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, Printer, GraduationCap, UserCheck, UserMinus, PlusCircle, Filter } from 'lucide-react';
+import { Loader2, Search, Printer, GraduationCap, UserCheck, PlusCircle, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { ref, onValue, update, get } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
 
 type Student = {
     uid: string;
