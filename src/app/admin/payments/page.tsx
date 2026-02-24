@@ -62,7 +62,6 @@ import autoTable from 'jspdf-autotable';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/use-auth';
 import { Calendar } from '@/components/ui/calendar';
-import type { DateRange } from 'react-day-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -311,13 +310,6 @@ export default function PaymentsManagementPage() {
     }, []);
 
     const getCurrentServerDate = () => new Date(Date.now() + serverTimeOffset);
-
-    const getOrdinalSuffix = (i: number) => {
-        if (i === 1) return '1st';
-        if (i === 2) return '2nd';
-        if (i === 3) return '3rd';
-        return `${i}th`;
-    };
 
     React.useEffect(() => {
         if (!userData?.uid) return;
@@ -825,6 +817,24 @@ export default function PaymentsManagementPage() {
                             <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
                         </div>
                         <div className="space-y-1 lg:col-span-2"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Min Paid</Label>
+                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Max Paid</Label>
+                            <Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] font-black uppercase">Equal to</Label>
+                            <div className="relative">
+                                <Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/>
+                                <Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs" />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
