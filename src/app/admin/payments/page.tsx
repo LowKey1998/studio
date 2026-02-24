@@ -132,6 +132,7 @@ type StudentPaymentInfo = {
     paymentPlanName?: string;
     nextInstallmentDue?: string | null;
     isProvisional?: boolean;
+    transactions: Transaction[];
 };
 
 type PaymentRecord = {
@@ -178,7 +179,7 @@ type Semester = { id: string; name: string; intakeId: string; year: number; seme
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
-type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
+type OptionGroup = { groupName: string; items: { value: string; label: string } };
 
 function SearchableSelect({ options, value, onValueChange, placeholder, disabled = false }: {
     options: OptionGroup[];
@@ -218,9 +219,9 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
             </PopoverTrigger>
             <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" side="bottom" align="start">
                 <div className="p-2">
-                    <Input 
+                    <input 
                         placeholder="Search roster..." 
-                        className="h-9 text-xs" 
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         value={search} 
                         onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
@@ -263,7 +264,6 @@ export default function PaymentsManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
-    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
@@ -314,7 +314,8 @@ export default function PaymentsManagementPage() {
         calendarEvents: ref(db, 'calendarEvents'),
         academicCalendar: ref(db, 'settings/academicCalendar'),
         paymentPlans: ref(db, 'settings/paymentPlans'),
-        configs: ref(db, 'semesterConfigs')
+        configs: ref(db, 'semesterConfigs'),
+        defaults: ref(db, 'settings/admin/finance/filters')
     }), []);
 
     React.useEffect(() => {
@@ -479,7 +480,8 @@ export default function PaymentsManagementPage() {
                         paymentPlanName: reg.paymentPlan || null,
                         nextInstallmentDue,
                         breakdown: billingResults.breakdown,
-                        isProvisional
+                        isProvisional,
+                        transactions: invoiceTransactions
                     });
                 }
             }
@@ -488,63 +490,27 @@ export default function PaymentsManagementPage() {
             setLoading(false);
         };
 
-        unsubs.push(onValue(dataRefs.users, (snapshot) => {
-            const data = snapshot.val() || {};
-            const studentList: StudentInfo[] = [];
-            for (const uid in data) {
-                if (data[uid].role?.toLowerCase() === 'student') {
-                    studentList.push({ uid, id: data[uid].id, name: data[uid].name, intakeId: data[uid].intakeId, programmeId: data[uid].programmeId });
-                }
-            }
-            setAllStudents(studentList.sort((a,b) => a.name.localeCompare(b.name)));
-            store.users = data;
-            computeDerived();
-        }));
-
+        unsubs.push(onValue(dataRefs.users, (snapshot) => { store.users = snapshot.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.registrations, (s) => { store.registrations = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.transactions, (s) => { store.transactions = s.val() || {}; computeDerived(); }));
-        unsubs.push(onValue(dataRefs.programmes, (s) => {
-            const data = s.val() || {};
-            setProgrammes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
-            store.programmes = data;
-            computeDerived();
-        }));
-        unsubs.push(onValue(dataRefs.semesters, (s) => {
-            const data = s.val() || {};
-            setSemesters(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
-            store.semesters = data;
-            computeDerived();
-        }));
-        unsubs.push(onValue(dataRefs.intakes, (s) => {
-            const data = s.val() || {};
-            setAllIntakes(Object.entries(data).map(([id, d]:[string,any]) => ({id, ...d})));
-            store.intakes = data;
-            computeDerived();
-        }));
-        unsubs.push(onValue(dataRefs.courses, (s) => { 
-            setAllCourses(s.val() || {}); 
-            store.courses = s.val() || {};
-            computeDerived();
-        }));
+        unsubs.push(onValue(dataRefs.programmes, (s) => { setProgrammes(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.programmes = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.semesters, (s) => { setSemesters(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.semesters = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.intakes, (s) => { setAllIntakes(Object.entries(s.val() || {}).map(([id, d]:[string,any]) => ({id, ...d}))); store.intakes = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.courses, (s) => { setAllCourses(s.val() || {}); store.courses = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(); }));
-        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { 
-            setFinancialSettings(snapshot.val()); 
-            store.financialSettings = snapshot.val(); 
-            computeDerived(); 
-        }));
+        unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { setFinancialSettings(snapshot.val()); store.financialSettings = snapshot.val(); computeDerived(); }));
         unsubs.push(onValue(dataRefs.calendarEvents, (s) => { store.calendarEvents = s.val() || {}; computeDerived(); }));
-        unsubs.push(onValue(dataRefs.academicCalendar, (s) => { 
-            setCalendarSettings(s.val()); 
-            store.academicCalendar = s.val(); 
-            computeDerived(); 
-        }));
-        unsubs.push(onValue(dataRefs.paymentPlans, (s) => {
-            const data = s.val() || {};
-            setAllPaymentPlans(Object.keys(data).map(id => ({id, ...data[id]})));
-            store.paymentPlans = data;
-            computeDerived();
-        }));
+        unsubs.push(onValue(dataRefs.paymentPlans, (s) => { setAllPaymentPlans(Object.keys(s.val() || {}).map(id => ({id, ...s.val()[id]}))); store.paymentPlans = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(); }));
+        unsubs.push(onValue(dataRefs.defaults, (s) => {
+            if (s.exists()) {
+                const d = s.val();
+                if (d.programmeFilter) setProgrammeFilter(d.programmeFilter);
+                if (d.intakeFilter) setIntakeFilter(d.intakeFilter);
+                if (d.semesterFilter) setSemesterFilter(d.semesterFilter);
+                if (d.planStatusFilter) setPlanStatusFilter(d.planStatusFilter);
+            }
+        }));
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, serverTimeOffset, dataRefs]);
@@ -576,15 +542,15 @@ export default function PaymentsManagementPage() {
                 }
             }
 
-            const regDate = p.registrationDate ? parseISO(p.registrationDate) : null;
             let dateMatch = true;
-            if (dateRange.from && regDate) {
-                dateMatch = isAfter(regDate, dateRange.from) || format(regDate, 'yyyy-MM-dd') === format(dateRange.from, 'yyyy-MM-dd');
-                if (dateRange.to && dateMatch) {
-                    dateMatch = isBefore(regDate, dateRange.to) || format(regDate, 'yyyy-MM-dd') === format(dateRange.to, 'yyyy-MM-dd');
-                }
-            } else if (dateRange.from && !regDate) {
-                dateMatch = false;
+            if (dateRange.from) {
+                const hasPaymentInRange = p.transactions.some(t => {
+                    const txDate = parseISO(t.paymentDate);
+                    const isAfterFrom = isAfter(txDate, dateRange.from!) || format(txDate, 'yyyy-MM-dd') === format(dateRange.from!, 'yyyy-MM-dd');
+                    const isBeforeTo = !dateRange.to || isBefore(txDate, dateRange.to) || format(txDate, 'yyyy-MM-dd') === format(dateRange.to!, 'yyyy-MM-dd');
+                    return isAfterFrom && isBeforeTo;
+                });
+                dateMatch = hasPaymentInRange;
             }
 
             const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
@@ -594,6 +560,18 @@ export default function PaymentsManagementPage() {
             return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch && minMatch && maxMatch && equalMatch;
         });
     }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
+
+    const handleSaveFiltersAsDefault = async () => {
+        try {
+            await set(dataRefs.defaults, {
+                programmeFilter,
+                intakeFilter,
+                semesterFilter,
+                planStatusFilter
+            });
+            toast({ title: "Defaults Saved", description: "Current filter selection will be loaded by default next time." });
+        } catch (e) { toast({ variant: 'destructive', title: 'Save Failed' }); }
+    };
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -712,6 +690,12 @@ export default function PaymentsManagementPage() {
 
         setBulkPaymentRows([initialRow]);
         setIsBulkRecordOpen(true);
+    };
+
+    const handleRemovePaymentRow = (key: number) => {
+        if (bulkPaymentRows.length > 1) {
+            setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
+        }
     };
 
     const handleSaveAllBulk = async () => {
@@ -881,7 +865,10 @@ export default function PaymentsManagementPage() {
                 <CardHeader className="border-b">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div><CardTitle>Receivables & Audit</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
-                        <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={handleSaveFiltersAsDefault}><Save className="mr-2 h-4 w-4"/> Save View as Default</Button>
+                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
@@ -902,10 +889,10 @@ export default function PaymentsManagementPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-dashed items-end">
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Registration Period</Label>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Date Period (Payments)</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateRange.from && "text-muted-foreground")}>
+                                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateRange.from && "text-muted-foreground border-dashed")}>
                                         <CalendarIcon className="mr-2 h-3 w-3" />
                                         {dateRange.from ? (dateRange.to ? `${format(dateRange.from, "PP")} - ${format(dateRange.to, "PP")}` : format(dateRange.from, "PP")) : <span>Pick a range</span>}
                                     </Button>
@@ -1072,7 +1059,7 @@ export default function PaymentsManagementPage() {
                                 {paymentInfos.filter(p => p.userId === historyStudent.userId).map(p => (
                                     <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
                                         <div className="p-4 bg-muted/30 border-b flex justify-between items-center"><div><p className="text-sm font-bold">{p.semesterName}</p></div><div className="flex gap-6 text-[10px] font-black uppercase"><span>Due: K{p.totalDue.toFixed(2)}</span><span className="text-green-600">Paid: K{p.totalPaid.toFixed(2)}</span><span className="text-destructive">Bal: K{p.balance.toFixed(2)}</span></div></div>
-                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead><TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
+                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead>                                    <TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
                                         {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (<TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
                                     </TabsContent>
                                 ))}

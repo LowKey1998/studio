@@ -215,7 +215,7 @@ export const allMenuItems = [
       ]
   },
     {
-        label: 'Research & Innovation',
+        label: 'Research',
         icon: Telescope,
         roles: ['Admin'],
         items: [
@@ -247,6 +247,17 @@ export const allMenuItems = [
             { href: '/admin/innovation/idea-board', label: 'Startup Idea Board', icon: Newspaper },
             { href: '/admin/innovation/collaboration-portal', label: 'Collaboration / Team Building Portal', icon: Users },
         ]
+    },
+    {
+      label: 'Graduation',
+      icon: FileBadge,
+      roles: ['Admin'],
+      items: [
+          { href: '/admin/exams/grade-approval', label: 'Final Grade Approvals', icon: CheckCircle2 },
+          { href: '/admin/exams/transcript-generation', label: 'Transcript Generation', icon: FileText },
+          { href: '/admin/exams/certificate-printing', label: 'Certificate Printing', icon: FileCheck },
+          { href: '/admin/addons/alumni', label: 'Alumni Directory', icon: Users2 },
+      ]
     },
     {
       label: 'Quality Assurance',
