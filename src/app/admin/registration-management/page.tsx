@@ -577,7 +577,7 @@ export default function RegistrationManagementPage() {
                 case 3: setAllCoursePaths(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 4: setActivePathSemesters(data); break;
                 case 5: setAllPaymentPlans(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
-                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
+                case 6: setSemesters(Object.keys(data).map(id => ({ id, ...data[id] })).sort((a,b) => b.name.localeCompare(a.name))); break;
                 case 7: setFeeTemplates(Object.keys(data).map(id => ({ id, ...data[id] }))); break;
                 case 8: setCalendarEvents(Object.entries(data).map(([id, d]:[string, any])=>({id, ...d}))); break;
                 case 9: setAllUsers(data); break;
@@ -696,22 +696,6 @@ export default function RegistrationManagementPage() {
         }
     };
 
-    const isSemesterVisible = (sem: Semester) => {
-        if (semesterTypeFilter === 'all') return true;
-        const now = startOfDay(new Date());
-        if (!sem.startDate) return false;
-        const start = parseISO(sem.startDate);
-        const end = sem.endDate ? parseISO(sem.endDate) : start;
-
-        if (semesterTypeFilter === 'current') {
-            return isWithinInterval(now, { start, end });
-        }
-        if (semesterTypeFilter === 'upcoming') {
-            return isAfter(start, now);
-        }
-        return true;
-    };
-
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -753,6 +737,13 @@ export default function RegistrationManagementPage() {
                     const intakeStartStr = parseIntakeDate(intake.name);
                     const standing = intakeStartStr && calendarSettings ? calculateAcademicState(intakeStartStr, new Date(), calendarSettings.standardCycles, Object.values(calendarSettings.anomalies || {})) : null;
 
+                    // Logic for sequential phase calculation
+                    const cyclesPerYear = calendarSettings?.standardCycles?.length || 2;
+                    const nextPhase = standing ? {
+                        year: standing.semester >= cyclesPerYear ? standing.year + 1 : standing.year,
+                        semester: standing.semester >= cyclesPerYear ? 1 : standing.semester + 1
+                    } : null;
+
                     return (
                     <AccordionItem value={intake.id} key={intake.id}>
                         <AccordionTrigger className="px-4 hover:no-underline hover:bg-muted/30">
@@ -768,7 +759,19 @@ export default function RegistrationManagementPage() {
                                 
                                 const relevantSemesters = Object.keys(path.semesters).filter(semId => {
                                     const sem = semesters.find(s => s.id === semId);
-                                    return sem && sem.intakeId === intake.id && isSemesterVisible(sem);
+                                    if (!sem || sem.intakeId !== intake.id) return false;
+                                    
+                                    if (semesterTypeFilter === 'all') return true;
+                                    
+                                    if (semesterTypeFilter === 'current') {
+                                        return standing && sem.year === standing.year && sem.semesterInYear === standing.semester;
+                                    }
+                                    
+                                    if (semesterTypeFilter === 'upcoming') {
+                                        return nextPhase && sem.year === nextPhase.year && sem.semesterInYear === nextPhase.semester;
+                                    }
+                                    
+                                    return true;
                                 });
 
                                 if (relevantSemesters.length === 0 && semesterTypeFilter !== 'all') return null;
@@ -889,7 +892,7 @@ export default function RegistrationManagementPage() {
                                                             <Button variant="ghost" size="icon" className={cn("h-8 w-8", sem.isFeesSet ? "text-blue-600" : "text-muted-foreground")} onClick={() => handleToggleFeesSet(sem)} title={sem.isFeesSet ? "Unfinalize Fees" : "Finalize Fees"}>
                                                                 <ShieldCheck className="h-4 w-4"/>
                                                             </Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setEditInitialTab('details'); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDeadlineDialog(sem)}><CalendarIcon className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }}><Trash2 className="h-4 w-4"/></Button>
                                                         </CardFooter>
