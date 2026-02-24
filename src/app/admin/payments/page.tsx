@@ -558,16 +558,37 @@ export default function PaymentsManagementPage() {
                 }
 
                 if (field === 'userId' && !updatedRow.isNewStudent) {
-                    const latest = paymentInfos.filter(p => p.userId === value).sort((a,b) => b.semesterName!.localeCompare(a.semesterName!))[0];
-                    if (latest) {
-                        updatedRow.totalDue = latest.totalDue;
-                        updatedRow.totalPaid = latest.totalPaid;
-                        updatedRow.breakdown = latest.breakdown;
-                        updatedRow.semesterId = latest.semesterId || '';
-                        updatedRow.academicStanding = latest.semesterName;
-                        updatedRow.year = String(semesters.find(s=>s.id===latest.semesterId)?.year || '');
-                        updatedRow.availableYears = Array.from(new Set(semesters.filter(s=>s.intakeId === latest.intakeId).map(s=>String(s.year)))).sort();
-                        updatedRow.availableSemesters = semesters.filter(s=>s.intakeId === latest.intakeId && String(s.year) === updatedRow.year);
+                    const studentProfile = allStudents.find(s => s.uid === value);
+                    const intake = allIntakes.find(i => i.id === studentProfile?.intakeId);
+                    const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+                    
+                    if (intakeStartStr && calendarSettings) {
+                        const state = calculateAcademicState(
+                            intakeStartStr,
+                            getCurrentServerDate(),
+                            calendarSettings.standardCycles,
+                            Object.values(calendarSettings.anomalies || {})
+                        );
+                        
+                        const latestSemester = semesters.find(s => 
+                            s.intakeId === intake?.id && 
+                            s.year === state.year && 
+                            s.semesterInYear === state.semester
+                        );
+
+                        if (latestSemester) {
+                            const paymentInfo = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
+                            if (paymentInfo) {
+                                updatedRow.totalDue = paymentInfo.totalDue;
+                                updatedRow.totalPaid = paymentInfo.totalPaid;
+                                updatedRow.breakdown = paymentInfo.breakdown;
+                                updatedRow.semesterId = latestSemester.id;
+                                updatedRow.academicStanding = latestSemester.name;
+                                updatedRow.year = String(latestSemester.year);
+                                updatedRow.availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake?.id).map(s => String(s.year)))).sort();
+                                updatedRow.availableSemesters = semesters.filter(s => s.intakeId === intake?.id && String(s.year) === updatedRow.year);
+                            }
+                        }
                     }
                 }
 
@@ -855,7 +876,7 @@ export default function PaymentsManagementPage() {
                                     <TableHead>User & Plan</TableHead>
                                     <TableHead className="text-right">Balance</TableHead>
                                     <TableHead className="text-right">Paid</TableHead>
-                                    <TableHead className="text-center">Next Due</TableHead>
+                                    <TableHead className="text-center">Standing</TableHead>
                                     <TableHead className="w-10"></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -897,12 +918,18 @@ export default function PaymentsManagementPage() {
                                         </TableCell>
                                         <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                         <TableCell className="text-center">
-                                            {info.nextInstallmentDue ? (
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] font-bold">{format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
-                                                    {isBefore(parseISO(info.nextInstallmentDue), getCurrentServerDate()) && <span className="text-[8px] text-destructive font-black uppercase">Overdue</span>}
-                                                </div>
-                                            ) : <span className="text-[10px] opacity-40 italic">N/A</span>}
+                                            <div className="flex flex-col items-center">
+                                                {info.balance <= 0.01 ? (
+                                                    <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge>
+                                                ) : info.thresholdMet ? (
+                                                    <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge>
+                                                ) : (
+                                                    <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>
+                                                )}
+                                                {info.nextInstallmentDue && (
+                                                    <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next Due: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <DropdownMenu>
@@ -1056,50 +1083,97 @@ export default function PaymentsManagementPage() {
             </Dialog>
 
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-primary/10 rounded-lg"><HistoryIcon className="h-5 w-5 text-primary"/></div>
                             <div>
-                                <DialogTitle>Statement of Account</DialogTitle>
+                                <DialogTitle>Student Statement of Account</DialogTitle>
                                 <DialogDescription className="font-bold text-foreground">{historyStudent?.studentName} ({historyStudent?.studentId})</DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
                     {historyStudent && (
-                        <ScrollArea className="flex-1 mt-6 border rounded-xl bg-muted/5 overflow-hidden">
-                            <Table>
-                                <TableHeader className="bg-muted/50 sticky top-0 z-10">
-                                    <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Ref / Purpose</TableHead>
-                                        <TableHead className="text-right">Credit (+)</TableHead>
-                                        <TableHead className="text-right">Debit (-)</TableHead>
-                                        <TableHead className="text-right">Audit</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {rawTransactions
-                                        .filter(t => t.userId === historyStudent.userId && t.invoiceId === historyStudent.invoiceId)
-                                        .map(tx => (
-                                            <TableRow key={tx.key} className="hover:bg-white transition-colors">
-                                                <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                <TableCell>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-xs leading-none">{tx.purpose || 'Fees Payment'}</span>
-                                                        <span className="text-[9px] opacity-40 font-mono mt-1 tracking-tighter">ID: {tx.transactionId}</span>
+                        <div className="flex-1 mt-6 overflow-hidden flex flex-col">
+                            <Tabs defaultValue={historyStudent.semesterId || ''} className="flex-1 flex flex-col overflow-hidden">
+                                <TabsList className="justify-start bg-muted/50 p-1 h-auto flex-wrap">
+                                    {paymentInfos
+                                        .filter(p => p.userId === historyStudent.userId)
+                                        .sort((a, b) => b.semesterName!.localeCompare(a.semesterName!))
+                                        .map(p => (
+                                            <TabsTrigger key={p.semesterId} value={p.semesterId!} className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                                                {p.semesterName?.split(' ').slice(-2).join(' ')}
+                                            </TabsTrigger>
+                                        ))
+                                    }
+                                </TabsList>
+                                
+                                {paymentInfos
+                                    .filter(p => p.userId === historyStudent.userId)
+                                    .map(p => (
+                                        <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
+                                            <div className="p-4 bg-muted/30 border-b flex justify-between items-center">
+                                                <div>
+                                                    <span className="text-[10px] font-black uppercase text-muted-foreground">Semester Summary</span>
+                                                    <p className="text-sm font-bold">{p.semesterName}</p>
+                                                </div>
+                                                <div className="flex gap-6">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-bold opacity-60">Total Due</span>
+                                                        <span className="text-sm font-black">K{p.totalDue.toFixed(2)}</span>
                                                     </div>
-                                                </TableCell>
-                                                <TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
-                                                <TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 text-primary" onClick={() => generateReceipt(tx, historyStudent)}><Download className="h-4 w-4"/></Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                </TableBody>
-                            </Table>
-                        </ScrollArea>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-bold opacity-60">Paid</span>
+                                                        <span className="text-sm font-black text-green-600">K{p.totalPaid.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-bold opacity-60">Balance</span>
+                                                        <span className="text-sm font-black text-destructive">K{p.balance.toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <ScrollArea className="flex-1">
+                                                <Table>
+                                                    <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
+                                                        <TableRow>
+                                                            <TableHead>Date</TableHead>
+                                                            <TableHead>Ref / Purpose</TableHead>
+                                                            <TableHead className="text-right">Credit (+)</TableHead>
+                                                            <TableHead className="text-right">Debit (-)</TableHead>
+                                                            <TableHead className="text-right">Audit</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {rawTransactions
+                                                            .filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId)
+                                                            .map(tx => (
+                                                                <TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b last:border-0">
+                                                                    <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex flex-col">
+                                                                            <span className="font-bold text-xs leading-none">{tx.purpose || 'Fees Payment'}</span>
+                                                                            <span className="text-[9px] opacity-40 font-mono mt-1 tracking-tighter">ID: {tx.transactionId}</span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
+                                                                    <TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ))}
+                                                        {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (
+                                                            <TableRow>
+                                                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell>
+                                                            </TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </ScrollArea>
+                                        </TabsContent>
+                                    ))}
+                            </Tabs>
+                        </div>
                     )}
                 </DialogContent>
             </Dialog>
