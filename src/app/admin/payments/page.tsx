@@ -13,42 +13,28 @@ import {
     Search,
     PlusCircle,
     Users,
-    PiggyBank,
     Scale,
     Trash2,
     ChevronsUpDown,
     Clock,
     CalendarDays,
-    TrendingUp,
-    MapPin,
     Wallet,
     History as HistoryIcon,
     Calendar as CalendarIcon,
     Save,
-    ShieldAlert,
     Info,
     X,
-    UserCheck,
-    Lock,
-    Unlock,
-    ArrowRight,
-    Pencil,
-    Tag,
-    Equal,
-    GraduationCap,
-    ListChecks,
-    ReceiptText,
-    FileCheck,
-    Plus,
+    Banknote,
     MoreVertical,
-    Banknote
+    Plus,
+    FileCheck
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
-import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval } from 'date-fns';
+import { ref, get, update, set, push, onValue, off, serverTimestamp } from 'firebase/database';
+import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval, isToday, isThisWeek, isThisMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -76,13 +62,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/use-auth';
 import { Calendar } from '@/components/ui/calendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseIntakeDate, calculateAcademicState } from '@/lib/semester-utils';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
@@ -561,6 +545,15 @@ export default function PaymentsManagementPage() {
         });
     }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
 
+    const cashFlowStats = React.useMemo(() => {
+        const now = getCurrentServerDate();
+        const todayTotal = rawTransactions.filter(t => isToday(parseISO(t.paymentDate))).reduce((acc, t) => acc + t.amount, 0);
+        const weekTotal = rawTransactions.filter(t => isThisWeek(parseISO(t.paymentDate), { weekStartsOn: 1 })).reduce((acc, t) => acc + t.amount, 0);
+        const monthTotal = rawTransactions.filter(t => isThisMonth(parseISO(t.paymentDate))).reduce((acc, t) => acc + t.amount, 0);
+        
+        return { todayTotal, weekTotal, monthTotal };
+    }, [rawTransactions, serverTimeOffset]);
+
     const handleSaveFiltersAsDefault = async () => {
         try {
             await set(dataRefs.defaults, {
@@ -855,8 +848,10 @@ export default function PaymentsManagementPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Collected</CardTitle><Scale className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {filteredData.reduce((sum, p) => sum + p.totalPaid, 0).toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collection</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {cashFlowStats.todayTotal.toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Week</CardTitle><CalendarDays className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.weekTotal.toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle><Scale className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {cashFlowStats.monthTotal.toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
                     </div>
                 </CardContent>
             </Card>

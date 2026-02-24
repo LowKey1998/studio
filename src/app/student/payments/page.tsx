@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -39,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
 import { calculateBilling } from '@/lib/billing-utils';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 type Invoice = { 
     invoiceId: string; 
@@ -191,7 +191,6 @@ export default function StudentPaymentsPage() {
                     let billingResults;
                     let isProvisional = false;
 
-                    // Load from versioned snapshot if available, otherwise fallback
                     const configSnapshot = (reg.configId && allConfigs[semId]?.[reg.configId]) || (invoice?.configId && allConfigs[semId]?.[invoice.configId]);
                     const activeSemesterRules = configSnapshot || semesterInfo;
 
@@ -215,7 +214,6 @@ export default function StudentPaymentsPage() {
                             }
                         };
                     } else {
-                        // FALLBACK: Load from registration settings
                         isProvisional = true;
                         const billingOutput = calculateBilling({
                             policy: activeSemesterRules.billingPolicy || institutionSettings.billingPolicy || 'course',
@@ -336,7 +334,6 @@ export default function StudentPaymentsPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Download Failed' });
         } finally {
-            setLoading(false);
             setActionLoading(null);
         }
     };
