@@ -884,7 +884,7 @@ export default function PaymentsManagementPage() {
                                                             <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
                                                             {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship credit:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
                                                             {info.breakdown.mandatoryItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
-                                                            {info.breakdown.optionalItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
+                                                            {info.breakdown.optionalItems?.map((f, i) => <div key={`opt-${i}`} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
                                                             {info.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fees:</span> <span className="font-bold">ZMW {info.breakdown.late.toFixed(2)}</span></div>}
                                                             <Separator className="my-2" />
                                                             <div className="flex justify-between font-black"><span>Net Semester Total:</span> <span>ZMW {info.totalDue.toFixed(2)}</span></div>
@@ -928,7 +928,11 @@ export default function PaymentsManagementPage() {
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
                     <DialogHeader><DialogTitle className="text-2xl font-black">Record Transaction(s)</DialogTitle><DialogDescription>Process manual deposits and installment payments.</DialogDescription></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
-                        {bulkPaymentRows.map((row, idx) => (
+                        {bulkPaymentRows.map((row, idx) => {
+                            const amountNum = parseFloat(row.amount) || 0;
+                            const afterPay = (row.totalDue || 0) - (row.totalPaid || 0) - amountNum;
+
+                            return (
                             <Card key={row.key} className="border-l-4 border-l-primary relative group overflow-hidden shadow-md">
                                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
                                 <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -975,17 +979,34 @@ export default function PaymentsManagementPage() {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <Separator className="my-4" />
+
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">Transaction Details</Label>
+                                                <Badge variant="outline" className="h-6 gap-1 px-3 border-primary/30 text-[10px] font-bold">Audit <Info className="h-3 w-3 text-primary"/></Badge>
+                                            </div>
+                                            <div className="grid grid-cols-3 divide-x rounded-xl border bg-card shadow-inner overflow-hidden">
+                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
+                                                    <span className="text-[9px] font-bold text-orange-500 uppercase tracking-tighter">Due</span>
+                                                    <span className="text-xl font-black text-orange-500">K{(row.totalDue || 0).toLocaleString()}</span>
+                                                </div>
+                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
+                                                    <span className="text-[9px] font-bold text-green-600 uppercase tracking-tighter">Paid</span>
+                                                    <span className="text-xl font-black text-green-600">K{(row.totalPaid || 0).toLocaleString()}</span>
+                                                </div>
+                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
+                                                    <span className="text-[9px] font-bold text-red-600 uppercase tracking-tighter">After Pay</span>
+                                                    <span className="text-xl font-black text-red-600">K{afterPay.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div className="space-y-4 border-l pl-8 border-dashed">
                                         <div className="flex items-center justify-between">
                                             <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Ledger Allocation</Label>
-                                            {row.totalDue !== undefined && (
-                                                <div className="flex items-center gap-2 text-[10px] font-bold">
-                                                    <span className="opacity-60 uppercase">Bal:</span>
-                                                    <span className="text-destructive font-black">ZMW {(row.totalDue - (row.totalPaid || 0)).toFixed(2)}</span>
-                                                </div>
-                                            )}
                                         </div>
                                         
                                         <ScrollArea className="h-32 border rounded-xl p-3 bg-muted/5 shadow-inner">
@@ -1019,7 +1040,7 @@ export default function PaymentsManagementPage() {
                                     </div>
                                 </CardContent>
                             </Card>
-                        ))}
+                        )})}
                         <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl bg-muted/5 hover:bg-primary/5 group" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}>
                             <Plus className="mr-2 h-5 w-5 text-primary group-hover:scale-110 transition-transform"/>
                             <span className="font-black uppercase text-[10px] tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">Add Transaction Row</span>
