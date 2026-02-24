@@ -87,7 +87,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { calculateBilling, type BillingPolicy, type FeeItem } from '@/lib/billing-utils';
+import { calculateBilling, type BillingPolicy } from '@/lib/billing-utils';
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -102,8 +102,8 @@ type FeeBreakdown = {
     optional: number;
     scholarship: number;
     late: number;
-    mandatoryItems?: FeeItem[];
-    optionalItems?: FeeItem[];
+    mandatoryItems?: any[];
+    optionalItems?: any[];
     courses?: {id: string, cost: number}[];
 };
 
@@ -264,8 +264,8 @@ export default function PaymentsManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
+    const [allUsers, setAllUsers] = React.useState<Record<string, any>>({});
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
-    const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
@@ -377,14 +377,15 @@ export default function PaymentsManagementPage() {
 
                 for (const semesterId in regsData[userId]) {
                     const reg = regsData[userId][semesterId];
+                    if (!reg) continue;
+                    
                     const semesterInfo = semsData[semesterId];
-                    if (!semesterInfo) continue;
+                    if (!semesterInfo || semesterInfo.status === 'Archived') continue;
 
                     const invoice = invsData[userId]?.[reg.invoiceId];
                     let billingResults;
                     let isProvisional = false;
 
-                    // Load from versioned snapshot if available
                     const configSnapshot = (reg.configId && configsData[semesterId]?.[reg.configId]) || (invoice?.configId && configsData[semesterId]?.[invoice.configId]);
                     const activeSemesterRules = configSnapshot || semesterInfo;
 
@@ -408,7 +409,6 @@ export default function PaymentsManagementPage() {
                             }
                         };
                     } else {
-                        // FALLBACK: Load from registration management settings
                         isProvisional = true;
                         const billingOutput = calculateBilling({
                             policy: activeSemesterRules.billingPolicy || 'course',
@@ -545,15 +545,6 @@ export default function PaymentsManagementPage() {
         }));
         unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(); }));
 
-        const savedFiltersRef = ref(db, `settings/paymentFilters/${userData?.uid || 'default'}`);
-        get(savedFiltersRef).then(snapshot => {
-            if (snapshot.exists()) {
-                const f = snapshot.val();
-                if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
-                if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
-            }
-        });
-
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, serverTimeOffset, dataRefs]);
 
@@ -657,10 +648,6 @@ export default function PaymentsManagementPage() {
                             updatedRow.totalDue = paymentInfo.totalDue;
                             updatedRow.totalPaid = paymentInfo.totalPaid;
                             updatedRow.breakdown = paymentInfo.breakdown;
-                        } else {
-                            updatedRow.totalDue = 0;
-                            updatedRow.totalPaid = 0;
-                            updatedRow.breakdown = undefined;
                         }
                     } else if (studentIntakeSemesters.length > 0) {
                         const firstSem = studentIntakeSemesters[0];
@@ -688,10 +675,6 @@ export default function PaymentsManagementPage() {
                         updatedRow.totalDue = paymentInfo.totalDue;
                         updatedRow.totalPaid = paymentInfo.totalPaid;
                         updatedRow.breakdown = paymentInfo.breakdown;
-                    } else {
-                        updatedRow.totalDue = 0;
-                        updatedRow.totalPaid = 0;
-                        updatedRow.breakdown = undefined;
                     }
                 }
 
@@ -702,12 +685,9 @@ export default function PaymentsManagementPage() {
     };
 
     const handleQuickPay = (student: StudentPaymentInfo) => {
-        const studentProfile = allStudents.find(s => s.uid === student.userId);
         const intake = allIntakes.find(i => i.id === student.intakeId);
-        
         let availableYears: string[] = [];
         let availableSemesters: Semester[] = [];
-        
         if (intake) {
             availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake.id).map(s => String(s.year)))).sort();
             availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
@@ -805,7 +785,7 @@ export default function PaymentsManagementPage() {
             }
 
             await update(ref(db), updates);
-            toast({ variant: 'success', title: 'Transactions Recorded', description: `${bulkPaymentRows.length} payment(s) processed.` });
+            toast({ variant: 'success', title: 'Transactions Recorded' });
             setIsBulkRecordOpen(false);
             setBulkPaymentRows([]);
         } catch (e: any) {
@@ -860,44 +840,20 @@ export default function PaymentsManagementPage() {
         const doc = new jsPDF();
         doc.setFontSize(20);
         doc.text("OFFICIAL RECEIPT", 105, 20, { align: 'center' });
-        
         doc.setFontSize(10);
         doc.text(`Receipt No: ${tx.transactionId}`, 14, 40);
         doc.text(`Date: ${format(parseISO(tx.paymentDate), 'PPP p')}`, 14, 45);
-        
         doc.text(`Student: ${student.studentName}`, 14, 60);
         doc.text(`Student ID: ${student.studentId}`, 14, 65);
         doc.text(`Semester: ${student.semesterName || 'N/A'}`, 14, 70);
-
         autoTable(doc, {
             startY: 80,
             head: [['Description', 'Amount (ZMW)']],
-            body: [
-                [tx.purpose || 'Fees Payment', tx.amount.toFixed(2)],
-                ['Total Received', tx.amount.toFixed(2)]
-            ],
+            body: [[tx.purpose || 'Fees Payment', tx.amount.toFixed(2)], ['Total Received', tx.amount.toFixed(2)]],
             theme: 'grid',
             headStyles: { fillColor: [44, 62, 80] }
         });
-
-        doc.text("Thank you for your payment.", 14, (doc as any).lastAutoTable.finalY + 20);
         doc.save(`Receipt_${tx.transactionId}.pdf`);
-    };
-
-    const handleSaveAsDefault = async () => {
-        if (!user || !userData) return;
-        setSaving(true);
-        try {
-            await set(ref(db, `settings/paymentFilters/${userData.uid}`), {
-                programmeFilter,
-                intakeFilter
-            });
-            toast({ title: 'Filters Saved' });
-        } catch (e) {
-            toast({ variant: 'destructive', title: 'Save Failed' });
-        } finally {
-            setSaving(false);
-        }
     };
 
     const studentOptions: OptionGroup[] = React.useMemo(() => {
@@ -918,36 +874,10 @@ export default function PaymentsManagementPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collections</CardTitle>
-                                <TrendingUp className="h-4 w-4 text-green-600" />
-                            </CardHeader>
-                            <CardContent><div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div></CardContent>
-                        </Card>
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
-                                <PiggyBank className="h-4 w-4 text-primary" />
-                            </CardHeader>
-                            <CardContent><div className="text-2xl font-black text-primary">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent>
-                        </Card>
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle>
-                                <Users className="h-4 w-4 text-primary" />
-                            </CardHeader>
-                            <CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent>
-                        </Card>
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Collected</CardTitle>
-                                <Scale className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black text-primary">ZMW {filteredData.reduce((sum, p) => sum + p.totalPaid, 0).toFixed(2)}</div>
-                            </CardContent>
-                        </Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collections</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle><PiggyBank className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Collected</CardTitle><Scale className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {filteredData.reduce((sum, p) => sum + p.totalPaid, 0).toFixed(2)}</div></CardContent></Card>
                     </div>
                 </CardContent>
             </Card>
@@ -956,20 +886,13 @@ export default function PaymentsManagementPage() {
                 <CardHeader className="border-b">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div><CardTitle>Receivables & Audit</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
-                        <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Filters</Button>
-                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
-                        </div>
+                        <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label>
-                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Cohort (Intake)</Label>
-                            <Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
-                        </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
                             <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                 <SelectContent>
@@ -980,28 +903,14 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label>
-                            <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
-                        </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label><Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-dashed">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Min Paid</Label>
-                            <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs border-primary/20" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Max Paid</Label>
-                            <Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs border-primary/20" />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Equal to</Label>
-                            <div className="relative">
-                                <Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/>
-                                <Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs border-primary/20" />
-                            </div>
-                        </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Min Paid</Label><Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Max Paid</Label><Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Equal to</Label><div className="relative"><Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/><Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs" /></div></div>
                     </div>
 
                     <div className="rounded-md border shadow-sm overflow-hidden">
@@ -1028,34 +937,17 @@ export default function PaymentsManagementPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
-                                                            {info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}
-                                                        </div>
-                                                        <span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span>
-                                                    </Button>
-                                                </PopoverTrigger>
+                                                <PopoverTrigger asChild><Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end"><div className="flex items-center gap-1.5"><span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>{info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}</div><span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span></Button></PopoverTrigger>
                                                 <PopoverContent className="w-80 p-4 shadow-2xl">
                                                     <div className="space-y-3">
-                                                        <div className="flex flex-col gap-1">
-                                                            <h4 className="text-[10px] font-black uppercase text-primary tracking-widest">Balance Breakdown</h4>
-                                                            {info.isProvisional && (
-                                                                <p className="text-[9px] text-orange-600 font-bold italic leading-tight">* Projected from Semester Settings (No Official Invoice Yet)</p>
-                                                            )}
-                                                        </div>
+                                                        <h4 className="text-[10px] font-black uppercase text-primary tracking-widest">Balance Breakdown</h4>
                                                         <Separator />
                                                         <div className="space-y-1.5 text-xs">
                                                             <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
-                                                            {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship credit:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
+                                                            {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
                                                             {info.breakdown.mandatoryItems?.map((f, i) => <div key={i} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
-                                                            {info.breakdown.optionalItems?.map((f, i) => <div key={`opt-${i}`} className="flex justify-between opacity-70"><span>{f.name}:</span> <span>ZMW {f.amount.toFixed(2)}</span></div>)}
-                                                            {info.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fees:</span> <span className="font-bold">ZMW {info.breakdown.late.toFixed(2)}</span></div>}
                                                             <Separator className="my-2" />
-                                                            <div className="flex justify-between font-black"><span>Net Semester Total:</span> <span>ZMW {info.totalDue.toFixed(2)}</span></div>
-                                                            <div className="flex justify-between text-green-600"><span>Cleared to date:</span> <span>- ZMW {info.totalPaid.toFixed(2)}</span></div>
-                                                            <div className="flex justify-between font-black text-destructive text-lg pt-1 border-t"><span>Still Due:</span> <span>ZMW {info.balance.toFixed(2)}</span></div>
+                                                            <div className="flex justify-between font-black text-destructive"><span>Net Still Due:</span> <span>ZMW {info.balance.toFixed(2)}</span></div>
                                                         </div>
                                                     </div>
                                                 </PopoverContent>
@@ -1066,46 +958,19 @@ export default function PaymentsManagementPage() {
                                             <Popover>
                                                 <PopoverTrigger asChild>
                                                     <div className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
-                                                        {info.balance <= 0.01 ? (
-                                                            <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge>
-                                                        ) : info.thresholdMet ? (
-                                                            <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge>
-                                                        ) : (
-                                                            <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>
-                                                        )}
-                                                        {info.nextInstallmentDue && (
-                                                            <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next Due: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
-                                                        )}
+                                                        {info.balance <= 0.01 ? <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge> : info.thresholdMet ? <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge> : <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>}
+                                                        {info.nextInstallmentDue && <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>}
                                                     </div>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-64 p-4 shadow-2xl" align="center">
-                                                    <div className="space-y-3">
-                                                        <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Standing Details</h4>
-                                                        <div className="space-y-2 text-[10px] font-bold uppercase">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="opacity-60">Required Threshold:</span>
-                                                                <span>{info.targetThreshold}%</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="opacity-60">Actual Paid %:</span>
-                                                                <span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
-                                                            </div>
-                                                            <Separator className="my-2" />
-                                                            <div className="space-y-1.5">
-                                                                <span className="text-[9px] font-black opacity-40">System Access Restrictions:</span>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span>Reg. Window</span>
-                                                                    {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
-                                                                </div>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span>Exam Results</span>
-                                                                    {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
-                                                                </div>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span>Library Access</span>
-                                                                    {restrictions.library && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
-                                                                </div>
-                                                            </div>
+                                                    <div className="space-y-3 text-[10px] font-bold uppercase">
+                                                        <h4 className="font-black text-primary border-b pb-2 tracking-widest">Standing Details</h4>
+                                                        <div className="flex justify-between"><span>Required Threshold:</span><span>{info.targetThreshold}%</span></div>
+                                                        <div className="flex justify-between"><span>Actual Paid:</span><span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span></div>
+                                                        <Separator className="my-2" />
+                                                        <div className="space-y-1.5"><span className="text-[9px] font-black opacity-40">Active Blocks:</span>
+                                                            <div className="flex justify-between"><span>Registration</span> {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                            <div className="flex justify-between"><span>Exam Results</span> {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
                                                         </div>
                                                     </div>
                                                 </PopoverContent>
@@ -1113,17 +978,14 @@ export default function PaymentsManagementPage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center justify-end gap-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" title="Quick Payment" onClick={() => handleQuickPay(info)}>
-                                                    <Banknote className="h-4 w-4"/>
-                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleQuickPay(info)}><Banknote className="h-4 w-4"/></Button>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-48">
-                                                        <DropdownMenuLabel>Audit Tools</DropdownMenuLabel>
-                                                        <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement of Account</DropdownMenuItem>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement</DropdownMenuItem>
                                                         <DropdownMenuSeparator />
-                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit Note</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4 text-destructive"/>Issue Debit Note</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4"/>Issue Debit</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -1138,225 +1000,75 @@ export default function PaymentsManagementPage() {
 
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle className="text-2xl font-black">Record Transaction(s)</DialogTitle><DialogDescription>Process manual deposits and installment payments.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle className="text-2xl font-black">Record Transaction(s)</DialogTitle></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
                         {bulkPaymentRows.map((row, idx) => {
                             const amountNum = parseFloat(row.amount) || 0;
                             const afterPay = (row.totalDue || 0) - (row.totalPaid || 0) - amountNum;
-
                             return (
-                            <Card key={row.key} className="border-l-4 border-l-primary relative group overflow-hidden shadow-md">
-                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
+                            <Card key={row.key} className="border-l-4 border-l-primary relative group">
+                                <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
                                 <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div>
-                                                <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Recipient Details</Label>
+                                        <div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Recipient</Label></div><div className="flex items-center gap-2"><Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} /><span className="text-[10px] font-black uppercase text-primary">New Student?</span></div></div>
+                                        {row.isNewStudent ? (
+                                            <div className="grid grid-cols-2 gap-3"><Input placeholder="Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} /><Input placeholder="ID" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} /></div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student..." />
+                                                {row.academicStanding && <Badge variant="secondary" className="text-[9px] uppercase font-bold bg-primary/5 text-primary border-primary/10">Standing: {row.academicStanding}</Badge>}
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
-                                                <span className="text-[10px] font-black uppercase text-primary tracking-tighter">Request Student Creation?</span>
-                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1"><Label className="text-[9px] font-black uppercase opacity-60">Target Year</Label><Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}><SelectTrigger className="h-10"><SelectValue placeholder="Year..."/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select></div>
+                                            <div className="space-y-1"><Label className="text-[9px] font-black uppercase opacity-60">Target Semester</Label><Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-10"><SelectValue placeholder="Phase..."/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select></div>
                                         </div>
-                                        
-                                        <div className="space-y-4 pt-2">
-                                            {row.isNewStudent ? (
-                                                <div className="grid grid-cols-2 gap-3"><Input placeholder="Full Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-10 text-xs"/><Input placeholder="Temp ID (e.g. APP-01)" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-10 text-xs font-mono"/></div>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
-                                                    {row.academicStanding && (
-                                                        <Badge variant="secondary" className="gap-1.5 font-bold text-[9px] uppercase border-primary/10 bg-primary/5 text-primary">
-                                                            <UserCheck className="h-3 w-3"/> Standing: {row.academicStanding}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            )}
-                                            
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <Label className="text-[9px] font-black uppercase opacity-60">Target Year</Label>
-                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
-                                                        <SelectTrigger className="h-10 text-xs border-primary/20"><SelectValue placeholder="Year..."/></SelectTrigger>
-                                                        <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[9px] font-black uppercase opacity-60">Target Semester</Label>
-                                                    <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
-                                                        <SelectTrigger className="h-10 text-xs border-primary/20"><SelectValue placeholder="Phase..."/></SelectTrigger>
-                                                        <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <Separator className="my-4" />
-
-                                        <div className="grid grid-cols-2 gap-3 pt-2">
-                                            <div className="relative">
-                                                <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-11 font-black text-green-600 border-green-200 pl-8 bg-green-50/30" />
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-40">K</span>
-                                            </div>
-                                            <Input placeholder="Reference/Slip #..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-11 text-xs border-primary/20 bg-background" />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-11 font-black text-green-600 border-green-200 pl-8 bg-green-50/30" />
+                                            <Input placeholder="Ref/Slip #" value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-11 text-xs" />
                                         </div>
                                     </div>
-
                                     <div className="space-y-4 border-l pl-8 border-dashed">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">Transaction Summary</Label>
-                                                <Badge variant="outline" className="h-6 gap-1 px-3 border-primary/30 text-[10px] font-bold">Audit <Info className="h-3 w-3 text-primary"/></Badge>
-                                            </div>
-                                            <div className="grid grid-cols-3 divide-x rounded-xl border bg-card shadow-inner overflow-hidden">
-                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
-                                                    <span className="text-[9px] font-bold text-orange-500 uppercase tracking-tighter">Due</span>
-                                                    <span className="text-xl font-black text-orange-500">K{(row.totalDue || 0).toLocaleString()}</span>
-                                                </div>
-                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
-                                                    <span className="text-[9px] font-bold text-green-600 uppercase tracking-tighter">Paid</span>
-                                                    <span className="text-xl font-black text-green-600">K{(row.totalPaid || 0).toLocaleString()}</span>
-                                                </div>
-                                                <div className="p-3 flex flex-col items-center justify-center gap-1">
-                                                    <span className="text-[9px] font-bold text-red-600 uppercase tracking-tighter">After Pay</span>
-                                                    <span className="text-xl font-black text-red-600">K{afterPay.toLocaleString()}</span>
-                                                </div>
-                                            </div>
+                                        <div className="flex items-center justify-between"><Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">TRANSACTION DETAILS</Label><Badge variant="outline" className="h-6 gap-1 border-primary/30 text-[10px] font-bold">Audit <Info className="h-3 w-3"/></Badge></div>
+                                        <div className="grid grid-cols-3 divide-x rounded-xl border bg-card shadow-inner overflow-hidden">
+                                            <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-orange-500 uppercase">Due</span><span className="text-xl font-black text-orange-500">K{(row.totalDue || 0).toLocaleString()}</span></div>
+                                            <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-green-600 uppercase">Paid</span><span className="text-xl font-black text-green-600">K{(row.totalPaid || 0).toLocaleString()}</span></div>
+                                            <div className="p-3 flex flex-col items-center gap-1"><span className="text-[9px] font-bold text-red-600 uppercase">After Pay</span><span className="text-xl font-black text-red-600">K{afterPay.toLocaleString()}</span></div>
                                         </div>
-
                                         <Separator />
-
                                         <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Ledger Allocation</Label>
-                                        
                                         <ScrollArea className="h-32 border rounded-xl p-3 bg-muted/5 shadow-inner">
                                             <div className="space-y-2">
-                                                <div className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10">
-                                                    <Checkbox id={`tuition-${row.key}`} checked={row.allocations.includes('Tuition')} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, 'Tuition'] : row.allocations.filter(a=>a!=='Tuition'))}/>
-                                                    <Label htmlFor={`tuition-${row.key}`} className="text-xs cursor-pointer flex-1 font-medium">Tuition Fees</Label>
-                                                </div>
-                                                {row.breakdown?.mandatoryItems?.map((f, i) => (
-                                                    <div key={i} className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10">
-                                                        <Checkbox id={`mand-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/>
-                                                        <Label htmlFor={`mand-${row.key}-${i}`} className="text-xs cursor-pointer flex-1 font-medium">{f.name}</Label>
-                                                    </div>
-                                                ))}
-                                                {row.breakdown?.optionalItems?.map((f, i) => (
-                                                    <div key={`opt-${i}`} className="flex items-center gap-2 p-1.5 hover:bg-white rounded transition-colors border border-transparent hover:border-primary/10 text-muted-foreground opacity-80">
-                                                        <Checkbox id={`opt-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/>
-                                                        <Label htmlFor={`opt-${row.key}-${i}`} className="text-xs cursor-pointer flex-1">{f.name}</Label>
-                                                    </div>
-                                                ))}
+                                                <div className="flex items-center gap-2"><Checkbox id={`t-${row.key}`} checked={row.allocations.includes('Tuition')} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, 'Tuition'] : row.allocations.filter(a=>a!=='Tuition'))}/><Label htmlFor={`t-${row.key}`} className="text-xs font-medium cursor-pointer">Tuition Fees</Label></div>
+                                                {row.breakdown?.mandatoryItems?.map((f, i) => (<div key={i} className="flex items-center gap-2"><Checkbox id={`m-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/><Label htmlFor={`m-${row.key}-${i}`} className="text-xs cursor-pointer">{f.name}</Label></div>))}
                                             </div>
                                         </ScrollArea>
                                     </div>
                                 </CardContent>
                             </Card>
                         )})}
-                        <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl bg-muted/5 hover:bg-primary/5 group" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}>
-                            <Plus className="mr-2 h-5 w-5 text-primary group-hover:scale-110 transition-transform"/>
-                            <span className="font-black uppercase text-[10px] tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">Add Transaction Row</span>
-                        </Button>
+                        <Button variant="outline" className="w-full border-dashed border-2 py-8 rounded-xl" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><Plus className="mr-2 h-5 w-5"/>Add Row</Button>
                     </div>
-                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg">
-                        <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 shadow-xl font-black uppercase tracking-widest text-xs">
-                            {formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}
-                            Process & Finalize Batch
-                        </Button>
-                    </DialogFooter>
+                    <DialogFooter className="bg-muted/10 p-6 border-t rounded-b-lg"><Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0} className="h-12 px-12 font-black uppercase text-xs">{formLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileCheck className="mr-2 h-4 w-4" />}Process Batch</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
-                    <DialogHeader>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-primary/10 rounded-lg"><HistoryIcon className="h-5 w-5 text-primary"/></div>
-                            <div>
-                                <DialogTitle>Student Statement of Account</DialogTitle>
-                                <DialogDescription className="font-bold text-foreground">{historyStudent?.studentName} ({historyStudent?.studentId})</DialogDescription>
-                            </div>
-                        </div>
-                    </DialogHeader>
+                    <DialogHeader><div className="flex items-center gap-3"><div className="p-2 bg-primary/10 rounded-lg"><HistoryIcon className="h-5 w-5 text-primary"/></div><div><DialogTitle>Statement of Account</DialogTitle><DialogDescription className="font-bold text-foreground">{historyStudent?.studentName} ({historyStudent?.studentId})</DialogDescription></div></div></DialogHeader>
                     {historyStudent && (
                         <div className="flex-1 mt-6 overflow-hidden flex flex-col">
                             <Tabs defaultValue={historyStudent.semesterId || ''} className="flex-1 flex flex-col overflow-hidden">
                                 <TabsList className="justify-start bg-muted/50 p-1 h-auto flex-wrap">
-                                    {paymentInfos
-                                        .filter(p => p.userId === historyStudent.userId)
-                                        .sort((a, b) => b.semesterName!.localeCompare(a.semesterName!))
-                                        .map(p => (
-                                            <TabsTrigger key={p.semesterId} value={p.semesterId!} className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                                                {p.semesterName?.split(' ').slice(-2).join(' ')}
-                                            </TabsTrigger>
-                                        ))
-                                    }
+                                    {paymentInfos.filter(p => p.userId === historyStudent.userId).sort((a, b) => b.semesterName!.localeCompare(a.semesterName!)).map(p => (<TabsTrigger key={p.semesterId} value={p.semesterId!} className="data-[state=active]:bg-background">{p.semesterName?.split(' ').slice(-2).join(' ')}</TabsTrigger>))}
                                 </TabsList>
-                                
-                                {paymentInfos
-                                    .filter(p => p.userId === historyStudent.userId)
-                                    .map(p => (
-                                        <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
-                                            <div className="p-4 bg-muted/30 border-b flex justify-between items-center">
-                                                <div>
-                                                    <span className="text-[10px] font-black uppercase text-muted-foreground">Semester Summary</span>
-                                                    <p className="text-sm font-bold">{p.semesterName}</p>
-                                                </div>
-                                                <div className="flex gap-6">
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[9px] font-bold opacity-60">Total Due</span>
-                                                        <span className="text-sm font-black">K{p.totalDue.toFixed(2)}</span>
-                                                    </div>
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[9px] font-bold opacity-60">Paid</span>
-                                                        <span className="text-sm font-black text-green-600">K{p.totalPaid.toFixed(2)}</span>
-                                                    </div>
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[9px] font-bold opacity-60">Balance</span>
-                                                        <span className="text-sm font-black text-destructive">K{p.balance.toFixed(2)}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <ScrollArea className="flex-1">
-                                                <Table>
-                                                    <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
-                                                        <TableRow>
-                                                            <TableHead>Date</TableHead>
-                                                            <TableHead>Ref / Purpose</TableHead>
-                                                            <TableHead className="text-right">Credit (+)</TableHead>
-                                                            <TableHead className="text-right">Debit (-)</TableHead>
-                                                            <TableHead className="text-right">Audit</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {rawTransactions
-                                                            .filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId)
-                                                            .map(tx => (
-                                                                <TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b last:border-0">
-                                                                    <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                                    <TableCell>
-                                                                        <div className="flex flex-col">
-                                                                            <span className="font-bold text-xs leading-none">{tx.purpose || 'Fees Payment'}</span>
-                                                                            <span className="text-[9px] opacity-40 font-mono mt-1 tracking-tighter">ID: {tx.transactionId}</span>
-                                                                        </div>
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
-                                                                    <TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
-                                                                    <TableCell className="text-right">
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button>
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (
-                                                            <TableRow>
-                                                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell>
-                                                            </TableRow>
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </ScrollArea>
-                                        </TabsContent>
-                                    ))}
+                                {paymentInfos.filter(p => p.userId === historyStudent.userId).map(p => (
+                                    <TabsContent key={p.semesterId} value={p.semesterId!} className="flex-1 flex flex-col mt-4 overflow-hidden border rounded-xl bg-background shadow-inner">
+                                        <div className="p-4 bg-muted/30 border-b flex justify-between items-center"><div><p className="text-sm font-bold">{p.semesterName}</p></div><div className="flex gap-6 text-[10px] font-black uppercase"><span>Due: K{p.totalDue.toFixed(2)}</span><span className="text-green-600">Paid: K{p.totalPaid.toFixed(2)}</span><span className="text-destructive">Bal: K{p.balance.toFixed(2)}</span></div></div>
+                                        <ScrollArea className="flex-1"><Table><TableHeader className="bg-muted/50 sticky top-0"><TableRow><TableHead>Date</TableHead><TableHead>Ref / Purpose</TableHead><TableHead className="text-right">Credit (+)</TableHead><TableHead className="text-right">Debit (-)</TableHead><TableHead className="text-right">Audit</TableHead></TableRow></TableHeader><TableBody>{rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).map(tx => (<TableRow key={tx.key} className="hover:bg-muted/10 transition-colors border-b"><TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell><TableCell><div className="flex flex-col"><span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span><span className="text-[9px] opacity-40 font-mono">ID: {tx.transactionId}</span></div></TableCell><TableCell className="text-right text-green-600 font-black text-sm">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell><TableCell className="text-right text-red-600 font-black text-sm">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell><TableCell className="text-right"><Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => generateReceipt(tx, p)}><Download className="h-4 w-4"/></Button></TableCell></TableRow>))}
+                                        {rawTransactions.filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId).length === 0 && (<TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">No transactions recorded for this semester.</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+                                    </TabsContent>
+                                ))}
                             </Tabs>
                         </div>
                     )}
@@ -1365,35 +1077,9 @@ export default function PaymentsManagementPage() {
 
             <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <div className="flex items-center gap-3 text-primary mb-2">
-                            {adjustmentTarget?.type === 'credit' ? <Plus className="h-6 w-6 rotate-45" /> : <Plus className="h-6 w-6" />}
-                            <DialogTitle className="text-xl font-headline uppercase tracking-tight">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle>
-                        </div>
-                        <DialogDescription className="text-base">
-                            Applying a financial adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-6 py-6 border-y border-dashed my-4">
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-primary tracking-widest">Adjustment Amount (ZMW)</Label>
-                            <div className="relative">
-                                <Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" className="h-14 text-2xl font-black bg-muted/20 border-primary/20 pl-10" />
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black opacity-30 text-xl">K</span>
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Formal Reasoning</Label>
-                            <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Provide context for this adjustment (Audit requirement)..." rows={4} className="resize-none" />
-                        </div>
-                    </div>
-                    <DialogFooter className="gap-2">
-                        <DialogClose asChild><Button variant="ghost" className="font-bold">Discard</Button></DialogClose>
-                        <Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()} className="px-8 shadow-lg font-black uppercase tracking-widest text-[10px]">
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}
-                            Post Note & Sync Ledger
-                        </Button>
-                    </DialogFooter>
+                    <DialogHeader><DialogTitle className="text-xl font-headline uppercase">Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle><DialogDescription>Applying adjustment to <span className="font-black text-foreground">{adjustmentTarget?.studentName}'s</span> ledger.</DialogDescription></DialogHeader>
+                    <div className="space-y-6 py-6 border-y border-dashed my-4"><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary">Adjustment Amount (ZMW)</Label><div className="relative"><Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} className="h-14 text-2xl font-black bg-muted/20 border-primary/20 pl-10" /><span className="absolute left-4 top-1/2 -translate-y-1/2 font-black opacity-30 text-xl">K</span></div></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground">Audit Reason</Label><Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Required context..." rows={4} /></div></div>
+                    <DialogFooter><DialogClose asChild><Button variant="ghost">Discard</Button></DialogClose><Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()}>{formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}Post Adjustment</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
