@@ -620,7 +620,7 @@ export default function PaymentsManagementPage() {
         
         if (intake) {
             availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake.id).map(s => String(s.year)))).sort();
-            availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(student.invoice.semesterId ? semesters.find(sem => sem.id === student.invoice.semesterId)?.year : '1'));
+            availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(semesters.find(sem => sem.id === student.semesterId)?.year || '1'));
         }
 
         const initialRow: PaymentRecord = {
@@ -815,6 +815,8 @@ export default function PaymentsManagementPage() {
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
 
+    const restrictions = financialSettings?.defaulterRestrictions || {};
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -952,18 +954,53 @@ export default function PaymentsManagementPage() {
                                         </TableCell>
                                         <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
                                         <TableCell className="text-center">
-                                            <div className="flex flex-col items-center">
-                                                {info.balance <= 0.01 ? (
-                                                    <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge>
-                                                ) : info.thresholdMet ? (
-                                                    <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge>
-                                                ) : (
-                                                    <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>
-                                                )}
-                                                {info.nextInstallmentDue && (
-                                                    <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next Due: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
-                                                )}
-                                            </div>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <div className="flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
+                                                        {info.balance <= 0.01 ? (
+                                                            <Badge variant="default" className="bg-green-600 h-5 px-3 uppercase text-[8px] font-black">Cleared</Badge>
+                                                        ) : info.thresholdMet ? (
+                                                            <Badge variant="secondary" className="bg-primary/10 text-primary h-5 px-3 uppercase text-[8px] font-black">Good Standing</Badge>
+                                                        ) : (
+                                                            <Badge variant="destructive" className="h-5 px-3 uppercase text-[8px] font-black animate-pulse">Below Threshold</Badge>
+                                                        )}
+                                                        {info.nextInstallmentDue && (
+                                                            <span className="text-[8px] font-bold opacity-60 mt-1 uppercase">Next Due: {format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
+                                                        )}
+                                                    </div>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-64 p-4 shadow-2xl">
+                                                    <div className="space-y-3">
+                                                        <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Standing Details</h4>
+                                                        <div className="space-y-2 text-[10px] font-bold uppercase">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="opacity-60">Required Threshold:</span>
+                                                                <span>{info.targetThreshold}%</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="opacity-60">Actual Paid %:</span>
+                                                                <span className={cn(info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
+                                                            </div>
+                                                            <Separator className="my-2" />
+                                                            <div className="space-y-1.5">
+                                                                <span className="text-[9px] font-black opacity-40">System Access Restrictions:</span>
+                                                                <div className="flex justify-between items-center">
+                                                                    <span>Reg. Window</span>
+                                                                    {restrictions.registration && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
+                                                                </div>
+                                                                <div className="flex justify-between items-center">
+                                                                    <span>Exam Results</span>
+                                                                    {restrictions.results && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
+                                                                </div>
+                                                                <div className="flex justify-between items-center">
+                                                                    <span>Library Access</span>
+                                                                    {restrictions.library && !info.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center justify-end gap-1">
