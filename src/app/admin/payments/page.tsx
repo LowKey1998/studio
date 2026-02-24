@@ -560,36 +560,50 @@ export default function PaymentsManagementPage() {
 
                 if (field === 'userId' && !updatedRow.isNewStudent) {
                     const studentProfile = allStudents.find(s => s.uid === value);
-                    const intake = allIntakes.find(i => i.id === studentProfile?.intakeId);
+                    const intakeId = studentProfile?.intakeId;
+                    const intake = allIntakes.find(i => i.id === intakeId);
                     const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
                     
+                    let state = { year: 1, semester: 1 };
                     if (intakeStartStr && calendarSettings) {
-                        const state = calculateAcademicState(
+                        state = calculateAcademicState(
                             intakeStartStr,
                             getCurrentServerDate(),
                             calendarSettings.standardCycles,
                             Object.values(calendarSettings.anomalies || {})
                         );
-                        
-                        const latestSemester = semesters.find(s => 
-                            s.intakeId === intake?.id && 
-                            s.year === state.year && 
-                            s.semesterInYear === state.semester
-                        );
+                    }
+                    
+                    const studentIntakeSemesters = semesters.filter(s => s.intakeId === intakeId);
+                    updatedRow.availableYears = Array.from(new Set(studentIntakeSemesters.map(s => String(s.year)))).sort();
 
-                        if (latestSemester) {
-                            const paymentInfo = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
-                            if (paymentInfo) {
-                                updatedRow.totalDue = paymentInfo.totalDue;
-                                updatedRow.totalPaid = paymentInfo.totalPaid;
-                                updatedRow.breakdown = paymentInfo.breakdown;
-                                updatedRow.semesterId = latestSemester.id;
-                                updatedRow.academicStanding = latestSemester.name;
-                                updatedRow.year = String(latestSemester.year);
-                                updatedRow.availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake?.id).map(s => String(s.year)))).sort();
-                                updatedRow.availableSemesters = semesters.filter(s => s.intakeId === intake?.id && String(s.year) === updatedRow.year);
-                            }
+                    const latestSemester = studentIntakeSemesters.find(s => 
+                        s.year === state.year && 
+                        s.semesterInYear === state.semester
+                    );
+
+                    if (latestSemester) {
+                        const paymentInfo = paymentInfos.find(p => p.userId === value && p.semesterId === latestSemester.id);
+                        updatedRow.semesterId = latestSemester.id;
+                        updatedRow.academicStanding = latestSemester.name;
+                        updatedRow.year = String(latestSemester.year);
+                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
+                        
+                        if (paymentInfo) {
+                            updatedRow.totalDue = paymentInfo.totalDue;
+                            updatedRow.totalPaid = paymentInfo.totalPaid;
+                            updatedRow.breakdown = paymentInfo.breakdown;
+                        } else {
+                            updatedRow.totalDue = 0;
+                            updatedRow.totalPaid = 0;
+                            updatedRow.breakdown = undefined;
                         }
+                    } else if (studentIntakeSemesters.length > 0) {
+                        const firstSem = studentIntakeSemesters[0];
+                        updatedRow.year = String(firstSem.year);
+                        updatedRow.semesterId = firstSem.id;
+                        updatedRow.academicStanding = firstSem.name;
+                        updatedRow.availableSemesters = studentIntakeSemesters.filter(s => String(s.year) === updatedRow.year);
                     }
                 }
 
@@ -969,7 +983,7 @@ export default function PaymentsManagementPage() {
                                                         )}
                                                     </div>
                                                 </PopoverTrigger>
-                                                <PopoverContent className="w-64 p-4 shadow-2xl">
+                                                <PopoverContent className="w-64 p-4 shadow-2xl" align="center">
                                                     <div className="space-y-3">
                                                         <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Standing Details</h4>
                                                         <div className="space-y-2 text-[10px] font-bold uppercase">
