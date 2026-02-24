@@ -1,4 +1,3 @@
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -38,6 +37,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { calculateAcademicState, parseIntakeDate } from '@/lib/semester-utils';
+import { calculateBilling } from '@/lib/billing-utils';
 
 type Invoice = { 
     invoiceId: string; 
@@ -71,6 +71,8 @@ type Semester = {
     name: string;
     intakeId: string;
     paymentThreshold?: number;
+    billingPolicy?: 'course' | 'semester';
+    tuitionFee?: number;
     mandatoryFees?: Record<string, { name: string; amount: number }>;
     optionalFees?: Record<string, { name: string; amount: number }>;
 };
@@ -85,7 +87,7 @@ type Course = {
 type PaymentSummary = {
     semesterId: string;
     semesterName: string;
-    invoice: Invoice;
+    invoice?: Invoice;
     totalDue: number;
     totalPaid: number;
     balance: number;
@@ -94,13 +96,23 @@ type PaymentSummary = {
     threshold: number;
     paidPercentage: number;
     thresholdMet: boolean;
+    isProvisional: boolean;
+    breakdown: {
+        tuition: number;
+        mandatory: number;
+        optional: number;
+        scholarship: number;
+        late: number;
+        mandatoryItems?: any[];
+        optionalItems?: any[];
+    }
 };
 
 export default function StudentPaymentsPage() {
     const [payments, setPayments] = React.useState<PaymentSummary[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, Course>>({});
     const [allSemesters, setAllSemesters] = React.useState<Record<string, Semester>>({});
-    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '' });
+    const [institutionSettings, setInstitutionSettings] = React.useState({ name: 'Edutrack360', logoUrl: '', billingPolicy: 'course' });
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [academicStanding, setAcademicStanding] = React.useState<string>('');
     const [intakeName, setIntakeName] = React.useState('');
@@ -121,7 +133,7 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap] = await Promise.all([
+            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap, regsSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
@@ -130,13 +142,15 @@ export default function StudentPaymentsPage() {
                 get(ref(db, 'settings/institution')),
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'intakes')),
-                get(ref(db, 'settings/academicCalendar'))
+                get(ref(db, 'settings/academicCalendar')),
+                get(ref(db, `registrations/${currentUser.uid}`))
             ]);
 
             const userProfile = userSnap.val() || {};
             const semestersData = semestersSnap.val() || {};
             const coursesData = coursesSnap.val() || {};
-            const fSettings = financialSnap.val() || { paymentThreshold: 75, defaulterRestrictions: { registration: true, results: true, library: false, exams: false } };
+            const regsData = regsSnap.val() || {};
+            const fSettings = financialSnap.val() || { paymentThreshold: 75 };
             const allIntakes = intakesSnap.val() || {};
             const calSettings = calendarSnap.val() || {};
             
@@ -160,74 +174,111 @@ export default function StudentPaymentsPage() {
                 }
             }
 
-            if (!invoicesSnap.exists()) {
-                setPayments([]);
-                setLoading(false);
-                return;
-            }
-
-            const invoices: Invoice[] = Object.values(invoicesSnap.val());
+            const invoicesData = invoicesSnap.val() || {};
             const allTransactions: Transaction[] = Object.entries(transactionsSnap.val() || {})
                 .map(([key, data]) => ({ key, ...(data as any) }))
                 .filter(t => t.userId === currentUser.uid && t.status === 'successful');
 
-            const summaries: PaymentSummary[] = invoices
-                .map(invoice => {
-                    const semesterId = invoice.semesterId;
-                    const semesterInfo = semestersData[semesterId];
-                    if (semesterInfo && semesterInfo.intakeId !== userProfile.intakeId) return null;
+            const summaries: PaymentSummary[] = Object.entries(regsData)
+                .map(([semId, reg]: [string, any]) => {
+                    const semesterInfo = semestersData[semId];
+                    if (!semesterInfo || semesterInfo.status === 'Archived') return null;
 
-                    const tuition = Number(invoice.totalTuition || 0);
-                    const mandatory = Number(invoice.totalMandatoryFees || 0);
-                    const optional = Number(invoice.totalOptionalFees || 0);
-                    const late = Number(invoice.lateFee || 0);
-                    const scholarPerc = Number(invoice.scholarshipPercentage || 100);
+                    const invoice = invoicesData[reg.invoiceId];
+                    let billingResults;
+                    let isProvisional = false;
 
-                    const totalDue = invoice.applyScholarship 
-                        ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
-                        : tuition + mandatory + optional + late;
+                    if (invoice) {
+                        const tuition = Number(invoice.totalTuition || 0);
+                        const mandatory = Number(invoice.totalMandatoryFees || 0);
+                        const optional = Number(invoice.totalOptionalFees || 0);
+                        const late = Number(invoice.lateFee || 0);
+                        const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
-                    const invoiceTransactions = allTransactions.filter(t => t.invoiceId === invoice.invoiceId);
+                        const scholarshipAmount = invoice.applyScholarship 
+                            ? (tuition * (scholarPerc / 100))
+                            : 0;
+
+                        billingResults = {
+                            totalDue: tuition - scholarshipAmount + mandatory + optional + late,
+                            breakdown: {
+                                tuition, mandatory, optional, scholarship: scholarshipAmount, late,
+                                mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
+                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
+                            }
+                        };
+                    } else {
+                        // FALLBACK: Load from registration settings
+                        isProvisional = true;
+                        const billingOutput = calculateBilling({
+                            policy: semesterInfo.billingPolicy || institutionSettings.billingPolicy || 'course',
+                            semesterTuition: Number(semesterInfo.tuitionFee || 0),
+                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(coursesData[cid]?.cost || 0) })),
+                            mandatoryFees: Object.values(semesterInfo.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
+                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) })),
+                            applyScholarship: !!reg.applyScholarship,
+                            scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
+                            lateFee: 0 
+                        });
+
+                        billingResults = {
+                            totalDue: billingOutput.grandTotal,
+                            breakdown: {
+                                tuition: billingOutput.baseTuition,
+                                mandatory: billingOutput.totalMandatoryFees,
+                                optional: billingOutput.totalOptionalFees,
+                                scholarship: billingOutput.scholarshipAmount,
+                                late: 0,
+                                mandatoryItems: billingOutput.mandatoryItems,
+                                optionalItems: billingOutput.optionalItems
+                            }
+                        };
+                    }
+
+                    const invoiceTransactions = allTransactions.filter(t => t.invoiceId === reg.invoiceId);
                     const totalPaid = invoiceTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-                    const balance = Math.max(0, totalDue - totalPaid);
+                    const balance = Math.max(0, billingResults.totalDue - totalPaid);
                     
                     const threshold = semesterInfo?.paymentThreshold || fSettings.paymentThreshold || 75;
-                    const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
+                    const paidPercentage = billingResults.totalDue > 0 ? (totalPaid / billingResults.totalDue) * 100 : 100;
                     const thresholdMet = paidPercentage >= threshold;
 
-                    // Fix: If totalDue is 0 and not a scholarship waiver, it's unconfigured, so status should be Pending
-                    const isFullyPaid = totalDue > 0 && balance <= 0.01;
-
                     return {
-                        semesterId,
-                        semesterName: invoice.semester,
+                        semesterId: semId,
+                        semesterName: semesterInfo.name,
                         invoice,
-                        totalDue,
+                        totalDue: billingResults.totalDue,
                         totalPaid,
                         balance,
-                        status: isFullyPaid ? 'Paid' : 'Pending',
-                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.dateCreated).getTime()),
+                        status: (billingResults.totalDue > 0 && balance <= 0.01) ? 'Paid' : 'Pending',
+                        transactions: invoiceTransactions.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()),
                         threshold,
                         paidPercentage,
-                        thresholdMet
+                        thresholdMet,
+                        isProvisional,
+                        breakdown: billingResults.breakdown
                     };
                 })
                 .filter((s): s is PaymentSummary => s !== null);
 
-            setPayments(summaries.sort((a, b) => b.invoice.dateCreated.localeCompare(a.invoice.dateCreated)));
+            setPayments(summaries.sort((a, b) => b.semesterName.localeCompare(a.semesterName)));
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to load payments' });
         } finally {
             setLoading(false);
         }
-    }, [currentUser, toast]);
+    }, [currentUser, institutionSettings.billingPolicy, toast]);
 
     React.useEffect(() => {
         if (currentUser) fetchData();
     }, [currentUser, fetchData]);
 
     const handleDownloadInvoice = async (p: PaymentSummary) => {
-        setActionLoading(`dl-${p.invoice.invoiceId}`);
+        if (p.isProvisional) {
+            toast({ title: 'Invoice Not Ready', description: 'Official invoices are generated after bursar review. Use this view for projected costs.' });
+            return;
+        }
+        setActionLoading(`dl-${p.invoice?.invoiceId}`);
         try {
             const semester = allSemesters[p.semesterId];
             const doc = new jsPDF();
@@ -239,24 +290,24 @@ export default function StudentPaymentsPage() {
                 } catch (e) {}
             }
             doc.setFontSize(20); doc.text(institutionSettings.name, 40, 25);
-            doc.setFontSize(12); doc.text('Combined Invoice & Statement', 190, 25, { align: 'right' });
+            doc.setFontSize(12); doc.text('Official Invoice & Statement', 190, 25, { align: 'right' });
             doc.setFontSize(10);
             doc.text(`Student: ${currentUser?.displayName || 'Student'}`, 14, 40);
-            doc.text(`Invoice ID: ${p.invoice.invoiceId}`, 190, 40, { align: 'right' });
+            doc.text(`Invoice ID: ${p.invoice?.invoiceId}`, 190, 40, { align: 'right' });
             doc.text(`Semester: ${semester?.name || p.semesterName}`, 14, 45);
 
-            const scholarPerc = Number(p.invoice.scholarshipPercentage || 100);
-            const body = (p.invoice.courses || []).map(id => {
+            const scholarPerc = Number(p.invoice?.scholarshipPercentage || 100);
+            const body = (p.invoice?.courses || []).map(id => {
                 const cost = allCourses[id]?.cost || 0;
-                const finalCost = p.invoice.applyScholarship ? cost * (1 - (scholarPerc/100)) : cost;
+                const finalCost = p.invoice?.applyScholarship ? cost * (1 - (scholarPerc/100)) : cost;
                 return [
                     allCourses[id]?.code || 'N/A', 
-                    `Tuition: ${allCourses[id]?.name || 'Unknown'}${p.invoice.applyScholarship ? ` (${scholarPerc}% Waiver)` : ''}`, 
+                    `Tuition: ${allCourses[id]?.name || 'Unknown'}${p.invoice?.applyScholarship ? ` (${scholarPerc}% Waiver)` : ''}`, 
                     `ZMW ${finalCost.toFixed(2)}`
                 ];
             });
             const fees = semester?.mandatoryFees ? Object.values(semester.mandatoryFees).map(f => ['', `Mandatory Fee: ${f.name}`, `ZMW ${f.amount.toFixed(2)}`]) : [];
-            const optional = semester?.optionalFees && p.invoice.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
+            const optional = semester?.optionalFees && p.invoice?.optionalFees ? p.invoice.optionalFees.map(id => ['', `Optional Fee: ${semester.optionalFees![id]?.name}`, `ZMW ${semester.optionalFees![id]?.amount.toFixed(2)}`]) : [];
             const finalBody = [...body, ...fees, ...optional];
             
             autoTable(doc, { startY: 55, head: [['Code', 'Description', 'Amount']], body: finalBody, theme: 'striped', headStyles: { fillColor: [34, 34, 34] }});
@@ -270,7 +321,7 @@ export default function StudentPaymentsPage() {
             doc.setFontSize(12); doc.text(`Total Paid: ZMW ${p.totalPaid.toFixed(2)}`, 190, summaryY, { align: 'right' });
             doc.text(`BALANCE: ZMW ${p.balance.toFixed(2)}`, 190, summaryY + 8, { align: 'right' });
 
-            doc.save(`invoice-${p.invoice.invoiceId}.pdf`);
+            doc.save(`invoice-${p.invoice?.invoiceId}.pdf`);
             toast({ title: 'Invoice Downloaded' });
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Download Failed' });
@@ -308,31 +359,39 @@ export default function StudentPaymentsPage() {
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-4">
                     {payments.map((payment) => (
-                        <Card key={payment.invoice.invoiceId} className="overflow-hidden border-0 shadow-lg">
-                            <CardHeader className="bg-muted/30">
+                        <Card key={payment.semesterId} className="overflow-hidden border-0 shadow-lg relative">
+                            {payment.isProvisional && (
+                                <div className="bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest text-center py-1 absolute top-0 left-0 right-0 z-10">
+                                    Awaiting Internal Audit Verification
+                                </div>
+                            )}
+                            <CardHeader className={cn("bg-muted/30", payment.isProvisional ? "pt-8" : "pt-6")}>
                                 <div className="flex justify-between items-center">
                                     <div>
                                         <CardTitle>{payment.semesterName}</CardTitle>
-                                        <CardDescription>Plan: {payment.invoice.paymentPlan}</CardDescription>
+                                        <CardDescription>{payment.invoice ? `Plan: ${payment.invoice.paymentPlan}` : 'Payment plan pending'}</CardDescription>
                                     </div>
                                     <Badge variant={payment.status === 'Paid' ? 'default' : 'secondary'}>{payment.status}</Badge>
                                 </div>
                             </CardHeader>
                             <CardContent className="pt-6 space-y-6">
+                                {payment.isProvisional && (
+                                    <Alert className="bg-orange-50 border-orange-200">
+                                        <Info className="h-4 w-4 text-orange-600" />
+                                        <AlertTitle className="text-xs font-bold text-orange-800">Fee Reflection</AlertTitle>
+                                        <AlertDescription className="text-[11px] text-orange-700 leading-relaxed">
+                                            An official institutional invoice has not been generated for this semester yet. The values shown below are an automated reflection of the semester settings based on your current registrations.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                                 <div className="grid md:grid-cols-2 gap-8">
                                     <div className="space-y-4">
                                         <h4 className="text-[10px] font-black uppercase text-primary flex items-center gap-2"><Receipt className="h-3 w-3" /> Billing Breakdown</h4>
-                                        <div className="rounded-xl border p-4 bg-card space-y-3">
+                                        <div className="rounded-xl border p-4 bg-card space-y-3 shadow-inner">
                                             <div className="flex justify-between text-sm">
                                                 <span>Total Due</span>
                                                 <div className="text-right">
-                                                    {payment.totalDue > 0 ? (
-                                                        <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
-                                                    ) : (
-                                                        <span className={cn("text-xs italic font-bold", !payment.invoice.applyScholarship ? "text-orange-600" : "text-primary")}>
-                                                            {payment.invoice.applyScholarship ? 'Waiver Applied' : 'Fee total due will reflect once set in system'}
-                                                        </span>
-                                                    )}
+                                                    <span className="font-bold">ZMW {payment.totalDue.toFixed(2)}</span>
                                                 </div>
                                             </div>
                                             <div className="flex justify-between text-sm text-green-600"><span>Amount Paid</span><span className="font-bold">ZMW {payment.totalPaid.toFixed(2)}</span></div>
@@ -365,8 +424,8 @@ export default function StudentPaymentsPage() {
                                 </div>
                             </CardContent>
                             <CardFooter className="bg-muted/10 border-t justify-end p-4 gap-2">
-                                <Button variant="outline" size="sm" onClick={() => handleDownloadInvoice(payment)} disabled={actionLoading === `dl-${payment.invoice.invoiceId}`}>
-                                    {actionLoading === `dl-${payment.invoice.invoiceId}` ? <Loader2 className="animate-spin h-4 w-4"/> : <Download className="mr-2 h-4 w-4"/>}Statement
+                                <Button variant="outline" size="sm" onClick={() => handleDownloadInvoice(payment)} disabled={payment.isProvisional || !!actionLoading}>
+                                    {actionLoading === `dl-${payment.invoice?.invoiceId}` ? <Loader2 className="animate-spin h-4 w-4"/> : <Download className="mr-2 h-4 w-4"/>}Statement
                                 </Button>
                                 <Button size="sm" asChild><Link href="/student/dashboard">Pay Fees</Link></Button>
                             </CardFooter>

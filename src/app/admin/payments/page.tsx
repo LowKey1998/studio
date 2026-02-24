@@ -49,7 +49,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, isBefore, differenceInCalendarDays } from 'date-fns';
+import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -70,24 +70,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { calculateBilling, type BillingPolicy, type FeeItem } from '@/lib/billing-utils';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-    DialogFooter,
-    DialogClose,
-} from '@/components/ui/dialog';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 const getOrdinalSuffix = (i: number) => {
     if (i === 1) return '1st';
@@ -132,6 +114,7 @@ type StudentPaymentInfo = {
     breakdown: FeeBreakdown;
     paymentPlanName?: string;
     nextInstallmentDue?: string | null;
+    isProvisional?: boolean;
 };
 
 type PaymentRecord = {
@@ -222,7 +205,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTermLocal(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -253,6 +236,10 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
             </PopoverContent>
         </Popover>
     );
+
+    function setSearchTermLocal(val: string) {
+        setSearch(val);
+    }
 }
 
 export default function PaymentsManagementPage() {
@@ -340,6 +327,7 @@ export default function PaymentsManagementPage() {
             const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
             const finData = store.financialSettings || { paymentThreshold: 75 };
             const plansData = store.paymentPlans || {};
+            const coursesData = store.courses || {};
 
             const transactionsList: Transaction[] = [];
             for (const txId in txsData) {
@@ -376,6 +364,9 @@ export default function PaymentsManagementPage() {
                     if (!semesterInfo) continue;
 
                     const invoice = invsData[userId]?.[reg.invoiceId];
+                    let billingResults;
+                    let isProvisional = false;
+
                     if (invoice) {
                         const tuition = Number(invoice.totalTuition || 0);
                         const mandatory = Number(invoice.totalMandatoryFees || 0);
@@ -387,54 +378,84 @@ export default function PaymentsManagementPage() {
                             ? (tuition * (scholarPerc / 100))
                             : 0;
 
-                        const totalDue = tuition - scholarshipAmount + mandatory + optional + late;
-
-                        const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
-                        const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-                        const balance = Math.max(0, totalDue - totalPaid);
-                        
-                        const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalDue > 0 ? (totalPaid / totalDue) * 100 : 100;
-                        const thresholdMet = paidPercentage >= threshold;
-
-                        const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
-                        const grace = semesterInfo.gracePeriodDays ?? 7;
-                        const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
-                        const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
-
-                        let nextInstallmentDue = null;
-                        if (reg.paymentPlan) {
-                            const plan = Object.values(plansData).find((p:any) => p.name === reg.paymentPlan) as any;
-                            if (plan) {
-                                for (let i = 0; i < plan.installments; i++) {
-                                    const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
-                                    const deadlineEvent = calendarEvents.find(e => e.title?.trim() === title.trim());
-                                    if (deadlineEvent && isAfter(parseISO(deadlineEvent.date), now)) {
-                                        nextInstallmentDue = deadlineEvent.date;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        studentPaymentMap[`${userId}-${semesterId}`] = {
-                            userId, studentId: profile.id, studentName: profile.name,
-                            totalDue, totalPaid, balance,
-                            programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
-                            semesterName: semesterInfo.name,
-                            invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
-                            thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
-                            paidPercentage, targetThreshold: threshold, gracePeriod: grace,
-                            status: balance <= 0.01 ? 'Paid' : 'Pending',
-                            paymentPlanName: reg.paymentPlan || null,
-                            nextInstallmentDue,
+                        billingResults = {
+                            totalDue: tuition - scholarshipAmount + mandatory + optional + late,
                             breakdown: {
                                 tuition, mandatory, optional, scholarship: scholarshipAmount, late,
                                 mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
                                 optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
                             }
                         };
+                    } else {
+                        // FALLBACK: Load from registration management settings
+                        isProvisional = true;
+                        const billingOutput = calculateBilling({
+                            policy: semesterInfo.billingPolicy || 'course',
+                            semesterTuition: Number(semesterInfo.tuitionFee || 0),
+                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(coursesData[cid]?.cost || 0) })),
+                            mandatoryFees: Object.values(semesterInfo.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
+                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) })),
+                            applyScholarship: !!reg.applyScholarship,
+                            scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
+                            lateFee: 0 // Assume 0 if no invoice yet
+                        });
+
+                        billingResults = {
+                            totalDue: billingOutput.grandTotal,
+                            breakdown: {
+                                tuition: billingOutput.baseTuition,
+                                mandatory: billingOutput.totalMandatoryFees,
+                                optional: billingOutput.totalOptionalFees,
+                                scholarship: billingOutput.scholarshipAmount,
+                                late: 0,
+                                mandatoryItems: billingOutput.mandatoryItems,
+                                optionalItems: billingOutput.optionalItems
+                            }
+                        };
                     }
+
+                    const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
+                    const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                    const balance = Math.max(0, billingResults.totalDue - totalPaid);
+                    
+                    const threshold = semesterInfo.paymentThreshold || globalThreshold;
+                    const paidPercentage = billingResults.totalDue > 0 ? (totalPaid / billingResults.totalDue) * 100 : 100;
+                    const thresholdMet = paidPercentage >= threshold;
+
+                    const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
+                    const grace = semesterInfo.gracePeriodDays ?? 7;
+                    const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
+                    const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
+
+                    let nextInstallmentDue = null;
+                    if (reg.paymentPlan) {
+                        const plan = Object.values(plansData).find((p:any) => p.name === reg.paymentPlan) as any;
+                        if (plan) {
+                            for (let i = 0; i < plan.installments; i++) {
+                                const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
+                                const deadlineEvent = calendarEvents.find(e => e.title?.trim() === title.trim());
+                                if (deadlineEvent && isAfter(parseISO(deadlineEvent.date), now)) {
+                                    nextInstallmentDue = deadlineEvent.date;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    studentPaymentMap[`${userId}-${semesterId}`] = {
+                        userId, studentId: profile.id, studentName: profile.name,
+                        totalDue: billingResults.totalDue, totalPaid, balance,
+                        programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
+                        semesterName: semesterInfo.name,
+                        invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
+                        thresholdMet, penaltiesActive, isScholarship: !!reg.applyScholarship,
+                        paidPercentage, targetThreshold: threshold, gracePeriod: grace,
+                        status: balance <= 0.01 ? 'Paid' : 'Pending',
+                        paymentPlanName: reg.paymentPlan || null,
+                        nextInstallmentDue,
+                        breakdown: billingResults.breakdown,
+                        isProvisional
+                    };
                 }
             }
 
@@ -475,7 +496,11 @@ export default function PaymentsManagementPage() {
             store.intakes = data;
             computeDerived();
         }));
-        unsubs.push(onValue(dataRefs.courses, (s) => { setAllCourses(s.val() || {}); }));
+        unsubs.push(onValue(dataRefs.courses, (s) => { 
+            setAllCourses(s.val() || {}); 
+            store.courses = s.val() || {};
+            computeDerived();
+        }));
         unsubs.push(onValue(dataRefs.invoices, (s) => { store.invoices = s.val() || {}; computeDerived(); }));
         unsubs.push(onValue(dataRefs.financialSettings, (snapshot) => { 
             setFinancialSettings(snapshot.val()); 
@@ -980,13 +1005,22 @@ export default function PaymentsManagementPage() {
                                             <Popover>
                                                 <PopoverTrigger asChild>
                                                     <Button variant="ghost" className="h-auto p-0 hover:bg-transparent flex flex-col items-end">
-                                                        <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</span>
+                                                            {info.isProvisional && <Badge variant="outline" className="h-3 text-[7px] font-black uppercase border-orange-200 text-orange-600 bg-orange-50/50">Provisional</Badge>}
+                                                        </div>
                                                         <span className="text-[8px] uppercase font-bold opacity-40">Itemized Due <ChevronDown className="h-2 w-2 inline ml-0.5" /></span>
                                                     </Button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-80 p-4 shadow-2xl">
                                                     <div className="space-y-3">
-                                                        <h4 className="text-[10px] font-black uppercase text-primary border-b pb-2 tracking-widest">Balance Breakdown</h4>
+                                                        <div className="flex flex-col gap-1">
+                                                            <h4 className="text-[10px] font-black uppercase text-primary tracking-widest">Balance Breakdown</h4>
+                                                            {info.isProvisional && (
+                                                                <p className="text-[9px] text-orange-600 font-bold italic leading-tight">* Projected from Semester Settings (No Official Invoice Yet)</p>
+                                                            )}
+                                                        </div>
+                                                        <Separator />
                                                         <div className="space-y-1.5 text-xs">
                                                             <div className="flex justify-between"><span>Tuition:</span> <span className="font-bold">ZMW {info.breakdown.tuition.toFixed(2)}</span></div>
                                                             {info.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600"><span>Scholarship credit:</span> <span className="font-bold">- ZMW {info.breakdown.scholarship.toFixed(2)}</span></div>}
