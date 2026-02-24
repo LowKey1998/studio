@@ -176,6 +176,7 @@ type Transaction = {
 type Intake = { id: string; name: string; };
 type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
+type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
 type OptionGroup = { groupName: string; items: { value: string; label: string }[] };
 
@@ -916,6 +917,9 @@ export default function PaymentsManagementPage() {
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label>
                             <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                         </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Cohort (Intake)</Label>
+                            <Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
+                        </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
                             <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
                                 <SelectContent>
@@ -929,10 +933,10 @@ export default function PaymentsManagementPage() {
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label>
                             <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
                         </div>
-                        <div className="space-y-1 lg:col-span-2"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-dashed">
                         <div className="space-y-1">
                             <Label className="text-[10px] font-black uppercase">Min Paid</Label>
                             <Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs border-primary/20" />
