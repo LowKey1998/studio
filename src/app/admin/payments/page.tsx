@@ -223,7 +223,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -367,7 +367,7 @@ export default function PaymentsManagementPage() {
             }
             setRawTransactions(transactionsList.sort((a,b) => parseISO(b.paymentDate).getTime() - parseISO(a.paymentDate).getTime()));
 
-            const studentPaymentMap: Record<string, StudentPaymentInfo> = {};
+            const studentPaymentMap = new Map<string, StudentPaymentInfo>();
             const globalThreshold = finData.paymentThreshold || 75;
             const now = getCurrentServerDate();
 
@@ -466,7 +466,8 @@ export default function PaymentsManagementPage() {
                         }
                     }
 
-                    studentPaymentMap[`${userId}-${semesterId}`] = {
+                    const mapKey = `${userId}-${semesterId}`;
+                    studentPaymentMap.set(mapKey, {
                         userId, studentId: profile.id, studentName: profile.name,
                         totalDue: billingResults.totalDue, totalPaid, balance,
                         programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
@@ -479,11 +480,11 @@ export default function PaymentsManagementPage() {
                         nextInstallmentDue,
                         breakdown: billingResults.breakdown,
                         isProvisional
-                    };
+                    });
                 }
             }
 
-            setPaymentInfos(Object.values(studentPaymentMap));
+            setPaymentInfos(Array.from(studentPaymentMap.values()));
             setLoading(false);
         };
 
