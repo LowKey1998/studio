@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -133,7 +134,7 @@ export default function StudentPaymentsPage() {
         if (!currentUser) return;
         setLoading(true);
         try {
-            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap, regsSnap] = await Promise.all([
+            const [userSnap, invoicesSnap, transactionsSnap, semestersSnap, coursesSnap, institutionSnap, financialSnap, intakesSnap, calendarSnap, regsSnap, configsSnap] = await Promise.all([
                 get(ref(db, `users/${currentUser.uid}`)),
                 get(ref(db, `invoices/${currentUser.uid}`)),
                 get(ref(db, 'transactions')),
@@ -143,7 +144,8 @@ export default function StudentPaymentsPage() {
                 get(ref(db, 'settings/financialSettings')),
                 get(ref(db, 'intakes')),
                 get(ref(db, 'settings/academicCalendar')),
-                get(ref(db, `registrations/${currentUser.uid}`))
+                get(ref(db, `registrations/${currentUser.uid}`)),
+                get(ref(db, 'semesterConfigs'))
             ]);
 
             const userProfile = userSnap.val() || {};
@@ -153,6 +155,7 @@ export default function StudentPaymentsPage() {
             const fSettings = financialSnap.val() || { paymentThreshold: 75 };
             const allIntakes = intakesSnap.val() || {};
             const calSettings = calendarSnap.val() || {};
+            const allConfigs = configsSnap.val() || {};
             
             setAllCourses(coursesData);
             setAllSemesters(semestersData);
@@ -188,6 +191,10 @@ export default function StudentPaymentsPage() {
                     let billingResults;
                     let isProvisional = false;
 
+                    // Load from versioned snapshot if available, otherwise fallback
+                    const configSnapshot = (reg.configId && allConfigs[semId]?.[reg.configId]) || (invoice?.configId && allConfigs[semId]?.[invoice.configId]);
+                    const activeSemesterRules = configSnapshot || semesterInfo;
+
                     if (invoice) {
                         const tuition = Number(invoice.totalTuition || 0);
                         const mandatory = Number(invoice.totalMandatoryFees || 0);
@@ -203,19 +210,22 @@ export default function StudentPaymentsPage() {
                             totalDue: tuition - scholarshipAmount + mandatory + optional + late,
                             breakdown: {
                                 tuition, mandatory, optional, scholarship: scholarshipAmount, late,
-                                mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
-                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
+                                mandatoryItems: Object.values(activeSemesterRules.mandatoryFees || {}),
+                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) }))
                             }
                         };
                     } else {
                         // FALLBACK: Load from registration settings
                         isProvisional = true;
                         const billingOutput = calculateBilling({
-                            policy: semesterInfo.billingPolicy || institutionSettings.billingPolicy || 'course',
-                            semesterTuition: Number(semesterInfo.tuitionFee || 0),
-                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(coursesData[cid]?.cost || 0) })),
-                            mandatoryFees: Object.values(semesterInfo.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
-                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) })),
+                            policy: activeSemesterRules.billingPolicy || institutionSettings.billingPolicy || 'course',
+                            semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
+                            courses: (reg.courses || []).map((cid: string) => {
+                                const cost = activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0;
+                                return { id: cid, cost: Number(cost) };
+                            }),
+                            mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
+                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
                             applyScholarship: !!reg.applyScholarship,
                             scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
                             lateFee: 0 
@@ -326,6 +336,7 @@ export default function StudentPaymentsPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'Download Failed' });
         } finally {
+            setLoading(false);
             setActionLoading(null);
         }
     };
@@ -413,7 +424,7 @@ export default function StudentPaymentsPage() {
                                                     <div className="space-y-4">
                                                         <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Active Restrictions</h4>
                                                         <div className="grid gap-2 text-[10px] font-bold uppercase">
-                                                            <div className="flex justify-between"><span>Reg. Block</span> {restrictions.registration && !payment.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
+                                                            <div className="flex justify-between"><span>Reg. Window</span> {restrictions.registration && !payment.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
                                                             <div className="flex justify-between"><span>Grade Block</span> {restrictions.results && !payment.thresholdMet ? <AlertTriangle className="text-red-500 h-3 w-3"/> : <CheckCircle2 className="text-green-600 h-3 w-3"/>}</div>
                                                         </div>
                                                     </div>

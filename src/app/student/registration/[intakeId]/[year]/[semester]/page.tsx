@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -52,6 +53,8 @@ type Semester = {
     lateRegistrationActive?: boolean;
     billingPolicy?: BillingPolicy;
     tuitionFee?: number;
+    isFeesSet?: boolean;
+    activeConfigId?: string;
 };
 
 type Fee = {
@@ -324,6 +327,7 @@ export default function RegisterForSemesterPage() {
                 courses: selectedCourseIds,
                 optionalFees: selectedOptionalFees,
                 applyScholarship: applyScholarship,
+                configId: semesterDetails.activeConfigId || null 
             };
 
             const registrationData = {
@@ -336,7 +340,8 @@ export default function RegisterForSemesterPage() {
                 registrationDate: existingRegistration?.registrationDate || new Date().toISOString(),
                 applyScholarship: applyScholarship,
                 semesterName: semesterDetails.name,
-                source: 'manual' 
+                source: 'manual',
+                configId: semesterDetails.activeConfigId || null 
             };
 
             await set(invoiceRef, invoiceData);
@@ -480,9 +485,9 @@ export default function RegisterForSemesterPage() {
                     </div>
                 </CardContent>
                 <CardFooter className="flex justify-end border-t pt-6">
-                    <Button size="lg" onClick={handleSubmitRegistration} disabled={saving}>
+                    <Button size="lg" onClick={handleSubmitRegistration} disabled={saving || !semesterDetails?.isFeesSet}>
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                        {existingRegistration ? 'Update My Details' : 'Complete & Submit Registration'}
+                        {semesterDetails?.isFeesSet ? (existingRegistration ? 'Update My Details' : 'Complete & Submit Registration') : 'Fees Not Finalized by Admin'}
                     </Button>
                 </CardFooter>
             </Card>

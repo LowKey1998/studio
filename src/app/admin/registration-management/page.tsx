@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -47,7 +48,8 @@ import {
     BookOpen,
     Tag,
     Receipt,
-    ReceiptText
+    ReceiptText,
+    ShieldCheck
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -97,7 +99,7 @@ const getOrdinalSuffix = (i: number) => {
     return `${i}th`;
 };
 
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; lateRegistrationActive?: boolean; lateRegistrationFee?: number; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; paymentThreshold?: number; gracePeriodDays?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; isFeesSet?: boolean; activeConfigId?: string; };
 type Intake = { id: string; name: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 type FeeTemplate = { id: string; name: string; amount: number; type: 'Mandatory' | 'Optional'; };
@@ -145,6 +147,7 @@ function CreateOrEditDialogContent({
     const [lateRegistrationFee, setLateRegistrationFee] = React.useState(0);
     const [billingPolicy, setBillingPolicy] = React.useState<'course' | 'semester'>('course');
     const [tuitionFee, setTuitionFee] = React.useState('');
+    const [isFeesSet, setIsFeesSet] = React.useState(false);
     const [coursePrices, setCoursePrices] = React.useState<Record<string, string>>({});
     
     const [isMandatoryFeeDialogOpen, setIsMandatoryFeeDialogOpen] = React.useState(false);
@@ -188,6 +191,7 @@ function CreateOrEditDialogContent({
             setLateRegistrationFee(editingSemester.lateRegistrationFee ?? 0);
             setBillingPolicy(editingSemester.billingPolicy || 'course');
             setTuitionFee(String(editingSemester.tuitionFee || ''));
+            setIsFeesSet(editingSemester.isFeesSet ?? false);
 
             const prices: Record<string, string> = {};
             relevantCourseIds.forEach(cid => {
@@ -227,13 +231,15 @@ function CreateOrEditDialogContent({
         }
         setSaving(true);
         try {
+            const configId = `cfg-${Date.now()}`;
+            
             const semesterData: Omit<Semester, 'id'> = {
                 name: finalName.trim(),
                 status: editingSemester?.status || 'Closed',
                 lateRegistrationActive,
                 lateRegistrationFee: Number(lateRegistrationFee),
-                startDate: format(semesterDates.from, 'yyyy-MM-dd'),
-                endDate: semesterDates.to ? format(semesterDates.to, 'yyyy-MM-dd') : format(semesterDates.from, 'yyyy-MM-dd'),
+                startDate: format(semesterDates.from!, 'yyyy-MM-dd'),
+                endDate: semesterDates.to ? format(semesterDates.to, 'yyyy-MM-dd') : format(semesterDates.from!, 'yyyy-MM-dd'),
                 paymentPlanIds: selectedPaymentPlans,
                 mandatoryFees,
                 optionalFees,
@@ -243,17 +249,28 @@ function CreateOrEditDialogContent({
                 year: Number(year),
                 semesterInYear: Number(semesterInYear),
                 billingPolicy,
-                tuitionFee: Number(tuitionFee) || 0
+                tuitionFee: Number(tuitionFee) || 0,
+                isFeesSet,
+                activeConfigId: configId
             };
 
             const updates: Record<string, any> = {};
+            let semesterId = editingSemester?.id;
             
             if (editingSemester) {
                 updates[`semesters/${editingSemester.id}`] = semesterData;
             } else {
                 const newRef = push(ref(db, 'semesters'));
-                updates[`semesters/${newRef.key}`] = semesterData;
+                semesterId = newRef.key!;
+                updates[`semesters/${semesterId}`] = semesterData;
             }
+
+            // Save Snapshot for versioning
+            updates[`semesterConfigs/${semesterId}/${configId}`] = {
+                ...semesterData,
+                coursePrices: billingPolicy === 'course' ? coursePrices : null,
+                timestamp: serverTimestamp()
+            };
 
             if (billingPolicy === 'course') {
                 Object.entries(coursePrices).forEach(([cid, price]) => {
@@ -371,6 +388,18 @@ function CreateOrEditDialogContent({
                     </div>
                 </TabsContent>
                 <TabsContent value="fees" className="space-y-4 pt-4 max-h-[60vh] overflow-y-auto pr-2">
+                    <div className="p-4 border rounded-xl bg-blue-50/50 mb-4 border-blue-200">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold flex items-center gap-2">
+                                    <ShieldCheck className="h-4 w-4 text-blue-600"/> Finalize Fee Structure
+                                </Label>
+                                <p className="text-[10px] text-muted-foreground leading-tight">Enable this to allow students to generate invoices with these rates.</p>
+                            </div>
+                            <Switch checked={isFeesSet} onCheckedChange={setIsFeesSet} />
+                        </div>
+                    </div>
+
                     <div className="p-4 border rounded-xl bg-primary/5 mb-4">
                         <div className="flex items-center justify-between">
                             <Label className="text-base font-bold flex items-center gap-2 text-primary"><DollarSign className="h-4 w-4"/> Tuition Billing Strategy</Label>
@@ -656,6 +685,15 @@ export default function RegistrationManagementPage() {
         finally { setSaving(false); }
     };
 
+    const handleToggleFeesSet = async (sem: Semester) => {
+        try {
+            await update(ref(db, `semesters/${sem.id}`), { isFeesSet: !sem.isFeesSet });
+            toast({ title: sem.isFeesSet ? 'Fees unfinalized' : 'Fees finalized' });
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'Action failed' });
+        }
+    };
+
     return (
         <div className="space-y-6">
             <Card className="shadow-lg border-0 bg-primary/5">
@@ -735,7 +773,7 @@ export default function RegistrationManagementPage() {
                                                                     <div className="flex wrap gap-1.5 pt-1">
                                                                         {hasPlans && isOutOfRange && <Badge variant="destructive" className="h-4 text-[8px] uppercase animate-pulse bg-red-100 text-red-700">Date Conflict</Badge>}
                                                                         {isActive ? <Badge className="h-4 text-[8px] bg-green-100 text-green-700 border-green-200">Registration Open</Badge> : <Badge variant="secondary" className="h-4 text-[8px]">Closed</Badge>}
-                                                                        <Badge variant="outline" className="h-4 text-[8px] uppercase">{isFlatFee ? 'Flat Fee' : 'Course Fee'}</Badge>
+                                                                        <Badge variant="outline" className={cn("h-4 text-[8px] uppercase", sem.isFeesSet ? "bg-blue-50 text-blue-700 border-blue-200" : "")}>{sem.isFeesSet ? 'Fees Set' : 'Fees Pending'}</Badge>
                                                                     </div>
                                                                 </div>
                                                                 <Switch className="absolute top-6 right-4" checked={isActive} onCheckedChange={() => {
@@ -792,22 +830,6 @@ export default function RegistrationManagementPage() {
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                            <div className="space-y-2">
-                                                                <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Curriculum</Label>
-                                                                <div className="grid gap-1">
-                                                                    {courses.map(c => (
-                                                                        <div key={c.id} className="text-xs p-1.5 bg-muted/30 rounded border border-dashed flex justify-between items-center">
-                                                                            <div>
-                                                                                <span className="font-bold">{c.code}</span>: {c.name} 
-                                                                                <p className="text-[10px] opacity-60">{c.lecturer}</p>
-                                                                            </div>
-                                                                            {!isFlatFee && (
-                                                                                <Badge variant="outline" className="h-5 font-mono text-[9px] bg-background">K{c.cost.toFixed(0)}</Badge>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
                                                             <Separator />
                                                             <div className="space-y-2">
                                                                 <Label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Finance Deadlines</Label>
@@ -822,6 +844,9 @@ export default function RegistrationManagementPage() {
                                                             </div>
                                                         </CardContent>
                                                         <CardFooter className="bg-muted/10 border-t flex justify-end gap-2 p-3">
+                                                            <Button variant="ghost" size="icon" className={cn("h-8 w-8", sem.isFeesSet ? "text-blue-600" : "text-muted-foreground")} onClick={() => handleToggleFeesSet(sem)} title={sem.isFeesSet ? "Unfinalize Fees" : "Finalize Fees"}>
+                                                                <ShieldCheck className="h-4 w-4"/>
+                                                            </Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingSemester(sem); setEditInitialTab('details'); setIsEditDialogOpen(true); }}><Pencil className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDeadlineDialog(sem)}><CalendarIcon className="h-4 w-4"/></Button>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { setSemesterToDeleteId(semId); setIsDeleteSemesterDialogOpen(true); }}><Trash2 className="h-4 w-4"/></Button>

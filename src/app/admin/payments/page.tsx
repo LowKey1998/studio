@@ -1,3 +1,4 @@
+
 "use client";
 import * as React from 'react';
 import Link from 'next/link';
@@ -205,7 +206,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearchTermLocal(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -236,10 +237,6 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
             </PopoverContent>
         </Popover>
     );
-
-    function setSearchTermLocal(val: string) {
-        setSearch(val);
-    }
 }
 
 export default function PaymentsManagementPage() {
@@ -298,7 +295,8 @@ export default function PaymentsManagementPage() {
         financialSettings: ref(db, 'settings/financialSettings'),
         calendarEvents: ref(db, 'calendarEvents'),
         academicCalendar: ref(db, 'settings/academicCalendar'),
-        paymentPlans: ref(db, 'settings/paymentPlans')
+        paymentPlans: ref(db, 'settings/paymentPlans'),
+        configs: ref(db, 'semesterConfigs')
     }), []);
 
     React.useEffect(() => {
@@ -328,6 +326,7 @@ export default function PaymentsManagementPage() {
             const finData = store.financialSettings || { paymentThreshold: 75 };
             const plansData = store.paymentPlans || {};
             const coursesData = store.courses || {};
+            const configsData = store.configs || {};
 
             const transactionsList: Transaction[] = [];
             for (const txId in txsData) {
@@ -367,6 +366,10 @@ export default function PaymentsManagementPage() {
                     let billingResults;
                     let isProvisional = false;
 
+                    // Load from versioned snapshot if available
+                    const configSnapshot = (reg.configId && configsData[semesterId]?.[reg.configId]) || (invoice?.configId && configsData[semesterId]?.[invoice.configId]);
+                    const activeSemesterRules = configSnapshot || semesterInfo;
+
                     if (invoice) {
                         const tuition = Number(invoice.totalTuition || 0);
                         const mandatory = Number(invoice.totalMandatoryFees || 0);
@@ -382,22 +385,25 @@ export default function PaymentsManagementPage() {
                             totalDue: tuition - scholarshipAmount + mandatory + optional + late,
                             breakdown: {
                                 tuition, mandatory, optional, scholarship: scholarshipAmount, late,
-                                mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
-                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
+                                mandatoryItems: Object.values(activeSemesterRules.mandatoryFees || {}),
+                                optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) }))
                             }
                         };
                     } else {
                         // FALLBACK: Load from registration management settings
                         isProvisional = true;
                         const billingOutput = calculateBilling({
-                            policy: semesterInfo.billingPolicy || 'course',
-                            semesterTuition: Number(semesterInfo.tuitionFee || 0),
-                            courses: (reg.courses || []).map((cid: string) => ({ id: cid, cost: Number(coursesData[cid]?.cost || 0) })),
-                            mandatoryFees: Object.values(semesterInfo.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
-                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) })),
+                            policy: activeSemesterRules.billingPolicy || 'course',
+                            semesterTuition: Number(activeSemesterRules.tuitionFee || 0),
+                            courses: (reg.courses || []).map((cid: string) => {
+                                const cost = activeSemesterRules.coursePrices?.[cid] || coursesData[cid]?.cost || 0;
+                                return { id: cid, cost: Number(cost) };
+                            }),
+                            mandatoryFees: Object.values(activeSemesterRules.mandatoryFees || {}).map((f:any) => ({ name: f.name, amount: Number(f.amount || 0) })),
+                            optionalFees: (reg.optionalFees || []).map((fid:string) => ({ name: activeSemesterRules.optionalFees?.[fid]?.name || 'Fee', amount: Number(activeSemesterRules.optionalFees?.[fid]?.amount || 0) })),
                             applyScholarship: !!reg.applyScholarship,
                             scholarshipPercentage: Number(reg.scholarshipPercentage || 0),
-                            lateFee: 0 // Assume 0 if no invoice yet
+                            lateFee: 0 
                         });
 
                         billingResults = {
@@ -519,6 +525,7 @@ export default function PaymentsManagementPage() {
             store.paymentPlans = data;
             computeDerived();
         }));
+        unsubs.push(onValue(dataRefs.configs, (s) => { store.configs = s.val() || {}; computeDerived(); }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData?.uid || 'default'}`);
         get(savedFiltersRef).then(snapshot => {
