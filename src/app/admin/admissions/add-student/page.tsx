@@ -383,7 +383,7 @@ export default function AddStudentPage() {
             toast({ title: 'Request Linked Successfully' });
             setIsLinkDialogOpen(false); setLinkingRequest(null); fetchInitialData();
         } catch (e: any) { toast({ variant: 'destructive', title: 'Linking Failed', description: e.message }); }
-        finally { setLoading(false); }
+        finally { existingStudentUid && setLoading(false); }
     };
 
     const handleOpenEdit = (student: User) => {

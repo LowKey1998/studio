@@ -576,7 +576,7 @@ export default function PaymentsManagementPage() {
                     const studentInfo = allStudents.find(s => s.uid === value);
                     if (studentInfo) {
                         const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId && s.status !== 'Archived');
-                        const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
+                        const years = Array.from(new Set(semesters.filter(s => s.status !== 'Archived').map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
                         nextRow.year = '';
                         nextRow.semesterId = ''; 
@@ -589,8 +589,8 @@ export default function PaymentsManagementPage() {
                 } else if (field === 'isNewStudent') {
                     if (value) {
                         nextRow.userId = undefined;
-                        const openSemesters = semesters.filter(s => s.status === 'Open');
-                        nextRow.availableYears = Array.from(new Set(openSemesters.map(s => String(s.year)))).sort();
+                        const years = Array.from(new Set(semesters.filter(s => s.status !== 'Archived').map(s => String(s.year)))).sort();
+                        nextRow.availableYears = years;
                     } else {
                         nextRow.tempStudentId = undefined;
                         nextRow.tempStudentName = undefined;
@@ -604,7 +604,7 @@ export default function PaymentsManagementPage() {
                     nextRow.allocations = [];
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
-                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value && s.status === 'Open');
+                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value && s.status !== 'Archived');
                     } else {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
                         nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value && s.status !== 'Archived');
@@ -1036,7 +1036,7 @@ export default function PaymentsManagementPage() {
                                             <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student Identity</Label></div>
                                             <div className="flex items-center gap-2">
                                                 <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
-                                                <span className="text-[10px] font-bold uppercase text-primary">New Student?</span>
+                                                <span className="text-[10px] font-bold uppercase text-primary">Request Student Creation?</span>
                                             </div>
                                         </div>
                                         {row.isNewStudent ? (
@@ -1195,7 +1195,7 @@ export default function PaymentsManagementPage() {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) setHistoryStudent(null); setIsHistoryOpen(o); }}>
+            <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) { setHistoryStudent(null); setIsHistoryOpen(o); } }}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <div className="flex items-center justify-between gap-4">
