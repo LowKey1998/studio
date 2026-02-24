@@ -27,7 +27,9 @@ import {
     Banknote,
     MoreVertical,
     Plus,
-    FileCheck
+    FileCheck,
+    TrendingUp,
+    Equal
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -382,8 +384,8 @@ export default function PaymentsManagementPage() {
                         const scholarPerc = Number(invoice.scholarshipPercentage || 100);
 
                         const scholarshipAmount = invoice.applyScholarship 
-                            ? (tuition * (scholarPerc / 100))
-                            : 0;
+                            ? (tuition * (1 - (scholarPerc / 100))) + mandatory + optional + late
+                            : tuition + mandatory + optional + late;
 
                         billingResults = {
                             totalDue: tuition - scholarshipAmount + mandatory + optional + late,
@@ -970,7 +972,7 @@ export default function PaymentsManagementPage() {
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => handleQuickPay(info)}><Banknote className="h-4 w-4"/></Button>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
+                                                    <DropdownMenuContent align="end" className="w-48">
                                                         <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement</DropdownMenuItem>
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit</DropdownMenuItem>

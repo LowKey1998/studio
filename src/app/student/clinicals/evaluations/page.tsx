@@ -7,7 +7,7 @@ import { ref, onValue } from 'firebase/database';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format, parseISO } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ClipboardList, Star, UserCheck, Clock, Info } from 'lucide-react';
+import { ClipboardList, Star, Clock, Info } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 type Evaluation = {

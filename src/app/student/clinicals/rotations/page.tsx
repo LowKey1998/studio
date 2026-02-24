@@ -9,6 +9,8 @@ import { format, parseISO, isAfter, isBefore } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin, Calendar, Clock, Stethoscope, Info } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 
 type Rotation = {
     id: string;
@@ -44,12 +46,12 @@ export default function StudentRotationsPage() {
         return () => unsub();
     }, [currentUser]);
 
+    const isSameDay = (d1: Date, d2: Date) => format(d1, 'yyyy-MM-dd') === format(d2, 'yyyy-MM-dd');
+
     if (loading) return <div className="space-y-4"><Skeleton className="h-32 w-full"/><Skeleton className="h-32 w-full"/></div>;
 
     const upcoming = rotations.filter(r => isAfter(parseISO(r.date), new Date()) || isSameDay(parseISO(r.date), new Date()));
     const history = rotations.filter(r => isBefore(parseISO(r.date), new Date()) && !isSameDay(parseISO(r.date), new Date()));
-
-    const isSameDay = (d1: Date, d2: Date) => format(d1, 'yyyy-MM-dd') === format(d2, 'yyyy-MM-dd');
 
     return (
         <div className="space-y-6">
