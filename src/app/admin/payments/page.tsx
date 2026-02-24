@@ -56,6 +56,23 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { 
+    Dialog, 
+    DialogContent, 
+    DialogHeader, 
+    DialogTitle, 
+    DialogDescription, 
+    DialogFooter, 
+    DialogClose 
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -158,7 +175,7 @@ type Transaction = {
 };
 
 type Intake = { id: string; name: string; };
-type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; };
+type Semester = { id: string; name: string; intakeId: string; year: number; semesterInYear: number; status: 'Open' | 'Closed' | 'Archived'; startDate?: string; endDate?: string; paymentPlanIds?: Record<string, boolean>; gracePeriodDays?: number; paymentThreshold?: number; billingPolicy?: 'course' | 'semester'; tuitionFee?: number; mandatoryFees?: Record<string, any>; optionalFees?: Record<string, any>; coursePrices?: Record<string, number>; };
 type StudentInfo = { uid: string; id: string; name: string; intakeId?: string; programmeId?: string; };
 type PaymentPlan = { id: string; name: string; installments: number; installmentPercentages: number[]; archived?: boolean; };
 
@@ -248,6 +265,7 @@ export default function PaymentsManagementPage() {
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
     const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
+    const [feeTemplates, setFeeTemplates] = React.useState<FeeTemplate[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
