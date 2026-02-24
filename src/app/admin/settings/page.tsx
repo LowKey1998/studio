@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, PlusCircle, Trash2, KeyRound, Mail, Percent, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, LayoutGrid, ShieldAlert, Lock } from 'lucide-react';
+import { Loader2, Save, PlusCircle, Trash2, KeyRound, Mail, Percent, AlertCircle, Info, Link as LinkIcon, MessageSquare, Facebook, Settings2, Clock, LayoutGrid, ShieldAlert, Lock, Stethoscope } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { ref, update, onValue, push, remove } from 'firebase/database';
@@ -47,6 +47,10 @@ type NotificationRules = {
     leave: boolean;
     library: boolean;
     financial: boolean;
+};
+
+type ClinicalSettings = {
+    studentVisible: boolean;
 };
 
 type Integrations = { 
@@ -103,6 +107,7 @@ export default function SettingsPage() {
         library: true,
         financial: true
     });
+    const [clinicalSettings, setClinicalSettings] = React.useState<ClinicalSettings>({ studentVisible: true });
     const [integrations, setIntegrations] = React.useState<Integrations>({ 
         quickbooks: { enabled: false }, 
         sage: { enabled: false }, 
@@ -146,6 +151,7 @@ export default function SettingsPage() {
                 }
                 if (data.registrationPolicy) setRegistrationPolicy(prev => ({ ...prev, ...data.registrationPolicy }));
                 if (data.notificationRules) setNotificationRules(prev => ({ ...prev, ...data.notificationRules }));
+                if (data.clinicalSettings) setClinicalSettings(prev => ({ ...prev, ...data.clinicalSettings }));
                 if (data.integrations) setIntegrations(prev => ({ ...prev, ...data.integrations }));
                 if (data.departments) setDepartments(Object.keys(data.departments).map(id => ({ id, ...data.departments[id] })));
                 if (data.emailTemplates) setEmailTemplates(prev => ({ ...prev, ...data.emailTemplates }));
@@ -190,6 +196,7 @@ export default function SettingsPage() {
                 integrations: integrations,
                 emailTemplates: emailTemplates,
                 notificationRules: notificationRules,
+                clinicalSettings: clinicalSettings,
             });
             toast({ variant: 'success', title: 'Settings Saved' });
         } catch (error: any) {
@@ -326,6 +333,27 @@ export default function SettingsPage() {
                             </div>
                             <Switch checked={notificationRules.financial} onCheckedChange={() => toggleNotificationRule('financial')} />
                         </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Clinicals & Nursing Portal</CardTitle>
+                    <CardDescription>Control visibility of professional clinical modules for students.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between p-4 rounded-lg border bg-blue-50/20 border-blue-100">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-blue-100">
+                                <Stethoscope className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold">Enable Clinicals for Students</Label>
+                                <p className="text-xs text-muted-foreground">Hides the "Clinicals" sidebar section from the student portal when disabled.</p>
+                            </div>
+                        </div>
+                        <Switch checked={clinicalSettings.studentVisible} onCheckedChange={(val) => setClinicalSettings({ studentVisible: val })} />
                     </div>
                 </CardContent>
             </Card>

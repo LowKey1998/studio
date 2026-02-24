@@ -378,6 +378,15 @@ export const studentMenuItems = [
         ]
     },
     {
+        label: 'Clinicals',
+        icon: Stethoscope,
+        items: [
+            { href: '/student/clinicals/rotations', label: 'Ward Rotations', icon: MapPin },
+            { href: '/student/clinicals/logbook', label: 'Clinical Logbook', icon: Book },
+            { href: '/student/clinicals/evaluations', label: 'Evaluations & Feedback', icon: ClipboardList },
+        ]
+    },
+    {
         label: 'Campus Life',
         icon: Building,
         items: [
@@ -401,6 +410,14 @@ export const studentMenuItems = [
         items: [
             { href: '/student/chaplaincy/prayer-requests', label: 'Prayer Requests', icon: Heart },
             { href: '/admin/chaplaincy/spiritual-events', label: 'Spiritual Events', icon: Calendar },
+        ]
+    },
+    {
+        label: 'Graduation',
+        icon: FileBadge,
+        items: [
+            { href: '/student/graduation/clearance', label: 'Graduation Clearance', icon: CheckCircle2 },
+            { href: '/admin/addons/alumni', label: 'Alumni Connect', icon: Users2 },
         ]
     }
   ];

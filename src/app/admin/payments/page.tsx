@@ -1,7 +1,5 @@
-
 "use client";
 import * as React from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { 
@@ -50,7 +48,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays } from 'date-fns';
+import { format, parseISO, isAfter, addDays, isBefore, differenceInCalendarDays, isWithinInterval } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -119,6 +117,7 @@ type StudentPaymentInfo = {
     intakeId: string | null;
     semesterId: string | null;
     semesterName?: string;
+    registrationDate?: string;
     invoiceId: string;
     enrolledCourses: string[];
     thresholdMet: boolean;
@@ -223,7 +222,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearchTerm(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -281,6 +280,7 @@ export default function PaymentsManagementPage() {
     const [intakeFilter, setIntakeFilter] = React.useState('all');
     const [planStatusFilter, setPlanStatusFilter] = React.useState('all');
     const [dueFilter, setDueFilter] = React.useState('all');
+    const [dateRange, setDateRange] = React.useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
     const [minPaidFilter, setMinPaidFilter] = React.useState('');
     const [maxPaidFilter, setMaxPaidFilter] = React.useState('');
     const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
@@ -471,7 +471,7 @@ export default function PaymentsManagementPage() {
                         userId, studentId: profile.id, studentName: profile.name,
                         totalDue: billingResults.totalDue, totalPaid, balance,
                         programmeId: reg.programmeId, intakeId: semesterInfo.intakeId || null, semesterId,
-                        semesterName: semesterInfo.name,
+                        semesterName: semesterInfo.name, registrationDate: reg.registrationDate,
                         invoiceId: reg.invoiceId, enrolledCourses: reg.courses || [],
                         thresholdMet, penaltiesActive, isScholarship: !!reg.applyScholarship,
                         paidPercentage, targetThreshold: threshold, gracePeriod: grace,
@@ -576,24 +576,24 @@ export default function PaymentsManagementPage() {
                 }
             }
 
+            const regDate = p.registrationDate ? parseISO(p.registrationDate) : null;
+            let dateMatch = true;
+            if (dateRange.from && regDate) {
+                dateMatch = isAfter(regDate, dateRange.from) || format(regDate, 'yyyy-MM-dd') === format(dateRange.from, 'yyyy-MM-dd');
+                if (dateRange.to && dateMatch) {
+                    dateMatch = isBefore(regDate, dateRange.to) || format(regDate, 'yyyy-MM-dd') === format(dateRange.to, 'yyyy-MM-dd');
+                }
+            } else if (dateRange.from && !regDate) {
+                dateMatch = false;
+            }
+
             const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
             const maxMatch = maxPaidFilter === '' || p.totalPaid <= parseFloat(maxPaidFilter);
             const equalMatch = equalPaidFilter === '' || Math.abs(p.totalPaid - parseFloat(equalPaidFilter)) < 0.01;
 
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && minMatch && maxMatch && equalMatch;
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && dateMatch && minMatch && maxMatch && equalMatch;
         });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
-
-    const revenueMetrics = React.useMemo(() => {
-        const now = getCurrentServerDate();
-        const today = format(now, 'yyyy-MM-dd');
-        const month = format(now, 'yyyy-MM');
-        return rawTransactions.reduce((acc, t) => {
-            if(t.paymentDate.startsWith(today)) acc.today += t.amount;
-            if(t.paymentDate.startsWith(month)) acc.month += t.amount;
-            return acc;
-        }, { today: 0, month: 0 });
-    }, [rawTransactions, serverTimeOffset]);
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, dateRange, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
 
     const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
         setBulkPaymentRows(prev => prev.map(row => {
@@ -712,10 +712,6 @@ export default function PaymentsManagementPage() {
 
         setBulkPaymentRows([initialRow]);
         setIsBulkRecordOpen(true);
-    };
-
-    const handleRemovePaymentRow = (key: number) => {
-        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
     };
 
     const handleSaveAllBulk = async () => {
@@ -875,9 +871,7 @@ export default function PaymentsManagementPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Today's Collections</CardTitle><TrendingUp className="h-4 w-4 text-green-600"/></CardHeader><CardContent><div className="text-2xl font-black text-green-600">ZMW {revenueMetrics.today.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle><PiggyBank className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent></Card>
-                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
+                        <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle><Users className="h-4 w-4 text-primary"/></CardHeader><CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent></Card>
                         <Card className="bg-card border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Collected</CardTitle><Scale className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-black text-primary">ZMW {filteredData.reduce((sum, p) => sum + p.totalPaid, 0).toFixed(2)}</div></CardContent></Card>
                     </div>
                 </CardContent>
@@ -891,7 +885,7 @@ export default function PaymentsManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label><Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Intake</Label><Select value={intakeFilter} onValueChange={setIntakeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
@@ -904,11 +898,23 @@ export default function PaymentsManagementPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label><Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-dashed">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-dashed items-end">
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Registration Period</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateRange.from && "text-muted-foreground")}>
+                                        <CalendarIcon className="mr-2 h-3 w-3" />
+                                        {dateRange.from ? (dateRange.to ? `${format(dateRange.from, "PP")} - ${format(dateRange.to, "PP")}` : format(dateRange.from, "PP")) : <span>Pick a range</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar mode="range" selected={dateRange as any} onSelect={(range: any) => setDateRange(range || { from: undefined, to: undefined })} numberOfMonths={2} />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Min Paid</Label><Input type="number" placeholder="0.00" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Max Paid</Label><Input type="number" placeholder="99999" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} className="h-8 text-xs" /></div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Equal to</Label><div className="relative"><Equal className="absolute left-2 top-2.5 h-3 w-3 opacity-40"/><Input type="number" placeholder="Exact match..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} className="pl-7 h-8 text-xs" /></div></div>

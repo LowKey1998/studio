@@ -72,6 +72,7 @@ export default function DashboardLayout({
   const [openAccordion, setOpenAccordion] = React.useState<string[]>([]);
   const [isDefaulter, setIsDefaulter] = React.useState(false);
   const [financialSettings, setFinancialSettings] = React.useState<any>(null);
+  const [clinicalsVisible, setClinicalsVisible] = React.useState(true);
   const [notificationCounts, setNotificationCounts] = React.useState<Record<string, number>>({
       pendingRegistrations: 0,
       missingDeadlines: 0,
@@ -137,7 +138,8 @@ export default function DashboardLayout({
         cal: ref(db, 'settings/academicCalendar'),
         intakes: ref(db, 'intakes'),
         tx: ref(db, 'transactions'),
-        inv: ref(db, `invoices/${user.uid}`)
+        inv: ref(db, `invoices/${user.uid}`),
+        clinicalSettings: ref(db, 'settings/clinicals')
     };
 
     const unsubRegs = onValue(refs.regs, (snapshot) => {
@@ -204,6 +206,14 @@ export default function DashboardLayout({
         setFinancialSettings(snapshot.val());
     });
 
+    const unsubClinicals = onValue(refs.clinicalSettings, (snapshot) => {
+        if (snapshot.exists()) {
+            setClinicalsVisible(snapshot.val().studentVisible !== false);
+        } else {
+            setClinicalsVisible(true);
+        }
+    });
+
     if (userProfile.role === 'Student') {
         const checkFinancialStanding = async () => {
             const [regSnap, txSnap, invSnap, semSnap, calSnap, eventsSnap, intakeSnap] = await Promise.all([
@@ -266,6 +276,7 @@ export default function DashboardLayout({
         unsubSems();
         unsubCourses();
         unsubFin();
+        unsubClinicals();
     };
   }, [user, userProfile]);
 
@@ -276,15 +287,21 @@ export default function DashboardLayout({
       case 'admin':
         return allMenuItems;
       case 'student': {
-        if (isDefaulter && financialSettings?.defaulterRestrictions?.sidebar) {
-            const restrictedCategories = financialSettings.defaulterRestrictions.sidebar;
-            return studentMenuItems.filter(category => {
-                // Finances and Communications are never restricted to ensure students can fix standing
-                if (category.label === 'Finances' || category.label === 'Communications') return true;
-                return !restrictedCategories[category.label];
-            });
-        }
-        return studentMenuItems;
+        const restrictedFuncs = financialSettings?.defaulterRestrictions || {};
+        const restrictedCategories = restrictedFuncs.sidebar || {};
+        
+        return studentMenuItems.filter(category => {
+            // Finances and Communications are never restricted to ensure students can fix standing
+            if (category.label === 'Finances' || category.label === 'Communications') return true;
+            
+            // Handle Clinicals manual toggle
+            if (category.label === 'Clinicals' && !clinicalsVisible) return false;
+
+            // Handle Financial Standings locks
+            if (isDefaulter && restrictedCategories[category.label]) return false;
+
+            return true;
+        });
       }
       case 'staff': {
             return allMenuItems.map(category => {
@@ -299,7 +316,7 @@ export default function DashboardLayout({
       default:
         return [];
     }
-  }, [userProfile, isDefaulter, financialSettings]);
+  }, [userProfile, isDefaulter, financialSettings, clinicalsVisible]);
 
   React.useEffect(() => {
     if (loading || !menuItems.length) return;
