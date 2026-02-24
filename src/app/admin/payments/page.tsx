@@ -41,7 +41,8 @@ import {
     ReceiptText,
     FileCheck,
     Plus,
-    MoreVertical
+    MoreVertical,
+    Banknote
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -386,8 +387,8 @@ export default function PaymentsManagementPage() {
 
                         const totalDue = tuition - scholarshipAmount + mandatory + optional + late;
 
-                        const userTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
-                        const totalPaid = userTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+                        const invoiceTransactions = transactionsList.filter(t => t.userId === userId && t.invoiceId === reg.invoiceId);
+                        const totalPaid = invoiceTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
                         const balance = Math.max(0, totalDue - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
@@ -607,6 +608,39 @@ export default function PaymentsManagementPage() {
             }
             return row;
         }));
+    };
+
+    const handleQuickPay = (student: StudentPaymentInfo) => {
+        const studentProfile = allStudents.find(s => s.uid === student.userId);
+        const intake = allIntakes.find(i => i.id === student.intakeId);
+        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
+        
+        let availableYears: string[] = [];
+        let availableSemesters: Semester[] = [];
+        
+        if (intake) {
+            availableYears = Array.from(new Set(semesters.filter(s => s.intakeId === intake.id).map(s => String(s.year)))).sort();
+            availableSemesters = semesters.filter(s => s.intakeId === intake.id && String(s.year) === String(student.invoice.semesterId ? semesters.find(sem => sem.id === student.invoice.semesterId)?.year : '1'));
+        }
+
+        const initialRow: PaymentRecord = {
+            key: Date.now(),
+            userId: student.userId,
+            semesterId: student.semesterId || '',
+            academicStanding: student.semesterName,
+            year: student.semesterId ? String(semesters.find(s => s.id === student.semesterId)?.year || '1') : '1',
+            totalDue: student.totalDue,
+            totalPaid: student.totalPaid,
+            breakdown: student.breakdown,
+            amount: '',
+            comment: '',
+            allocations: [],
+            availableYears,
+            availableSemesters
+        };
+
+        setBulkPaymentRows([initialRow]);
+        setIsBulkRecordOpen(true);
     };
 
     const handleRemovePaymentRow = (key: number) => {
@@ -877,7 +911,7 @@ export default function PaymentsManagementPage() {
                                     <TableHead className="text-right">Balance</TableHead>
                                     <TableHead className="text-right">Paid</TableHead>
                                     <TableHead className="text-center">Standing</TableHead>
-                                    <TableHead className="w-10"></TableHead>
+                                    <TableHead className="w-[100px]"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -932,16 +966,21 @@ export default function PaymentsManagementPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-48">
-                                                    <DropdownMenuLabel>Audit Tools</DropdownMenuLabel>
-                                                    <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement of Account</DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit Note</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4 text-destructive"/>Issue Debit Note</DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10" title="Quick Payment" onClick={() => handleQuickPay(info)}>
+                                                    <Banknote className="h-4 w-4"/>
+                                                </Button>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48">
+                                                        <DropdownMenuLabel>Audit Tools</DropdownMenuLabel>
+                                                        <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>Statement of Account</DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Plus className="mr-2 h-4 w-4 rotate-45 text-blue-600"/>Issue Credit Note</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Plus className="mr-2 h-4 w-4 text-destructive"/>Issue Debit Note</DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
