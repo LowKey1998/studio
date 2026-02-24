@@ -221,7 +221,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTerm(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -501,7 +501,7 @@ export default function PaymentsManagementPage() {
         });
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData?.uid, serverTimeOffset, dataRefs, paymentInfos]);
+    }, [userData?.uid, serverTimeOffset, dataRefs]);
 
     const filteredData = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -552,10 +552,16 @@ export default function PaymentsManagementPage() {
                 
                 if (field === 'year') {
                     updatedRow.semesterId = '';
-                    updatedRow.availableSemesters = semesters.filter(s => 
-                        String(s.year) === value && 
-                        (updatedRow.isNewStudent ? s.status === 'Open' : true)
-                    );
+                    if (updatedRow.isNewStudent) {
+                        updatedRow.availableSemesters = semesters.filter(s => 
+                            String(s.year) === value && s.status === 'Open'
+                        );
+                    } else {
+                        const studentProfile = allStudents.find(s => s.uid === updatedRow.userId);
+                        updatedRow.availableSemesters = semesters.filter(s => 
+                            s.intakeId === studentProfile?.intakeId && String(s.year) === value
+                        );
+                    }
                 }
 
                 if (field === 'userId' && !updatedRow.isNewStudent) {
@@ -618,6 +624,19 @@ export default function PaymentsManagementPage() {
                     updatedRow.availableYears = Array.from({length: maxYear}, (_, i) => String(i + 1));
                 }
 
+                if (field === 'semesterId' && !updatedRow.isNewStudent && updatedRow.userId) {
+                    const paymentInfo = paymentInfos.find(p => p.userId === updatedRow.userId && p.semesterId === value);
+                    if (paymentInfo) {
+                        updatedRow.totalDue = paymentInfo.totalDue;
+                        updatedRow.totalPaid = paymentInfo.totalPaid;
+                        updatedRow.breakdown = paymentInfo.breakdown;
+                    } else {
+                        updatedRow.totalDue = 0;
+                        updatedRow.totalPaid = 0;
+                        updatedRow.breakdown = undefined;
+                    }
+                }
+
                 return updatedRow;
             }
             return row;
@@ -627,7 +646,6 @@ export default function PaymentsManagementPage() {
     const handleQuickPay = (student: StudentPaymentInfo) => {
         const studentProfile = allStudents.find(s => s.uid === student.userId);
         const intake = allIntakes.find(i => i.id === student.intakeId);
-        const intakeStartStr = intake ? parseIntakeDate(intake.name) : null;
         
         let availableYears: string[] = [];
         let availableSemesters: Semester[] = [];
