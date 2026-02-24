@@ -501,7 +501,7 @@ export default function PaymentsManagementPage() {
         });
 
         return () => unsubs.forEach(unsub => unsub());
-    }, [userData?.uid, serverTimeOffset, dataRefs]);
+    }, [userData?.uid, serverTimeOffset, dataRefs, paymentInfos]);
 
     const filteredData = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -1085,9 +1085,19 @@ export default function PaymentsManagementPage() {
 
                                         <Separator className="my-4" />
 
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <div className="relative">
+                                                <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-11 font-black text-green-600 border-green-200 pl-8 bg-green-50/30" />
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-40">K</span>
+                                            </div>
+                                            <Input placeholder="Reference/Slip #..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-11 text-xs border-primary/20 bg-background" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4 border-l pl-8 border-dashed">
                                         <div className="space-y-4">
                                             <div className="flex items-center justify-between">
-                                                <Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">Transaction Details</Label>
+                                                <Label className="font-black text-[10px] uppercase text-muted-foreground tracking-widest">Transaction Summary</Label>
                                                 <Badge variant="outline" className="h-6 gap-1 px-3 border-primary/30 text-[10px] font-bold">Audit <Info className="h-3 w-3 text-primary"/></Badge>
                                             </div>
                                             <div className="grid grid-cols-3 divide-x rounded-xl border bg-card shadow-inner overflow-hidden">
@@ -1105,12 +1115,10 @@ export default function PaymentsManagementPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div className="space-y-4 border-l pl-8 border-dashed">
-                                        <div className="flex items-center justify-between">
-                                            <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Ledger Allocation</Label>
-                                        </div>
+                                        <Separator />
+
+                                        <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Ledger Allocation</Label>
                                         
                                         <ScrollArea className="h-32 border rounded-xl p-3 bg-muted/5 shadow-inner">
                                             <div className="space-y-2">
@@ -1132,14 +1140,6 @@ export default function PaymentsManagementPage() {
                                                 ))}
                                             </div>
                                         </ScrollArea>
-
-                                        <div className="grid grid-cols-2 gap-3 pt-2">
-                                            <div className="relative">
-                                                <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-11 font-black text-green-600 border-green-200 pl-8 bg-green-50/30" />
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-40">K</span>
-                                            </div>
-                                            <Input placeholder="Reference/Slip #..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-11 text-xs border-primary/20 bg-background" />
-                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
