@@ -221,7 +221,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearchTerm(e.target.value)} 
+                        onChange={e => setSearch(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -262,6 +262,7 @@ export default function PaymentsManagementPage() {
     const [semesters, setSemesters] = React.useState<Semester[]>([]);
     const [allIntakes, setAllIntakes] = React.useState<Intake[]>([]);
     const [allCourses, setAllCourses] = React.useState<Record<string, any>>({});
+    const [allPaymentPlans, setAllPaymentPlans] = React.useState<PaymentPlan[]>([]);
     const [rawTransactions, setRawTransactions] = React.useState<Transaction[]>([]);
     const [financialSettings, setFinancialSettings] = React.useState<any>(null);
     const [calendarSettings, setCalendarSettings] = React.useState<any>(null);
@@ -487,7 +488,9 @@ export default function PaymentsManagementPage() {
             computeDerived(); 
         }));
         unsubs.push(onValue(dataRefs.paymentPlans, (s) => {
-            store.paymentPlans = s.val() || {};
+            const data = s.val() || {};
+            setAllPaymentPlans(Object.keys(data).map(id => ({id, ...data[id]})));
+            store.paymentPlans = data;
             computeDerived();
         }));
 
@@ -511,7 +514,11 @@ export default function PaymentsManagementPage() {
             const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
             const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
             const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            const planMatch = planStatusFilter === 'all' ? true : (planStatusFilter === 'none' ? !p.paymentPlanName : !!p.paymentPlanName);
+            
+            let planMatch = true;
+            if (planStatusFilter === 'none') planMatch = !p.paymentPlanName;
+            else if (planStatusFilter === 'set') planMatch = !!p.paymentPlanName;
+            else if (planStatusFilter !== 'all') planMatch = p.paymentPlanName === planStatusFilter;
             
             let dueMatch = true;
             if (dueFilter !== 'all') {
@@ -910,7 +917,14 @@ export default function PaymentsManagementPage() {
                             <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                         </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
-                            <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="none">Plan Not Set (Urgent)</SelectItem><SelectItem value="set">Plan Active</SelectItem></SelectContent></Select>
+                            <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Statuses</SelectItem>
+                                    <SelectItem value="none">Plan Not Set (Urgent)</SelectItem>
+                                    <Separator className="my-1"/>
+                                    {allPaymentPlans.filter(p => !p.archived).map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label>
                             <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
