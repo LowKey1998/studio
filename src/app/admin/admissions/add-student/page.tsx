@@ -249,7 +249,6 @@ export default function AddStudentPage() {
                 updates[`users/${newUid}`] = userDataPayload;
                 updates[`userRoles/${newUid}`] = { role: 'student' };
 
-                // Handle Automatic Payment Linking for manual creates
                 const txsSnap = await get(ref(db, 'transactions'));
                 let foundUnlinkedTxId = null;
                 if (txsSnap.exists()) {
@@ -260,7 +259,6 @@ export default function AddStudentPage() {
                     );
                 }
 
-                // If this came from a request OR we found a matching unlinked payment
                 if ((currentRequestId || foundUnlinkedTxId) && selectedSemester) {
                     const semester = allSemesters.find(s => s.id === selectedSemester);
                     const semesterName = semester?.name || 'Current Semester';

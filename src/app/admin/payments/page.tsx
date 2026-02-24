@@ -123,7 +123,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    allocations: string[]; // Changed from purpose to multi-selection
+    allocations: string[];
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -291,7 +291,7 @@ export default function PaymentsManagementPage() {
 
     React.useEffect(() => {
         const offsetRef = ref(db, '.info/serverTimeOffset');
-        onValue(offsetRef, (snapshot) => setServerTimeOffset(snapshot.val() || 0));
+        onValue(offsetRef, (snap) => setServerTimeOffset(snap.val() || 0));
         return () => off(offsetRef);
     }, []);
 
@@ -474,9 +474,9 @@ export default function PaymentsManagementPage() {
         }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
-        get(savedFiltersRef).then(snapshot => {
-            if (snapshot.exists()) {
-                const f = snapshot.val();
+        get(savedFiltersRef).then(snap => {
+            if (snap.exists()) {
+                const f = snap.val();
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);
@@ -589,7 +589,6 @@ export default function PaymentsManagementPage() {
                 } else if (field === 'isNewStudent') {
                     if (value) {
                         nextRow.userId = undefined;
-                        // For new students, we only show years belonging to 'Open' semesters to minimize list size
                         const openSemesters = semesters.filter(s => s.status === 'Open');
                         nextRow.availableYears = Array.from(new Set(openSemesters.map(s => String(s.year)))).sort();
                     } else {
@@ -605,7 +604,6 @@ export default function PaymentsManagementPage() {
                     nextRow.allocations = [];
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
-                        // Strict filter: only 'Open' semesters for the target year for new prospects
                         nextRow.availableSemesters = semesters.filter(s => String(s.year) === value && s.status === 'Open');
                     } else {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
@@ -1160,7 +1158,7 @@ export default function PaymentsManagementPage() {
                                                             </div>
                                                         ))}
                                                         {row.breakdown?.optionalItems?.map((item, i) => (
-                                                            <div key={`o-opt-${i}`} className="flex items-center gap-2">
+                                                            <div key={`all-o-${row.key}-${i}`} className="flex items-center gap-2">
                                                                 <Checkbox 
                                                                     id={`all-o-${row.key}-${i}`} 
                                                                     checked={row.allocations.includes(item.name)} 
