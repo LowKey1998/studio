@@ -1,9 +1,8 @@
-
 'use client';
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Loader2, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { Download, FileText, Loader2, TrendingUp, TrendingDown, DollarSign, GraduationCap } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { db } from '@/lib/firebase';
@@ -21,18 +20,25 @@ export default function FinanceReportingPage() {
     const generateReport = async () => {
         setLoading(true);
         try {
-            const [txSnap, expSnap, invSnap] = await Promise.all([
+            const [txSnap, expSnap, invSnap, usersSnap, scholSnap] = await Promise.all([
                 get(ref(db, 'transactions')),
                 get(ref(db, 'expenses')),
-                get(ref(db, 'invoices'))
+                get(ref(db, 'invoices')),
+                get(ref(db, 'users')),
+                get(ref(db, 'scholarships'))
             ]);
 
             const transactions = Object.values(txSnap.val() || {}).filter((t: any) => t.status === 'successful');
             const expenses = Object.values(expSnap.val() || {});
+            const allUsers = usersSnap.val() || {};
+            const allSchols = scholSnap.val() || {};
             
             const doc = new jsPDF();
             doc.setFontSize(20);
-            const reportTitle = reportType === 'income' ? 'Income Statement' : (reportType === 'cashflow' ? 'Cash Flow Report' : 'Revenue Summary');
+            const reportTitle = reportType === 'income' ? 'Income Statement' 
+                : (reportType === 'cashflow' ? 'Cash Flow Report' 
+                : (reportType === 'scholarships' ? 'Scholarship Recipients Report' : 'Revenue Summary'));
+            
             doc.text(reportTitle, 14, 22);
             doc.setFontSize(10);
             doc.text(`Generated on: ${format(new Date(), 'PPP p')}`, 14, 30);
@@ -60,6 +66,22 @@ export default function FinanceReportingPage() {
                     body: transactions.map((t: any) => [format(new Date(t.paymentDate), 'MMM dd, yyyy'), t.transactionId, t.amount.toFixed(2), t.method || 'Online']),
                     theme: 'grid'
                 });
+            } else if (reportType === 'scholarships') {
+                const recipients = Object.keys(allUsers)
+                    .filter(uid => allUsers[uid].scholarshipId)
+                    .map(uid => {
+                        const u = allUsers[uid];
+                        const s = allSchols[u.scholarshipId];
+                        return [u.id, u.name, s?.name || 'Unknown', `${s?.percentage || 0}%`, s?.donor || '-'];
+                    });
+
+                (doc as any).autoTable({
+                    startY: 40,
+                    head: [['Student ID', 'Name', 'Scholarship Name', 'Waiver %', 'Donor/Sponsor']],
+                    body: recipients,
+                    theme: 'striped',
+                    headStyles: { fillColor: [41, 128, 185] }
+                });
             }
 
             doc.save(`${reportType}_report_${Date.now()}.pdf`);
@@ -81,15 +103,15 @@ export default function FinanceReportingPage() {
                 <div className="grid md:grid-cols-3 gap-6">
                     <Card className="bg-primary/5 border-primary/20">
                         <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Monthly Income</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="text-green-600"/> ZMW Analysis</div></CardContent>
+                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="text-green-600"/> Analysis Ready</div></CardContent>
                     </Card>
                     <Card className="bg-destructive/5 border-destructive/20">
                         <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Monthly Expenses</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingDown className="text-red-600"/> ZMW Tracking</div></CardContent>
+                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><TrendingDown className="text-red-600"/> Tracking Active</div></CardContent>
                     </Card>
                     <Card className="bg-blue-500/5 border-blue-500/20">
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Cash On Hand</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><DollarSign className="text-blue-600"/> Real-time</div></CardContent>
+                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Scholarships</CardTitle></CardHeader>
+                        <CardContent><div className="text-2xl font-bold flex items-center gap-2"><GraduationCap className="text-blue-600"/> Waiver Logs</div></CardContent>
                     </Card>
                 </div>
 
@@ -103,6 +125,7 @@ export default function FinanceReportingPage() {
                                 <SelectContent>
                                     <SelectItem value="income">Income Statement (P&L)</SelectItem>
                                     <SelectItem value="revenue">Detailed Revenue Log</SelectItem>
+                                    <SelectItem value="scholarships">Scholarship Recipients List</SelectItem>
                                     <SelectItem value="cashflow">Cash Flow Projection</SelectItem>
                                 </SelectContent>
                             </Select>

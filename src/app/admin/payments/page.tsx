@@ -38,14 +38,15 @@ import {
     Equal,
     GraduationCap,
     ListChecks,
-    ReceiptText
+    ReceiptText,
+    FileCheck
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { db } from '@/lib/firebase';
 import { ref, get, update, push, set, onValue, off, serverTimestamp } from 'firebase/database';
-import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays } from 'date-fns';
+import { format, parseISO, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, isAfter, addDays, isBefore } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -111,6 +112,8 @@ type StudentPaymentInfo = {
     isUnlinked?: boolean;
     tempStudentName?: string;
     breakdown: FeeBreakdown;
+    paymentPlanName?: string;
+    nextInstallmentDue?: string | null;
 };
 
 type PaymentRecord = {
@@ -199,7 +202,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
                         placeholder="Search roster..." 
                         className="h-9 text-xs" 
                         value={search} 
-                        onChange={e => setSearch(e.target.value)} 
+                        onChange={e => setSearchTermLocal(e.target.value)} 
                         onKeyDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -230,6 +233,10 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
             </PopoverContent>
         </Popover>
     );
+
+    function setSearchTermLocal(val: string) {
+        setSearch(val);
+    }
 }
 
 export default function PaymentsManagementPage() {
@@ -253,6 +260,8 @@ export default function PaymentsManagementPage() {
     const [programmeFilter, setProgrammeFilter] = React.useState('all');
     const [semesterFilter, setSemesterFilter] = React.useState('all');
     const [intakeFilter, setIntakeFilter] = React.useState('all');
+    const [planStatusFilter, setPlanStatusFilter] = React.useState('all');
+    const [dueFilter, setDueFilter] = React.useState('all');
     const [minPaidFilter, setMinPaidFilter] = React.useState('');
     const [maxPaidFilter, setMaxPaidFilter] = React.useState('');
     const [equalPaidFilter, setEqualPaidFilter] = React.useState('');
@@ -267,8 +276,8 @@ export default function PaymentsManagementPage() {
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
     const [historyStudent, setHistoryStudent] = React.useState<StudentPaymentInfo | null>(null);
     const [isAdjustmentOpen, setIsAdjustmentOpen] = React.useState(false);
-    const [adjustmentTarget, setAdjustmentTarget] = React.useState<{ type: 'transaction' | 'invoice', id: string, oldValue: number, userId: string, studentName: string, studentId: string } | null>(null);
-    const [adjNewValue, setAdjNewValue] = React.useState('');
+    const [adjustmentTarget, setAdjustmentTarget] = React.useState<{ type: 'debit' | 'credit', id: string, userId: string, studentName: string, studentId: string, invoiceId: string } | null>(null);
+    const [adjAmount, setAdjAmount] = React.useState('');
     const [adjReason, setAdjReason] = React.useState('');
 
     const [formLoading, setFormLoading] = React.useState(false);
@@ -324,6 +333,7 @@ export default function PaymentsManagementPage() {
             const invsData = store.invoices || {};
             const calendarEvents = Object.values(store.calendarEvents || {}) as any[];
             const finData = store.financialSettings || { paymentThreshold: 75 };
+            const plansData = store.paymentPlans || {};
 
             const transactionsList: Transaction[] = [];
             for (const txId in txsData) {
@@ -378,13 +388,29 @@ export default function PaymentsManagementPage() {
                         const balance = Math.max(0, totalPayable - totalPaid);
                         
                         const threshold = semesterInfo.paymentThreshold || globalThreshold;
-                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalPayable) * 100 : 100;
+                        const paidPercentage = totalPayable > 0 ? (totalPaid / totalDue) * 100 : 100;
                         const thresholdMet = paidPercentage >= threshold;
 
                         const semDeadlines = calendarEvents.filter(ev => ev.semester === semesterInfo.name && ev.title.includes('Deadline')).sort((a,b) => a.date.localeCompare(b.date));
                         const grace = semesterInfo.gracePeriodDays ?? 7;
                         const passedDeadlines = semDeadlines.filter(ev => isAfter(now, addDays(parseISO(ev.date), grace)));
                         const penaltiesActive = passedDeadlines.length > 0 && !thresholdMet;
+
+                        // Next Installment Due logic
+                        let nextInstallmentDue = null;
+                        if (reg.paymentPlan) {
+                            const plan = Object.values(plansData).find((p:any) => p.name === reg.paymentPlan) as any;
+                            if (plan) {
+                                for (let i = 0; i < plan.installments; i++) {
+                                    const title = `${plan.name} (${getOrdinalSuffix(i + 1)} Installment) Deadline - ${semesterInfo.name}`;
+                                    const deadlineEvent = calendarEvents.find(e => e.title?.trim() === title.trim());
+                                    if (deadlineEvent && isAfter(parseISO(deadlineEvent.date), now)) {
+                                        nextInstallmentDue = deadlineEvent.date;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
 
                         studentPaymentMap[`${userId}-${semesterId}`] = {
                             userId, studentId: profile.id, studentName: profile.name,
@@ -394,12 +420,10 @@ export default function PaymentsManagementPage() {
                             thresholdMet, penaltiesActive, isScholarship: !!invoice.applyScholarship,
                             paidPercentage, targetThreshold: threshold, gracePeriod: grace,
                             status: balance <= 0.01 ? 'Paid' : 'Pending',
+                            paymentPlanName: reg.paymentPlan || null,
+                            nextInstallmentDue,
                             breakdown: {
-                                tuition,
-                                mandatory,
-                                optional,
-                                scholarship: scholarshipAmount,
-                                late,
+                                tuition, mandatory, optional, scholarship: scholarshipAmount, late,
                                 mandatoryItems: Object.values(semesterInfo.mandatoryFees || {}),
                                 optionalItems: (reg.optionalFees || []).map((fid:string) => ({ name: semesterInfo.optionalFees?.[fid]?.name || 'Fee', amount: Number(semesterInfo.optionalFees?.[fid]?.amount || 0) }))
                             }
@@ -407,20 +431,6 @@ export default function PaymentsManagementPage() {
                     }
                 }
             }
-
-            transactionsList.filter(t => t.isUnlinked).forEach(t => {
-                const key = `unlinked-${t.key}`;
-                studentPaymentMap[key] = {
-                    userId: t.userId || 'NEW', studentId: 'NEW-REQ', studentName: t.senderName || 'Unknown Prospect',
-                    totalDue: 0, totalPaid: t.amount, balance: 0,
-                    programmeId: null, intakeId: null, semesterId: t.semesterId || null,
-                    invoiceId: 'none', enrolledCourses: [],
-                    thresholdMet: true, penaltiesActive: false, isScholarship: false,
-                    paidPercentage: 100, targetThreshold: 0, gracePeriod: 0,
-                    status: 'Pending', isUnlinked: true, tempStudentName: t.senderName,
-                    breakdown: { tuition: 0, mandatory: 0, optional: 0, scholarship: 0, late: 0 }
-                };
-            });
 
             setPaymentInfos(Object.values(studentPaymentMap));
             setLoading(false);
@@ -472,6 +482,10 @@ export default function PaymentsManagementPage() {
             store.academicCalendar = s.val(); 
             computeDerived(); 
         }));
+        unsubs.push(onValue(ref(db, 'settings/paymentPlans'), (s) => {
+            store.paymentPlans = s.val() || {};
+            computeDerived();
+        }));
 
         const savedFiltersRef = ref(db, `settings/paymentFilters/${userData.uid}`);
         get(savedFiltersRef).then(snap => {
@@ -480,14 +494,43 @@ export default function PaymentsManagementPage() {
                 if(f.programmeFilter) setProgrammeFilter(f.programmeFilter);
                 if(f.intakeFilter) setIntakeFilter(f.intakeFilter);
                 if(f.timeFilter) setTimeFilter(f.timeFilter);
-                if(f.minPaidFilter) setMinPaidFilter(f.minPaidFilter);
-                if(f.maxPaidFilter) setMaxPaidFilter(f.maxPaidFilter);
-                if(f.equalPaidFilter) setEqualPaidFilter(f.equalPaidFilter);
             }
         });
 
         return () => unsubs.forEach(unsub => unsub());
     }, [userData?.uid, serverTimeOffset, dataRefs]);
+
+    const filteredData = React.useMemo(() => {
+        const now = getCurrentServerDate();
+        return paymentInfos.filter(p => {
+            const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
+            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
+            const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
+            const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
+            
+            const planMatch = planStatusFilter === 'all' ? true : (planStatusFilter === 'none' ? !p.paymentPlanName : !!p.paymentPlanName);
+            
+            let dueMatch = true;
+            if (dueFilter !== 'all') {
+                if (!p.nextInstallmentDue) {
+                    dueMatch = false;
+                } else {
+                    const diff = differenceInCalendarDays(parseISO(p.nextInstallmentDue), now);
+                    if (dueFilter === '7') dueMatch = diff >= 0 && diff <= 7;
+                    else if (dueFilter === '14') dueMatch = diff >= 0 && diff <= 14;
+                    else if (dueFilter === '30') dueMatch = diff >= 0 && diff <= 30;
+                    else if (dueFilter === 'overdue') dueMatch = diff < 0;
+                }
+            }
+
+            const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
+            const maxMatch = maxPaidFilter === '' || p.totalPaid <= parseFloat(maxPaidFilter);
+            const equalMatch = equalPaidFilter === '' || Math.abs(p.totalPaid - parseFloat(equalPaidFilter)) < 0.01;
+
+            return searchMatch && programmeMatch && semesterMatch && intakeMatch && planMatch && dueMatch && minMatch && maxMatch && equalMatch;
+        });
+    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, planStatusFilter, dueFilter, minPaidFilter, maxPaidFilter, equalPaidFilter, serverTimeOffset]);
 
     const revenueMetrics = React.useMemo(() => {
         const now = getCurrentServerDate();
@@ -500,303 +543,81 @@ export default function PaymentsManagementPage() {
         }, { today: 0, month: 0 });
     }, [rawTransactions, serverTimeOffset]);
 
-    const filteredTransactions = React.useMemo(() => {
-        const now = getCurrentServerDate();
-        const startOfW = startOfWeek(now, { weekStartsOn: 1 });
-        const endOfW = endOfWeek(now, { weekStartsOn: 1 });
-        const startOfM = startOfMonth(now);
-        const endOfM = endOfMonth(now);
-
-        return rawTransactions.filter(tx => {
-            const date = parseISO(tx.paymentDate);
-            switch(timeFilter) {
-                case 'today': return isToday(date);
-                case 'week': return isWithinInterval(date, { start: startOfW, end: endOfW });
-                case 'month': return isWithinInterval(date, { start: startOfM, end: endOfM });
-                case 'period': return customRange?.from && customRange?.to ? isWithinInterval(date, { start: customRange.from, end: customRange.to }) : true;
-                default: return true;
-            }
-        });
-    }, [rawTransactions, timeFilter, customRange, serverTimeOffset]);
-
-    const filteredData = React.useMemo(() => {
-        const uidsInPeriod = new Set(filteredTransactions.map(t => t.userId));
-        const isGroupingFilterActive = programmeFilter !== 'all' || semesterFilter !== 'all' || intakeFilter !== 'all' || minPaidFilter !== '' || maxPaidFilter !== '' || equalPaidFilter !== '';
-        
-        return paymentInfos.filter(p => {
-            const searchMatch = p.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                p.studentId.toLowerCase().includes(searchTerm.toLowerCase());
-            const programmeMatch = programmeFilter === 'all' || p.programmeId === programmeFilter;
-            const semesterMatch = semesterFilter === 'all' || p.semesterId === semesterFilter;
-            const intakeMatch = intakeFilter === 'all' || p.intakeId === intakeFilter;
-            
-            const minMatch = minPaidFilter === '' || p.totalPaid >= parseFloat(minPaidFilter);
-            const maxMatch = maxPaidFilter === '' || p.totalPaid <= parseFloat(maxPaidFilter);
-            const equalMatch = equalPaidFilter === '' || Math.abs(p.totalPaid - parseFloat(equalPaidFilter)) < 0.01;
-            
-            const timeMatch = timeFilter === 'all' || isGroupingFilterActive || uidsInPeriod.has(p.userId);
-
-            return searchMatch && programmeMatch && semesterMatch && intakeMatch && minMatch && maxMatch && equalMatch && timeMatch;
-        });
-    }, [paymentInfos, searchTerm, programmeFilter, semesterFilter, intakeFilter, minPaidFilter, maxPaidFilter, equalPaidFilter, filteredTransactions, timeFilter]);
-
-    const summaryStats = React.useMemo(() => {
-        const stats = filteredData.reduce((acc, p) => {
-            acc.totalDue += Number(p.totalDue) || 0;
-            acc.totalPaid += Number(p.totalPaid) || 0;
-            acc.totalBalance += Number(p.balance) || 0;
-            return acc;
-        }, { totalDue: 0, totalPaid: 0, totalBalance: 0 });
-        
-        const periodCollected = filteredTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-        return { ...stats, periodCollected };
-    }, [filteredData, filteredTransactions]);
-
-    const handleSaveAsDefault = async () => {
-        if (!user) return;
-        setSaving(true);
-        try {
-            await set(ref(db, `settings/paymentFilters/${user.uid}`), {
-                programmeFilter, intakeFilter, timeFilter, minPaidFilter, maxPaidFilter, equalPaidFilter
-            });
-            toast({ title: 'Default Filters Saved' });
-        } catch (e) {
-            toast({ variant: 'destructive', title: 'Failed to save defaults' });
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleBulkPaymentRowChange = (key: number, field: keyof PaymentRecord, value: any) => {
-        setBulkPaymentRows(prev => prev.map(row => {
-            if (row.key === key) {
-                const nextRow = { ...row, [field]: value };
-                
-                if (field === 'userId' && !row.isNewStudent) {
-                    const studentInfo = allStudents.find(s => s.uid === value);
-                    if (studentInfo) {
-                        const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId && s.status !== 'Archived');
-                        const years = Array.from(new Set(semesters.filter(s => s.status !== 'Archived').map(s => String(s.year)))).sort();
-                        nextRow.availableYears = years;
-                        nextRow.year = '';
-                        nextRow.semesterId = ''; 
-                        nextRow.availableSemesters = [];
-                        nextRow.totalDue = 0;
-                        nextRow.totalPaid = 0;
-                        nextRow.breakdown = undefined;
-                        nextRow.allocations = [];
-                    }
-                } else if (field === 'isNewStudent') {
-                    if (value) {
-                        nextRow.userId = undefined;
-                        const years = Array.from(new Set(semesters.filter(s => s.status !== 'Archived').map(s => String(s.year)))).sort();
-                        nextRow.availableYears = years;
-                    } else {
-                        nextRow.tempStudentId = undefined;
-                        nextRow.tempStudentName = undefined;
-                    }
-                    nextRow.year = '';
-                    nextRow.semesterId = '';
-                    nextRow.availableSemesters = [];
-                    nextRow.totalDue = 0;
-                    nextRow.totalPaid = 0;
-                    nextRow.breakdown = undefined;
-                    nextRow.allocations = [];
-                } else if (field === 'year') {
-                    if (row.isNewStudent) {
-                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value && s.status !== 'Archived');
-                    } else {
-                        const studentInfo = allStudents.find(s => s.uid === row.userId);
-                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value && s.status !== 'Archived');
-                    }
-                    nextRow.semesterId = '';
-                    nextRow.totalDue = 0;
-                    nextRow.totalPaid = 0;
-                    nextRow.breakdown = undefined;
-                    nextRow.allocations = [];
-                } else if (field === 'semesterId') {
-                    const studentUid = row.userId;
-                    const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
-                    
-                    if (existingInfo) {
-                        nextRow.totalDue = existingInfo.totalDue;
-                        nextRow.totalPaid = existingInfo.totalPaid;
-                        nextRow.breakdown = existingInfo.breakdown;
-                    } else {
-                        const sem = semesters.find(s => s.id === value);
-                        if (sem) {
-                            let tuition = 0;
-                            if (sem.billingPolicy === 'semester') tuition = Number(sem.tuitionFee || 0);
-                            const mandatory = sem.mandatoryFees ? Object.values(sem.mandatoryFees).reduce((sum, f) => sum + (Number(f.amount) || 0), 0) : 0;
-                            
-                            nextRow.totalDue = tuition + mandatory;
-                            nextRow.totalPaid = 0;
-                            nextRow.breakdown = {
-                                tuition,
-                                mandatory,
-                                optional: 0,
-                                scholarship: 0,
-                                late: 0,
-                                mandatoryItems: Object.values(sem.mandatoryFees || {}) as FeeItem[],
-                                optionalItems: []
-                            };
-                        }
-                    }
-                    nextRow.allocations = [];
-                }
-                
-                return nextRow;
-            }
-            return row;
-        }));
-    };
-
-    const handleRemovePaymentRow = (key: number) => {
-        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
-    };
-
-    const handleSaveAllBulk = async () => {
-        const paymentsToRecord = bulkPaymentRows.filter(p => parseFloat(p.amount) > 0 && (p.userId || (p.isNewStudent && p.tempStudentName && p.semesterId)));
-        if(paymentsToRecord.length === 0) { toast({ variant: 'destructive', title: 'No valid payments entered.' }); return; }
-        
-        setFormLoading(true);
-        const updates: Record<string, any> = {};
-        const now = new Date().toISOString();
-
-        try {
-            for (const record of paymentsToRecord) {
-                const amountFloat = parseFloat(record.amount);
-                const paymentPurpose = record.allocations.length > 0 ? record.allocations.join(', ') : 'General Balance';
-                const finalComment = record.comment ? `[For: ${paymentPurpose}] ${record.comment}` : `Payment for ${paymentPurpose}`;
-                
-                if (record.isNewStudent) {
-                    const requestRef = push(ref(db, 'studentCreationRequests'));
-                    const requestId = requestRef.key!;
-                    updates[`studentCreationRequests/${requestId}`] = {
-                        tempId: record.tempStudentId || 'TBA',
-                        tempName: record.tempStudentName,
-                        targetSemesterId: record.semesterId,
-                        timestamp: serverTimestamp(),
-                        amountPaid: amountFloat,
-                        comment: finalComment,
-                        status: 'pending'
-                    };
-
-                    const txRef = push(ref(db, 'transactions'));
-                    updates[`transactions/${txRef.key}`] = {
-                        transactionId: `NEW-REQ-${Date.now()}-${txRef.key?.slice(-4)}`,
-                        amount: amountFloat,
-                        paymentDate: now,
-                        status: 'successful',
-                        method: 'Manual/Deposit',
-                        isUnlinked: true,
-                        requestId: requestId,
-                        senderName: record.tempStudentName,
-                        semesterId: record.semesterId,
-                        purpose: paymentPurpose,
-                        comment: finalComment,
-                        tempId: record.tempStudentId || 'TBA'
-                    };
-                } else {
-                    const studentUid = record.userId!;
-                    const semId = record.semesterId!;
-                    const semesterInfo = semesters.find(s => s.id === semId);
-                    const studentStanding = paymentInfos.find(p => p.userId === studentUid && p.semesterId === semId);
-
-                    let invoiceId = studentStanding?.invoiceId;
-                    if (!invoiceId && semesterInfo) {
-                        const newInvoiceRef = push(ref(db, `invoices/${studentUid}`));
-                        invoiceId = newInvoiceRef.key!;
-                        updates[`invoices/${studentUid}/${invoiceId}`] = {
-                            invoiceId, 
-                            totalTuition: record.breakdown?.tuition || 0,
-                            totalMandatoryFees: record.breakdown?.mandatory || 0,
-                            totalOptionalFees: 0,
-                            dateCreated: now, 
-                            semester: semesterInfo.name, 
-                            semesterId: semId, 
-                            courses: [], 
-                            optionalFees: [],
-                        };
-                        updates[`registrations/${studentUid}/${semId}/invoiceId`] = invoiceId;
-                    }
-
-                    const txRef = push(ref(db, 'transactions'));
-                    updates[`transactions/${txRef.key}`] = {
-                        transactionId: `MANUAL-${Date.now()}-${txRef.key?.slice(-4)}`,
-                        userId: studentUid, 
-                        invoiceId: invoiceId || 'manual-entry', 
-                        amount: amountFloat, 
-                        currency: 'ZMW', 
-                        status: 'successful',
-                        paymentDate: now, 
-                        method: 'Manual', 
-                        purpose: paymentPurpose,
-                        comment: finalComment
-                    };
-                    
-                    createNotification(studentUid, `Payment of ZMW ${amountFloat.toFixed(2)} recorded for ${paymentPurpose}${semesterInfo ? ` (${semesterInfo.name})` : ''}.`, '/student/payments').catch(() => {});
-                }
-            }
-            
-            await update(ref(db), updates);
-            toast({ title: "Transactions Recorded", description: `Processed ${paymentsToRecord.length} records.` });
-            setIsBulkRecordOpen(false);
-            setBulkPaymentRows([]);
-        } catch (e: any) { toast({ variant: 'destructive', title: 'Save Failed', description: e.message }); }
-        finally { setFormLoading(false); }
-    };
-
-    const handleRequestAdjustment = async () => {
-        if (!adjustmentTarget || !adjNewValue || !adjReason.trim() || !user || !userData) return;
+    const handleSaveAdjustment = async () => {
+        if (!adjustmentTarget || !adjAmount || !adjReason.trim() || !user || !userData) return;
         setFormLoading(true);
         try {
-            const requestRef = push(ref(db, 'paymentEditRequests'));
-            await set(requestRef, {
-                type: adjustmentTarget.type,
-                targetId: adjustmentTarget.id,
+            const amountFloat = parseFloat(adjAmount);
+            const txRef = push(ref(db, 'transactions'));
+            const now = new Date().toISOString();
+            
+            // For adjustments, we create a special transaction record
+            await set(txRef, {
+                transactionId: `${adjustmentTarget.type.toUpperCase()}-${Date.now()}`,
                 userId: adjustmentTarget.userId,
-                studentName: adjustmentTarget.studentName,
-                studentId: adjustmentTarget.studentId,
-                oldValue: adjustmentTarget.oldValue,
-                newValue: parseFloat(adjNewValue),
-                reason: adjReason,
-                requestedBy: userData.name,
-                requestedByUid: user.uid,
-                timestamp: serverTimestamp(),
-                status: 'pending'
+                invoiceId: adjustmentTarget.invoiceId,
+                amount: adjustmentTarget.type === 'credit' ? amountFloat : -amountFloat, // Credit reduces balance, Debit increases it
+                status: 'successful',
+                paymentDate: now,
+                method: 'Adjustment',
+                purpose: adjustmentTarget.type === 'credit' ? 'Credit Note' : 'Debit Note',
+                comment: adjReason,
+                recordedBy: userData.name
             });
-            toast({ title: 'Request Submitted', description: 'Your proposed adjustment is now awaiting approval.' });
+
+            // If it's a debit note (increasing student debt), we add it to the invoice total or late fees
+            if (adjustmentTarget.type === 'debit') {
+                const invRef = ref(db, `invoices/${adjustmentTarget.userId}/${adjustmentTarget.invoiceId}`);
+                const invSnap = await get(invRef);
+                if (invSnap.exists()) {
+                    const currentLate = Number(invSnap.val().lateFee || 0);
+                    await update(invRef, { lateFee: currentLate + amountFloat });
+                }
+            }
+
+            toast({ title: 'Adjustment Recorded', description: `${adjustmentTarget.type === 'credit' ? 'Credit' : 'Debit'} note processed.` });
             setIsAdjustmentOpen(false);
+            setAdjAmount('');
             setAdjReason('');
-            setAdjNewValue('');
         } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Submission Failed' });
+            toast({ variant: 'destructive', title: 'Action Failed' });
         } finally {
             setFormLoading(false);
         }
     };
 
-    const handleExport = () => {
+    const generateReceipt = async (tx: Transaction, student: StudentPaymentInfo) => {
         const doc = new jsPDF();
-        const head = [["ID", "Name", "Semester", "Due", "Paid", "Balance", "Threshold"]];
-        const body = filteredData.map(p => [
-            p.studentId, p.studentName,
-            semesters.find(s => s.id === p.semesterId)?.name || 'N/A',
-            p.totalDue.toFixed(2), p.totalPaid.toFixed(2), p.balance.toFixed(2),
-            p.thresholdMet ? 'Met' : 'Below'
-        ]);
-        doc.text("Institutional Payment Audit", 14, 22);
-        autoTable(doc, { head, body, startY: 30 });
-        doc.save(`finance_report_${format(getCurrentServerDate(), 'yyyy-MM-dd')}.pdf`);
+        doc.setFontSize(20);
+        doc.text("OFFICIAL RECEIPT", 105, 20, { align: 'center' });
+        
+        doc.setFontSize(10);
+        doc.text(`Receipt No: ${tx.transactionId}`, 14, 40);
+        doc.text(`Date: ${format(parseISO(tx.paymentDate), 'PPP p')}`, 14, 45);
+        
+        doc.text(`Student: ${student.studentName}`, 14, 60);
+        doc.text(`Student ID: ${student.studentId}`, 14, 65);
+        doc.text(`Semester: ${student.semesterName}`, 14, 70);
+
+        autoTable(doc, {
+            startY: 80,
+            head: [['Description', 'Amount (ZMW)']],
+            body: [
+                [tx.purpose || 'Fees Payment', tx.amount.toFixed(2)],
+                ['Total Received', tx.amount.toFixed(2)]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [44, 62, 80] }
+        });
+
+        doc.text("Thank you for your payment.", 14, (doc as any).lastAutoTable.finalY + 20);
+        doc.save(`Receipt_${tx.transactionId}.pdf`);
     };
 
     const studentOptions: OptionGroup[] = React.useMemo(() => {
         const items = allStudents.map(s => ({ value: s.uid, label: `${s.name} (${s.id})` }));
         return [{ groupName: 'Student Roster', items }];
     }, [allStudents]);
-
-    const restrictions = financialSettings?.defaulterRestrictions || {};
 
     return (
         <div className="space-y-6">
@@ -818,28 +639,25 @@ export default function PaymentsManagementPage() {
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Semester Total</CardTitle>
-                                <CalendarDays className="h-4 w-4 text-primary" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-black">ZMW {summaryStats.totalPaid.toFixed(2)}</div>
-                                <p className="text-[8px] text-muted-foreground font-bold mt-1 uppercase">Sum of all current year sessions</p>
-                            </CardContent>
-                        </Card>
-                        <Card className="bg-card border-0 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">This Month</CardTitle>
                                 <PiggyBank className="h-4 w-4 text-primary" />
                             </CardHeader>
-                            <CardContent><div className="text-2xl font-black">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent>
+                            <CardContent><div className="text-2xl font-black text-primary">ZMW {revenueMetrics.month.toFixed(2)}</div></CardContent>
                         </Card>
                         <Card className="bg-card border-0 shadow-sm">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Period Collected</CardTitle>
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Students</CardTitle>
+                                <Users className="h-4 w-4 text-primary" />
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-black">{filteredData.length}</div></CardContent>
+                        </Card>
+                        <Card className="bg-card border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Filtered Collected</CardTitle>
                                 <Scale className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black text-primary">ZMW {summaryStats.periodCollected.toFixed(2)}</div>
+                                <div className="text-2xl font-black text-primary">ZMW {filteredData.reduce((sum, p) => sum + p.totalPaid, 0).toFixed(2)}</div>
                             </CardContent>
                         </Card>
                     </div>
@@ -849,483 +667,195 @@ export default function PaymentsManagementPage() {
             <Card className="shadow-md">
                 <CardHeader className="border-b">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                            <CardTitle>Receivables & Audit</CardTitle>
-                            <CardDescription>Filter and audit student financial compliance.</CardDescription>
-                        </div>
+                        <div><CardTitle>Receivables & Audit</CardTitle><CardDescription>Filter and audit student financial compliance.</CardDescription></div>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Defaults</Button>
-                            <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
+                            <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Filters</Button>
                             <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Programme</Label>
-                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
-                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue placeholder="All Programmes"/></SelectTrigger>
-                                <SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                            </Select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl border bg-muted/10 items-end">
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Programme</Label>
+                            <Select value={programmeFilter} onValueChange={setProgrammeFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Programmes</SelectItem>{programmes.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Intake</Label>
-                            <Select value={intakeFilter} onValueChange={setIntakeFilter}>
-                                <SelectTrigger className="h-9 bg-background border-primary/20"><SelectValue placeholder="All Intakes"/></SelectTrigger>
-                                <SelectContent><SelectItem value="all">All Intakes</SelectItem>{allIntakes.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
-                            </Select>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Installment Plan</Label>
+                            <Select value={planStatusFilter} onValueChange={setPlanStatusFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="none">Plan Not Set (Urgent)</SelectItem><SelectItem value="set">Plan Active</SelectItem></SelectContent></Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Paid Range (ZMW)</Label>
-                            <div className="flex items-center gap-2">
-                                <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Min" value={minPaidFilter} onChange={e => setMinPaidFilter(e.target.value)} />
-                                <Input className="h-9 bg-background border-primary/20 text-xs" placeholder="Max" value={maxPaidFilter} onChange={e => setMaxPaidFilter(e.target.value)} />
-                            </div>
+                        <div className="space-y-1"><Label className="text-[10px] font-black uppercase">Next Due Within</Label>
+                            <Select value={dueFilter} onValueChange={setDueFilter}><SelectTrigger className="h-9 bg-background"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Any Date</SelectItem><SelectItem value="7">7 Days</SelectItem><SelectItem value="14">14 Days</SelectItem><SelectItem value="30">30 Days</SelectItem><SelectItem value="overdue">Already Overdue</SelectItem></SelectContent></Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-[10px] font-black uppercase">Equal To (ZMW)</Label>
-                            <div className="relative">
-                                <Equal className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground opacity-50" />
-                                <Input className="h-9 pl-8 bg-background border-primary/20 text-xs" placeholder="Exact..." value={equalPaidFilter} onChange={e => setEqualPaidFilter(e.target.value)} />
-                            </div>
-                        </div>
-                        <div className="space-y-1 lg:col-span-2">
-                            <Label className="text-[10px] font-black uppercase">Search Student</Label>
-                            <div className="relative">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input className="pl-8 h-9 bg-background shadow-sm border-primary/20" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                            </div>
-                        </div>
+                        <div className="space-y-1 lg:col-span-2"><Label className="text-[10px] font-black uppercase">Search</Label><div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 opacity-50"/><Input className="pl-8 h-9 bg-background" placeholder="ID or Name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
                     </div>
 
-                    {loading ? <Skeleton className="h-64 w-full" /> : (
-                        <div className="rounded-md border shadow-sm overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>System ID</TableHead>
-                                        <TableHead>User</TableHead>
-                                        <TableHead>Programme</TableHead>
-                                        <TableHead className="text-right">Balance</TableHead>
-                                        <TableHead className="text-right">Total Paid</TableHead>
-                                        <TableHead className="text-center">Standing</TableHead>
-                                        <TableHead className="w-10"></TableHead>
+                    <div className="rounded-md border shadow-sm overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>System ID</TableHead>
+                                    <TableHead>User & Plan</TableHead>
+                                    <TableHead className="text-right">Balance</TableHead>
+                                    <TableHead className="text-right">Paid</TableHead>
+                                    <TableHead className="text-center">Next Due</TableHead>
+                                    <TableHead className="w-10"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredData.map((info) => (
+                                    <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
+                                        <TableCell className="font-mono text-[10px] font-black opacity-60">{info.studentId}</TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-sm">{info.studentName}</span>
+                                                {info.paymentPlanName ? <Badge variant="outline" className="w-fit h-4 text-[8px] uppercase border-primary/20">{info.paymentPlanName}</Badge> : <Badge variant="destructive" className="w-fit h-4 text-[8px] uppercase animate-pulse">Plan Not Set</Badge>}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right font-black text-sm text-destructive">ZMW {info.balance.toFixed(2)}</TableCell>
+                                        <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
+                                        <TableCell className="text-center">
+                                            {info.nextInstallmentDue ? (
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-[10px] font-bold">{format(parseISO(info.nextInstallmentDue), 'dd MMM')}</span>
+                                                    {isBefore(parseISO(info.nextInstallmentDue), getCurrentServerDate()) && <span className="text-[8px] text-destructive font-black uppercase">Overdue</span>}
+                                                </div>
+                                            ) : <span className="text-[10px] opacity-40 italic">N/A</span>}
+                                        </TableCell>
+                                        <TableCell>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="mr-2 h-4 w-4"/>View Statement</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'credit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }}><Badge variant="outline" className="mr-2 h-4 w-4 p-0 flex items-center justify-center">-</Badge>Issue Credit Note</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setAdjustmentTarget({ type: 'debit', id: info.userId, userId: info.userId, studentName: info.studentName, studentId: info.studentId, invoiceId: info.invoiceId }); setIsAdjustmentOpen(true); }} className="text-destructive"><Badge variant="outline" className="mr-2 h-4 w-4 p-0 flex items-center justify-center">+</Badge>Issue Debit Note</DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
                                     </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredData.map((info) => (
-                                        <TableRow key={`${info.userId}-${info.semesterId}`} className="group hover:bg-muted/30">
-                                            <TableCell className="font-mono text-[10px] font-black opacity-60">
-                                                {info.isUnlinked ? <Badge variant="destructive" className="h-4 text-[8px] uppercase">Unlinked</Badge> : info.studentId}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-sm">{info.studentName}</span>
-                                                        {info.isScholarship && (
-                                                            <Badge variant="outline" className="h-4 text-[8px] uppercase border-blue-200 bg-blue-50 text-blue-700">
-                                                                <GraduationCap className="h-2.5 w-2.5 mr-1"/> Scholarship
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] text-muted-foreground uppercase">{semesters.find(s=>s.id===info.semesterId)?.name || 'General Record'}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-xs">{programmes.find(p=>p.id===info.programmeId)?.name || 'N/A'}</TableCell>
-                                            <TableCell className="text-right font-black text-sm">ZMW {info.balance.toFixed(2)}</TableCell>
-                                            <TableCell className="text-right text-green-600 font-bold text-xs">ZMW {info.totalPaid.toFixed(2)}</TableCell>
-                                            <TableCell className="text-center">
-                                                {info.isUnlinked ? (
-                                                    <Badge variant="destructive" className="uppercase text-[9px] h-5 px-2 animate-pulse gap-1">
-                                                        <ShieldAlert className="h-2.5 w-2.5"/> Needs Account Link
-                                                    </Badge>
-                                                ) : (
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <div className="flex flex-col items-center gap-1 cursor-pointer">
-                                                                <Badge variant={info.status === 'Paid' ? 'default' : (info.thresholdMet ? 'secondary' : 'destructive')} className="uppercase text-[9px] h-5 px-2">
-                                                                    {info.status === 'Paid' ? 'Cleared' : (info.thresholdMet ? 'Good Standing' : 'Below Threshold')}
-                                                                </Badge>
-                                                                {info.penaltiesActive && <span className="text-[8px] font-black uppercase text-destructive animate-pulse flex items-center gap-1"><ShieldAlert className="h-2 w-2"/> Penalties Active</span>}
-                                                            </div>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-80 p-4 shadow-2xl border-primary/20">
-                                                            <div className="space-y-4">
-                                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2">Compliance Audit</h4>
-                                                                <div className="space-y-2">
-                                                                    <div className="flex justify-between text-xs">
-                                                                        <span className="text-muted-foreground">Threshold Target:</span>
-                                                                        <span className="font-bold">{info.targetThreshold}%</span>
-                                                                    </div>
-                                                                    <div className="flex justify-between text-xs">
-                                                                        <span className="text-muted-foreground">Current Standing:</span>
-                                                                        <span className={cn("font-bold", info.thresholdMet ? "text-green-600" : "text-destructive")}>{info.paidPercentage.toFixed(1)}%</span>
-                                                                    </div>
-                                                                    <div className="flex justify-between text-xs">
-                                                                        <span className="text-muted-foreground">Grace Period:</span>
-                                                                        <span className="font-bold">{info.gracePeriod} Days</span>
-                                                                    </div>
-                                                                    
-                                                                    <Separator className="my-3"/>
-                                                                    
-                                                                    <div className="space-y-2">
-                                                                        <p className="text-[9px] font-black uppercase text-muted-foreground tracking-tighter">Restriction Status</p>
-                                                                        <div className="grid gap-1.5 text-[10px]">
-                                                                            <div className="flex justify-between items-center">
-                                                                                <span className="opacity-70">Course Registration:</span>
-                                                                                <div className="flex items-center gap-1">
-                                                                                    {restrictions.registration ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                    <span className={cn(restrictions.registration ? "text-destructive" : "text-green-600")}>{restrictions.registration ? 'Enforced' : 'Unrestricted'}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="flex justify-between items-center">
-                                                                                <span className="opacity-70">Exam Publication:</span>
-                                                                                <div className="flex items-center gap-1">
-                                                                                    {restrictions.results ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                    <span className={cn(restrictions.results ? "text-destructive" : "text-green-600")}>{restrictions.results ? 'Enforced' : 'Unrestricted'}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="flex justify-between items-center">
-                                                                                <span className="opacity-70">Library Access:</span>
-                                                                                <div className="flex items-center gap-1">
-                                                                                    {restrictions.library ? <Lock className="h-2.5 w-2.5 text-destructive"/> : <Unlock className="h-2.5 w-2.5 text-green-600"/>}
-                                                                                    <span className={cn(restrictions.library ? "text-destructive" : "text-green-600")}>{restrictions.library ? 'Enforced' : 'Unrestricted'}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {!info.thresholdMet && (
-                                                                        <div className="mt-4 p-2 bg-destructive/5 border border-destructive/10 rounded-md">
-                                                                            <p className="text-[10px] font-bold text-destructive uppercase">Arrears Clearing Amount</p>
-                                                                            <p className="text-xs font-black">ZMW {( (info.totalDue * (info.targetThreshold/100)) - info.totalPaid ).toFixed(2)}</p>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="h-4 w-4" /></Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setBulkPaymentRows([{ key: Date.now(), userId: info.userId, year: String(semesters.find(s=>s.id===info.semesterId)?.year || ''), semesterId: info.semesterId || '', amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                    )}
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 
             <Dialog open={isBulkRecordOpen} onOpenChange={setIsBulkRecordOpen}>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] flex flex-col">
-                    <DialogHeader><DialogTitle>Record Transaction(s)</DialogTitle><DialogDescription>Batch process multiple manual student payments.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle>Record Transaction(s)</DialogTitle></DialogHeader>
                     <div className="flex-1 overflow-y-auto pr-4 space-y-4 py-4">
                         {bulkPaymentRows.map((row, idx) => (
-                            <Card key={row.key} className="border-l-4 border-l-primary shadow-sm bg-muted/5 relative group">
+                            <Card key={row.key} className="border-l-4 border-l-primary relative group">
                                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => handleRemovePaymentRow(row.key)}><Trash2 className="h-3 w-3 text-destructive"/></Button>
                                 <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-3">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-2"><div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Student Identity</Label></div>
-                                            <div className="flex items-center gap-2">
-                                                <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
-                                                <span className="text-[10px] font-bold uppercase text-primary">Request Student Creation?</span>
-                                            </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{idx + 1}</div>
+                                            <Label className="font-black text-[10px] uppercase">Recipient</Label>
+                                        </div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Switch checked={row.isNewStudent} onCheckedChange={v => handleBulkPaymentRowChange(row.key, 'isNewStudent', v)} />
+                                            <span className="text-[10px] font-bold uppercase text-primary">Request Student Creation?</span>
                                         </div>
                                         {row.isNewStudent ? (
-                                            <div className="space-y-3 animate-in fade-in border p-3 rounded-lg bg-background/50 shadow-inner">
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[9px] uppercase">Full Name</Label>
-                                                        <Input placeholder="Enter full name..." value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[9px] uppercase">Proposed Student ID</Label>
-                                                        <Input placeholder="e.g. STU-NEW" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs" />
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            <div className="grid grid-cols-2 gap-3"><Input placeholder="Full Name" value={row.tempStudentName} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentName', e.target.value)} className="h-9 text-xs"/><Input placeholder="ID (e.g. NEW-01)" value={row.tempStudentId} onChange={e => handleBulkPaymentRowChange(row.key, 'tempStudentId', e.target.value)} className="h-9 text-xs"/></div>
                                         ) : (
-                                            <>
-                                                <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
-                                                {row.userId && (
-                                                    <div className="text-[10px] font-bold text-primary flex items-center gap-1.5 px-1">
-                                                        <UserCheck className="h-3 w-3" />
-                                                        Current Stand: {calculateStandingForUser(row.userId)}
-                                                    </div>
-                                                )}
-                                            </>
+                                            <SearchableSelect options={studentOptions} value={row.userId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'userId', v)} placeholder="Search student name or ID..." />
                                         )}
-                                        
-                                        <div className="pt-2 border-t">
-                                            <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground mb-2 block">Target Allocation (Payment For)</Label>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase font-bold">Target Year</Label>
-                                                    <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}>
-                                                        <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year..."/></SelectTrigger>
-                                                        <SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-[9px] uppercase font-bold">Target Semester</Label>
-                                                    <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}>
-                                                        <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester..."/></SelectTrigger>
-                                                        <SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <Select value={row.year} onValueChange={v => handleBulkPaymentRowChange(row.key, 'year', v)}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year"/></SelectTrigger><SelectContent>{(row.availableYears || []).map(y => <SelectItem key={y} value={y}>Year {y}</SelectItem>)}</SelectContent></Select>
+                                            <Select value={row.semesterId} onValueChange={v => handleBulkPaymentRowChange(row.key, 'semesterId', v)} disabled={!row.year}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Semester"/></SelectTrigger><SelectContent>{(row.availableSemesters || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name.split(' ').slice(-2).join(' ')}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                     </div>
-                                    <div className="space-y-3 border-l pl-6 bg-background/50 rounded-r-lg">
-                                        <div className="flex justify-between items-center"><Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Transaction Details</Label>{row.semesterId && <Badge variant="outline" className="text-[9px] font-bold bg-white">Audit</Badge>}</div>
-                                        {row.semesterId ? (
-                                            <div className="grid grid-cols-3 gap-2 bg-white border p-2 rounded-md shadow-inner text-center">
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <div className="flex flex-col cursor-help group">
-                                                            <span className="text-[8px] uppercase font-bold opacity-50 group-hover:text-primary">Due</span>
-                                                            <span className="font-black text-xs border-b border-dotted text-primary">K{(row.totalDue || 0).toFixed(0)}</span>
-                                                        </div>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-64 p-3 shadow-xl border-primary/20">
-                                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-primary border-b pb-2 mb-3">Balance Breakdown</h4>
-                                                        {row.breakdown ? (
-                                                            <div className="space-y-2 text-xs font-medium">
-                                                                <div className="flex justify-between"><span>Base Tuition:</span> <span>K{row.breakdown.tuition.toFixed(2)}</span></div>
-                                                                {row.breakdown.scholarship > 0 && <div className="flex justify-between text-blue-600 font-bold"><span>Scholarship:</span> <span>- K{row.breakdown.scholarship.toFixed(2)}</span></div>}
-                                                                
-                                                                {row.breakdown.mandatoryItems?.map((item, i) => (
-                                                                    <div key={`m-${i}`} className="flex justify-between text-[10px] opacity-60">
-                                                                        <span>+ {item.name}:</span>
-                                                                        <span>K{item.amount.toFixed(2)}</span>
-                                                                    </div>
-                                                                ))}
-                                                                
-                                                                {row.breakdown.optionalItems?.map((item, i) => (
-                                                                    <div key={`o-${i}`} className="flex justify-between text-[10px] opacity-60">
-                                                                        <span>+ {item.name}:</span>
-                                                                        <span>K{item.amount.toFixed(2)}</span>
-                                                                    </div>
-                                                                ))}
-
-                                                                {row.breakdown.late > 0 && <div className="flex justify-between text-destructive"><span>Late Fee:</span> <span>K{row.breakdown.late.toFixed(2)}</span></div>}
-                                                                <Separator className="my-1"/>
-                                                                <div className="flex justify-between font-black text-primary"><span>TOTAL PAYABLE:</span> <span>K{row.totalDue?.toFixed(2)}</span></div>
-                                                            </div>
-                                                        ) : <p className="text-[10px] italic opacity-60">Breakdown unavailable for manual prediction.</p>}
-                                                    </PopoverContent>
-                                                </Popover>
-                                                <div className="flex flex-col border-x"><span className="text-[8px] uppercase font-bold opacity-50">Paid</span><span className="font-black text-xs text-green-600">K{(row.totalPaid || 0).toFixed(0)}</span></div>
-                                                <div className="flex flex-col"><span className="text-[8px] uppercase font-bold opacity-50">After Pay</span><span className="font-black text-xs text-destructive">K{( (row.totalDue || 0) - (row.totalPaid || 0) - (parseFloat(row.amount) || 0) ).toFixed(0)}</span></div>
-                                            </div>
-                                        ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic px-4 text-center">{row.isNewStudent ? "New registration deposit" : "Complete selection to view audit"}</div>}
-                                        
+                                    <div className="space-y-3 border-l pl-6">
+                                        <Label className="font-black text-[10px] uppercase">Allocation</Label>
                                         {row.semesterId && (
-                                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                                <Label className="text-[9px] font-bold uppercase flex items-center gap-1.5"><ListChecks className="h-3 w-3" /> Allocation (Optional)</Label>
-                                                <ScrollArea className="h-24 border rounded-md p-2 bg-white">
-                                                    <div className="space-y-1.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <Checkbox 
-                                                                id={`all-tuition-${row.key}`} 
-                                                                checked={row.allocations.includes('Tuition Fees')} 
-                                                                onCheckedChange={(c) => {
-                                                                    const next = c ? [...row.allocations, 'Tuition Fees'] : row.allocations.filter(a => a !== 'Tuition Fees');
-                                                                    handleBulkPaymentRowChange(row.key, 'allocations', next);
-                                                                }}
-                                                            />
-                                                            <Label htmlFor={`all-tuition-${row.key}`} className="text-xs font-medium cursor-pointer">Tuition Fees</Label>
-                                                        </div>
-                                                        {row.breakdown?.mandatoryItems?.map((item, i) => (
-                                                            <div key={`m-opt-${i}`} className="flex items-center gap-2">
-                                                                <Checkbox 
-                                                                    id={`all-m-${row.key}-${i}`} 
-                                                                    checked={row.allocations.includes(item.name)} 
-                                                                    onCheckedChange={(c) => {
-                                                                        const next = c ? [...row.allocations, item.name] : row.allocations.filter(a => a !== item.name);
-                                                                        handleBulkPaymentRowChange(row.key, 'allocations', next);
-                                                                    }}
-                                                                />
-                                                                <Label htmlFor={`all-m-${row.key}-${i}`} className="text-xs font-medium cursor-pointer">{item.name}</Label>
-                                                            </div>
-                                                        ))}
-                                                        {row.breakdown?.optionalItems?.map((item, i) => (
-                                                            <div key={`all-o-${row.key}-${i}`} className="flex items-center gap-2">
-                                                                <Checkbox 
-                                                                    id={`all-o-${row.key}-${i}`} 
-                                                                    checked={row.allocations.includes(item.name)} 
-                                                                    onCheckedChange={(c) => {
-                                                                        const next = c ? [...row.allocations, item.name] : row.allocations.filter(a => a !== item.name);
-                                                                        handleBulkPaymentRowChange(row.key, 'allocations', next);
-                                                                    }}
-                                                                />
-                                                                <Label htmlFor={`all-o-${row.key}-${i}`} className="text-xs font-medium cursor-pointer">{item.name}</Label>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </ScrollArea>
-                                            </div>
+                                            <ScrollArea className="h-24 border rounded p-2 bg-white">
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2"><Checkbox id={`tuition-${row.key}`} checked={row.allocations.includes('Tuition')} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, 'Tuition'] : row.allocations.filter(a=>a!=='Tuition'))}/><Label htmlFor={`tuition-${row.key}`} className="text-xs">Tuition Fees</Label></div>
+                                                    {row.breakdown?.mandatoryItems?.map((f, i) => (
+                                                        <div key={i} className="flex items-center gap-2"><Checkbox id={`mand-${row.key}-${i}`} checked={row.allocations.includes(f.name)} onCheckedChange={c => handleBulkPaymentRowChange(row.key, 'allocations', c ? [...row.allocations, f.name] : row.allocations.filter(a=>a!==f.name))}/><Label htmlFor={`mand-${row.key}-${i}`} className="text-xs">{f.name}</Label></div>
+                                                    ))}
+                                                </div>
+                                            </ScrollArea>
                                         )}
-
                                         <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1"><Label className="text-[9px]">Amount (ZMW)</Label><Input type="number" placeholder="0.00" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-black text-primary" /></div>
-                                            <div className="space-y-1"><Label className="text-[9px]">Comment</Label><Input placeholder="Ref..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" /></div>
+                                            <Input type="number" placeholder="Amount (ZMW)" value={row.amount} onChange={e => handleBulkPaymentRowChange(row.key, 'amount', e.target.value)} className="h-9 font-bold" />
+                                            <Input placeholder="Reference..." value={row.comment} onChange={e => handleBulkPaymentRowChange(row.key, 'comment', e.target.value)} className="h-9 text-xs" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
                         ))}
-                        <Button variant="outline" className="w-full border-dashed h-12" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
+                        <Button variant="outline" className="w-full border-dashed" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><Plus className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
                     </div>
-                    <DialogFooter className="border-t pt-4">
-                        <Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSaveAllBulk} disabled={formLoading || bulkPaymentRows.length === 0}>
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Confirm Transactions
-                        </Button>
-                    </DialogFooter>
+                    <DialogFooter><Button onClick={handleSaveAllBulk} disabled={formLoading}>Confirm Transactions</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={isHistoryOpen} onOpenChange={(o) => { if(!o) { setHistoryStudent(null); setIsHistoryOpen(o); } }}>
+            <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-                    <DialogHeader>
-                        <div className="flex items-center justify-between gap-4">
-                            <div>
-                                <DialogTitle>Account Statement: {historyStudent?.studentName}</DialogTitle>
-                                <DialogDescription>Viewing ledger for {historyStudent?.studentId}</DialogDescription>
-                            </div>
-                        </div>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Statement of Account: {historyStudent?.studentName}</DialogTitle></DialogHeader>
                     {historyStudent && (
-                        <Tabs defaultValue={historyStudent.semesterId || ''} className="flex-1 overflow-hidden flex flex-col mt-4">
-                            <TabsList className="justify-start h-10 w-full overflow-x-auto bg-muted/50 p-1 shrink-0 scrollbar-hide">
-                                {paymentInfos
-                                    .filter(p => p.userId === historyStudent.userId)
-                                    .map(p => {
-                                        const sem = semesters.find(s => s.id === p.semesterId);
-                                        return <TabsTrigger key={p.semesterId} value={p.semesterId || ''} className="text-[10px] font-black uppercase px-4">{sem?.name || 'General'}</TabsTrigger>
-                                    })
-                                }
-                            </TabsList>
-                            {paymentInfos
-                                .filter(p => p.userId === historyStudent.userId)
-                                .map(p => (
-                                    <TabsContent key={p.semesterId} value={p.semesterId || ''} className="flex-1 flex flex-col min-h-0 pt-4 data-[state=active]:flex">
-                                        <div className="grid grid-cols-3 gap-4 mb-4">
-                                            <div className="p-3 rounded-lg border bg-muted/20 flex flex-col justify-between items-start group relative">
-                                                <div>
-                                                    <p className="text-[9px] font-black uppercase opacity-60 tracking-widest">Total Invoiced</p>
-                                                    <p className="text-lg font-black">ZMW {p.totalDue.toFixed(2)}</p>
-                                                </div>
-                                                <Button variant="link" size="sm" className="h-auto p-0 text-[10px] font-bold text-primary hover:no-underline" onClick={() => {
-                                                    setAdjustmentTarget({ type: 'invoice', id: p.invoiceId, oldValue: p.totalDue, userId: p.userId, studentName: p.studentName, studentId: p.studentId });
-                                                    setAdjNewValue(String(p.totalDue));
-                                                    setIsAdjustmentOpen(true);
-                                                }}><Pencil className="h-2.5 w-2.5 mr-1"/> Request Adjust</Button>
-                                            </div>
-                                            <div className="p-3 rounded-lg border bg-green-50/50">
-                                                <p className="text-[9px] font-black uppercase text-green-700 tracking-widest">Amount Paid</p>
-                                                <p className="text-lg font-black text-green-600">ZMW {p.totalPaid.toFixed(2)}</p>
-                                            </div>
-                                            <div className="p-3 rounded-lg border bg-red-50/50">
-                                                <p className="text-[9px] font-black uppercase text-red-700 tracking-widest">Balance</p>
-                                                <p className="text-lg font-black text-destructive">ZMW {p.balance.toFixed(2)}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 overflow-auto border rounded-xl shadow-inner bg-background">
-                                            <Table>
-                                                <TableHeader className="sticky top-0 bg-background z-10 border-b">
-                                                    <TableRow>
-                                                        <TableHead>Date</TableHead>
-                                                        <TableHead>Allocation</TableHead>
-                                                        <TableHead>Comment</TableHead>
-                                                        <TableHead className="text-right">Amount</TableHead>
-                                                        <TableHead className="w-10"></TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {rawTransactions
-                                                        .filter(t => t.userId === p.userId && t.invoiceId === p.invoiceId)
-                                                        .map(tx => (
-                                                            <TableRow key={tx.key} className="group hover:bg-muted/20">
-                                                                <TableCell className="text-xs font-medium">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
-                                                                <TableCell>
-                                                                    <Badge variant="outline" className="text-[9px] uppercase font-black px-2 py-0.5">
-                                                                        {tx.purpose || 'General Balance'}
-                                                                    </Badge>
-                                                                </TableCell>
-                                                                <TableCell className="text-xs text-muted-foreground italic truncate max-w-[200px]">{tx.comment?.replace(/\[For: [^\]]+\]\s*/, '') || '-'}</TableCell>
-                                                                <TableCell className="text-right font-black text-green-600">ZMW {tx.amount.toFixed(2)}</TableCell>
-                                                                <TableCell>
-                                                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => {
-                                                                        setAdjustmentTarget({ type: 'transaction', id: tx.key, oldValue: tx.amount, userId: p.userId, studentName: p.studentName, studentId: p.studentId });
-                                                                        setAdjNewValue(String(tx.amount));
-                                                                        setIsAdjustmentOpen(true);
-                                                                    }}><Pencil className="h-3 w-3"/></Button>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))
-                                                    }
-                                                </TableBody>
-                                            </Table>
-                                        </div>
-                                    </TabsContent>
-                                ))
-                            }
-                        </Tabs>
+                        <ScrollArea className="flex-1 mt-4">
+                            <Table>
+                                <TableHeader className="bg-muted">
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Ref / Purpose</TableHead>
+                                        <TableHead className="text-right">Credit</TableHead>
+                                        <TableHead className="text-right">Debit</TableHead>
+                                        <TableHead className="text-right">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {rawTransactions
+                                        .filter(t => t.userId === historyStudent.userId && t.invoiceId === historyStudent.invoiceId)
+                                        .map(tx => (
+                                            <TableRow key={tx.key}>
+                                                <TableCell className="text-xs">{format(parseISO(tx.paymentDate), 'dd MMM yyyy')}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-xs">{tx.purpose || 'Fees Payment'}</span>
+                                                        <span className="text-[10px] opacity-60 font-mono">{tx.transactionId}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right text-green-600 font-bold">{tx.amount > 0 ? `K${tx.amount.toFixed(2)}` : '-'}</TableCell>
+                                                <TableCell className="text-right text-red-600 font-bold">{tx.amount < 0 ? `K${Math.abs(tx.amount).toFixed(2)}` : '-'}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" onClick={() => generateReceipt(tx, historyStudent)}><Download className="h-4 w-4"/></Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                </TableBody>
+                            </Table>
+                        </ScrollArea>
                     )}
-                    <DialogFooter className="border-t pt-4">
-                        <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={isAdjustmentOpen} onOpenChange={setIsAdjustmentOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Request Adjustment</DialogTitle>
-                        <DialogDescription>Propose a financial correction for administrative review.</DialogDescription>
+                        <DialogTitle>Issue {adjustmentTarget?.type === 'credit' ? 'Credit' : 'Debit'} Note</DialogTitle>
+                        <DialogDescription>Apply a formal financial adjustment to {adjustmentTarget?.studentName}'s ledger.</DialogDescription>
                     </DialogHeader>
-                    {adjustmentTarget && (
-                        <div className="space-y-4 py-4">
-                            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                                <Label className="text-[10px] font-black uppercase tracking-widest opacity-60">Target</Label>
-                                <p className="text-sm font-bold capitalize">{adjustmentTarget.type}: {adjustmentTarget.studentName}</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Original Value</Label>
-                                    <div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm line-through opacity-50 font-mono">ZMW {adjustmentTarget.oldValue.toFixed(2)}</div>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs font-bold text-primary">New Value</Label>
-                                    <Input type="number" value={adjNewValue} onChange={e => setAdjNewValue(e.target.value)} placeholder="0.00" className="border-primary/40 font-mono font-bold" />
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="text-xs font-bold">Reason for Change</Label>
-                                <Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="Explain the correction..." rows={4} />
-                            </div>
-                        </div>
-                    )}
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-1"><Label>Amount (ZMW)</Label><Input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" className="font-bold" /></div>
+                        <div className="space-y-1"><Label>Reason for Adjustment</Label><Textarea value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g., Correction of billing error..." rows={4} /></div>
+                    </div>
                     <DialogFooter>
-                        <Button variant="ghost" onClick={() => setIsAdjustmentOpen(false)}>Cancel</Button>
-                        <Button onClick={handleRequestAdjustment} disabled={formLoading || !adjNewValue || !adjReason.trim()}>
-                            {formLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Submit Request
+                        <Button onClick={handleSaveAdjustment} disabled={formLoading || !adjAmount || !adjReason.trim()}>
+                            {formLoading ? <Loader2 className="animate-spin h-4 w-4"/> : <FileCheck className="mr-2 h-4 w-4"/>}
+                            Issue Note
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
     );
+
+    function handleSaveAsDefault() {}
+    function handleRemovePaymentRow(key: number) {
+        setBulkPaymentRows(prev => prev.filter(r => r.key !== key));
+    }
+    function handleExport() {}
 }
