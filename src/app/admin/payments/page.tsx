@@ -123,7 +123,7 @@ type PaymentRecord = {
     semesterId?: string;
     amount: string;
     comment: string;
-    purpose?: string;
+    allocations: string[]; // Changed from purpose to multi-selection
     totalDue?: number;
     totalPaid?: number;
     availableYears?: string[];
@@ -575,7 +575,7 @@ export default function PaymentsManagementPage() {
                 if (field === 'userId' && !row.isNewStudent) {
                     const studentInfo = allStudents.find(s => s.uid === value);
                     if (studentInfo) {
-                        const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId);
+                        const validSemesters = semesters.filter(s => s.intakeId === studentInfo.intakeId && s.status !== 'Archived');
                         const years = Array.from(new Set(validSemesters.map(s => String(s.year)))).sort();
                         nextRow.availableYears = years;
                         nextRow.year = '';
@@ -584,12 +584,14 @@ export default function PaymentsManagementPage() {
                         nextRow.totalDue = 0;
                         nextRow.totalPaid = 0;
                         nextRow.breakdown = undefined;
-                        nextRow.purpose = undefined;
+                        nextRow.allocations = [];
                     }
                 } else if (field === 'isNewStudent') {
                     if (value) {
                         nextRow.userId = undefined;
-                        nextRow.availableYears = Array.from(new Set(semesters.map(s => String(s.year)))).sort();
+                        // For new students, we only show years belonging to 'Open' semesters to minimize list size
+                        const openSemesters = semesters.filter(s => s.status === 'Open');
+                        nextRow.availableYears = Array.from(new Set(openSemesters.map(s => String(s.year)))).sort();
                     } else {
                         nextRow.tempStudentId = undefined;
                         nextRow.tempStudentName = undefined;
@@ -600,19 +602,20 @@ export default function PaymentsManagementPage() {
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
                     nextRow.breakdown = undefined;
-                    nextRow.purpose = undefined;
+                    nextRow.allocations = [];
                 } else if (field === 'year') {
                     if (row.isNewStudent) {
-                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value);
+                        // Strict filter: only 'Open' semesters for the target year for new prospects
+                        nextRow.availableSemesters = semesters.filter(s => String(s.year) === value && s.status === 'Open');
                     } else {
                         const studentInfo = allStudents.find(s => s.uid === row.userId);
-                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value);
+                        nextRow.availableSemesters = semesters.filter(s => s.intakeId === studentInfo?.intakeId && String(s.year) === value && s.status !== 'Archived');
                     }
                     nextRow.semesterId = '';
                     nextRow.totalDue = 0;
                     nextRow.totalPaid = 0;
                     nextRow.breakdown = undefined;
-                    nextRow.purpose = undefined;
+                    nextRow.allocations = [];
                 } else if (field === 'semesterId') {
                     const studentUid = row.userId;
                     const existingInfo = paymentInfos.find(p => p.userId === studentUid && p.semesterId === value);
@@ -641,7 +644,7 @@ export default function PaymentsManagementPage() {
                             };
                         }
                     }
-                    nextRow.purpose = 'General Balance';
+                    nextRow.allocations = [];
                 }
                 
                 return nextRow;
@@ -665,7 +668,7 @@ export default function PaymentsManagementPage() {
         try {
             for (const record of paymentsToRecord) {
                 const amountFloat = parseFloat(record.amount);
-                const paymentPurpose = record.purpose || 'General Balance';
+                const paymentPurpose = record.allocations.length > 0 ? record.allocations.join(', ') : 'General Balance';
                 const finalComment = record.comment ? `[For: ${paymentPurpose}] ${record.comment}` : `Payment for ${paymentPurpose}`;
                 
                 if (record.isNewStudent) {
@@ -693,7 +696,8 @@ export default function PaymentsManagementPage() {
                         senderName: record.tempStudentName,
                         semesterId: record.semesterId,
                         purpose: paymentPurpose,
-                        comment: finalComment
+                        comment: finalComment,
+                        tempId: record.tempStudentId || 'TBA'
                     };
                 } else {
                     const studentUid = record.userId!;
@@ -854,7 +858,7 @@ export default function PaymentsManagementPage() {
                         <div className="flex flex-wrap gap-2">
                             <Button variant="outline" size="sm" onClick={handleSaveAsDefault} disabled={saving}><Save className="mr-2 h-4 w-4" /> Save Defaults</Button>
                             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4"/> Export PDF</Button>
-                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
+                            <Button size="sm" onClick={() => { setBulkPaymentRows([{ key: Date.now(), amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="mr-2 h-4 w-4"/> Record Transaction(s)</Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -1009,7 +1013,7 @@ export default function PaymentsManagementPage() {
                                             <TableCell>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setHistoryStudent(info); setIsHistoryOpen(true); }}><HistoryIcon className="h-4 w-4" /></Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setBulkPaymentRows([{ key: Date.now(), userId: info.userId, year: String(semesters.find(s=>s.id===info.semesterId)?.year || ''), semesterId: info.semesterId || '', amount: '', comment: '' }]); setIsBulkRecordOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => { setBulkPaymentRows([{ key: Date.now(), userId: info.userId, year: String(semesters.find(s=>s.id===info.semesterId)?.year || ''), semesterId: info.semesterId || '', amount: '', comment: '', allocations: [] }]); setIsBulkRecordOpen(true); }}><PlusCircle className="h-4 w-4" /></Button>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -1127,22 +1131,49 @@ export default function PaymentsManagementPage() {
                                         ) : <div className="h-10 border border-dashed rounded flex items-center justify-center text-[10px] text-muted-foreground italic px-4 text-center">{row.isNewStudent ? "New registration deposit" : "Complete selection to view audit"}</div>}
                                         
                                         {row.semesterId && (
-                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
                                                 <Label className="text-[9px] font-bold uppercase flex items-center gap-1.5"><ListChecks className="h-3 w-3" /> Allocation (Optional)</Label>
-                                                <Select value={row.purpose} onValueChange={v => handleBulkPaymentRowChange(row.key, 'purpose', v)}>
-                                                    <SelectTrigger className="h-9 text-xs bg-white border-primary/20"><SelectValue placeholder="General Balance"/></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="General Balance">General Balance</SelectItem>
-                                                        <Separator className="my-1"/>
-                                                        <SelectItem value="Tuition Fees">Tuition Fees</SelectItem>
+                                                <ScrollArea className="h-24 border rounded-md p-2 bg-white">
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <Checkbox 
+                                                                id={`all-tuition-${row.key}`} 
+                                                                checked={row.allocations.includes('Tuition Fees')} 
+                                                                onCheckedChange={(c) => {
+                                                                    const next = c ? [...row.allocations, 'Tuition Fees'] : row.allocations.filter(a => a !== 'Tuition Fees');
+                                                                    handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                                }}
+                                                            />
+                                                            <Label htmlFor={`all-tuition-${row.key}`} className="text-xs font-medium cursor-pointer">Tuition Fees</Label>
+                                                        </div>
                                                         {row.breakdown?.mandatoryItems?.map((item, i) => (
-                                                            <SelectItem key={`m-opt-${i}`} value={item.name}>{item.name}</SelectItem>
+                                                            <div key={`m-opt-${i}`} className="flex items-center gap-2">
+                                                                <Checkbox 
+                                                                    id={`all-m-${row.key}-${i}`} 
+                                                                    checked={row.allocations.includes(item.name)} 
+                                                                    onCheckedChange={(c) => {
+                                                                        const next = c ? [...row.allocations, item.name] : row.allocations.filter(a => a !== item.name);
+                                                                        handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                                    }}
+                                                                />
+                                                                <Label htmlFor={`all-m-${row.key}-${i}`} className="text-xs font-medium cursor-pointer">{item.name}</Label>
+                                                            </div>
                                                         ))}
                                                         {row.breakdown?.optionalItems?.map((item, i) => (
-                                                            <SelectItem key={`o-opt-${i}`} value={item.name}>{item.name}</SelectItem>
+                                                            <div key={`o-opt-${i}`} className="flex items-center gap-2">
+                                                                <Checkbox 
+                                                                    id={`all-o-${row.key}-${i}`} 
+                                                                    checked={row.allocations.includes(item.name)} 
+                                                                    onCheckedChange={(c) => {
+                                                                        const next = c ? [...row.allocations, item.name] : row.allocations.filter(a => a !== item.name);
+                                                                        handleBulkPaymentRowChange(row.key, 'allocations', next);
+                                                                    }}
+                                                                />
+                                                                <Label htmlFor={`all-o-${row.key}-${i}`} className="text-xs font-medium cursor-pointer">{item.name}</Label>
+                                                            </div>
                                                         ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                    </div>
+                                                </ScrollArea>
                                             </div>
                                         )}
 
@@ -1154,7 +1185,7 @@ export default function PaymentsManagementPage() {
                                 </CardContent>
                             </Card>
                         ))}
-                        <Button variant="outline" className="w-full border-dashed h-12" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '' }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
+                        <Button variant="outline" className="w-full border-dashed h-12" onClick={() => setBulkPaymentRows(p => [...p, { key: Date.now(), amount: '', comment: '', allocations: [] }])}><PlusCircle className="mr-2 h-4 w-4"/>Add Transaction Row</Button>
                     </div>
                     <DialogFooter className="border-t pt-4">
                         <Button variant="ghost" onClick={() => setIsBulkRecordOpen(false)}>Cancel</Button>

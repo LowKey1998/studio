@@ -249,12 +249,22 @@ export default function AddStudentPage() {
                 updates[`users/${newUid}`] = userDataPayload;
                 updates[`userRoles/${newUid}`] = { role: 'student' };
 
-                // If this came from a request, link the transaction and remove request
-                if (currentRequestId && selectedSemester) {
+                // Handle Automatic Payment Linking for manual creates
+                const txsSnap = await get(ref(db, 'transactions'));
+                let foundUnlinkedTxId = null;
+                if (txsSnap.exists()) {
+                    const txs = txsSnap.val();
+                    foundUnlinkedTxId = Object.keys(txs).find(k => 
+                        txs[k].isUnlinked === true && 
+                        (txs[k].senderName === name || txs[k].tempId === newId || txs[k].tempId === manualId)
+                    );
+                }
+
+                // If this came from a request OR we found a matching unlinked payment
+                if ((currentRequestId || foundUnlinkedTxId) && selectedSemester) {
                     const semester = allSemesters.find(s => s.id === selectedSemester);
                     const semesterName = semester?.name || 'Current Semester';
                     
-                    // 1. Generate Invoice first so we have an ID to link the payment to
                     const invRef = push(ref(db, `invoices/${newUid}`));
                     const newInvoiceId = invRef.key!;
                     
@@ -270,7 +280,6 @@ export default function AddStudentPage() {
                         optionalFees: []
                     };
 
-                    // 2. Initialize Registration
                     updates[`registrations/${newUid}/${selectedSemester}`] = {
                         courses: [],
                         status: 'Pending Approval',
@@ -282,20 +291,15 @@ export default function AddStudentPage() {
                         source: 'manual'
                     };
 
-                    // 3. Find and update the floating transaction
-                    const txsSnap = await get(ref(db, 'transactions'));
-                    if (txsSnap.exists()) {
-                        const txs = txsSnap.val();
-                        const targetTxId = Object.keys(txs).find(k => txs[k].requestId === currentRequestId);
-                        if (targetTxId) {
-                            updates[`transactions/${targetTxId}/userId`] = newUid;
-                            updates[`transactions/${targetTxId}/invoiceId`] = newInvoiceId;
-                            updates[`transactions/${targetTxId}/isUnlinked`] = null;
-                            updates[`transactions/${targetTxId}/requestId`] = null;
-                            updates[`transactions/${targetTxId}/senderName`] = null;
-                        }
+                    const txIdToLink = foundUnlinkedTxId || Object.keys(txsSnap.val()).find(k => txsSnap.val()[k].requestId === currentRequestId);
+                    if (txIdToLink) {
+                        updates[`transactions/${txIdToLink}/userId`] = newUid;
+                        updates[`transactions/${txIdToLink}/invoiceId`] = newInvoiceId;
+                        updates[`transactions/${txIdToLink}/isUnlinked`] = null;
+                        updates[`transactions/${txIdToLink}/requestId`] = null;
+                        updates[`transactions/${txIdToLink}/senderName`] = null;
                     }
-                    updates[`studentCreationRequests/${currentRequestId}`] = null;
+                    if (currentRequestId) updates[`studentCreationRequests/${currentRequestId}`] = null;
                 }
 
                 await update(ref(db), updates);
@@ -332,7 +336,6 @@ export default function AddStudentPage() {
             const updates: Record<string, any> = {};
             const now = new Date().toISOString();
             
-            // 1. Identify Target Semester and Invoice for the Existing Student
             const targetSemId = linkingRequest.targetSemesterId;
             const semester = allSemesters.find(s => s.id === targetSemId);
             const semesterName = semester?.name || 'Current Semester';
@@ -343,7 +346,6 @@ export default function AddStudentPage() {
             if (studentRegSnap.exists()) {
                 invoiceId = studentRegSnap.val().invoiceId;
             } else {
-                // If student isn't registered for this semester yet, create minimal registration and invoice
                 const newInvoiceRef = push(ref(db, `invoices/${existingStudentUid}`));
                 invoiceId = newInvoiceRef.key!;
                 
@@ -352,27 +354,18 @@ export default function AddStudentPage() {
                     semester: semesterName,
                     semesterId: targetSemId,
                     dateCreated: now,
-                    totalTuition: 0,
-                    totalMandatoryFees: 0,
-                    totalOptionalFees: 0,
-                    courses: [],
-                    optionalFees: []
+                    totalTuition: 0, totalMandatoryFees: 0, totalOptionalFees: 0,
+                    courses: [], optionalFees: []
                 };
 
                 const studentInfo = students.find(s => s.uid === existingStudentUid);
                 updates[`registrations/${existingStudentUid}/${targetSemId}`] = {
-                    courses: [],
-                    status: 'Pending Approval',
-                    semesterName: semesterName,
-                    registrationDate: now,
-                    programmeId: studentInfo?.programmeId || '',
-                    intakeId: studentInfo?.intakeId || '',
-                    invoiceId: invoiceId,
-                    source: 'manual'
+                    courses: [], status: 'Pending Approval', semesterName: semesterName, registrationDate: now,
+                    programmeId: studentInfo?.programmeId || '', intakeId: studentInfo?.intakeId || '',
+                    invoiceId: invoiceId, source: 'manual'
                 };
             }
             
-            // 2. Link the transaction to the existing student and their specific invoice
             if (txsSnap.exists()) {
                 const txs = txsSnap.val();
                 const targetTxId = Object.keys(txs).find(k => txs[k].requestId === linkingRequest.id);
@@ -388,21 +381,11 @@ export default function AddStudentPage() {
             updates[`studentCreationRequests/${linkingRequest.id}`] = null;
             await update(ref(db), updates);
             
-            await createNotification(
-                existingStudentUid,
-                `A deposit of ZMW ${linkingRequest.amountPaid.toFixed(2)} has been successfully linked to your ${semesterName} account.`,
-                '/student/payments'
-            );
-
-            toast({ title: 'Request Linked Successfully', description: 'The deposit has been correctly assigned to the existing student.' });
-            setIsLinkDialogOpen(false);
-            setLinkingRequest(null);
-            fetchInitialData();
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Linking Failed', description: e.message });
-        } finally {
-            setLoading(false);
-        }
+            await createNotification(existingStudentUid, `A deposit of ZMW ${linkingRequest.amountPaid.toFixed(2)} has been linked to your account.`, '/student/payments');
+            toast({ title: 'Request Linked Successfully' });
+            setIsLinkDialogOpen(false); setLinkingRequest(null); fetchInitialData();
+        } catch (e: any) { toast({ variant: 'destructive', title: 'Linking Failed', description: e.message }); }
+        finally { setLoading(false); }
     };
 
     const handleOpenEdit = (student: User) => {
@@ -430,14 +413,8 @@ export default function AddStudentPage() {
     };
 
     const [isEditOpen, setIsEditOpen] = React.useState(false);
-
     const filteredStudents = students.filter(s => !listSearchTerm || s.name.toLowerCase().includes(listSearchTerm.toLowerCase()) || s.id.toLowerCase().includes(listSearchTerm.toLowerCase()));
-    
-    const linkingStudentsFiltered = students.filter(s => 
-        !linkSearchTerm || 
-        s.name.toLowerCase().includes(linkSearchTerm.toLowerCase()) || 
-        s.id.toLowerCase().includes(linkSearchTerm.toLowerCase())
-    );
+    const linkingStudentsFiltered = students.filter(s => !linkSearchTerm || s.name.toLowerCase().includes(linkSearchTerm.toLowerCase()) || s.id.toLowerCase().includes(linkSearchTerm.toLowerCase()));
 
     return (
         <div className="space-y-8">
@@ -506,62 +483,26 @@ export default function AddStudentPage() {
                     <Card className="max-w-4xl mx-auto shadow-md border-l-4 border-l-primary overflow-hidden">
                         <CardHeader className="bg-primary/5 border-b pb-6">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary rounded-lg shadow-md">
-                                    <ClipboardList className="h-6 w-6 text-white" />
-                                </div>
-                                <div>
-                                    <CardTitle className="font-headline text-2xl">Pending Finance Requests</CardTitle>
-                                    <CardDescription>Accounts requested by the Finance department after receiving initial deposits.</CardDescription>
-                                </div>
+                                <div className="p-2 bg-primary rounded-lg shadow-md"><ClipboardList className="h-6 w-6 text-white" /></div>
+                                <div><CardTitle className="font-headline text-2xl">Pending Finance Requests</CardTitle><CardDescription>Accounts requested by Finance after initial deposits.</CardDescription></div>
                             </div>
                         </CardHeader>
                         <CardContent className="pt-6">
                             {pendingRequests.length > 0 ? (
                                 <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Applicant Name</TableHead>
-                                            <TableHead>Proposed ID</TableHead>
-                                            <TableHead>Deposit Paid</TableHead>
-                                            <TableHead>Submitted On</TableHead>
-                                            <TableHead className="text-right">Action</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
+                                    <TableHeader><TableRow><TableHead>Applicant Name</TableHead><TableHead>Proposed ID</TableHead><TableHead>Deposit Paid</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                         {pendingRequests.map(req => (
                                             <TableRow key={req.id} className="group hover:bg-muted/30 transition-colors">
                                                 <TableCell className="font-bold">{req.tempName}</TableCell>
                                                 <TableCell className="font-mono text-xs opacity-70 tracking-widest">{req.tempId}</TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 font-black">
-                                                        <Banknote className="h-3 w-3" />
-                                                        ZMW {req.amountPaid.toFixed(2)}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">{format(new Date(req.timestamp), 'PPP')}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex gap-2 justify-end">
-                                                        <Button variant="outline" size="sm" onClick={() => { setLinkingRequest(req); setIsLinkDialogOpen(true); }}>
-                                                            <LinkIcon className="mr-2 h-4 w-4" />
-                                                            Link Existing
-                                                        </Button>
-                                                        <Button size="sm" onClick={() => handleProcessRequest(req)} className="shadow-sm">
-                                                            <UserPlus className="mr-2 h-4 w-4" />
-                                                            Process New
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
+                                                <TableCell><Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-black">ZMW {req.amountPaid.toFixed(2)}</Badge></TableCell>
+                                                <TableCell className="text-right"><div className="flex gap-2 justify-end"><Button variant="outline" size="sm" onClick={() => { setLinkingRequest(req); setIsLinkDialogOpen(true); }}><LinkIcon className="mr-2 h-4 w-4" />Link Existing</Button><Button size="sm" onClick={() => handleProcessRequest(req)}><UserPlus className="mr-2 h-4 w-4" />Process New</Button></div></TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
-                            ) : (
-                                <div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
-                                    <CheckCircle2 className="h-12 w-12 mx-auto opacity-10 mb-4" />
-                                    <h3 className="text-lg font-bold">No Pending Requests</h3>
-                                    <p className="text-sm">When Finance records a payment for a new student, it will appear here for processing.</p>
-                                </div>
-                            )}
+                            ) : (<div className="py-20 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5"><CheckCircle2 className="h-12 w-12 mx-auto opacity-10 mb-4" /><h3 className="text-lg font-bold">No Pending Requests</h3></div>)}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -582,9 +523,7 @@ export default function AddStudentPage() {
                                             <TableCell className="font-mono text-xs">{student.id}</TableCell>
                                             <TableCell><div>{student.name}</div><div className="text-xs text-muted-foreground">{student.email}</div></TableCell>
                                             <TableCell className="text-xs">{student.programmeName}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(student)}><Pencil className="h-4 w-4 mr-2" /> Edit</Button>
-                                            </TableCell>
+                                            <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => handleOpenEdit(student)}><Pencil className="h-4 w-4 mr-2" /> Edit</Button></TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -596,37 +535,21 @@ export default function AddStudentPage() {
 
             <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
                 <DialogContent className="max-w-md flex flex-col h-[80vh]">
-                    <DialogHeader>
-                        <DialogTitle>Link Deposit to Existing Student</DialogTitle>
-                        <DialogDescription>
-                            Finance requested a new student account for <strong>{linkingRequest?.tempName}</strong>, but if they already have an account, you can link the deposit (ZMW {linkingRequest?.amountPaid.toFixed(2)}) here.
-                        </DialogDescription>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Link Deposit to Existing Student</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4 flex-1 flex flex-col min-h-0">
-                        <div className="relative">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="Search existing students..." className="pl-8" value={linkSearchTerm} onChange={e => setLinkSearchTerm(e.target.value)} />
-                        </div>
+                        <div className="relative"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Search existing students..." className="pl-8" value={linkSearchTerm} onChange={e => setLinkSearchTerm(e.target.value)} /></div>
                         <ScrollArea className="flex-1 border rounded-md">
                             <div className="p-2 space-y-1">
                                 {linkingStudentsFiltered.map(student => (
                                     <div key={student.uid} className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors border group">
-                                        <div>
-                                            <p className="text-sm font-bold">{student.name}</p>
-                                            <p className="text-[10px] text-muted-foreground uppercase">{student.id}</p>
-                                        </div>
-                                        <Button size="sm" variant="ghost" onClick={() => handleLinkToExisting(student.uid)} disabled={loading}>
-                                            {loading ? <Loader2 className="h-3 w-3 animate-spin"/> : <CheckCircle2 className="h-4 w-4 text-primary" />}
-                                        </Button>
+                                        <div><p className="text-sm font-bold">{student.name}</p><p className="text-[10px] text-muted-foreground uppercase">{student.id}</p></div>
+                                        <Button size="sm" variant="ghost" onClick={() => handleLinkToExisting(student.uid)} disabled={loading}>{loading ? <Loader2 className="h-3 w-3 animate-spin"/> : <CheckCircle2 className="h-4 w-4 text-primary" />}</Button>
                                     </div>
                                 ))}
-                                {linkingStudentsFiltered.length === 0 && <p className="text-center py-10 text-xs text-muted-foreground italic">No students match your search.</p>}
                             </div>
                         </ScrollArea>
                     </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    </DialogFooter>
+                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
